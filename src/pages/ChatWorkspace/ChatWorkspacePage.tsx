@@ -133,7 +133,7 @@ export function ChatWorkspacePage() {
 
             {/* 原顶栏网格图标位 → 进入项目详情 */}
             <Link
-              to={PATHS.projectDetail('demo-project')}
+              to={PATHS.projectBranchChat('demo-project')}
               className="chat-shell__primary-btn"
             >
               进入项目详情

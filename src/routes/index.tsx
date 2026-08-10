@@ -10,19 +10,23 @@ import { CreateTeamPage } from '@/pages/CreateTeam/CreateTeamPage'
 import { JoinTeamPage } from '@/pages/JoinTeam/JoinTeamPage'
 import { MyTeamsPage } from '@/pages/MyTeams/MyTeamsPage'
 import { ChatWorkspacePage } from '@/pages/ChatWorkspace/ChatWorkspacePage'
-import { ProjectDetailPage } from '@/pages/ProjectDetail/ProjectDetailPage'
+import { ProjectDetailLayout } from '@/pages/ProjectDetail/ProjectDetailLayout'
+import { BranchChatPage } from '@/pages/ProjectDetail/BranchChatPage'
+import {
+  OverviewPage,
+  TasksPage,
+  WorkflowPage,
+  AgentsPage,
+  SkillsPage,
+  MemoryPage,
+  CodePage,
+  TestsetPage,
+  MembersPage,
+  SettingsPage,
+} from '@/pages/ProjectDetail/sections'
 
 /**
  * 应用路由总表
- *
- * 流程：
- * 1. /login           登录注册
- * 2. /welcome         无团队 → 创建/加入
- * 3. /app/*           主壳 Banner
- *    - teams          团队首页
- *    - teams/create   创建团队
- *    - teams/join     加入团队
- *    - chat           项目群聊工作台外壳
  */
 export function AppRouter() {
   return (
@@ -47,7 +51,22 @@ export function AppRouter() {
               <Route path="teams/create" element={<CreateTeamPage />} />
               <Route path="teams/join" element={<JoinTeamPage />} />
               <Route path="chat" element={<ChatWorkspacePage />} />
-              <Route path="projects/:projectId" element={<ProjectDetailPage />} />
+
+              {/* 项目详情：左侧导航每一项独立子路由 */}
+              <Route path="projects/:projectId" element={<ProjectDetailLayout />}>
+                <Route index element={<Navigate to="branch-chat" replace />} />
+                <Route path="overview" element={<OverviewPage />} />
+                <Route path="branch-chat" element={<BranchChatPage />} />
+                <Route path="tasks" element={<TasksPage />} />
+                <Route path="workflow" element={<WorkflowPage />} />
+                <Route path="agents" element={<AgentsPage />} />
+                <Route path="skills" element={<SkillsPage />} />
+                <Route path="memory" element={<MemoryPage />} />
+                <Route path="code" element={<CodePage />} />
+                <Route path="testset" element={<TestsetPage />} />
+                <Route path="members" element={<MembersPage />} />
+                <Route path="settings" element={<SettingsPage />} />
+              </Route>
             </Route>
           </Route>
 

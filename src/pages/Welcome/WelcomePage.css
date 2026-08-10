@@ -36,6 +36,21 @@
   justify-content: center;
 }
 
+.welcome-page__later {
+  margin-top: 28px;
+  color: var(--qg-text-on-dark-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.2s var(--qg-ease), border-color 0.2s var(--qg-ease);
+}
+
+.welcome-page__later:hover {
+  color: var(--qg-text-on-dark);
+  border-bottom-color: rgba(255, 255, 255, 0.35);
+}
+
 .welcome-card {
   background: var(--qg-navy-card);
   border-radius: 14px;

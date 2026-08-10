@@ -1,15 +1,17 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+import { usePersonalCenter } from '@/context/PersonalCenterContext'
 import { PATHS } from '@/routes/paths'
 import './Banner.css'
 
 /**
  * 顶部 Banner（主应用全局）
- * - 团队首页
- * - 项目群聊（挨着团队首页）
+ * - 团队首页 / 项目群聊
+ * - 头像点击 → 打开个人中心抽屉
  */
 export function Banner() {
   const { user } = useAuth()
+  const { openPersonalCenter } = usePersonalCenter()
   const name = user?.displayName ?? '用户'
   const avatarChar = user?.avatarChar ?? name.slice(0, 1)
 
@@ -35,7 +37,6 @@ export function Banner() {
             <span>团队首页</span>
           </NavLink>
 
-          {/* 项目群聊入口 —— 紧挨团队首页 */}
           <NavLink
             to={PATHS.CHAT}
             className={({ isActive }) =>
@@ -49,18 +50,23 @@ export function Banner() {
       </div>
 
       <div className="qg-banner__right">
-        {/* TODO: 通知中心 —— 任务进度推送 / Diff / MR 提醒 */}
         <button type="button" className="qg-banner__bell" aria-label="通知">
           <BellIcon />
           <span className="qg-banner__bell-dot" aria-hidden />
         </button>
 
-        <div className="qg-banner__user">
+        {/* 用户区可点击 → 个人中心 */}
+        <button
+          type="button"
+          className="qg-banner__user qg-banner__user--btn"
+          onClick={openPersonalCenter}
+          aria-label="打开个人中心"
+        >
           <span className="qg-banner__username">{name}</span>
           <div className="qg-banner__avatar" aria-hidden>
             {avatarChar}
           </div>
-        </div>
+        </button>
       </div>
     </header>
   )

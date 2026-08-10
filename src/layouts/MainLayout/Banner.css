@@ -108,6 +108,18 @@
   gap: 10px;
 }
 
+.qg-banner__user--btn {
+  border: none;
+  background: transparent;
+  padding: 4px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.qg-banner__user--btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .qg-banner__username {
   color: var(--qg-text-on-dark);
   font-size: 13px;

@@ -10,8 +10,10 @@ import { CreateTeamPage } from '@/pages/CreateTeam/CreateTeamPage'
 import { JoinTeamPage } from '@/pages/JoinTeam/JoinTeamPage'
 import { MyTeamsPage } from '@/pages/MyTeams/MyTeamsPage'
 import { ChatWorkspacePage } from '@/pages/ChatWorkspace/ChatWorkspacePage'
+import { TeamDetailPage } from '@/pages/TeamDetail/TeamDetailPage'
+import { CreateProjectPage } from '@/pages/CreateProject/CreateProjectPage'
 import { ProjectDetailLayout } from '@/pages/ProjectDetail/ProjectDetailLayout'
-import { BranchChatPage } from '@/pages/ProjectDetail/BranchChatPage'
+import { RequirementChatPage } from '@/pages/ProjectDetail/RequirementChatPage'
 import {
   OverviewPage,
   TasksPage,
@@ -50,13 +52,21 @@ export function AppRouter() {
               <Route path="teams" element={<MyTeamsPage />} />
               <Route path="teams/create" element={<CreateTeamPage />} />
               <Route path="teams/join" element={<JoinTeamPage />} />
+              <Route path="teams/:teamId" element={<TeamDetailPage />} />
+              <Route path="teams/:teamId/projects/create" element={<CreateProjectPage />} />
               <Route path="chat" element={<ChatWorkspacePage />} />
 
-              {/* 项目详情：左侧导航每一项独立子路由 */}
               <Route path="projects/:projectId" element={<ProjectDetailLayout />}>
-                <Route index element={<Navigate to="branch-chat" replace />} />
+                {/* 默认进入「登录功能」需求群聊 */}
+                <Route index element={<Navigate to="req-chat/login" replace />} />
                 <Route path="overview" element={<OverviewPage />} />
-                <Route path="branch-chat" element={<BranchChatPage />} />
+
+                {/*
+                  需求群聊：每个需求独立路由，IM 外壳相同、会话按 reqId 隔离
+                */}
+                <Route path="req-chat/:reqId" element={<RequirementChatPage />} />
+                <Route path="req-chat" element={<Navigate to="login" replace />} />
+
                 <Route path="tasks" element={<TasksPage />} />
                 <Route path="workflow" element={<WorkflowPage />} />
                 <Route path="agents" element={<AgentsPage />} />

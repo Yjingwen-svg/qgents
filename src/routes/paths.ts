@@ -20,6 +20,18 @@ export const PATHS = {
   JOIN_TEAM: '/app/teams/join',
 
   /**
+   * 团队详情（我的团队卡片「查看详情」）
+   * 此页提供「创建项目」入口
+   */
+  teamDetail: (teamId: string) => `/app/teams/${teamId}`,
+
+  /**
+   * 创建项目（个人中心 / 团队详情均可进入）
+   * TODO[后端联调]: teamId 用于绑定项目所属团队
+   */
+  createProject: (teamId: string) => `/app/teams/${teamId}/projects/create`,
+
+  /**
    * 项目群聊工作台外壳
    * 左侧会话列表 + 顶栏 + 底部输入；中间消息区留空待填充
    */
@@ -30,7 +42,14 @@ export const PATHS = {
 
   /** 项目详情 — 各左侧导航子路由 */
   projectOverview: (projectId: string) => `/app/projects/${projectId}/overview`,
-  projectBranchChat: (projectId: string) => `/app/projects/${projectId}/branch-chat`,
+
+  /**
+   * 需求群聊（导航入口，默认落到第一个需求）
+   * 具体某个需求：projectReqChat(projectId, reqId)
+   */
+  projectReqChat: (projectId: string, reqId = 'login') =>
+    `/app/projects/${projectId}/req-chat/${reqId}`,
+
   projectTasks: (projectId: string) => `/app/projects/${projectId}/tasks`,
   projectWorkflow: (projectId: string) => `/app/projects/${projectId}/workflow`,
   projectAgents: (projectId: string) => `/app/projects/${projectId}/agents`,
@@ -45,7 +64,12 @@ export const PATHS = {
 /** 项目详情左侧导航 path 段（相对 projects/:projectId） */
 export const PROJECT_NAV = [
   { path: 'overview', label: '概览', to: PATHS.projectOverview },
-  { path: 'branch-chat', label: '分支群聊', to: PATHS.projectBranchChat },
+  {
+    path: 'req-chat',
+    label: '需求群聊',
+    /** 导航高亮用前缀路径；实际落地到默认需求 */
+    to: (projectId: string) => PATHS.projectReqChat(projectId, 'login'),
+  },
   { path: 'tasks', label: '任务中心', to: PATHS.projectTasks, badge: 3 },
   { path: 'workflow', label: '工作流编排', to: PATHS.projectWorkflow },
   { path: 'agents', label: 'Agent 团队', to: PATHS.projectAgents },

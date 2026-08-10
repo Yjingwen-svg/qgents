@@ -1,10 +1,11 @@
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { PATHS } from '@/routes/paths'
 import './WelcomePage.css'
 
 /**
  * 登录后、尚未加入任何团队时的引导页（原型图 3）
  * 入口：创建团队 / 加入已有团队
+ * 「稍后再说」→ 项目群聊（允许先逛 IM，稍后再建/加入团队）
  */
 export function WelcomePage() {
   const navigate = useNavigate()
@@ -47,6 +48,14 @@ export function WelcomePage() {
           </button>
         </article>
       </div>
+
+      {/*
+        稍后再说：不强制立刻创建/加入团队，先进入项目群聊工作台
+        路由：PATHS.CHAT → /app/chat
+      */}
+      <Link to={PATHS.CHAT} className="welcome-page__later">
+        稍后再说
+      </Link>
     </div>
   )
 }

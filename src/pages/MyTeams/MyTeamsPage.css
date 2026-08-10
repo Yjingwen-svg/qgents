@@ -1,0 +1,70 @@
+.my-teams {
+  padding: 28px 32px 48px;
+  max-width: 960px;
+}
+
+.my-teams__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+
+.my-teams h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+}
+
+.my-teams__header p {
+  margin: 0;
+  color: var(--qg-text-on-dark-secondary);
+}
+
+.my-teams__actions {
+  display: flex;
+  gap: 10px;
+}
+
+.my-teams__btn {
+  display: inline-flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: var(--qg-radius-sm);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.my-teams__btn--ghost {
+  border: 1px solid var(--qg-border-dark);
+  color: var(--qg-text-on-dark);
+}
+
+.my-teams__btn--primary {
+  background: var(--qg-blue);
+  color: #fff;
+}
+
+.my-teams__empty {
+  border: 1px dashed var(--qg-border-dark);
+  border-radius: 14px;
+  padding: 48px 24px;
+  text-align: center;
+  background: var(--qg-navy-card);
+}
+
+.my-teams__empty p {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.my-teams__hint {
+  font-weight: 400 !important;
+  color: var(--qg-text-on-dark-secondary);
+  font-size: 13px;
+  max-width: 420px;
+  margin: 0 auto !important;
+  line-height: 1.55;
+}

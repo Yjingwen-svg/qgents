@@ -1,0 +1,124 @@
+.welcome-page {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: radial-gradient(ellipse at 50% 0%, #142038 0%, var(--qg-navy) 55%);
+  color: var(--qg-text-on-dark);
+}
+
+.welcome-page__header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.welcome-page__header h1 {
+  margin: 0 0 10px;
+  font-size: clamp(28px, 4vw, 36px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.welcome-page__header p {
+  margin: 0;
+  color: var(--qg-text-on-dark-secondary);
+  font-size: 15px;
+}
+
+.welcome-page__cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 340px));
+  gap: 24px;
+  width: 100%;
+  max-width: 720px;
+  justify-content: center;
+}
+
+.welcome-card {
+  background: var(--qg-navy-card);
+  border-radius: 14px;
+  padding: 28px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--qg-border-dark);
+  transition: transform 0.25s var(--qg-ease), border-color 0.25s var(--qg-ease);
+}
+
+.welcome-card:hover {
+  transform: translateY(-2px);
+}
+
+.welcome-card--create {
+  border-color: rgba(59, 130, 246, 0.45);
+}
+
+.welcome-card--join {
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+.welcome-card__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 16px;
+}
+
+.welcome-card__icon--blue {
+  background: var(--qg-blue);
+}
+
+.welcome-card__icon--green {
+  background: var(--qg-green);
+}
+
+.welcome-card h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.welcome-card p {
+  margin: 0 0 24px;
+  color: var(--qg-text-on-dark-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+  flex: 1;
+}
+
+.welcome-card__btn {
+  width: 100%;
+  height: 42px;
+  border: none;
+  border-radius: var(--qg-radius-sm);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  transition: background 0.2s var(--qg-ease);
+}
+
+.welcome-card__btn--blue {
+  background: var(--qg-blue);
+}
+
+.welcome-card__btn--blue:hover {
+  background: var(--qg-blue-hover);
+}
+
+.welcome-card__btn--green {
+  background: var(--qg-green);
+}
+
+.welcome-card__btn--green:hover {
+  background: var(--qg-green-hover);
+}
+
+@media (max-width: 700px) {
+  .welcome-page__cards {
+    grid-template-columns: 1fr;
+    max-width: 400px;
+  }
+}

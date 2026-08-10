@@ -1,0 +1,137 @@
+.qg-banner {
+  height: var(--qg-banner-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: linear-gradient(90deg, #0a1220 0%, #0f1a2c 50%, #0b1524 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+  z-index: 20;
+}
+
+.qg-banner__left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+}
+
+.qg-banner__logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.qg-banner__logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--qg-navy);
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 0 0 2px var(--qg-mint);
+}
+
+.qg-banner__logo-text {
+  color: var(--qg-mint);
+}
+
+.qg-banner__nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.qg-banner__nav-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--qg-radius-sm);
+  color: var(--qg-text-on-dark-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  transition: color 0.2s var(--qg-ease), background 0.2s var(--qg-ease);
+}
+
+.qg-banner__nav-item:hover,
+.qg-banner__nav-item.is-active {
+  color: var(--qg-text-on-dark);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.qg-banner__right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.qg-banner__bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--qg-text-on-dark);
+}
+
+.qg-banner__bell:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.qg-banner__bell-dot {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--qg-danger);
+  border: 1.5px solid #0b1524;
+}
+
+.qg-banner__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.qg-banner__username {
+  color: var(--qg-text-on-dark);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.qg-banner__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--qg-avatar-orange);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .qg-banner__username {
+    display: none;
+  }
+
+  .qg-banner__nav-item span {
+    display: none;
+  }
+}

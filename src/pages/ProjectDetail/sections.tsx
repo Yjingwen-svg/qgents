@@ -1,10 +1,9 @@
 import { useParams } from 'react-router-dom'
+import { Typography, Card, List } from 'antd'
 import { PROJECT_NAV } from '@/routes/paths'
 
-/**
- * 项目详情其它导航子页的统一占位壳
- * TODO: 各同学按模块拆成独立页面并实现业务
- */
+const { Title, Paragraph, Text } = Typography
+
 export function ProjectSectionPage({
   section,
   title,
@@ -18,28 +17,28 @@ export function ProjectSectionPage({
   const nav = PROJECT_NAV.find((n) => n.path === section)
 
   return (
-    <div className="pd-section">
-      <header className="pd-section__header">
-        <h1>{title || nav?.label || section}</h1>
-        <p>
-          projectId: <code>{projectId ?? '—'}</code>
-        </p>
-      </header>
-      <div className="pd-section__body">
-        <p className="pd-section__hint">页面框架占位，业务内容待填充。</p>
+    <div style={{ padding: 24 }}>
+      <Title level={3} style={{ marginTop: 0 }}>
+        {title || nav?.label || section}
+      </Title>
+      <Paragraph type="secondary">
+        projectId: <Text code>{projectId ?? '—'}</Text>
+      </Paragraph>
+
+      <Card>
+        <Paragraph type="secondary">页面框架占位，业务内容待填充。</Paragraph>
         {todos && todos.length > 0 ? (
-          <ul className="pd-section__todo">
-            {todos.map((t) => (
-              <li key={t}>{t}</li>
-            ))}
-          </ul>
+          <List
+            size="small"
+            dataSource={todos}
+            renderItem={(t) => <List.Item>{t}</List.Item>}
+          />
         ) : null}
-      </div>
+      </Card>
     </div>
   )
 }
 
-/** 各子页薄封装 —— 方便路由表直接挂载 */
 export function OverviewPage() {
   return (
     <ProjectSectionPage

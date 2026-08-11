@@ -1,0 +1,32 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Ant Design 接管组件样式；此处仅保留全局 reset 与布局辅助 */
+.qg-full-height {
+  height: 100%;
+}
+
+.qg-content-flush {
+  padding: 0 !important;
+}

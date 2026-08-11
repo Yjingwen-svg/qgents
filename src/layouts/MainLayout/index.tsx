@@ -1,20 +1,34 @@
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
+import { Layout } from 'antd'
 import { Banner } from './Banner'
 import { PersonalCenter } from './PersonalCenter'
-import './MainLayout.css'
+import { PATHS } from '@/routes/paths'
+
+const { Content } = Layout
 
 /**
- * 主应用布局：顶部 Banner + 内容区 + 个人中心抽屉
+ * 主应用布局：Ant Design Layout + Banner + 内容区 + 个人中心 Drawer
+ * PersonalCenterProvider 已在 AppProviders 中挂载，此处不再重复包裹
  */
 export function MainLayout() {
+  const location = useLocation()
+  const isChat = location.pathname.startsWith(PATHS.CHAT)
+  const isProject = location.pathname.startsWith('/app/projects/')
+
   return (
-    <div className="qg-main-layout">
+    <Layout className="qg-full-height" style={{ minHeight: '100%' }}>
       <Banner />
-      <main className="qg-main-layout__content">
+      <Content
+        className={isChat || isProject ? 'qg-content-flush' : undefined}
+        style={{
+          flex: 1,
+          overflow: 'auto',
+          padding: isChat || isProject ? 0 : 24,
+        }}
+      >
         <Outlet />
-      </main>
-      {/* 点击头像打开；不含「当前空间」「账号设置」 */}
+      </Content>
       <PersonalCenter />
-    </div>
+    </Layout>
   )
 }

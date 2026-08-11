@@ -71,7 +71,24 @@
 .qg-banner__right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
+}
+
+.qg-banner__icon-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  color: var(--qg-text-on-dark);
+  transition: background 0.2s var(--qg-ease), color 0.2s var(--qg-ease);
+}
+
+.qg-banner__icon-link:hover,
+.qg-banner__icon-link.is-active {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--qg-text-on-dark);
 }
 
 .qg-banner__bell {

@@ -10,6 +10,7 @@ import { CreateTeamPage } from '@/pages/CreateTeam/CreateTeamPage'
 import { JoinTeamPage } from '@/pages/JoinTeam/JoinTeamPage'
 import { MyTeamsPage } from '@/pages/MyTeams/MyTeamsPage'
 import { ChatWorkspacePage } from '@/pages/ChatWorkspace/ChatWorkspacePage'
+import { GitHubIntegrationPage } from '@/pages/GitHubIntegration/GitHubIntegrationPage'
 import { TeamDetailPage } from '@/pages/TeamDetail/TeamDetailPage'
 import { CreateProjectPage } from '@/pages/CreateProject/CreateProjectPage'
 import { ProjectDetailLayout } from '@/pages/ProjectDetail/ProjectDetailLayout'
@@ -55,6 +56,7 @@ export function AppRouter() {
               <Route path="teams/:teamId" element={<TeamDetailPage />} />
               <Route path="teams/:teamId/projects/create" element={<CreateProjectPage />} />
               <Route path="chat" element={<ChatWorkspacePage />} />
+              <Route path="integrations/github" element={<GitHubIntegrationPage />} />
 
               <Route path="projects/:projectId" element={<ProjectDetailLayout />}>
                 {/* 默认进入「登录功能」需求群聊 */}

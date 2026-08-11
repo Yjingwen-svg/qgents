@@ -1,28 +1,26 @@
 import { Link, useNavigate } from 'react-router-dom'
+import {
+  Drawer,
+  Avatar,
+  Typography,
+  Input,
+  Button,
+  Space,
+  Divider,
+  List,
+  theme,
+} from 'antd'
+import {
+  TeamOutlined,
+  FileAddOutlined,
+  FolderAddOutlined,
+  LogoutOutlined,
+} from '@ant-design/icons'
 import { useAuth } from '@/context/AuthContext'
 import { usePersonalCenter } from '@/context/PersonalCenterContext'
 import { PATHS } from '@/routes/paths'
-import './PersonalCenter.css'
 
-/**
- * 个人中心 —— 右侧滑出抽屉（框架）
- *
- * 包含：
- * - 用户信息
- * - 切换团队或项目（搜索 + 列表壳）
- * - 创建团队 → /app/teams/create
- * - 创建项目 → /app/teams/:teamId/projects/create
- * - 退出登录
- *
- * 明确不包含（按产品要求禁止生成）：
- * - 「当前空间」区块
- * - 「账号设置」入口
- *
- * TODO[后端联调]:
- * - 团队/项目树：teamApi.listMine() + projectApi.listByTeam()
- * - 搜索过滤、切换当前团队/项目上下文
- * - 创建项目时的默认 teamId（当前选中团队）
- */
+const { Title, Text } = Typography
 
 /** 列表占位数据 —— 仅撑起 UI 结构，联调后删除 */
 const DEMO_TEAM_TREE = [
@@ -45,15 +43,19 @@ const DEMO_TEAM_TREE = [
   {
     id: 'team-lab',
     name: '个人实验室',
-    projects: [],
+    projects: [] as { id: string; name: string; role: string }[],
   },
 ]
 
-/** 个人中心「创建项目」暂用默认团队；联调后改为当前选中团队 */
 const DEFAULT_TEAM_FOR_CREATE_PROJECT = 'team-xinghe'
 
+/**
+ * 个人中心 —— Ant Design Drawer
+ * 明确不包含「当前空间」「账号设置」
+ */
 export function PersonalCenter() {
   const navigate = useNavigate()
+  const { token } = theme.useToken()
   const { user, logout } = useAuth()
   const { open, closePersonalCenter } = usePersonalCenter()
 
@@ -73,187 +75,84 @@ export function PersonalCenter() {
   }
 
   return (
-    <>
-      {/* 遮罩 */}
-      <div
-        className={`pc-overlay${open ? ' is-open' : ''}`}
-        onClick={closePersonalCenter}
-        aria-hidden={!open}
-      />
+    <Drawer
+      title="个人中心"
+      placement="right"
+      width={360}
+      open={open}
+      onClose={closePersonalCenter}
+      styles={{ body: { paddingTop: 8 } }}
+    >
+      <Space align="start" size={12} style={{ marginBottom: 20 }}>
+        <Avatar size={48} style={{ background: '#f97316' }}>
+          {avatarChar}
+        </Avatar>
+        <div>
+          <Title level={5} style={{ margin: 0 }}>
+            {name}
+          </Title>
+          <Text type="secondary">{email}</Text>
+        </div>
+      </Space>
 
-      <aside
-        className={`pc-drawer${open ? ' is-open' : ''}`}
-        aria-label="个人中心"
-        aria-hidden={!open}
-      >
-        <header className="pc-drawer__header">
-          <h2>个人中心</h2>
-          <button
-            type="button"
-            className="pc-drawer__close"
-            onClick={closePersonalCenter}
-            aria-label="关闭"
-          >
-            ×
-          </button>
-        </header>
+      <Divider style={{ margin: '16px 0' }} />
 
-        {/* —— 用户信息 —— */}
-        <section className="pc-user">
-          <div className="pc-user__avatar" aria-hidden>
-            {avatarChar}
+      <Title level={5} style={{ marginBottom: 12 }}>
+        切换团队或项目
+      </Title>
+
+      <Input.Search placeholder="搜索团队或项目" disabled style={{ marginBottom: 16 }} />
+
+      <div style={{ maxHeight: 280, overflow: 'auto', marginBottom: 16 }}>
+        {DEMO_TEAM_TREE.map((team) => (
+          <div key={team.id} style={{ marginBottom: 12 }}>
+            <Space size={6} style={{ marginBottom: 6 }}>
+              <TeamOutlined style={{ color: token.colorTextSecondary }} />
+              <Text strong>{team.name}</Text>
+            </Space>
+            {team.projects.length > 0 && (
+              <List
+                size="small"
+                dataSource={team.projects}
+                renderItem={(p) => (
+                  <List.Item style={{ padding: '4px 0 4px 20px', border: 'none' }}>
+                    <Button
+                      type="link"
+                      style={{ padding: 0, height: 'auto' }}
+                      onClick={() => handleNav(PATHS.projectReqChat(p.id, 'login'))}
+                    >
+                      <Space>
+                        <span>{p.name}</span>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {p.role}
+                        </Text>
+                      </Space>
+                    </Button>
+                  </List.Item>
+                )}
+              />
+            )}
           </div>
-          <div className="pc-user__meta">
-            <strong>{name}</strong>
-            <span>{email}</span>
-          </div>
-        </section>
+        ))}
+      </div>
 
-        {/*
-          ★ 禁止生成「当前空间」区块 —— 产品明确要求不要
-        */}
+      <Divider style={{ margin: '16px 0' }} />
 
-        {/* —— 切换团队或项目 —— */}
-        <section className="pc-switch">
-          <h3 className="pc-section-title">切换团队或项目</h3>
-
-          {/* TODO: 本地过滤 DEMO_TEAM_TREE / 调搜索接口 */}
-          <label className="pc-search">
-            <SearchIcon />
-            <input type="search" placeholder="搜索团队或项目" disabled />
-          </label>
-
-          <div className="pc-tree">
-            {/* TODO: 渲染真实团队树；点击项目可切到对应项目详情 */}
-            {DEMO_TEAM_TREE.map((team) => (
-              <div key={team.id} className="pc-tree__team">
-                <div className="pc-tree__team-name">
-                  <TeamIcon />
-                  <span>{team.name}</span>
-                </div>
-                {team.projects.length > 0 ? (
-                  <ul className="pc-tree__projects">
-                    {team.projects.map((p) => (
-                      <li key={p.id}>
-                        <button
-                          type="button"
-                          className="pc-tree__project"
-                          onClick={() => handleNav(PATHS.projectReqChat(p.id, 'login'))}
-                        >
-                          <span>{p.name}</span>
-                          <em>{p.role}</em>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* —— 操作入口（仅保留创建团队 / 创建项目 / 退出） —— */}
-        <section className="pc-actions">
-          <Link
-            to={PATHS.CREATE_TEAM}
-            className="pc-actions__item"
-            onClick={closePersonalCenter}
-          >
-            <PlusDocIcon />
-            <span>创建团队</span>
-          </Link>
-
-          {/*
-            创建项目路由挂在团队下；
-            团队详情页「查看详情」内也有同入口，见 TeamDetailPage
-          */}
-          <Link
-            to={PATHS.createProject(DEFAULT_TEAM_FOR_CREATE_PROJECT)}
-            className="pc-actions__item"
-            onClick={closePersonalCenter}
-          >
-            <PlusFolderIcon />
-            <span>创建项目</span>
-          </Link>
-
-          {/*
-            ★ 禁止生成「账号设置」入口 —— 产品明确要求不要
-          */}
-
-          <button type="button" className="pc-actions__item pc-actions__item--danger" onClick={handleLogout}>
-            <LogoutIcon />
-            <span>退出登录</span>
-          </button>
-        </section>
-      </aside>
-    </>
-  )
-}
-
-function SearchIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M16 16l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function TeamIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="9" cy="9" r="3" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="M3.5 19c.7-2.8 2.5-4.2 5.5-4.2s4.8 1.4 5.5 4.2"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
-}
-
-function PlusDocIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M7 3.5h7l4 4V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <path d="M12 11v5M9.5 13.5H14.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function PlusFolderIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4l2 2h8a1.5 1.5 0 0 1 1.5 1.5V18A1.5 1.5 0 0 1 19 19.5H5A1.5 1.5 0 0 1 3.5 18V7.5z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <path d="M12 11v5M9.5 13.5h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function LogoutIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M10 7V5.5A1.5 1.5 0 0 1 11.5 4h7A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 10 18.5V17"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <path
-        d="M4 12h10M7 9l-3 3 3 3"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+        <Link to={PATHS.CREATE_TEAM} onClick={closePersonalCenter}>
+          <Button block icon={<FileAddOutlined />}>
+            创建团队
+          </Button>
+        </Link>
+        <Link to={PATHS.createProject(DEFAULT_TEAM_FOR_CREATE_PROJECT)} onClick={closePersonalCenter}>
+          <Button block icon={<FolderAddOutlined />}>
+            创建项目
+          </Button>
+        </Link>
+        <Button block danger icon={<LogoutOutlined />} onClick={handleLogout}>
+          退出登录
+        </Button>
+      </Space>
+    </Drawer>
   )
 }

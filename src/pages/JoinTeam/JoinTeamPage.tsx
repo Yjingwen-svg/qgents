@@ -1,26 +1,22 @@
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { Typography, Button, Card, Form, Input, Empty } from 'antd'
+import { ArrowLeftOutlined } from '@ant-design/icons'
 import { PATHS } from '@/routes/paths'
 import { useAuth } from '@/context/AuthContext'
 import { teamApi } from '@/api'
-import './JoinTeamPage.css'
 
-/**
- * 加入已有团队（框架页）
- * TODO[后端联调]: teamApi.join({ inviteCode })；展示待处理邀请列表
- */
+const { Title, Paragraph } = Typography
+
 export function JoinTeamPage() {
   const navigate = useNavigate()
   const { setHasTeam } = useAuth()
-  const [inviteCode, setInviteCode] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [form] = Form.useForm()
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    if (!inviteCode.trim()) return
+  async function handleSubmit(_values: { inviteCode: string }) {
     setSubmitting(true)
     try {
-      // await teamApi.join({ inviteCode: inviteCode.trim() })
       void teamApi
       setHasTeam(true)
       navigate(PATHS.MY_TEAMS, { replace: true })
@@ -30,33 +26,36 @@ export function JoinTeamPage() {
   }
 
   return (
-    <div className="join-team">
-      <Link to={PATHS.MY_TEAMS} className="join-team__back">
-        ← 返回我的团队
+    <div style={{ maxWidth: 560, margin: '0 auto' }}>
+      <Link to={PATHS.MY_TEAMS}>
+        <Button type="link" icon={<ArrowLeftOutlined />} style={{ paddingLeft: 0, marginBottom: 16 }}>
+          返回我的团队
+        </Button>
       </Link>
-      <h1>加入已有团队</h1>
-      <p className="join-team__desc">填写邀请码加入，或处理别人发送给你的团队邀请</p>
 
-      <form className="join-team__card" onSubmit={handleSubmit}>
-        <label>
-          <span>邀请码</span>
-          <input
-            value={inviteCode}
-            onChange={(e) => setInviteCode(e.target.value)}
-            placeholder="粘贴团队邀请码"
-            required
-          />
-        </label>
-        <button type="submit" disabled={submitting || !inviteCode.trim()}>
-          加入团队
-        </button>
-      </form>
+      <Title level={2}>加入已有团队</Title>
+      <Paragraph type="secondary">填写邀请码加入，或处理别人发送给你的团队邀请</Paragraph>
 
-      {/* TODO: 待处理邀请列表（邮件邀请 / 站内邀请） */}
-      <section className="join-team__pending">
-        <h2>待处理邀请</h2>
-        <p className="join-team__placeholder">暂无待处理邀请（接口联调后在此渲染）</p>
-      </section>
+      <Card style={{ marginBottom: 24 }}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit}>
+          <Form.Item
+            label="邀请码"
+            name="inviteCode"
+            rules={[{ required: true, message: '请输入邀请码' }]}
+          >
+            <Input placeholder="粘贴团队邀请码" />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button type="primary" htmlType="submit" loading={submitting} block>
+              加入团队
+            </Button>
+          </Form.Item>
+        </Form>
+      </Card>
+
+      <Card title="待处理邀请">
+        <Empty description="暂无待处理邀请（接口联调后在此渲染）" />
+      </Card>
     </div>
   )
 }

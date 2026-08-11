@@ -1,17 +1,10 @@
 import { Link } from 'react-router-dom'
+import { Typography, Button, Card, Tag, Row, Col, Avatar, Space, theme } from 'antd'
+import { PlusOutlined } from '@ant-design/icons'
 import { PATHS } from '@/routes/paths'
-import './MyTeamsPage.css'
 
-/**
- * 我的团队列表（框架）
- *
- * - 「查看详情」→ 团队详情页（内含创建项目入口）
- * - 「+ 创建团队」→ 创建团队路由
- *
- * TODO[后端联调]: teamApi.listMine() 区分「我创建的 / 我参与的」
- */
+const { Title, Paragraph, Text } = Typography
 
-/** 占位卡片 —— 仅用于打通「查看详情」路由，联调后替换 */
 const DEMO_OWNED = [
   {
     id: 'team-xinghe',
@@ -42,71 +35,95 @@ const DEMO_JOINED = [
   },
 ]
 
+function TeamCard({ team }: { team: (typeof DEMO_OWNED)[0] }) {
+  const { token } = theme.useToken()
+
+  return (
+    <Card hoverable>
+      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 12 }}>
+        <Avatar style={{ background: team.color }}>{team.letter}</Avatar>
+        <Tag>{team.role}</Tag>
+      </Space>
+      <Title level={5} style={{ marginTop: 0 }}>
+        {team.name}
+      </Title>
+      <Text type="secondary">{team.members} 位成员</Text>
+      <div style={{ marginTop: 12 }}>
+        <Link to={PATHS.teamDetail(team.id)}>
+          <Button type="link" style={{ padding: 0, color: token.colorPrimary }}>
+            查看详情
+          </Button>
+        </Link>
+      </div>
+    </Card>
+  )
+}
+
+/**
+ * 我的团队 —— Ant Design Card 网格
+ */
 export function MyTeamsPage() {
   return (
-    <div className="my-teams">
-      <div className="my-teams__header">
+    <div style={{ maxWidth: 960, margin: '0 auto' }}>
+      <Space
+        style={{ width: '100%', justifyContent: 'space-between', marginBottom: 32, flexWrap: 'wrap' }}
+        align="start"
+      >
         <div>
-          <h1>我的团队</h1>
-          <p>管理你加入的团队，或创建 / 加入新团队</p>
+          <Title level={2} style={{ marginTop: 0 }}>
+            我的团队
+          </Title>
+          <Paragraph type="secondary">管理你加入的团队，或创建 / 加入新团队</Paragraph>
         </div>
-        <div className="my-teams__actions">
-          <Link to={PATHS.JOIN_TEAM} className="my-teams__btn my-teams__btn--ghost">
-            加入团队
+        <Space>
+          <Link to={PATHS.JOIN_TEAM}>
+            <Button>加入团队</Button>
           </Link>
-          <Link to={PATHS.CREATE_TEAM} className="my-teams__btn my-teams__btn--primary">
-            + 创建团队
+          <Link to={PATHS.CREATE_TEAM}>
+            <Button type="primary" icon={<PlusOutlined />}>
+              创建团队
+            </Button>
           </Link>
-        </div>
-      </div>
+        </Space>
+      </Space>
 
-      <section className="my-teams__section">
-        <h2>我创建的团队</h2>
-        <div className="my-teams__grid">
-          {DEMO_OWNED.map((t) => (
-            <article key={t.id} className="my-teams__card">
-              <div className="my-teams__card-top">
-                <span className="my-teams__logo" style={{ background: t.color }}>
-                  {t.letter}
-                </span>
-                <span className="my-teams__role">{t.role}</span>
-              </div>
-              <h3>{t.name}</h3>
-              <p className="my-teams__meta">{t.members} 位成员</p>
-              {/* 查看详情 → 团队详情（可创建项目） */}
-              <Link to={PATHS.teamDetail(t.id)} className="my-teams__detail">
-                查看详情
-              </Link>
-            </article>
-          ))}
-
-          <Link to={PATHS.CREATE_TEAM} className="my-teams__card my-teams__card--create">
-            <span aria-hidden>+</span>
-            新建团队
+      <Title level={4}>我创建的团队</Title>
+      <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
+        {DEMO_OWNED.map((t) => (
+          <Col xs={24} sm={12} md={8} key={t.id}>
+            <TeamCard team={t} />
+          </Col>
+        ))}
+        <Col xs={24} sm={12} md={8}>
+          <Link to={PATHS.CREATE_TEAM}>
+            <Card
+              hoverable
+              style={{
+                height: '100%',
+                minHeight: 160,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderStyle: 'dashed',
+              }}
+            >
+              <Space direction="vertical" align="center">
+                <PlusOutlined style={{ fontSize: 24 }} />
+                <Text>新建团队</Text>
+              </Space>
+            </Card>
           </Link>
-        </div>
-      </section>
+        </Col>
+      </Row>
 
-      <section className="my-teams__section">
-        <h2>我参与的团队</h2>
-        <div className="my-teams__grid">
-          {DEMO_JOINED.map((t) => (
-            <article key={t.id} className="my-teams__card">
-              <div className="my-teams__card-top">
-                <span className="my-teams__logo" style={{ background: t.color }}>
-                  {t.letter}
-                </span>
-                <span className="my-teams__role">{t.role}</span>
-              </div>
-              <h3>{t.name}</h3>
-              <p className="my-teams__meta">{t.members} 位成员</p>
-              <Link to={PATHS.teamDetail(t.id)} className="my-teams__detail">
-                查看详情
-              </Link>
-            </article>
-          ))}
-        </div>
-      </section>
+      <Title level={4}>我参与的团队</Title>
+      <Row gutter={[16, 16]}>
+        {DEMO_JOINED.map((t) => (
+          <Col xs={24} sm={12} md={8} key={t.id}>
+            <TeamCard team={t} />
+          </Col>
+        ))}
+      </Row>
     </div>
   )
 }

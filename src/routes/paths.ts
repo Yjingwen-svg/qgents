@@ -37,6 +37,13 @@ export const PATHS = {
    */
   CHAT: '/app/chat',
 
+  /**
+   * GitHub 集成（Banner 右侧 Octocat 图标入口）
+   * 团队级 GitHub App 授权 + 仓库绑定管理
+   * TODO[后端联调]: 见接口文档 §6 GitHub App 与项目仓库
+   */
+  GITHUB_INTEGRATION: '/app/integrations/github',
+
   /** 项目详情根路径（会重定向到默认子页） */
   projectDetail: (projectId: string) => `/app/projects/${projectId}`,
 

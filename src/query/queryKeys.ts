@@ -28,12 +28,18 @@ export const queryKeys = {
     all: (projectId: string) => ['qgents', 'projects', projectId, 'task-runs'] as const,
     list: (projectId: string, workPackageId: string, filters: TaskRunFilters = {}) =>
       ['qgents', 'projects', projectId, 'task-runs', 'work-packages', workPackageId, 'list', filters] as const,
+    infinite: (projectId: string, workPackageId: string, filters: Omit<TaskRunFilters, 'cursor'> = {}) =>
+      ['qgents', 'projects', projectId, 'task-runs', 'work-packages', workPackageId, 'infinite', filters] as const,
     detail: (projectId: string, taskRunId: string) =>
       ['qgents', 'projects', projectId, 'task-runs', taskRunId] as const,
     steps: (projectId: string, taskRunId: string, filters: CursorPageFilters = {}) =>
       ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'steps', filters] as const,
+    stepsInfinite: (projectId: string, taskRunId: string, filters: Omit<CursorPageFilters, 'cursor'> = {}) =>
+      ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'steps', 'infinite', filters] as const,
     logs: (projectId: string, taskRunId: string, cursor?: string, limit?: number) =>
       ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'logs', { cursor, limit }] as const,
+    logsInfinite: (projectId: string, taskRunId: string, filters: Omit<CursorPageFilters, 'cursor'> = {}) =>
+      ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'logs', 'infinite', filters] as const,
     executionContext: (projectId: string, taskRunId: string) =>
       ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'execution-context'] as const,
     inputRequests: {

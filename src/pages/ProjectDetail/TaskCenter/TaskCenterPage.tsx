@@ -57,6 +57,8 @@ export function TaskCenterPage() {
   const createdBy = searchParams.get('createdBy') ?? undefined
   const groupId = searchParams.get('groupId') ?? undefined
   const requestedRunId = searchParams.get('runId')?.trim() || undefined
+  const requestedWorkPackageId = searchParams.get('workPackageId')?.trim() || undefined
+  const requestedTaskRunId = searchParams.get('taskRunId')?.trim() || undefined
   const panel = parsePanel(searchParams.get('panel'))
   const projectChanged = previousProjectId.current !== projectId
   const projectScopedRunId = projectChanged ? undefined : requestedRunId
@@ -88,11 +90,20 @@ export function TaskCenterPage() {
   useEffect(() => {
     if (previousProjectId.current === projectId) return
     previousProjectId.current = projectId
-    if (!requestedRunId) return
+    if (!requestedRunId && !requestedWorkPackageId && !requestedTaskRunId) return
     const next = new URLSearchParams(searchParams)
     next.delete('runId')
+    next.delete('workPackageId')
+    next.delete('taskRunId')
     setSearchParams(next, { replace: true })
-  }, [projectId, requestedRunId, searchParams, setSearchParams])
+  }, [
+    projectId,
+    requestedRunId,
+    requestedTaskRunId,
+    requestedWorkPackageId,
+    searchParams,
+    setSearchParams,
+  ])
 
   const groupOptions = useMemo(
     () =>
@@ -123,6 +134,22 @@ export function TaskCenterPage() {
   function handleSelectRun(runId: string) {
     const next = new URLSearchParams(searchParams)
     next.set('runId', runId)
+    next.delete('workPackageId')
+    next.delete('taskRunId')
+    setSearchParams(next, { replace: true })
+  }
+
+  function handleWorkPackageChange(workPackageId: string) {
+    const next = new URLSearchParams(searchParams)
+    next.set('workPackageId', workPackageId)
+    next.delete('taskRunId')
+    setSearchParams(next, { replace: true })
+  }
+
+  function handleTaskRunChange(taskRunId?: string) {
+    const next = new URLSearchParams(searchParams)
+    if (taskRunId) next.set('taskRunId', taskRunId)
+    else next.delete('taskRunId')
     setSearchParams(next, { replace: true })
   }
 
@@ -195,6 +222,10 @@ export function TaskCenterPage() {
           runId={selectedRunId}
           summaryRun={selectedRun}
           panel={panel}
+          requestedWorkPackageId={requestedWorkPackageId}
+          requestedTaskRunId={requestedTaskRunId}
+          onWorkPackageChange={handleWorkPackageChange}
+          onTaskRunChange={handleTaskRunChange}
           onPanelChange={handlePanelChange}
         />
       </div>

@@ -4,6 +4,7 @@ import { ApiError } from '@/api'
 import { useOrchestrationRun, useOrchestrationWorkPackages } from '@/hooks'
 import type { OrchestrationRun, WorkPackage } from '@/types'
 import { TaskStatusTag } from './TaskStatusTag'
+import { TaskExecutionPanel } from './TaskExecutionPanel'
 import { getTaskCenterPresentation } from './taskCenterPresentation'
 import { type TaskCenterPanel } from './taskCenterConfig'
 import styles from './TaskCenterPage.module.scss'
@@ -15,6 +16,10 @@ interface TaskContextPanelProps {
   runId?: string
   summaryRun?: OrchestrationRun
   panel: TaskCenterPanel
+  requestedWorkPackageId?: string
+  requestedTaskRunId?: string
+  onWorkPackageChange: (workPackageId: string) => void
+  onTaskRunChange: (taskRunId?: string) => void
   onPanelChange: (panel: TaskCenterPanel) => void
 }
 
@@ -23,6 +28,10 @@ export function TaskContextPanel({
   runId,
   summaryRun,
   panel,
+  requestedWorkPackageId,
+  requestedTaskRunId,
+  onWorkPackageChange,
+  onTaskRunChange,
   onPanelChange,
 }: TaskContextPanelProps) {
   const detailQuery = useOrchestrationRun(projectId, runId ?? '')
@@ -68,7 +77,18 @@ export function TaskContextPanel({
           {
             key: 'executions',
             label: '执行记录',
-            children: <ExecutionsPlaceholder runId={runId} />,
+            children: (
+              <TaskExecutionPanel
+                projectId={projectId}
+                runId={runId}
+                run={headerRun}
+                runQuery={detailQuery}
+                requestedWorkPackageId={requestedWorkPackageId}
+                requestedTaskRunId={requestedTaskRunId}
+                onWorkPackageChange={onWorkPackageChange}
+                onTaskRunChange={onTaskRunChange}
+              />
+            ),
           },
         ]}
       />
@@ -290,17 +310,6 @@ function PanelError({ error }: { error: Error | null }) {
       title={status === 403 ? '暂无权限查看任务' : status === 404 ? '任务不存在或不可见' : '任务详情加载失败'}
       subTitle="未显示技术错误信息。"
     />
-  )
-}
-
-function ExecutionsPlaceholder({ runId }: { runId?: string }) {
-  return (
-    <div className={styles.panelState}>
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={runId ? '执行记录将在后续 TaskRun 阶段提供' : '请选择任务'}
-      />
-    </div>
   )
 }
 

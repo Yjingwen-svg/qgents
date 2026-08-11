@@ -137,6 +137,15 @@ export interface TaskRun {
   subtaskId: string
   status: TaskRunStatus
   retryOfTaskRunId: string | null
+  /** FE-API-008 临时字段：后端正式响应确认后再收敛命名与可选性。 */
+  subtaskTitle?: string | null
+  agentNode?: AgentNodeRole | null
+  agentRole?: string | null
+  startedAt?: string | null
+  finishedAt?: string | null
+  durationMs?: number | null
+  artifactSummary?: string | null
+  errorSummary?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -160,6 +169,8 @@ export interface TaskRunLog {
   projectId: string
   taskRunId: string
   sequence: number
+  /** FE-API-008：日志节点字段仍待后端确认。 */
+  node?: AgentNodeRole | null
   level: TaskRunLogLevel
   content: string
   timestamp: string

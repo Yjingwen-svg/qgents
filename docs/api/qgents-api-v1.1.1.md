@@ -691,3 +691,17 @@ MR 详情的最小响应：
 - Subtask 待确认：当前公开接口未定义按 WorkPackage 查询 Subtask 的路径和正式响应；前端暂时只展示已有 `subtaskIds`、执行顺序和明确的字段占位，不猜测角色、状态、依赖、跳过和错误摘要。
 - 上下文与错误待确认：等待输入/审批/阻塞原因、失败摘要、仓库/分支和 Testset 摘要的正式字段及空值策略。
 - 状态：待后端确认
+
+### FE-API-008 TaskRun 执行记录响应待确认
+
+- 发现日期：2026-08-11
+- 所属模块：TaskRun 执行记录面板
+- 前端临时约定：列表和详情均使用 `TaskRun` 响应；除 `id`、`projectId`、`orchestrationRunId`、`workPackageId`、`subtaskId`、`status`、`retryOfTaskRunId`、`createdAt`、`updatedAt` 外，Mock 可选返回 `subtaskTitle`、`agentNode`、`agentRole`、`startedAt`、`finishedAt`、`durationMs`、`artifactSummary` 与 `errorSummary`。
+- TaskRun 默认排序：服务端返回顺序，前端不重新排序；当前 Mock 按创建顺序返回。
+- retry 链路：通过 `retryOfTaskRunId` 只读展示来源，不在本阶段提供 retry 操作。
+- Steps：使用 `cursor`/`limit` 分页，按服务端返回顺序展示；条目包含 `node`、`status`、`startedAt`、`finishedAt`、`durationMs` 和可选 `errorCode`。
+- Logs：使用 `cursor`/`limit` 分页，按服务端返回顺序展示；条目包含 `sequence`、`timestamp`、`level`、`node`（后端待确认）和 `content`。前端按纯文本展示 `content`，不解释为 Markdown/HTML。
+- ExecutionContext：只读字段为 `workspaceId`、`sandboxStatus`、`repositoryId`、`baseRef`、`headRef`、`startedAt`、`expiresAt`；不展示宿主机路径、容器控制入口、凭据或环境变量。
+- InputRequest：只读字段为 `kind`、`status`、`prompt`、`options`、`createdAt`；reply/approve/reject 留待后续阶段。
+- 交付物摘要：当前临时字段为 `artifactSummary`，后端需确认是否改为结构化交付物引用或摘要对象。
+- 后端待确认：TaskRun 列表与详情是否共用响应 Schema、Subtask 关联字段与角色字段、开始/结束时间和 duration 的正式命名、默认排序、日志 `node` 字段、空列表响应结构、sandboxStatus 正式枚举以及上述可选字段在非 Mock 环境中的兼容策略。

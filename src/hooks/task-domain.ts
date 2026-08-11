@@ -128,6 +128,25 @@ export function useTaskRuns(
   })
 }
 
+export function useInfiniteTaskRuns(
+  projectId: string,
+  workPackageId: string,
+  filters: Omit<TaskRunFilters, 'cursor'> = {},
+): UseInfiniteQueryResult<InfiniteData<CursorPage<TaskRun>, string | undefined>, Error> {
+  return useInfiniteQuery({
+    queryKey: queryKeys.taskRuns.infinite(projectId, workPackageId, filters),
+    queryFn: ({ pageParam }) =>
+      taskRunsApi.list(projectId, workPackageId, {
+        ...filters,
+        cursor: pageParam,
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.page.hasMore ? lastPage.page.nextCursor ?? undefined : undefined,
+    enabled: Boolean(projectId && workPackageId),
+  })
+}
+
 export function useTaskRun(projectId: string, taskRunId: string): UseQueryResult<TaskRun> {
   return useQuery({
     queryKey: queryKeys.taskRuns.detail(projectId, taskRunId),
@@ -148,6 +167,25 @@ export function useTaskRunSteps(
   })
 }
 
+export function useInfiniteTaskRunSteps(
+  projectId: string,
+  taskRunId: string,
+  filters: Omit<CursorPageFilters, 'cursor'> = {},
+): UseInfiniteQueryResult<InfiniteData<CursorPage<TaskRunStep>, string | undefined>, Error> {
+  return useInfiniteQuery({
+    queryKey: queryKeys.taskRuns.stepsInfinite(projectId, taskRunId, filters),
+    queryFn: ({ pageParam }) =>
+      taskRunsApi.steps(projectId, taskRunId, {
+        ...filters,
+        cursor: pageParam,
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.page.hasMore ? lastPage.page.nextCursor ?? undefined : undefined,
+    enabled: Boolean(projectId && taskRunId),
+  })
+}
+
 export function useTaskRunLogs(
   projectId: string,
   taskRunId: string,
@@ -157,6 +195,22 @@ export function useTaskRunLogs(
   return useQuery({
     queryKey: queryKeys.taskRuns.logs(projectId, taskRunId, cursor, limit),
     queryFn: () => taskRunsApi.logs(projectId, taskRunId, cursor, limit),
+    enabled: Boolean(projectId && taskRunId),
+  })
+}
+
+export function useInfiniteTaskRunLogs(
+  projectId: string,
+  taskRunId: string,
+  filters: Omit<CursorPageFilters, 'cursor'> = {},
+): UseInfiniteQueryResult<InfiniteData<CursorPage<TaskRunLog>, string | undefined>, Error> {
+  return useInfiniteQuery({
+    queryKey: queryKeys.taskRuns.logsInfinite(projectId, taskRunId, filters),
+    queryFn: ({ pageParam }) =>
+      taskRunsApi.logs(projectId, taskRunId, pageParam, filters.limit),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.page.hasMore ? lastPage.page.nextCursor ?? undefined : undefined,
     enabled: Boolean(projectId && taskRunId),
   })
 }

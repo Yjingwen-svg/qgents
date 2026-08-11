@@ -382,6 +382,173 @@
   padding: 48px 0;
 }
 
+.executionPanel {
+  min-width: 0;
+}
+
+.executionHeader,
+.executionSectionHeading,
+.taskRunItemHeader,
+.stepItemHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.executionHeader {
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.executionHeader h5,
+.executionSectionHeading h5 {
+  margin: 0;
+  color: #12213d;
+}
+
+.executionHeader > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.executionSection {
+  margin-bottom: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #edf1f5;
+}
+
+.executionSectionHeading {
+  margin-bottom: 10px;
+}
+
+.executionSelect {
+  width: 100%;
+}
+
+.workPackageSummary {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #e4eaf2;
+  border-radius: 8px;
+  background: #f9fbfd;
+}
+
+.executionAlert {
+  margin-top: 10px;
+}
+
+.taskRunList,
+.stepList,
+.logList {
+  display: grid;
+  gap: 8px;
+}
+
+.taskRunItem {
+  display: grid;
+  width: 100%;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #e4eaf2;
+  border-radius: 8px;
+  color: #243855;
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.taskRunItem:hover,
+.taskRunItemSelected {
+  border-color: #0d9b9b;
+  background: #f1fbfa;
+}
+
+.taskRunItemHeader {
+  min-width: 0;
+}
+
+.taskRunItemHeader > span:first-child {
+  min-width: 0;
+}
+
+.taskRunItemMeta,
+.retryLine {
+  overflow-wrap: anywhere;
+  color: #6d7d95;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.retryLine {
+  color: #8a5a00;
+}
+
+.stepItem,
+.inputRequestItem {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #e4eaf2;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.stepItemHeader {
+  color: #243855;
+}
+
+.logList {
+  max-height: 280px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid #1f2d43;
+  border-radius: 8px;
+  background: #111b2b;
+  color: #e4edf8;
+  font-family: 'Cascadia Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 11px;
+}
+
+.logLine {
+  display: grid;
+  grid-template-columns: max-content max-content max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  line-height: 1.6;
+}
+
+.logTimestamp {
+  color: #91a4c1;
+  white-space: nowrap;
+}
+
+.logContent {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.inputPrompt {
+  color: #243855;
+  line-height: 1.55;
+}
+
+.executionLoadMore {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.executionEmpty {
+  padding: 20px 0;
+}
+
 @media (max-width: 1320px) {
   .page {
     grid-template-columns: minmax(0, 1fr) 330px;

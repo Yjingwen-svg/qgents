@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Layout, Menu, Button, Badge, Avatar, Space, Typography, theme } from 'antd'
 import {
   HomeOutlined,
@@ -18,6 +18,7 @@ const { Text } = Typography
  */
 export function Banner() {
   const { token } = theme.useToken()
+  const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuth()
   const { openPersonalCenter } = usePersonalCenter()
@@ -63,17 +64,13 @@ export function Banner() {
           mode="horizontal"
           selectedKeys={selectedKey ? [selectedKey] : []}
           style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent' }}
+          onClick={({ key }) => {
+            if (key === 'teams') navigate(PATHS.MY_TEAMS)
+            if (key === 'chat') navigate(PATHS.CHAT)
+          }}
           items={[
-            {
-              key: 'teams',
-              icon: <HomeOutlined />,
-              label: <NavLink to={PATHS.MY_TEAMS}>团队首页</NavLink>,
-            },
-            {
-              key: 'chat',
-              icon: <MessageOutlined />,
-              label: <NavLink to={PATHS.CHAT}>项目群聊</NavLink>,
-            },
+            { key: 'teams', icon: <HomeOutlined />, label: '团队首页' },
+            { key: 'chat', icon: <MessageOutlined />, label: '项目群聊' },
           ]}
         />
       </Space>

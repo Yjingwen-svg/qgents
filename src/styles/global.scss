@@ -15,6 +15,9 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* 删除 variables.css 后需保留：非 MainLayout 页面（login/welcome）也使用深色底 */
+  background: #0b1424;
+  color: #e6edf3;
 }
 
 a {
@@ -22,11 +25,21 @@ a {
   text-decoration: none;
 }
 
-/* Ant Design 接管组件样式；此处仅保留全局 reset 与布局辅助 */
 .qg-full-height {
   height: 100%;
 }
 
 .qg-content-flush {
   padding: 0 !important;
+}
+
+/* 登录 / 欢迎等全屏页的通用容器 */
+.qg-page-dark {
+  min-height: 100vh;
+  background: #0b1424;
+  color: #e6edf3;
+}
+
+.qg-page-welcome {
+  background: radial-gradient(ellipse at 50% 0%, #142038 0%, #0b1424 55%);
 }

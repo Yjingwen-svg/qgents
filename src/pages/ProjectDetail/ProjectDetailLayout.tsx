@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation, useParams } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Layout, Menu, Typography, Badge, theme } from 'antd'
 import type { MenuProps } from 'antd'
 import {
@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons'
 import { PATHS, PROJECT_NAV } from '@/routes/paths'
 import { PROJECT_REQUIREMENTS } from './requirements'
+import './ProjectDetailLayout.scss'
 
 const { Sider, Content } = Layout
 const { Text } = Typography
@@ -35,6 +36,7 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
 }
 
 export function ProjectDetailLayout() {
+  const navigate = useNavigate()
   const { token } = theme.useToken()
   const { projectId = 'demo-project', reqId } = useParams<{ projectId: string; reqId?: string }>()
   const location = useLocation()
@@ -45,14 +47,12 @@ export function ProjectDetailLayout() {
     key: item.path,
     icon: NAV_ICONS[item.path],
     label: (
-      <NavLink to={item.to(projectId)}>
-        <SpaceInline>
-          {item.label}
-          {'badge' in item && item.badge != null ? (
-            <Badge count={item.badge} size="small" style={{ marginLeft: 4 }} />
-          ) : null}
-        </SpaceInline>
-      </NavLink>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        {item.label}
+        {'badge' in item && item.badge != null ? (
+          <Badge count={item.badge} size="small" />
+        ) : null}
+      </span>
     ),
   }))
 
@@ -61,6 +61,11 @@ export function ProjectDetailLayout() {
       if (item.path === 'req-chat') return onReqChat
       return location.pathname.includes(`/projects/${projectId}/${item.path}`)
     })?.path ?? 'overview'
+
+  function handleNavClick({ key }: { key: string }) {
+    const item = PROJECT_NAV.find((n) => n.path === key)
+    if (item) navigate(item.to(projectId))
+  }
 
   return (
     <Layout style={{ height: 'calc(100vh - 56px)', background: token.colorBgBase }}>
@@ -89,6 +94,7 @@ export function ProjectDetailLayout() {
           theme="dark"
           selectedKeys={[selectedNavKey]}
           items={navItems}
+          onClick={handleNavClick}
           style={{ background: 'transparent', border: 'none' }}
         />
 
@@ -96,26 +102,22 @@ export function ProjectDetailLayout() {
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8, paddingLeft: 4 }}>
             需求
           </Text>
-          <Menu
-            mode="inline"
-            theme="dark"
-            selectedKeys={onReqChat && reqId ? [reqId] : []}
-            style={{ background: 'transparent', border: 'none' }}
-            items={PROJECT_REQUIREMENTS.map((r) => ({
-              key: r.id,
-              label: (
-                <NavLink to={PATHS.projectReqChat(projectId, r.id)}>
-                  <div>
-                    <Text>#{r.title}</Text>
-                    <br />
-                    <Text type="secondary" style={{ fontSize: 11 }}>
-                      {r.ref}
-                    </Text>
-                  </div>
-                </NavLink>
-              ),
-            }))}
-          />
+
+          {/* 需求列表不用 Menu：多行 label + NavLink 会导致选中高亮块错位 */}
+          <div className="pd-req-list">
+            {PROJECT_REQUIREMENTS.map((r) => (
+              <NavLink
+                key={r.id}
+                to={PATHS.projectReqChat(projectId, r.id)}
+                className={() =>
+                  `pd-req-item${onReqChat && reqId === r.id ? ' is-active' : ''}`
+                }
+              >
+                <span className="pd-req-item__title"># {r.title}</span>
+                <span className="pd-req-item__ref">{r.ref}</span>
+              </NavLink>
+            ))}
+          </div>
 
           <div
             style={{
@@ -138,10 +140,6 @@ export function ProjectDetailLayout() {
       </Content>
     </Layout>
   )
-}
-
-function SpaceInline({ children }: { children: React.ReactNode }) {
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{children}</span>
 }
 
 function resolveProjectName(projectId: string) {

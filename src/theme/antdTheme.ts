@@ -8,7 +8,7 @@ export const qgAntdTheme: ThemeConfig = {
   algorithm: theme.darkAlgorithm,
   token: {
     colorPrimary: '#22c55e',
-    colorBgBase: '#0d1117',
+    colorBgBase: '#0b1424',
     colorBgContainer: '#161b22',
     colorBgElevated: '#1c2128',
     colorBorder: '#30363d',
@@ -21,12 +21,24 @@ export const qgAntdTheme: ThemeConfig = {
   components: {
     Layout: {
       headerBg: '#161b22',
-      bodyBg: '#0d1117',
+      bodyBg: '#0b1424',
       siderBg: '#161b22',
     },
     Menu: {
       darkItemBg: 'transparent',
       darkSubMenuItemBg: 'transparent',
+      itemHeight: 40,
+      itemMarginInline: 8,
+      itemBorderRadius: 8,
     },
+  },
+}
+
+/** 登录页右侧表单区：保持原型图的浅色卡片 */
+export const qgLoginLightTheme: ThemeConfig = {
+  algorithm: theme.defaultAlgorithm,
+  token: {
+    colorPrimary: '#0d9b8a',
+    borderRadius: 10,
   },
 }

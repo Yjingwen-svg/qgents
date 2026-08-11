@@ -1,0 +1,36 @@
+.pd-req-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pd-req-item {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: inherit;
+  transition: background 0.15s ease;
+}
+
+.pd-req-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.pd-req-item.is-active {
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.pd-req-item__title {
+  display: block;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #e6edf3;
+}
+
+.pd-req-item__ref {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: #8b949e;
+}

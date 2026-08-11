@@ -1,5 +1,4 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { AuthProvider } from '@/context/AuthContext'
 import { MainLayout } from '@/layouts/MainLayout'
 import { PATHS } from '@/routes/paths'
 import { RedirectIfAuthed, RequireAuth } from '@/routes/guards'
@@ -33,8 +32,7 @@ import {
 export function AppRouter() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <Routes>
+      <Routes>
           <Route
             path={PATHS.LOGIN}
             element={
@@ -82,8 +80,7 @@ export function AppRouter() {
 
           <Route path="/" element={<Navigate to={PATHS.LOGIN} replace />} />
           <Route path="*" element={<Navigate to={PATHS.LOGIN} replace />} />
-        </Routes>
-      </AuthProvider>
+      </Routes>
     </BrowserRouter>
   )
 }

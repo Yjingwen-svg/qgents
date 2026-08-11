@@ -1,7 +1,6 @@
 import { Outlet } from 'react-router-dom'
 import { Banner } from './Banner'
 import { PersonalCenter } from './PersonalCenter'
-import { PersonalCenterProvider } from '@/context/PersonalCenterContext'
 import './MainLayout.css'
 
 /**
@@ -9,15 +8,13 @@ import './MainLayout.css'
  */
 export function MainLayout() {
   return (
-    <PersonalCenterProvider>
-      <div className="qg-main-layout">
-        <Banner />
-        <main className="qg-main-layout__content">
-          <Outlet />
-        </main>
-        {/* 点击头像打开；不含「当前空间」「账号设置」 */}
-        <PersonalCenter />
-      </div>
-    </PersonalCenterProvider>
+    <div className="qg-main-layout">
+      <Banner />
+      <main className="qg-main-layout__content">
+        <Outlet />
+      </main>
+      {/* 点击头像打开；不含「当前空间」「账号设置」 */}
+      <PersonalCenter />
+    </div>
   )
 }

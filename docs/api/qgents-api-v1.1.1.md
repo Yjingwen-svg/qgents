@@ -630,3 +630,39 @@ MR 详情的最小响应：
   2. 是否允许短期 SSE Ticket；
   3. 是否允许前端使用 fetch-stream 方式连接。
 - 状态：待后端确认
+
+### FE-API-002 任务领域实体响应字段待确认
+
+- 发现日期：2026-08-11
+- 所属模块：编排、工作包、TaskRun、步骤、日志、输入请求、执行上下文、交付物
+- 当前问题：v1.1.1 说明了资源关系、路径和部分最小字段，但没有为所有实体提供完整响应 Schema。
+- 前端临时约定：所有实体包含 `id`、`projectId`、关联资源 ID 和 RFC 3339 时间字段；可为空字段显式使用 `null`。
+- 后端待确认：正式响应字段、空值策略、列表摘要与详情差异、`202` 响应摘要结构。
+- 状态：待后端确认
+
+### FE-API-003 任务领域状态枚举待确认
+
+- 发现日期：2026-08-11
+- 所属模块：InputRequest、ExecutionContext
+- 当前问题：文档描述了等待输入/审批和 `sandboxStatus` 的使用场景，但未给出完整枚举表。
+- 前端临时约定：使用严格联合类型，并将输入请求区分为 `INPUT` 与 `APPROVAL`。
+- 后端待确认：`InputRequestStatus`、`InputRequestKind`、`SandboxStatus` 的正式枚举值及迁移兼容策略。
+- 状态：待后端确认
+
+### FE-API-004 分页响应与日志游标字段待确认
+
+- 发现日期：2026-08-11
+- 所属模块：TaskRun logs、Steps、InputRequests、Deliverables
+- 当前问题：文档统一要求 `cursor`/`limit`，但部分资源没有明确 `page` 是否始终存在以及日志游标是否按 sequence 编码。
+- 前端临时约定：列表响应使用 `{data, page: {nextCursor, hasMore}, requestId}`，cursor 在 Mock 中使用数字偏移。
+- 后端待确认：正式 cursor 格式、默认/最大 limit、空列表响应结构。
+- 状态：待后端确认
+
+### FE-API-005 写操作错误与状态转换契约待确认
+
+- 发现日期：2026-08-11
+- 所属模块：WorkPackage、TaskRun、InputRequest、Deliverable
+- 当前问题：文档规定非法状态操作返回 `409`，但各资源的错误码和 `CANCELLING` 完成时机未逐项列出。
+- 前端临时约定：Mock 独立实现状态转换函数，非法操作返回 `409 INVALID_STATE_TRANSITION`。
+- 后端待确认：资源级错误码、取消异步完成事件及重试响应字段。
+- 状态：待后端确认

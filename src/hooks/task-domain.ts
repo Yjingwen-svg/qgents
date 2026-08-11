@@ -1,6 +1,9 @@
 import {
   useMutation,
+  useInfiniteQuery,
   useQuery,
+  type InfiniteData,
+  type UseInfiniteQueryResult,
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query'
@@ -39,6 +42,27 @@ export function useOrchestrationRuns(
   return useQuery({
     queryKey: queryKeys.orchestrationRuns.list(projectId, filters),
     queryFn: () => orchestrationApi.list(projectId, filters),
+    enabled: Boolean(projectId),
+  })
+}
+
+export function useInfiniteOrchestrationRuns(
+  projectId: string,
+  filters: Omit<OrchestrationRunFilters, 'cursor'> = {},
+): UseInfiniteQueryResult<
+  InfiniteData<CursorPage<OrchestrationRun>, string | undefined>,
+  Error
+> {
+  return useInfiniteQuery({
+    queryKey: queryKeys.orchestrationRuns.infinite(projectId, filters),
+    queryFn: ({ pageParam }) =>
+      orchestrationApi.list(projectId, {
+        ...filters,
+        cursor: pageParam,
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.page.hasMore ? lastPage.page.nextCursor ?? undefined : undefined,
     enabled: Boolean(projectId),
   })
 }

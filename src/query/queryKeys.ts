@@ -12,6 +12,8 @@ export const queryKeys = {
     all: (projectId: string) => ['qgents', 'projects', projectId, 'orchestration-runs'] as const,
     list: (projectId: string, filters: OrchestrationRunFilters = {}) =>
       ['qgents', 'projects', projectId, 'orchestration-runs', 'list', filters] as const,
+    infinite: (projectId: string, filters: Omit<OrchestrationRunFilters, 'cursor'> = {}) =>
+      ['qgents', 'projects', projectId, 'orchestration-runs', 'infinite', filters] as const,
     detail: (projectId: string, runId: string) =>
       ['qgents', 'projects', projectId, 'orchestration-runs', runId] as const,
   },

@@ -9,6 +9,7 @@ export {
   useDeliverables,
   useExecutionContext,
   useInputRequests,
+  useInfiniteOrchestrationRuns,
   useOrchestrationRun,
   useOrchestrationRuns,
   usePauseWorkPackage,

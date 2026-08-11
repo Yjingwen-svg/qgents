@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom'
 import { Typography, Card, List } from 'antd'
 import { PROJECT_NAV } from '@/routes/paths'
+import { TaskCenterPage } from './TaskCenter/TaskCenterPage'
 
 const { Title, Paragraph, Text } = Typography
 
@@ -50,13 +51,7 @@ export function OverviewPage() {
 }
 
 export function TasksPage() {
-  return (
-    <ProjectSectionPage
-      section="tasks"
-      title="任务中心"
-      todos={['TODO: 任务看板列与状态卡片', 'TODO: 与群聊任务状态卡片联动']}
-    />
-  )
+  return <TaskCenterPage />
 }
 
 export function WorkflowPage() {

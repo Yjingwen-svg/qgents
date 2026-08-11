@@ -1,6 +1,7 @@
 import {
   useMutation,
   useInfiniteQuery,
+  useQueries,
   useQuery,
   type InfiniteData,
   type UseInfiniteQueryResult,
@@ -97,6 +98,21 @@ export function useWorkPackage(
     queryKey: queryKeys.workPackages.detail(projectId, workPackageId),
     queryFn: () => workPackagesApi.get(projectId, workPackageId),
     enabled: Boolean(projectId && workPackageId),
+  })
+}
+
+export function useOrchestrationWorkPackages(
+  projectId: string,
+  workPackageIds: readonly string[],
+) {
+  const uniqueIds = [...new Set(workPackageIds)]
+
+  return useQueries({
+    queries: uniqueIds.map((workPackageId) => ({
+      queryKey: queryKeys.workPackages.detail(projectId, workPackageId),
+      queryFn: () => workPackagesApi.get(projectId, workPackageId),
+      enabled: Boolean(projectId && workPackageId),
+    })),
   })
 }
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Button,
@@ -22,6 +22,7 @@ import { TaskFilters } from './TaskFilters'
 import { TaskList } from './TaskList'
 import {
   TASK_CENTER_STATUS_GROUPS,
+  type TaskCenterPanel,
   type TaskCenterStatusFilter,
   type TaskCenterView,
 } from './taskCenterConfig'
@@ -50,11 +51,15 @@ export function TaskCenterPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const [view, setView] = useState<TaskCenterView>('board')
-  const [selectedRunId, setSelectedRunId] = useState<string>()
+  const previousProjectId = useRef(projectId)
 
   const status = parseStatusFilter(searchParams.get('status'))
   const createdBy = searchParams.get('createdBy') ?? undefined
   const groupId = searchParams.get('groupId') ?? undefined
+  const requestedRunId = searchParams.get('runId')?.trim() || undefined
+  const panel = parsePanel(searchParams.get('panel'))
+  const projectChanged = previousProjectId.current !== projectId
+  const projectScopedRunId = projectChanged ? undefined : requestedRunId
   const query = useInfiniteOrchestrationRuns(projectId, {
     createdBy,
     groupId,
@@ -77,7 +82,17 @@ export function TaskCenterPage() {
   )
   const hasServerItems = query.data?.pages.some((page) => page.data.length > 0) ?? false
   const isUnfiltered = status === 'all' && !createdBy && !groupId
-  const selectedRun = visibleRuns.find((run) => run.id === selectedRunId) ?? visibleRuns[0]
+  const selectedRunId = projectScopedRunId ?? visibleRuns[0]?.id
+  const selectedRun = visibleRuns.find((run) => run.id === selectedRunId)
+
+  useEffect(() => {
+    if (previousProjectId.current === projectId) return
+    previousProjectId.current = projectId
+    if (!requestedRunId) return
+    const next = new URLSearchParams(searchParams)
+    next.delete('runId')
+    setSearchParams(next, { replace: true })
+  }, [projectId, requestedRunId, searchParams, setSearchParams])
 
   const groupOptions = useMemo(
     () =>
@@ -102,6 +117,18 @@ export function TaskCenterPage() {
     next.delete('status')
     next.delete('createdBy')
     next.delete('groupId')
+    setSearchParams(next, { replace: true })
+  }
+
+  function handleSelectRun(runId: string) {
+    const next = new URLSearchParams(searchParams)
+    next.set('runId', runId)
+    setSearchParams(next, { replace: true })
+  }
+
+  function handlePanelChange(nextPanel: TaskCenterPanel) {
+    const next = new URLSearchParams(searchParams)
+    next.set('panel', nextPanel)
     setSearchParams(next, { replace: true })
   }
 
@@ -151,7 +178,7 @@ export function TaskCenterPage() {
             selectedRunId={selectedRun?.id}
             hasServerItems={hasServerItems}
             isUnfiltered={isUnfiltered}
-            onSelectRun={setSelectedRunId}
+            onSelectRun={handleSelectRun}
             onRetry={() => void query.refetch()}
           />
 
@@ -163,7 +190,13 @@ export function TaskCenterPage() {
             </div>
           ) : null}
         </main>
-        <TaskContextPanel run={selectedRun} />
+        <TaskContextPanel
+          projectId={projectId}
+          runId={selectedRunId}
+          summaryRun={selectedRun}
+          panel={panel}
+          onPanelChange={handlePanelChange}
+        />
       </div>
     </ConfigProvider>
   )
@@ -250,6 +283,11 @@ function parseStatusFilter(value: string | null): TaskCenterStatusFilter {
     return value
   }
   return 'all'
+}
+
+function parsePanel(value: string | null): TaskCenterPanel {
+  if (value === 'context' || value === 'detail' || value === 'executions') return value
+  return 'context'
 }
 
 function uniqueOptions(options: Array<{ label: string; value: string }>) {

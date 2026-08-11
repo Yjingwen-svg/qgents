@@ -2,19 +2,20 @@ import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CursorPage, OrchestrationRun } from '@/types'
+import type { CursorPage, OrchestrationRun, WorkPackage } from '@/types'
 
 const orchestrationListMock = vi.hoisted(() => vi.fn())
+const workPackageGetMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api', () => ({
   ApiError: class ApiError extends Error {},
   deliverablesApi: {},
   orchestrationApi: { list: orchestrationListMock },
   taskRunsApi: {},
-  workPackagesApi: {},
+  workPackagesApi: { get: workPackageGetMock },
 }))
 
-import { useInfiniteOrchestrationRuns } from './task-domain'
+import { useInfiniteOrchestrationRuns, useOrchestrationWorkPackages } from './task-domain'
 
 const run = (id: string): OrchestrationRun => ({
   id,
@@ -48,6 +49,26 @@ function createWrapper(queryClient: QueryClient) {
 
 beforeEach(() => {
   orchestrationListMock.mockReset()
+  workPackageGetMock.mockReset()
+})
+
+const workPackage = (id: string): WorkPackage => ({
+  id,
+  projectId: 'project-test',
+  orchestrationRunId: 'run-1',
+  groupId: 'group-test',
+  repositoryId: 'repository-test',
+  baseRef: 'main',
+  headRef: 'feature/test',
+  title: id,
+  description: 'description',
+  priority: 1,
+  testsetIds: [],
+  startMode: 'AUTO',
+  status: 'READY',
+  subtaskIds: [],
+  createdAt: '2026-08-11T08:00:00Z',
+  updatedAt: '2026-08-11T08:00:00Z',
 })
 
 describe('useInfiniteOrchestrationRuns', () => {
@@ -102,5 +123,19 @@ describe('useInfiniteOrchestrationRuns', () => {
       limit: 2,
       cursor: undefined,
     })
+  })
+
+  it('loads unique work package details through project-scoped queries', async () => {
+    workPackageGetMock.mockImplementation(async (_projectId: string, workPackageId: string) => workPackage(workPackageId))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    const { result } = renderHook(
+      () => useOrchestrationWorkPackages('project-test', ['work-package-1', 'work-package-1']),
+      { wrapper: createWrapper(queryClient) },
+    )
+
+    await waitFor(() => expect(result.current[0]?.isSuccess).toBe(true))
+    expect(workPackageGetMock).toHaveBeenCalledTimes(1)
+    expect(workPackageGetMock).toHaveBeenCalledWith('project-test', 'work-package-1')
   })
 })

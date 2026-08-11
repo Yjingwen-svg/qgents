@@ -4,6 +4,8 @@ export type TaskCenterStatusFilter = 'all' | 'running' | 'waiting' | 'completed'
 
 export type TaskCenterView = 'board' | 'table'
 
+export type TaskCenterPanel = 'context' | 'detail' | 'executions'
+
 export const TASK_CENTER_STATUS_OPTIONS: Array<{
   value: TaskCenterStatusFilter
   label: string

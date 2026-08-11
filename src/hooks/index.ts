@@ -10,6 +10,7 @@ export {
   useExecutionContext,
   useInputRequests,
   useInfiniteOrchestrationRuns,
+  useOrchestrationWorkPackages,
   useOrchestrationRun,
   useOrchestrationRuns,
   usePauseWorkPackage,

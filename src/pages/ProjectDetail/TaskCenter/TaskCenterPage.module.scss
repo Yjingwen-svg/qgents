@@ -327,6 +327,61 @@
   margin-top: 18px;
 }
 
+.detailContent,
+.workPackageContent {
+  min-width: 0;
+}
+
+.detailContent h5,
+.workPackageContent h5 {
+  margin: 0 0 14px;
+  color: #12213d;
+}
+
+.detailContent :global(.ant-descriptions-item-label),
+.detailContent :global(.ant-descriptions-item-content),
+.workPackageContent :global(.ant-descriptions-item-label),
+.workPackageContent :global(.ant-descriptions-item-content) {
+  padding: 7px 9px;
+  font-size: 12px;
+}
+
+.detailContent :global(.ant-descriptions-item-label),
+.workPackageContent :global(.ant-descriptions-item-label) {
+  color: #6d7d95;
+}
+
+.detailContent :global(.ant-progress) {
+  margin: 6px 0 14px;
+}
+
+.detailAlert {
+  margin-bottom: 14px;
+}
+
+.workPackageContent :global(.ant-collapse) {
+  margin-top: 4px;
+  background: transparent;
+}
+
+.workPackageContent :global(.ant-collapse-content-box) {
+  padding: 12px 0 4px;
+}
+
+.workPackageContent :global(.ant-table-wrapper) {
+  margin-top: 10px;
+}
+
+.panelState {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+}
+
+.panelResult {
+  padding: 48px 0;
+}
+
 @media (max-width: 1320px) {
   .page {
     grid-template-columns: minmax(0, 1fr) 330px;

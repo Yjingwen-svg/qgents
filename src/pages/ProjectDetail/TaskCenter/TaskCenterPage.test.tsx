@@ -1,14 +1,18 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CursorPage, OrchestrationRun } from '@/types'
+import type { CursorPage, OrchestrationRun, WorkPackage } from '@/types'
 import { ApiError } from '@/api'
 import { TaskCenterPage } from './TaskCenterPage'
 
 const useInfiniteOrchestrationRunsMock = vi.hoisted(() => vi.fn())
+const useOrchestrationRunMock = vi.hoisted(() => vi.fn())
+const useOrchestrationWorkPackagesMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks', () => ({
   useInfiniteOrchestrationRuns: useInfiniteOrchestrationRunsMock,
+  useOrchestrationRun: useOrchestrationRunMock,
+  useOrchestrationWorkPackages: useOrchestrationWorkPackagesMock,
 }))
 
 const baseRun: OrchestrationRun = {
@@ -21,6 +25,25 @@ const baseRun: OrchestrationRun = {
   status: 'RUNNING',
   createdBy: 'demo-user',
   workPackageIds: ['work-package-1'],
+  createdAt: '2026-08-11T08:00:00Z',
+  updatedAt: '2026-08-11T08:30:00Z',
+}
+
+const baseWorkPackage: WorkPackage = {
+  id: 'work-package-1',
+  projectId: 'project-test',
+  orchestrationRunId: 'run-1',
+  groupId: 'group-project-test-login',
+  repositoryId: 'repository-project-test',
+  baseRef: 'main',
+  headRef: 'feat/login-api',
+  title: '实现登录 API',
+  description: '完成邮箱登录和刷新机制',
+  priority: 1,
+  testsetIds: ['testset-required'],
+  startMode: 'AUTO',
+  status: 'RUNNING',
+  subtaskIds: ['subtask-planner'],
   createdAt: '2026-08-11T08:00:00Z',
   updatedAt: '2026-08-11T08:30:00Z',
 }
@@ -58,6 +81,16 @@ function SearchProbe() {
 
 beforeEach(() => {
   useInfiniteOrchestrationRunsMock.mockReset()
+  useOrchestrationRunMock.mockReset()
+  useOrchestrationWorkPackagesMock.mockReset()
+  useOrchestrationRunMock.mockReturnValue({
+    data: undefined,
+    error: null,
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+  })
+  useOrchestrationWorkPackagesMock.mockReturnValue([])
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({
@@ -227,5 +260,121 @@ describe('TaskCenterPage', () => {
     renderPage('/app/projects/project-test/tasks?status=not-a-status')
 
     expect(screen.getAllByText(baseRun.instruction).length).toBeGreaterThan(0)
+  })
+
+  it('writes the selected run id to the URL', async () => {
+    useInfiniteOrchestrationRunsMock.mockReturnValue({
+      data: { pages: [page([baseRun])], pageParams: [undefined] },
+      error: null,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+      hasNextPage: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+    fireEvent.click(screen.getAllByText(baseRun.instruction)[0])
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-search')).toHaveTextContent('runId=run-1')
+    })
+  })
+
+  it('restores a URL-selected run and falls back invalid panel values', () => {
+    useInfiniteOrchestrationRunsMock.mockReturnValue({
+      data: { pages: [page([baseRun])], pageParams: [undefined] },
+      error: null,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+      hasNextPage: false,
+      refetch: vi.fn(),
+    })
+    useOrchestrationRunMock.mockReturnValue({
+      data: baseRun,
+      error: null,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+    })
+
+    renderPage('/app/projects/project-test/tasks?runId=run-1&panel=invalid')
+
+    expect(useOrchestrationRunMock).toHaveBeenCalledWith('project-test', 'run-1')
+    expect(screen.getByRole('tab', { name: '需求上下文' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('button', { name: /实现登录接口/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('writes the selected detail panel to the URL', async () => {
+    useInfiniteOrchestrationRunsMock.mockReturnValue({
+      data: { pages: [page([baseRun])], pageParams: [undefined] },
+      error: null,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+      hasNextPage: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage('/app/projects/project-test/tasks?runId=run-1')
+    fireEvent.click(screen.getByRole('tab', { name: '任务详情' }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-search')).toHaveTextContent('panel=detail')
+    })
+  })
+
+  it('shows detail error without clearing the task list', () => {
+    useInfiniteOrchestrationRunsMock.mockReturnValue({
+      data: { pages: [page([baseRun])], pageParams: [undefined] },
+      error: null,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+      hasNextPage: false,
+      refetch: vi.fn(),
+    })
+    useOrchestrationRunMock.mockReturnValue({
+      data: undefined,
+      error: new ApiError('not found', 404),
+      isError: true,
+      isFetching: false,
+      isLoading: false,
+    })
+
+    renderPage('/app/projects/project-test/tasks?runId=missing&panel=detail')
+
+    expect(screen.getAllByText('实现登录接口').length).toBeGreaterThan(0)
+    expect(screen.getByText('任务不存在或不可见')).toBeInTheDocument()
+  })
+
+  it('renders work package and subtask ids from detail queries', () => {
+    useInfiniteOrchestrationRunsMock.mockReturnValue({
+      data: { pages: [page([baseRun])], pageParams: [undefined] },
+      error: null,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+      hasNextPage: false,
+      refetch: vi.fn(),
+    })
+    useOrchestrationRunMock.mockReturnValue({
+      data: baseRun,
+      error: null,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+    })
+    useOrchestrationWorkPackagesMock.mockReturnValue([
+      { data: baseWorkPackage, isLoading: false, isError: false },
+    ])
+
+    renderPage('/app/projects/project-test/tasks?runId=run-1&panel=detail')
+
+    expect(screen.getByText('workflowId')).toBeInTheDocument()
+    expect(screen.getByText('实现登录 API')).toBeInTheDocument()
+    expect(screen.getByText('subtask-planner')).toBeInTheDocument()
+    expect(screen.getAllByText('待接口字段').length).toBeGreaterThan(0)
   })
 })

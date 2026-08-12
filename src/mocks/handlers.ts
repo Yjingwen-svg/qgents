@@ -182,6 +182,15 @@ const MOCK_MESSAGES: Record<string, Message[]> = {
   ],
 }
 
+// 群成员 = 项目成员 + 群内 Agent（memberType: USER/AGENT）
+const MOCK_GROUP_MEMBERS = [
+  { id: 'user-001', displayName: '陈同学', memberType: 'USER' as const },
+  { id: 'user-002', displayName: '张工', memberType: 'USER' as const },
+  { id: 'user-003', displayName: '李设计', memberType: 'USER' as const },
+  { id: 'agent-orchestrator', displayName: 'AgentOrchestrator', memberType: 'AGENT' as const },
+  { id: 'agent-developer', displayName: 'Developer', memberType: 'AGENT' as const },
+]
+
 // ══════════════════════════════════════════════
 // GitHub 集成 Mock 数据
 // ══════════════════════════════════════════════
@@ -526,6 +535,11 @@ export const handlers = [
     const list = MOCK_GROUPS[projectId] ?? (MOCK_GROUPS[projectId] = [])
     list.push(group)
     return HttpResponse.json({ data: group }, { status: 201 })
+  }),
+
+  http.get('/api/projects/:projectId/groups/:groupId/members', () => {
+    // 群成员 = 项目成员 + 群内 Agent，群内成员平等、无角色区分
+    return HttpResponse.json({ data: MOCK_GROUP_MEMBERS })
   }),
 
   http.get('/api/projects/:projectId/groups/:groupId/messages', ({ params }) => {

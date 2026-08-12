@@ -1,19 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Layout, Button, Input, Space, Typography, theme, Empty } from 'antd'
-import { SendOutlined } from '@ant-design/icons'
+import { SendOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { groupApi } from '@/api'
 import { useAuth } from '@/context/AuthContext'
-import type { Message, TextMessageContent, CodeMessageContent } from '@/types'
+import { PATHS } from '@/routes/paths'
+import type {
+  Message,
+  GroupMember,
+  TextMessageContent,
+  CodeMessageContent,
+} from '@/types'
 import './ProjectDetailLayout.scss'
 
 const { Text } = Typography
 
 /**
- * 需求群聊 IM —— 消息列表 + 发送
+ * 需求群聊 IM —— 消息列表 + @提及 + 发送
  *
- * 本轮范围：文本（TEXT）与代码块（CODE）消息渲染，支持发送文本。
+ * 本轮范围：文本（TEXT）与代码块（CODE）消息渲染、@成员/@Agent、发起任务入口。
  * 图片/文件/Diff/任务状态卡片渲染留待后续批次。
  */
 export function RequirementChatPage() {
@@ -21,8 +27,10 @@ export function RequirementChatPage() {
   const { projectId = '', groupId = '' } = useParams<{ projectId: string; groupId: string }>()
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
+  const [mentionIds, setMentionIds] = useState<string[]>([])
   const listRef = useRef<HTMLDivElement>(null)
 
   const { data: groups = [] } = useQuery({
@@ -31,6 +39,15 @@ export function RequirementChatPage() {
     enabled: !!projectId,
   })
   const group = groups.find((g) => g.id === groupId)
+
+  // 群成员（项目成员 + Agent），用于 @提及
+  const { data: members = [] } = useQuery({
+    queryKey: ['groups', projectId, groupId, 'members'],
+    queryFn: () => groupApi.listMembers(projectId, groupId),
+    enabled: !!projectId && !!groupId,
+  })
+  const userMembers = members.filter((m) => m.memberType === 'USER')
+  const agentMembers = members.filter((m) => m.memberType === 'AGENT')
 
   const {
     data: page,
@@ -50,6 +67,14 @@ export function RequirementChatPage() {
     }
   }, [messages.length])
 
+  // 输入框以 @ 结尾时弹出成员面板
+  const mentionOpen = draft.endsWith('@')
+
+  function pickMention(member: GroupMember) {
+    setDraft((prev) => prev + `${member.displayName} `)
+    setMentionIds((prev) => [...prev, member.id])
+  }
+
   async function handleSend() {
     const text = draft.trim()
     if (!text || sending) return
@@ -59,10 +84,11 @@ export function RequirementChatPage() {
       await groupApi.sendMessage(projectId, groupId, {
         type: 'TEXT',
         content: { text },
+        mentions: mentionIds.length > 0 ? mentionIds : undefined,
         clientMessageId: `cmsg_${Date.now()}`,
       })
       setDraft('')
-      // 发送成功后重新拉取消息列表
+      setMentionIds([])
       await queryClient.invalidateQueries({
         queryKey: ['groups', projectId, groupId, 'messages'],
       })
@@ -73,7 +99,7 @@ export function RequirementChatPage() {
 
   return (
     <Layout style={{ height: '100%', background: token.colorBgBase }}>
-      {/* 顶部：群标题 */}
+      {/* 顶部：群标题 + 发起任务入口 */}
       <div
         style={{
           padding: '12px 20px',
@@ -94,6 +120,15 @@ export function RequirementChatPage() {
             </Text>
           </div>
         </div>
+        {/* @Agent 发起任务入口 —— 跳转到 B 的任务流程（当前为占位页） */}
+        <Button
+          type="primary"
+          ghost
+          icon={<ThunderboltOutlined />}
+          onClick={() => navigate(PATHS.projectTasks(projectId))}
+        >
+          发起任务
+        </Button>
       </div>
 
       {/* 消息列表 */}
@@ -125,10 +160,38 @@ export function RequirementChatPage() {
       </Layout.Content>
 
       {/* 底部输入区 */}
-      <div style={{ padding: '12px 20px 16px', borderTop: `1px solid ${token.colorBorder}` }}>
+      <div style={{ position: 'relative', padding: '12px 20px 16px', borderTop: `1px solid ${token.colorBorder}` }}>
+        {/* @ 提及成员面板 */}
+        {mentionOpen && members.length > 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '100%',
+              left: 20,
+              right: 20,
+              marginBottom: 8,
+              background: token.colorBgContainer,
+              border: `1px solid ${token.colorBorder}`,
+              borderRadius: 10,
+              boxShadow: '0 8px 24px rgba(15, 23, 42, 0.12)',
+              maxHeight: 240,
+              overflowY: 'auto',
+              padding: 6,
+              zIndex: 10,
+            }}
+          >
+            {agentMembers.length > 0 && (
+              <MentionGroup label="Agent" members={agentMembers} onPick={pickMention} />
+            )}
+            {userMembers.length > 0 && (
+              <MentionGroup label="成员" members={userMembers} onPick={pickMention} />
+            )}
+          </div>
+        )}
+
         <Space.Compact style={{ width: '100%' }}>
           <Input.TextArea
-            placeholder="输入消息，回车发送…"
+            placeholder="输入消息，@ 可提及成员或 Agent，回车发送…"
             autoSize={{ minRows: 1, maxRows: 4 }}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -152,6 +215,51 @@ export function RequirementChatPage() {
         </Space.Compact>
       </div>
     </Layout>
+  )
+}
+
+/** @ 提及面板分组 */
+function MentionGroup({
+  label,
+  members,
+  onPick,
+}: {
+  label: string
+  members: GroupMember[]
+  onPick: (m: GroupMember) => void
+}) {
+  const { token } = theme.useToken()
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <Text type="secondary" style={{ fontSize: 11, padding: '4px 8px', display: 'block' }}>
+        {label}
+      </Text>
+      {members.map((m) => (
+        <div
+          key={m.id}
+          onClick={() => onPick(m)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '7px 8px',
+            borderRadius: 6,
+            cursor: 'pointer',
+          }}
+          onMouseEnter={(e) => {
+            ;(e.currentTarget as HTMLDivElement).style.background = token.colorFillSecondary
+          }}
+          onMouseLeave={(e) => {
+            ;(e.currentTarget as HTMLDivElement).style.background = 'transparent'
+          }}
+        >
+          <Text style={{ fontSize: 13 }}>
+            {m.memberType === 'AGENT' ? '🤖 ' : ''}
+            {m.displayName}
+          </Text>
+        </div>
+      ))}
+    </div>
   )
 }
 

@@ -4,7 +4,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -42,21 +41,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [hasTeam, setHasTeam] = useState(false)
   const [isBootstrapping, setIsBootstrapping] = useState(true)
-  // 防止 StrictMode 下 useEffect 执行两次
-  const bootstrapped = useRef(false)
 
   // ──── 启动时恢复登录态 ────
-  // 只在组件挂载时执行一次，useRef 防止 React 18 StrictMode 开发模式下重复执行
+  // 每次挂载都执行 restore；用 cancelled 标志处理卸载竞态。
+  // React StrictMode 开发模式下会「挂载 → 卸载 → 再挂载」，
+  // 第一次 restore 因 cleanup 置 cancelled 而被丢弃，第二次挂载重新恢复。
   useEffect(() => {
-    if (bootstrapped.current) return
-    bootstrapped.current = true
-
     let cancelled = false
 
     async function restore() {
       const token = localStorage.getItem(ACCESS_TOKEN_KEY)
       if (!token) {
-        setIsBootstrapping(false)
+        if (!cancelled) setIsBootstrapping(false)
         return
       }
 
@@ -75,9 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.removeItem(REFRESH_TOKEN_KEY)
         }
       } finally {
-        // 注意：这里不能检查 cancelled，因为 StrictMode 开发模式下
-        // cleanup 会先设 cancelled=true，导致 setIsBootstrapping(false) 被跳过
-        setIsBootstrapping(false)
+        if (!cancelled) setIsBootstrapping(false)
       }
     }
 

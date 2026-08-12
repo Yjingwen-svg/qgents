@@ -11,7 +11,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons'
 import { Button, Spin } from 'antd'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi } from '@/api'
@@ -102,6 +102,7 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
 export function TeamDetailPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
   const [activeView, setActiveView] = useState<TeamDetailView>('projects')
+  const navigate = useNavigate()
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
 
   // 进入团队详情即记录当前团队，供顶部「团队首页」按钮回到此团队
@@ -204,7 +205,11 @@ export function TeamDetailPage() {
             <h1>{team.name}</h1>
             <p>从个人中心切换团队或项目，进入项目总群继续协作。</p>
           </div>
-          <Button type="primary" icon={<PlusOutlined />} href={PATHS.createProject(teamId)}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => navigate(PATHS.createProject(teamId))}
+          >
             创建项目
           </Button>
         </section>

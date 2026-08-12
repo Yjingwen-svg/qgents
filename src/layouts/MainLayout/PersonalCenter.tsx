@@ -78,7 +78,7 @@ export function PersonalCenter() {
     <Drawer
       title="个人中心"
       placement="right"
-      width={360}
+      size={360}
       open={open}
       onClose={closePersonalCenter}
       styles={{ body: { paddingTop: 8 } }}
@@ -138,7 +138,7 @@ export function PersonalCenter() {
 
       <Divider style={{ margin: '16px 0' }} />
 
-      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+      <Space orientation="vertical" style={{ width: '100%' }} size={8}>
         <Link to={PATHS.CREATE_TEAM} onClick={closePersonalCenter}>
           <Button block icon={<FileAddOutlined />}>
             创建团队

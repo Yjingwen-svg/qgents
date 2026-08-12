@@ -16,7 +16,7 @@ export function MainLayout() {
   const isProject = location.pathname.startsWith('/app/projects/')
 
   return (
-    <Layout className="qg-full-height" style={{ minHeight: '100%' }}>
+    <Layout className="qg-full-height" style={{ minHeight: '100%', background: 'var(--qg-navy)' }}>
       <Banner />
       <Content
         className={isChat || isProject ? 'qg-content-flush' : undefined}

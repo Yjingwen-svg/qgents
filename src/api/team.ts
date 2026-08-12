@@ -1,5 +1,12 @@
 import { request } from './client'
-import type { CreateTeamPayload, JoinTeamPayload, Team, TeamMember } from '@/types'
+import type {
+  AcceptInvitationResponse,
+  CreateInvitationPayload,
+  CreateTeamPayload,
+  Team,
+  TeamInvitation,
+  TeamMember,
+} from '@/types'
 
 /**
  * 团队管理 API
@@ -21,21 +28,28 @@ export const teamApi = {
     return request<Team>('/teams', { method: 'POST', body: payload })
   },
 
-  /** POST /teams/join — 邀请码加入 */
-  join(payload: JoinTeamPayload) {
-    return request<Team>('/teams/join', { method: 'POST', body: payload })
-  },
-
   /** GET /teams/:id/members */
   listMembers(teamId: string) {
     return request<TeamMember[]>(`/teams/${teamId}/members`)
   },
 
-  /** POST /teams/:id/invites — 发送邮箱邀请 */
-  invite(teamId: string, emails: string[], role?: string) {
-    return request<void>(`/teams/${teamId}/invites`, {
+  /** POST /teams/:id/invitations — 按邮箱创建团队邀请 */
+  invite(teamId: string, payload: CreateInvitationPayload) {
+    return request<TeamInvitation>(`/teams/${teamId}/invitations`, {
       method: 'POST',
-      body: { emails, role },
+      body: payload,
+    })
+  },
+
+  /** GET /teams/:id/invitations — 查询邀请状态 */
+  listInvitations(teamId: string) {
+    return request<TeamInvitation[]>(`/teams/${teamId}/invitations`)
+  },
+
+  /** POST /team-invitations/:token/accept — 接受团队邀请 */
+  acceptInvitation(token: string) {
+    return request<AcceptInvitationResponse>(`/team-invitations/${token}/accept`, {
+      method: 'POST',
     })
   },
 

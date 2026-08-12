@@ -1,3 +1,16 @@
+:root {
+  --qg-teal: #0d9b8a; --qg-teal-dark: #0a7d6f; --qg-teal-bright: #14b8a6; --qg-mint: #2dd4a8;
+  --qg-bg-light: #f3f5f7; --qg-card: #ffffff; --qg-border-light: #e5e7eb;
+  --qg-text-primary: #111827; --qg-text-secondary: #6b7280; --qg-text-muted: #9ca3af;
+  --qg-navy: #0b1424; --qg-navy-2: #111c2e; --qg-navy-3: #162033; --qg-navy-card: #1a2438;
+  --qg-border-dark: #2a3548; --qg-text-on-dark: #f3f4f6; --qg-text-on-dark-secondary: #9aa3b5;
+  --qg-blue: #3b82f6; --qg-blue-hover: #2563eb; --qg-green: #22c55e; --qg-green-hover: #16a34a;
+  --qg-danger: #ef4444; --qg-avatar-orange: #f97316;
+  --qg-banner-h: 56px; --qg-radius: 10px; --qg-radius-sm: 8px;
+  --qg-font: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+  --qg-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 *,
 *::before,
 *::after {
@@ -12,17 +25,33 @@ body,
 }
 
 body {
+  font-family: var(--qg-font);
   font-size: 14px;
   line-height: 1.5;
+  color: var(--qg-text-primary);
+  background: var(--qg-navy);
   -webkit-font-smoothing: antialiased;
-  /* 删除 variables.css 后需保留：非 MainLayout 页面（login/welcome）也使用深色底 */
-  background: #0b1424;
-  color: #e6edf3;
 }
 
 a {
   color: inherit;
   text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+img {
+  max-width: 100%;
+  display: block;
 }
 
 .qg-full-height {
@@ -42,4 +71,41 @@ a {
 
 .qg-page-welcome {
   background: radial-gradient(ellipse at 50% 0%, #142038 0%, #0b1424 55%);
+}
+
+/* ──── Banner 暗色覆盖 ──── */
+.qg-banner {
+  background: linear-gradient(90deg, #0a1220 0%, #0f1a2c 50%, #0b1524 100%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+.qg-banner .ant-menu-horizontal {
+  border-bottom: none;
+}
+
+.qg-banner .ant-menu-item {
+  color: var(--qg-text-on-dark-secondary) !important;
+}
+
+.qg-banner .ant-menu-item:hover {
+  color: var(--qg-text-on-dark) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.qg-banner .ant-menu-item-selected {
+  color: var(--qg-text-on-dark) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* 屏幕阅读器专用文本，视觉上隐藏 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

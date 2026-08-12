@@ -442,7 +442,7 @@ export function BindRepoToProjectPage() {
                         }}
                       />
                     ) : null}
-                    <Space direction="vertical" size={0}>
+                    <Space orientation="vertical" size={0}>
                       <Space>
                         <Text strong>{project.name}</Text>
                         {!multiSelectMode && alreadyBound ? (

@@ -1,13 +1,5 @@
-/**
- * HTTP 客户端封装
- * TODO[后端联调]:
- * 1. 将 BASE_URL 改为环境变量 VITE_API_BASE_URL
- * 2. 在请求头注入 Authorization: Bearer <token>
- * 3. 统一处理 401 跳转登录、业务错误码 toast
- */
-
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
-// 自定义的接口请求异常类,继承原生 Error，额外加上 status、body 两个属性的类。
+
 export class ApiError extends Error {
   status: number
   body: unknown
@@ -22,28 +14,23 @@ export class ApiError extends Error {
 
 export interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown
-  /** 跳过自动附带 Token（登录/注册接口用） */
   skipAuth?: boolean
 }
 
 function getStoredToken(): string | null {
-  // TODO[后端联调]: 与 AuthContext / localStorage / cookie 策略对齐
   return localStorage.getItem('qgents_access_token')
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, skipAuth, headers, ...rest } = options
-  const finalHeaders: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...headers,
-  }
+  const finalHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
 
   if (!skipAuth) {
     const token = getStoredToken()
-    if (token) {
-      ;(finalHeaders as Record<string, string>)['Authorization'] = `Bearer ${token}`
-    }
+    if (token) finalHeaders['Authorization'] = `Bearer ${token}`
   }
+
+  if (headers) Object.assign(finalHeaders, headers as Record<string, string>)
 
   const res = await fetch(`${BASE_URL}${path}`, {
     ...rest,
@@ -51,20 +38,24 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
 
-  if (!res.ok) {
-    let errBody: unknown
-    try {
-      errBody = await res.json()
-    } catch {
-      errBody = await res.text()
-    }
-    throw new ApiError(`Request failed: ${res.status}`, res.status, errBody)
-  }
-
   // 204 No Content
-  if (res.status === 204) {
-    return undefined as T
+  if (res.status === 204) return undefined as T
+
+  // read body once
+  let raw: string
+  try { raw = await res.text() } catch { raw = '' }
+
+  let json: unknown
+  try { json = JSON.parse(raw) } catch { json = raw }
+
+  if (!res.ok) {
+    throw new ApiError(`Request failed: ${res.status}`, res.status, json)
   }
 
-  return (await res.json()) as T
+  // unwrap { data: ... }
+  if (json && typeof json === 'object' && 'data' in json) {
+    return (json as Record<string, unknown>).data as T
+  }
+
+  return json as T
 }

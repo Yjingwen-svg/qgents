@@ -1,28 +1,71 @@
 import { request } from './client'
-import { requestData } from './taskDomain'
-import type { CreateProjectPayload, Project } from '@/types'
+import type { CreateProjectPayload, Project, ProjectMember } from '@/types'
 
 /**
- * 项目隔离 API
- * Skill / Memory / 群聊 / 任务均挂在 project 下
+ * 项目管理 API —— 对齐接口文档 v1.1.4 §5.2
  */
 export const projectApi = {
+  /** GET /teams/{teamId}/projects — 团队下的项目列表（仅返回有权限访问的） */
   listByTeam(teamId: string) {
     return request<Project[]>(`/teams/${teamId}/projects`)
   },
 
-  getById(projectId: string) {
-    return requestData<Project>(`/projects/${projectId}`)
-  },
-
+  /** POST /teams/{teamId}/projects — 创建项目 */
   create(payload: CreateProjectPayload) {
-    return request<Project>('/projects', { method: 'POST', body: payload })
+    return request<Project>(`/teams/${payload.teamId}/projects`, {
+      method: 'POST',
+      body: payload,
+    })
   },
 
-  /**
-   * TODO[后端联调]:
-   * - Skill 按项目存取：GET/PUT /projects/:id/skills
-   * - Memory 按项目存取：GET/PUT /projects/:id/memories
-   * - owner 可编辑共享，member 仅使用（前端按角色禁用编辑入口）
-   */
+  /** GET /projects/{projectId} — 获取项目资料 */
+  getById(projectId: string) {
+    return request<Project>(`/projects/${projectId}`)
+  },
+
+  /** PATCH /projects/{projectId} — 修改项目资料（仅 PROJECT_ADMIN） */
+  update(projectId: string, payload: Partial<CreateProjectPayload>) {
+    return request<Project>(`/projects/${projectId}`, {
+      method: 'PATCH',
+      body: payload,
+    })
+  },
+
+  /** POST /projects/{projectId}/archive — 归档项目 */
+  archive(projectId: string) {
+    return request<void>(`/projects/${projectId}/archive`, { method: 'POST' })
+  },
+
+  /** POST /projects/{projectId}/restore — 恢复项目 */
+  restore(projectId: string) {
+    return request<void>(`/projects/${projectId}/restore`, { method: 'POST' })
+  },
+
+  /** GET /projects/{projectId}/members — 项目成员与角色 */
+  listMembers(projectId: string) {
+    return request<ProjectMember[]>(`/projects/${projectId}/members`)
+  },
+
+  /** POST /projects/{projectId}/members — 将现有团队成员加入项目 */
+  addMember(projectId: string, userId: string) {
+    return request<void>(`/projects/${projectId}/members`, {
+      method: 'POST',
+      body: { userId },
+    })
+  },
+
+  /** PATCH /projects/{projectId}/members/{userId} — 调整项目成员角色 */
+  updateMemberRole(projectId: string, userId: string, role: string) {
+    return request<void>(`/projects/${projectId}/members/${userId}`, {
+      method: 'PATCH',
+      body: { role },
+    })
+  },
+
+  /** DELETE /projects/{projectId}/members/{userId} — 从项目移除成员 */
+  removeMember(projectId: string, userId: string) {
+    return request<void>(`/projects/${projectId}/members/${userId}`, {
+      method: 'DELETE',
+    })
+  },
 }

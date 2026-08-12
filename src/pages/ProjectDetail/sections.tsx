@@ -1,10 +1,15 @@
 import { useParams } from 'react-router-dom'
-import { Typography, Card, List } from 'antd'
+import { useQuery } from '@tanstack/react-query'
+import { Spin } from 'antd'
 import { PROJECT_NAV } from '@/routes/paths'
-import { TaskCenterPage } from './TaskCenter/TaskCenterPage'
+import { projectApi } from '@/api'
+import { EmptyState } from '@/components/EmptyState'
+import './ProjectDetailPage.css'
 
-const { Title, Paragraph, Text } = Typography
-
+/**
+ * 项目详情其它导航子页的统一占位壳
+ * TODO: 各同学按模块拆成独立页面并实现业务
+ */
 export function ProjectSectionPage({
   section,
   title,
@@ -18,70 +23,133 @@ export function ProjectSectionPage({
   const nav = PROJECT_NAV.find((n) => n.path === section)
 
   return (
-    <div style={{ padding: 24 }}>
-      <Title level={3} style={{ marginTop: 0 }}>
-        {title || nav?.label || section}
-      </Title>
-      <Paragraph type="secondary">
-        projectId: <Text code>{projectId ?? '—'}</Text>
-      </Paragraph>
-
-      <Card>
-        <Paragraph type="secondary">页面框架占位，业务内容待填充。</Paragraph>
+    <div className="pd-section">
+      <header className="pd-section__header">
+        <h1>{title || nav?.label || section}</h1>
+        <p>
+          projectId: <code>{projectId ?? '—'}</code>
+        </p>
+      </header>
+      <div className="pd-section__body">
+        <p className="pd-section__hint">页面框架占位，业务内容待填充。</p>
         {todos && todos.length > 0 ? (
-          <List
-            size="small"
-            dataSource={todos}
-            renderItem={(t) => <List.Item>{t}</List.Item>}
-          />
+          <ul className="pd-section__todo">
+            {todos.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
         ) : null}
-      </Card>
+      </div>
     </div>
   )
 }
 
+/** ──── 项目概览 —— A 负责 ──── */
 export function OverviewPage() {
+  const { projectId = '' } = useParams<{ projectId: string }>()
+
+  const { data: project, isLoading } = useQuery({
+    queryKey: ['projects', projectId],
+    queryFn: () => projectApi.getById(projectId),
+    enabled: !!projectId,
+  })
+
+  if (isLoading) {
+    return (
+      <div className="pd-section">
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
+          <Spin size="large" />
+        </div>
+      </div>
+    )
+  }
+
+  if (!project) {
+    return (
+      <div className="pd-section">
+        <EmptyState icon="🔍" title="项目未找到" />
+      </div>
+    )
+  }
+
   return (
-    <ProjectSectionPage
-      section="overview"
-      title="概览"
-      todos={['TODO: 项目摘要、活跃分支、Agent/任务状态卡片']}
-    />
+    <div className="pd-section">
+      <header className="pd-section__header">
+        <h1>{project.name}</h1>
+        <p>{project.description || '暂无简介'}</p>
+      </header>
+
+      <div className="pd-section__body">
+        {/* 基础统计卡片 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
+          <StatCard label="仓库" value={String(project.repositoryCount ?? 0)} />
+          <StatCard label="我的角色" value={project.myRole === 'PROJECT_ADMIN' ? 'Admin' : 'Member'} />
+          <StatCard label="项目 ID" value={project.id} mono />
+        </div>
+
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e2e8f0', marginBottom: 12 }}>快捷入口</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+          <QuickLink label="需求群聊" desc="查看项目总群和需求群" to={`/app/projects/${projectId}/req-chat`} />
+          <QuickLink label="任务中心" desc="查看任务与执行状态" to={`/app/projects/${projectId}/tasks`} />
+          <QuickLink label="代码 & MR" desc="分支、Diff、MR 审查" to={`/app/projects/${projectId}/code`} />
+          <QuickLink label="项目成员" desc="管理成员与权限" to={`/app/projects/${projectId}/members`} />
+        </div>
+      </div>
+    </div>
   )
 }
 
+/** 统计数字卡片 */
+function StatCard({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div style={{ padding: '16px 20px', background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: '#e2e8f0', fontFamily: mono ? 'monospace' : undefined, fontSize: mono ? 14 : 22 }}>
+        {value}
+      </div>
+    </div>
+  )
+}
+
+/** 快捷入口卡片 */
+function QuickLink({ label, desc, to }: { label: string; desc: string; to: string }) {
+  return (
+    <a
+      href={to}
+      style={{
+        display: 'block',
+        padding: '12px 16px',
+        background: 'rgba(13,155,138,0.08)',
+        borderRadius: 8,
+        border: '1px solid rgba(13,155,138,0.15)',
+        textDecoration: 'none',
+        color: '#e2e8f0',
+        transition: 'background 0.15s',
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(13,155,138,0.14)' }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(13,155,138,0.08)' }}
+    >
+      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 12, color: '#94a3b8' }}>{desc}</div>
+    </a>
+  )
+}
+
+/** 各子页薄封装 —— 方便路由表直接挂载 */
 export function TasksPage() {
-  return <TaskCenterPage />
+  return <ProjectSectionPage section="tasks" title="任务中心" todos={['TODO: B - 任务看板列与状态卡片']} />
 }
 
 export function WorkflowPage() {
-  return (
-    <ProjectSectionPage
-      section="workflow"
-      title="工作流编排"
-      todos={['TODO: Planner → Developer → Tester → Reviewer 编排画布']}
-    />
-  )
+  return <ProjectSectionPage section="workflow" title="工作流编排" todos={['TODO: B - Planner → Developer → Tester → Reviewer 画布']} />
 }
 
 export function AgentsPage() {
-  return (
-    <ProjectSectionPage
-      section="agents"
-      title="Agent 团队"
-      todos={['TODO: Agent 头像/昵称/角色标签', 'TODO: 工具定义与分工（禁止单 Agent 梭哈）']}
-    />
-  )
+  return <ProjectSectionPage section="agents" title="Agent 团队" todos={['TODO: B - Agent 身份卡与团队管理']} />
 }
 
 export function SkillsPage() {
-  return (
-    <ProjectSectionPage
-      section="skills"
-      title="共享 Skill"
-      todos={['TODO: 按项目存取 Skill', 'TODO: owner 可编辑，member 仅使用']}
-    />
-  )
+  return <ProjectSectionPage section="skills" title="共享 Skill" todos={['TODO: B - Skill 创建/审核/发布']} />
 }
 
 export function MemoryPage() {
@@ -89,47 +157,27 @@ export function MemoryPage() {
     <ProjectSectionPage
       section="memory"
       title="共享 Memory"
-      todos={['TODO: 按项目存取 Memory', 'TODO: owner 可编辑，member 仅使用']}
+      todos={[
+        'TODO: A - Memory 列表和详情',
+        'TODO: A - 从群消息生成草稿',
+        'TODO: A - 手动创建 / 审核 / 归档',
+      ]}
     />
   )
 }
 
 export function CodePage() {
-  return (
-    <ProjectSectionPage
-      section="code"
-      title="代码与 Branch"
-      todos={['TODO: 仓库绑定 / 分支列表', 'TODO: Diff 预览、手动创建 MR']}
-    />
-  )
+  return <ProjectSectionPage section="code" title="代码与 Branch" todos={['TODO: C - 仓库绑定 / 分支列表 / Diff']} />
 }
 
 export function TestsetPage() {
-  return (
-    <ProjectSectionPage
-      section="testset"
-      title="Testset"
-      todos={['TODO: 项目自建 testset', 'TODO: MR 前 dry-run 与 CQ+1']}
-    />
-  )
+  return <ProjectSectionPage section="testset" title="Testset" todos={['TODO: C - Testset 管理与执行']} />
 }
 
 export function MembersPage() {
-  return (
-    <ProjectSectionPage
-      section="members"
-      title="项目成员"
-      todos={['TODO: 成员列表、角色、邀请/移除']}
-    />
-  )
+  return <ProjectSectionPage section="members" title="项目成员" todos={['TODO: C - 成员列表、角色、邀请/移除']} />
 }
 
 export function SettingsPage() {
-  return (
-    <ProjectSectionPage
-      section="settings"
-      title="项目设置"
-      todos={['TODO: 项目基本信息、Git 绑定、危险操作区']}
-    />
-  )
+  return <ProjectSectionPage section="settings" title="项目设置" todos={['TODO: C - 项目设置与质量门禁']} />
 }

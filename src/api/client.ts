@@ -70,5 +70,12 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     return undefined as T
   }
 
-  return (await res.json()) as T
+  const json: unknown = await res.json()
+
+  // 后端统一响应格式: { data: {...}, requestId: "..." }
+  if (json && typeof json === 'object' && 'data' in json) {
+    return (json as { data: T }).data
+  }
+
+  return json as T
 }

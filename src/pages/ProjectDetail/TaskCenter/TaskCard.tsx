@@ -53,11 +53,13 @@ export function TaskCard({ run, selected, onSelect, onViewDetails }: TaskCardPro
 
         <Divider />
 
-        <div className={styles.taskCardCounts}>
-          <StatusCount label="执行中" value={presentation.statusCounts.running} />
-          <StatusCount label="待执行" value={presentation.statusCounts.pending} />
-          <StatusCount label="已完成" value={presentation.statusCounts.completed} />
-        </div>
+        {presentation.statusCounts ? (
+          <div className={styles.taskCardCounts}>
+            <StatusCount label="执行中" value={presentation.statusCounts.running} />
+            <StatusCount label="待执行" value={presentation.statusCounts.pending} />
+            <StatusCount label="已完成" value={presentation.statusCounts.completed} />
+          </div>
+        ) : <Text type="secondary">暂无统计</Text>}
 
         <Button
           type="link"

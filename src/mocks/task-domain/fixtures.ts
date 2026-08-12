@@ -27,6 +27,9 @@ export const taskDomainScenarioNames = [
   'CANCELLING',
   'CANCELLED',
   'EMPTY',
+  'INPUT_HANDLED',
+  'APPROVAL_HANDLED',
+  'APPROVAL_REJECTED',
 ] as const
 
 export type TaskDomainScenario = (typeof taskDomainScenarioNames)[number]
@@ -99,13 +102,22 @@ function createBaseState(projectId: string): TaskDomainState {
       subtasks.set(subtaskId, subtask)
 
       const taskRunId = `${subtaskId}-run-1`
+      const taskRunStatus: TaskRun['status'] = packageIndex === 0 && subtaskIndex === 1
+        ? 'WAITING_INPUT'
+        : packageIndex === 1 && subtaskIndex === 1
+          ? 'WAITING_APPROVAL'
+          : subtaskIndex === 0
+            ? 'SUCCEEDED'
+            : subtaskIndex === 1
+              ? 'RUNNING'
+              : 'QUEUED'
       const taskRun: TaskRun = {
         id: taskRunId,
         projectId,
         orchestrationRunId,
         workPackageId,
         subtaskId,
-        status: subtaskIndex === 0 ? 'SUCCEEDED' : subtaskIndex === 1 ? 'RUNNING' : 'QUEUED',
+        status: taskRunStatus,
         retryOfTaskRunId: null,
         subtaskTitle: `${role} step`,
         agentNode: role,
@@ -393,7 +405,7 @@ export function createTaskDomainScenario(
   const run = [...state.orchestrationRuns.values()][0]
   const firstWorkPackage = [...state.workPackages.values()][0]
   const firstTaskRun = [...state.taskRuns.values()][1]
-  const scenarioStatus: Record<Exclude<TaskDomainScenario, 'EMPTY'>, OrchestrationRun['status']> = {
+  const scenarioStatus: Record<Exclude<TaskDomainScenario, 'EMPTY' | 'INPUT_HANDLED' | 'APPROVAL_HANDLED' | 'APPROVAL_REJECTED'>, OrchestrationRun['status']> = {
     QUEUED: 'QUEUED',
     PLANNING: 'PLANNING',
     RUNNING: 'RUNNING',
@@ -405,10 +417,32 @@ export function createTaskDomainScenario(
     CANCELLING: 'CANCELLING',
     CANCELLED: 'CANCELLED',
   }
-  run.status = scenarioStatus[scenario]
+  if (scenario === 'INPUT_HANDLED' || scenario === 'APPROVAL_HANDLED' || scenario === 'APPROVAL_REJECTED') {
+    run.status = 'SUCCEEDED'
+  } else {
+    run.status = scenarioStatus[scenario]
+  }
 
   if (scenario === 'WAITING_INPUT') firstTaskRun.status = 'WAITING_INPUT'
   if (scenario === 'WAITING_APPROVAL') firstTaskRun.status = 'WAITING_APPROVAL'
+  if (scenario === 'INPUT_HANDLED') {
+    firstTaskRun.status = 'SUCCEEDED'
+    const request = state.inputRequests.get(developerRunIdFor(firstWorkPackage.id))?.[0]
+    if (request) {
+      request.status = 'ANSWERED'
+      request.resolvedAt = timestamp
+    }
+  }
+  if (scenario === 'APPROVAL_HANDLED' || scenario === 'APPROVAL_REJECTED') {
+    const secondTaskRun = [...state.taskRuns.values()].find((taskRun) => taskRun.workPackageId !== firstWorkPackage.id && taskRun.subtaskId.includes('developer'))
+    if (secondTaskRun) secondTaskRun.status = 'SUCCEEDED'
+    const secondWorkPackage = [...state.workPackages.values()][1]
+    const request = secondWorkPackage ? state.inputRequests.get(approvalRunIdFor(secondWorkPackage.id))?.[0] : undefined
+    if (request) {
+      request.status = scenario === 'APPROVAL_HANDLED' ? 'APPROVED' : 'REJECTED'
+      request.resolvedAt = timestamp
+    }
+  }
   if (scenario === 'BLOCKED') firstTaskRun.status = 'BLOCKED'
   if (scenario === 'FAILED') firstTaskRun.status = 'FAILED'
   if (scenario === 'SUCCEEDED') {
@@ -421,4 +455,12 @@ export function createTaskDomainScenario(
     firstWorkPackage.status = 'CANCELLED'
   }
   return state
+}
+
+function developerRunIdFor(workPackageId: string): string {
+  return `${workPackageId}-subtask-developer-run-1`
+}
+
+function approvalRunIdFor(workPackageId: string): string {
+  return `${workPackageId}-subtask-developer-run-1`
 }

@@ -12,6 +12,7 @@ import {
   DatabaseOutlined,
   CodeOutlined,
   ExperimentOutlined,
+  FileTextOutlined,
   TeamOutlined,
   SettingOutlined,
 } from '@ant-design/icons'
@@ -26,6 +27,7 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
   overview: <HomeOutlined />,
   'req-chat': <MessageOutlined />,
   tasks: <UnorderedListOutlined />,
+  deliverables: <FileTextOutlined />,
   workflow: <ApartmentOutlined />,
   agents: <RobotOutlined />,
   skills: <StarOutlined />,

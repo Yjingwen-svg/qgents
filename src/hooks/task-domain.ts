@@ -261,6 +261,42 @@ export function useDeliverable(
   })
 }
 
+export function useProjectDeliverables(projectId: string): {
+  data: CursorPage<Deliverable>
+  error: Error | null
+  isError: boolean
+  isLoading: boolean
+  refetch: () => Promise<unknown>
+} {
+  const workPackagesQuery = useWorkPackages(projectId)
+  const workPackageIds = workPackagesQuery.data?.data.map((workPackage) => workPackage.id) ?? []
+  const deliverableQueries = useQueries({
+    queries: workPackageIds.map((workPackageId) => ({
+      queryKey: queryKeys.deliverables.list(projectId, workPackageId),
+      queryFn: () => deliverablesApi.list(projectId, workPackageId),
+      enabled: Boolean(projectId && workPackageId),
+    })),
+  })
+  const deliverables = deliverableQueries.flatMap((query) => query.data?.data ?? [])
+  const error = workPackagesQuery.error ?? deliverableQueries.find((query) => query.error)?.error ?? null
+  const isLoading = workPackagesQuery.isLoading || deliverableQueries.some((query) => query.isLoading)
+
+  return {
+    data: {
+      data: deliverables,
+      page: { nextCursor: null, hasMore: false },
+      requestId: workPackagesQuery.data?.requestId ?? '',
+    },
+    error,
+    isError: Boolean(error),
+    isLoading,
+    refetch: async () => {
+      await workPackagesQuery.refetch()
+      await Promise.all(deliverableQueries.map((query) => query.refetch()))
+    },
+  }
+}
+
 export function useCreateOrchestrationRun(
   projectId: string,
 ): UseMutationResult<OrchestrationRun, Error, CreateOrchestrationRunInput> {
@@ -302,6 +338,7 @@ function useWorkPackageMutation(
       void queryClient.invalidateQueries({
         queryKey: queryKeys.orchestrationRuns.detail(projectId, workPackage.orchestrationRunId),
       })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns.all(projectId) })
     },
   })
 }
@@ -419,6 +456,9 @@ type DeliverableMutation = { deliverableId: string }
 function invalidateDeliverableQueries(projectId: string, deliverable: Deliverable): void {
   queryClient.setQueryData(queryKeys.deliverables.detail(projectId, deliverable.id), deliverable)
   void queryClient.invalidateQueries({ queryKey: queryKeys.deliverables.all(projectId) })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns.detail(projectId, deliverable.taskRunId) })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns.all(projectId) })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.orchestrationRuns.all(projectId) })
   void queryClient.invalidateQueries({
     queryKey: queryKeys.workPackages.detail(projectId, deliverable.workPackageId),
   })

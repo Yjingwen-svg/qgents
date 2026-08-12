@@ -1,4 +1,4 @@
-import type { DeliveryType, OrchestrationRun, OrchestrationRunStatus } from '@/types'
+import type { DeliveryType, OrchestrationRun, TaskCenterSummary } from '@/types'
 
 export interface TaskPresentation {
   groupLabel: string
@@ -8,22 +8,10 @@ export interface TaskPresentation {
   executionTarget: string
   targetLabel: string
   taskCount: number
-  statusCounts: {
-    running: number
-    pending: number
-    completed: number
-  }
-  progressPercent: number
+  statusCounts?: TaskCenterSummary['statusCounts']
+  progressPercent?: number
   waitingLabel?: string
   errorSummary?: string
-}
-
-const MOCK_GROUP_LABELS: Record<string, string> = {
-  'group-demo-project-login': '登录功能',
-}
-
-const MOCK_CREATOR_LABELS: Record<string, string> = {
-  'demo-user': 'Demo 用户',
 }
 
 const DELIVERY_TYPE_LABELS: Record<DeliveryType, string> = {
@@ -33,33 +21,20 @@ const DELIVERY_TYPE_LABELS: Record<DeliveryType, string> = {
   DOCUMENT: '文档与验收清单',
 }
 
-const MOCK_PROGRESS: Record<OrchestrationRunStatus, number> = {
-  QUEUED: 8,
-  PLANNING: 20,
-  RUNNING: 62,
-  WAITING_INPUT: 68,
-  WAITING_APPROVAL: 72,
-  BLOCKED: 72,
-  FAILED: 100,
-  SUCCEEDED: 100,
-  CANCELLING: 78,
-  CANCELLED: 0,
-}
-
 export function getTaskPresentation(run: OrchestrationRun): TaskPresentation {
   const summary = run.taskCenterSummary
   return {
-    groupLabel: summary?.requirementGroupName ?? MOCK_GROUP_LABELS[run.groupId] ?? run.groupId,
-    creatorLabel: MOCK_CREATOR_LABELS[run.createdBy] ?? run.createdBy,
+    groupLabel: summary?.requirementGroupName ?? (run.groupId || '暂无'),
+    creatorLabel: run.createdBy || '暂无',
     deliveryTypeLabel: summary ? DELIVERY_TYPE_LABELS[summary.deliveryType] : '—',
     description: summary?.description ?? run.instruction,
     executionTarget: summary?.executionTarget ?? '—',
     targetLabel: summary?.targetRepositoryId
       ? `${summary.targetRepositoryId}${summary.targetRef ? ` / ${summary.targetRef}` : ''}`
-      : '群聊上下文',
+      : '暂无',
     taskCount: summary?.taskCount ?? run.workPackageIds.length,
-    statusCounts: summary?.statusCounts ?? { running: 0, pending: 0, completed: 0 },
-    progressPercent: summary?.progressPercent ?? MOCK_PROGRESS[run.status],
+    statusCounts: summary?.statusCounts,
+    progressPercent: summary?.progressPercent,
     waitingLabel:
       run.status === 'WAITING_INPUT'
         ? '等待用户输入'

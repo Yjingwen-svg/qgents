@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CursorPage, OrchestrationRun, TaskRun, WorkPackage } from '@/types'
+import type { CursorPage, Deliverable, OrchestrationRun, TaskRun, WorkPackage } from '@/types'
 import { ApiError } from '@/api'
 import { TaskDetailPage } from './TaskDetailPage'
 
@@ -15,6 +15,10 @@ const useInfiniteTaskRunStepsMock = vi.hoisted(() => vi.fn())
 const useInfiniteTaskRunLogsMock = vi.hoisted(() => vi.fn())
 const useExecutionContextMock = vi.hoisted(() => vi.fn())
 const useInputRequestsMock = vi.hoisted(() => vi.fn())
+const useStartWorkPackageMock = vi.hoisted(() => vi.fn())
+const usePauseWorkPackageMock = vi.hoisted(() => vi.fn())
+const useResumeWorkPackageMock = vi.hoisted(() => vi.fn())
+const useCancelWorkPackageMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks', () => ({
   useDeliverables: useDeliverablesMock,
@@ -26,6 +30,10 @@ vi.mock('@/hooks', () => ({
   useInfiniteTaskRunLogs: useInfiniteTaskRunLogsMock,
   useExecutionContext: useExecutionContextMock,
   useInputRequests: useInputRequestsMock,
+  useStartWorkPackage: useStartWorkPackageMock,
+  usePauseWorkPackage: usePauseWorkPackageMock,
+  useResumeWorkPackage: useResumeWorkPackageMock,
+  useCancelWorkPackage: useCancelWorkPackageMock,
 }))
 
 const run: OrchestrationRun = {
@@ -40,6 +48,23 @@ const run: OrchestrationRun = {
   workPackageIds: ['wp-1'],
   createdAt: '2026-08-11T08:00:00Z',
   updatedAt: '2026-08-11T08:30:00Z',
+  executionPreview: {
+    latestTaskRunId: 'task-run-1',
+    latestTaskRunStatus: 'RUNNING',
+    currentNode: 'DEVELOPER',
+    recentSteps: [],
+    stages: [{
+      id: 'stage-development',
+      title: '开发阶段',
+      node: 'DEVELOPER',
+      status: 'RUNNING',
+      steps: [],
+      startedAt: null,
+      finishedAt: null,
+    }],
+    errorSummary: null,
+    blockedSummary: null,
+  },
 }
 
 const workPackage: WorkPackage = {
@@ -69,6 +94,25 @@ const taskRun: TaskRun = {
   subtaskId: 'subtask-1',
   status: 'RUNNING',
   retryOfTaskRunId: null,
+  createdAt: '2026-08-11T08:00:00Z',
+  updatedAt: '2026-08-11T08:30:00Z',
+}
+
+const deliverable: Deliverable = {
+  id: 'deliverable-1',
+  projectId: 'project-test',
+  workPackageId: 'wp-1',
+  taskRunId: 'task-run-1',
+  title: '登录接口验收报告',
+  type: 'DOCUMENT',
+  version: 1,
+  status: 'PENDING_REVIEW',
+  repositoryId: null,
+  sourceRef: null,
+  diffId: null,
+  mergeRequestId: null,
+  rejectionReason: null,
+  summary: '验收报告摘要',
   createdAt: '2026-08-11T08:00:00Z',
   updatedAt: '2026-08-11T08:30:00Z',
 }
@@ -137,6 +181,8 @@ beforeEach(() => {
   useOrchestrationRunMock.mockReturnValue({ data: run, error: null, isError: false, isLoading: false })
   useOrchestrationWorkPackagesMock.mockReset()
   useOrchestrationWorkPackagesMock.mockReturnValue([{ data: workPackage, error: null, isError: false, isLoading: false }])
+  useInfiniteTaskRunsMock.mockReset()
+  useInfiniteTaskRunsMock.mockReturnValue(infiniteQuery([taskRun]))
   useDeliverablesMock.mockReset()
   useDeliverablesMock.mockReturnValue({ data: page([]), error: null, isError: false, isLoading: false })
   useInfiniteTaskRunsMock.mockReset()
@@ -151,6 +197,10 @@ beforeEach(() => {
   useExecutionContextMock.mockReturnValue({ data: undefined, error: null, isError: false, isLoading: false })
   useInputRequestsMock.mockReset()
   useInputRequestsMock.mockReturnValue({ data: undefined, error: null, isError: false, isLoading: false })
+  for (const mutationMock of [useStartWorkPackageMock, usePauseWorkPackageMock, useResumeWorkPackageMock, useCancelWorkPackageMock]) {
+    mutationMock.mockReset()
+    mutationMock.mockReturnValue({ mutate: vi.fn(), error: null, isPending: false, variables: undefined })
+  }
 })
 
 describe('TaskDetailPage routing and URL state', () => {
@@ -158,7 +208,7 @@ describe('TaskDetailPage routing and URL state', () => {
     renderPage('/app/projects/project-test/tasks/run-1?workPackageId=wp-1&taskRunId=task-run-1')
 
     expect(screen.getAllByText('任务 ID：run-1').length).toBeGreaterThan(0)
-    expect(useExecutionContextMock).toHaveBeenCalledWith('project-test', 'task-run-1')
+    expect(useExecutionContextMock).not.toHaveBeenCalled()
   })
 
   it('returns to the source task center while preserving its filters', async () => {
@@ -206,5 +256,108 @@ describe('TaskDetailPage routing and URL state', () => {
     renderPage('/app/projects/project-test/tasks/hidden')
 
     expect(screen.getByText('暂无权限查看任务详情')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['READY', '启动'],
+    ['RUNNING', '暂停'],
+    ['PAUSED', '恢复'],
+  ] as const)('shows the capability for %s WorkPackage', async (status, action) => {
+    useOrchestrationWorkPackagesMock.mockReturnValue([{ data: { ...workPackage, status }, error: null, isError: false, isLoading: false }])
+    useInfiniteTaskRunsMock.mockReturnValue(infiniteQuery([{ ...taskRun, agentNode: 'DEVELOPER' }]))
+
+    renderPage('/app/projects/project-test/tasks/run-1')
+
+    await waitFor(() => expect(screen.getAllByRole('button', { name: new RegExp(action.split('').join('\\s*')) }).filter((button) => button.tagName === 'BUTTON')).not.toHaveLength(0))
+  })
+
+  it('shows cancel for every cancellable WorkPackage state and confirms before mutating', async () => {
+    useOrchestrationWorkPackagesMock.mockReturnValue([{ data: { ...workPackage, status: 'RUNNING' }, error: null, isError: false, isLoading: false }])
+    useInfiniteTaskRunsMock.mockReturnValue(infiniteQuery([{ ...taskRun, agentNode: 'DEVELOPER' }]))
+    const cancelMutation = { mutate: vi.fn(), error: null, isPending: false, variables: 'wp-1' }
+    useCancelWorkPackageMock.mockReturnValue(cancelMutation)
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    renderPage('/app/projects/project-test/tasks/run-1')
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /取消工作包/ }).filter((button) => button.tagName === 'BUTTON')).not.toHaveLength(0))
+    fireEvent.click(screen.getAllByRole('button', { name: /取消工作包/ }).find((button) => button.tagName === 'BUTTON')!)
+
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(cancelMutation.mutate).toHaveBeenCalledWith('wp-1')
+    confirmSpy.mockRestore()
+  })
+
+  it('keeps other stages visible when one WorkPackage operation is pending or fails', async () => {
+    const failedPackage = { ...workPackage, status: 'RUNNING' as const }
+    const secondPackage = { ...workPackage, id: 'wp-2', title: '测试工作包', status: 'READY' as const }
+    const twoStageRun = {
+      ...run,
+      workPackageIds: ['wp-1', 'wp-2'],
+      executionPreview: {
+        ...run.executionPreview!,
+        stages: [
+          {
+            id: 'stage-development',
+            title: '开发阶段',
+            node: 'DEVELOPER' as const,
+            status: 'RUNNING' as const,
+            steps: [],
+            startedAt: null,
+            finishedAt: null,
+          }, {
+            id: 'stage-testing',
+            title: '测试阶段',
+            node: 'TESTER' as const,
+            status: 'PENDING' as const,
+            steps: [],
+            startedAt: null,
+            finishedAt: null,
+          },
+        ],
+      },
+    }
+    const firstPackageQuery = { data: failedPackage, error: null, isError: false, isLoading: false, refetch: vi.fn() }
+    const secondPackageQuery = { data: secondPackage, error: null, isError: false, isLoading: false, refetch: vi.fn() }
+    const firstTaskRunsQuery = infiniteQuery([{ ...taskRun, id: 'wp-1-run', workPackageId: 'wp-1', agentNode: 'DEVELOPER' as const }])
+    const secondTaskRunsQuery = infiniteQuery([{ ...taskRun, id: 'wp-2-run', workPackageId: 'wp-2', agentNode: 'TESTER' as const }])
+    useOrchestrationRunMock.mockReturnValue({ data: twoStageRun, error: null, isError: false, isLoading: false })
+    useOrchestrationWorkPackagesMock.mockReturnValue([firstPackageQuery, secondPackageQuery])
+    useInfiniteTaskRunsMock.mockImplementation((_projectId: string, workPackageId: string) => workPackageId === 'wp-1' ? firstTaskRunsQuery : secondTaskRunsQuery)
+    usePauseWorkPackageMock.mockReturnValue({ mutate: vi.fn(), error: new ApiError('conflict', 409), isPending: false, variables: 'wp-1' })
+
+    renderPage('/app/projects/project-test/tasks/run-1')
+
+    await waitFor(() => expect(screen.getAllByText('测试阶段').length).toBeGreaterThan(0))
+    expect(screen.getByText('工作包状态已变化，请刷新最新状态')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }))
+    expect(firstPackageQuery.refetch).toHaveBeenCalled()
+  })
+
+  it('uses real deliverable titles and does not use task detail summary for workspace data', () => {
+    useOrchestrationRunMock.mockReturnValue({
+      data: {
+        ...run,
+        taskDetailSummary: {
+          priorityLabel: '高',
+          currentStage: '开发中',
+          requirementDiscussion: '讨论摘要',
+          decisionRecord: '决策记录',
+          skillMemorySummary: 'Skill 摘要',
+          workspaceId: 'summary-workspace',
+          sandboxId: 'summary-sandbox',
+        },
+      },
+      error: null,
+      isError: false,
+      isLoading: false,
+    })
+    useDeliverablesMock.mockReturnValue({ data: page([deliverable]), error: null, isError: false, isLoading: false })
+
+    renderPage('/app/projects/project-test/tasks/run-1')
+
+    expect(screen.getAllByText('登录接口验收报告').length).toBeGreaterThan(0)
+    expect(screen.queryByText('需求群已交付的产出')).not.toBeInTheDocument()
+    expect(screen.queryByText('summary-workspace')).not.toBeInTheDocument()
+    expect(screen.queryByText('summary-sandbox')).not.toBeInTheDocument()
   })
 })

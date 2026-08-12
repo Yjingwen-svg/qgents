@@ -1,12 +1,15 @@
 import { useEffect, useMemo } from 'react'
-import { Alert, Button, Descriptions, Empty, Select, Space, Spin, Tag, Typography } from 'antd'
+import { Alert, Button, Descriptions, Empty, Form, Input, Select, Space, Spin, Tag, Typography } from 'antd'
 import { ApiError } from '@/api'
 import {
+  useApproveInputRequest,
   useExecutionContext,
   useInfiniteTaskRunLogs,
   useInfiniteTaskRunSteps,
   useInfiniteTaskRuns,
   useInputRequests,
+  useRejectInputRequest,
+  useReplyInputRequest,
   useTaskRun,
 } from '@/hooks'
 import type {
@@ -37,8 +40,11 @@ interface TaskExecutionPanelProps {
   workPackageQueries: WorkPackageQuery[]
   requestedWorkPackageId?: string
   requestedTaskRunId?: string
-  onWorkPackageChange: (workPackageId: string) => void
-  onTaskRunChange: (taskRunId?: string) => void
+  onWorkPackageChange?: (workPackageId: string) => void
+  onTaskRunChange: (taskRunId: string) => void
+  requestedTaskRun?: TaskRun
+  showWorkPackageSelector?: boolean
+  operationPending?: boolean
 }
 
 export function TaskExecutionPanel({
@@ -49,8 +55,11 @@ export function TaskExecutionPanel({
   workPackageQueries,
   requestedWorkPackageId,
   requestedTaskRunId,
+  requestedTaskRun: requestedTaskRunFromDetail,
   onWorkPackageChange,
   onTaskRunChange,
+  showWorkPackageSelector = true,
+  operationPending = false,
 }: TaskExecutionPanelProps) {
   const workPackageIds = run?.workPackageIds ?? []
   const workPackages = useMemo(
@@ -78,11 +87,11 @@ export function TaskExecutionPanel({
 
   useEffect(() => {
     if (!run || !workPackagesLoaded) return
-    if (!requestedWorkPackageId && firstWorkPackage) {
+    if (!requestedWorkPackageId && firstWorkPackage && onWorkPackageChange) {
       onWorkPackageChange(firstWorkPackage.id)
       return
     }
-    if (workPackageUrlNeedsFallback && firstWorkPackage) {
+    if (workPackageUrlNeedsFallback && firstWorkPackage && onWorkPackageChange) {
       onWorkPackageChange(firstWorkPackage.id)
     }
   }, [
@@ -101,39 +110,36 @@ export function TaskExecutionPanel({
     () => flattenPages(taskRunsQuery.data?.pages),
     [taskRunsQuery.data],
   )
-  const requestedTaskRun = taskRuns.find((taskRun) => taskRun.id === requestedTaskRunId)
+  const requestedTaskRun = taskRuns.find((taskRun) => taskRun.id === requestedTaskRunId) ?? requestedTaskRunFromDetail
   const taskRunListLoaded = Boolean(taskRunsQuery.data) && !taskRunsQuery.isFetching
+  const firstWaitingTaskRun = taskRuns.find(
+    (taskRun) => taskRun.status === 'WAITING_INPUT' || taskRun.status === 'WAITING_APPROVAL',
+  )
   const displayedTaskRunId = requestedTaskRunId
     ? requestedTaskRun?.id
-    : taskRuns[0]?.id
+    : firstWaitingTaskRun?.id ?? taskRuns[0]?.id
   const selectedTaskRunId = requestedTaskRunId ? requestedTaskRun?.id : undefined
 
   useEffect(() => {
     if (!selectedWorkPackage || !taskRunListLoaded) return
-    if (!requestedTaskRunId && taskRuns[0]) {
-      onTaskRunChange(taskRuns[0].id)
+    if (!requestedTaskRunId && (firstWaitingTaskRun ?? taskRuns[0])) {
+      onTaskRunChange((firstWaitingTaskRun ?? taskRuns[0]).id)
       return
-    }
-    if (requestedTaskRunId && !requestedTaskRun) {
-      onTaskRunChange(undefined)
     }
   }, [
     onTaskRunChange,
     requestedTaskRun,
     requestedTaskRunId,
     selectedWorkPackage,
+    firstWaitingTaskRun,
     taskRunListLoaded,
     taskRuns,
   ])
 
   const taskRunQuery = useTaskRun(projectId, selectedTaskRunId ?? '')
-  const taskRunStatus = taskRunQuery.data?.status
-  const needsInputRequest = taskRunStatus === 'WAITING_INPUT' ||
-    taskRunStatus === 'WAITING_APPROVAL' ||
-    taskRunStatus === 'BLOCKED'
   const inputRequestsQuery = useInputRequests(
     projectId,
-    needsInputRequest ? selectedTaskRunId ?? '' : '',
+    selectedTaskRunId ?? '',
     { limit: DETAIL_PAGE_SIZE },
   )
   const stepsQuery = useInfiniteTaskRunSteps(projectId, selectedTaskRunId ?? '', {
@@ -178,16 +184,16 @@ export function TaskExecutionPanel({
         ) : null}
         {selectedWorkPackage ? (
           <>
-            <Select
+            {showWorkPackageSelector ? <Select
               aria-label="工作包"
               className={styles.executionSelect}
               value={selectedWorkPackage.id}
-              onChange={(value) => onWorkPackageChange(value)}
+              onChange={(value) => onWorkPackageChange?.(value)}
               options={workPackages.map((workPackage) => ({
                 value: workPackage.id,
                 label: `${workPackage.title} · ${statusLabel(workPackage.status)}`,
               }))}
-            />
+            /> : null}
             <div className={styles.workPackageSummary}>
               <Text strong>{selectedWorkPackage.title}</Text>
               <Space size={6} wrap>
@@ -220,10 +226,11 @@ export function TaskExecutionPanel({
           taskRuns={taskRuns}
           selectedTaskRunId={displayedTaskRunId}
           onSelect={onTaskRunChange}
+          disabled={operationPending}
         />
       </section>
 
-      {requestedTaskRunId && !requestedTaskRun && taskRunListLoaded ? (
+      {requestedTaskRunId && !requestedTaskRun && !requestedTaskRunFromDetail && taskRunListLoaded ? (
         <Alert
           className={styles.executionAlert}
           type="warning"
@@ -235,7 +242,7 @@ export function TaskExecutionPanel({
       {selectedTaskRunId ? (
         <>
           <TaskRunDetail query={taskRunQuery} />
-          <InputRequestsReadOnly query={inputRequestsQuery} />
+          <InputRequestsSection projectId={projectId} taskRunId={selectedTaskRunId} query={inputRequestsQuery} operationPending={operationPending} />
           <StepsSection query={stepsQuery} />
           <LogsSection query={logsQuery} />
           <ExecutionContextSection query={executionContextQuery} />
@@ -250,11 +257,13 @@ function TaskRunList({
   taskRuns,
   selectedTaskRunId,
   onSelect,
+  disabled,
 }: {
   query: ReturnType<typeof useInfiniteTaskRuns>
   taskRuns: TaskRun[]
   selectedTaskRunId?: string
   onSelect: (taskRunId: string) => void
+  disabled: boolean
 }) {
   if (query.isLoading) return <PanelState description="正在加载 TaskRun" loading />
   if (query.isError) return <QueryError error={query.error} resource="TaskRun 列表" />
@@ -271,6 +280,7 @@ function TaskRunList({
             type="button"
             className={`${styles.taskRunItem} ${taskRun.id === selectedTaskRunId ? styles.taskRunItemSelected : ''}`}
             aria-pressed={taskRun.id === selectedTaskRunId}
+            disabled={disabled}
             onClick={() => onSelect(taskRun.id)}
           >
             <span className={styles.taskRunItemHeader}>
@@ -485,10 +495,16 @@ function ExecutionContextDetails({ context }: { context: ExecutionContext }) {
   )
 }
 
-function InputRequestsReadOnly({
+function InputRequestsSection({
+  projectId,
+  taskRunId,
   query,
+  operationPending,
 }: {
+  projectId: string
+  taskRunId: string
   query: ReturnType<typeof useInputRequests>
+  operationPending: boolean
 }) {
   if (!query.data && !query.isLoading && !query.isError) return null
   const requests = query.data?.data ?? []
@@ -496,19 +512,53 @@ function InputRequestsReadOnly({
     <section className={styles.executionSection} aria-labelledby="execution-input-title">
       <div className={styles.executionSectionHeading}>
         <Title id="execution-input-title" level={5}>Input Request</Title>
-        <Text type="secondary">只读提示</Text>
+        <Text type="secondary">处理阻塞请求</Text>
       </div>
       {query.isLoading ? <PanelState description="正在加载输入请求" loading /> : null}
-      {query.isError ? <QueryError error={query.error} resource="Input Request" /> : null}
+      {query.isError ? <InputRequestQueryError error={query.error} /> : null}
       {!query.isLoading && !query.isError && requests.length === 0 ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无输入请求" />
       ) : null}
-      {requests.map((request) => <InputRequestItem key={request.id} request={request} />)}
+      {requests.map((request) => (
+        <InputRequestItem key={request.id} projectId={projectId} taskRunId={taskRunId} request={request} operationPending={operationPending} />
+      ))}
     </section>
   )
 }
 
-function InputRequestItem({ request }: { request: InputRequest }) {
+function InputRequestItem({
+  projectId,
+  taskRunId,
+  request,
+  operationPending,
+}: {
+  projectId: string
+  taskRunId: string
+  request: InputRequest
+  operationPending: boolean
+}) {
+  const [replyForm] = Form.useForm<{ answer: string }>()
+  const [rejectForm] = Form.useForm<{ reason: string }>()
+  const replyMutation = useReplyInputRequest(projectId, taskRunId)
+  const approveMutation = useApproveInputRequest(projectId, taskRunId)
+  const rejectMutation = useRejectInputRequest(projectId, taskRunId)
+  const mutationError = replyMutation.error ?? approveMutation.error ?? rejectMutation.error
+  const isMutating = operationPending || replyMutation.isPending || approveMutation.isPending || rejectMutation.isPending
+  const isHandled = request.status !== 'PENDING'
+
+  const handleReply = ({ answer }: { answer: string }) => {
+    replyMutation.mutate({ requestId: request.id, input: { answer: { value: answer.trim() } } })
+  }
+
+  const handleApprove = () => {
+    if (!window.confirm('确认批准该请求？')) return
+    approveMutation.mutate({ requestId: request.id, input: { reason: '' } })
+  }
+
+  const handleReject = ({ reason }: { reason: string }) => {
+    rejectMutation.mutate({ requestId: request.id, input: { reason: reason.trim() } })
+  }
+
   return (
     <div className={styles.inputRequestItem}>
       <Space size={6} wrap>
@@ -521,8 +571,20 @@ function InputRequestItem({ request }: { request: InputRequest }) {
           {request.options.map((option) => <Tag key={option.value}>{option.label}</Tag>)}
         </Space>
       ) : null}
+      {isHandled ? <Alert className={styles.executionAlert} type="success" showIcon title={handledRequestLabel(request.status)} description={request.resolvedAt ? `Resolved at: ${formatDateTime(request.resolvedAt)}` : undefined} /> : null}
+      {!isHandled && request.kind === 'INPUT' ? <Form form={replyForm} layout="vertical" onFinish={handleReply} preserve>
+        <Form.Item label="Response" name="answer" rules={[{ required: true, whitespace: true, message: 'Response is required' }]}><Input.TextArea rows={3} disabled={isMutating} /></Form.Item>
+        <Button type="primary" htmlType="submit" loading={replyMutation.isPending} disabled={isMutating}>Reply and continue</Button>
+      </Form> : null}
+      {!isHandled && request.kind === 'APPROVAL' ? <Space direction="vertical" style={{ width: '100%' }}>
+        <Button type="primary" onClick={handleApprove} loading={approveMutation.isPending} disabled={isMutating}>Approve</Button>
+        <Form form={rejectForm} layout="vertical" onFinish={handleReject} preserve>
+          <Form.Item label="Rejection reason" name="reason" rules={[{ required: true, whitespace: true, message: 'Rejection reason is required' }]}><Input.TextArea rows={3} disabled={isMutating} /></Form.Item>
+          <Button danger htmlType="submit" loading={rejectMutation.isPending} disabled={isMutating}>Reject</Button>
+        </Form>
+      </Space> : null}
+      {!isHandled && mutationError ? <InputRequestMutationError error={mutationError} /> : null}
       <Text type="secondary">创建时间：{formatDateTime(request.createdAt)}</Text>
-      <Text type="secondary">当前请求为只读记录</Text>
     </div>
   )
 }
@@ -530,6 +592,24 @@ function InputRequestItem({ request }: { request: InputRequest }) {
 function PanelState({ description, loading = false }: { description: string; loading?: boolean }) {
   if (loading) return <div className={styles.panelState}><Spin description={description} /></div>
   return <Empty className={styles.executionEmpty} image={Empty.PRESENTED_IMAGE_SIMPLE} description={description} />
+}
+
+function InputRequestQueryError({ error }: { error: Error | null }) {
+  const status = error instanceof ApiError ? error.status : undefined
+  const title = status === 403 ? 'No permission to view Input Requests' : status === 404 ? 'Input Request was not found' : status === 409 ? 'Input Request changed; refresh for the latest state' : status === 422 ? 'Input Request validation failed' : 'Input Request failed to load'
+  return <Alert className={styles.executionAlert} type={status === 403 ? 'warning' : 'error'} showIcon title={title} />
+}
+
+function InputRequestMutationError({ error }: { error: Error }) {
+  const status = error instanceof ApiError ? error.status : undefined
+  const title = status === 403 ? 'No permission to operate this request' : status === 404 ? 'Input Request was not found' : status === 409 ? 'Request may have been handled by another user; refresh before retrying' : status === 422 ? 'Submission validation failed; check and retry' : 'Operation failed; you can retry'
+  return <Alert className={styles.executionAlert} type="error" showIcon title={title} />
+}
+
+function handledRequestLabel(status: InputRequest['status']): string {
+  if (status === 'ANSWERED') return 'Answered (read-only)'
+  if (status === 'APPROVED') return 'Approved (read-only)'
+  return 'Rejected (read-only)'
 }
 
 function QueryError({ error, resource }: { error: Error | null; resource: string }) {

@@ -62,3 +62,6 @@ export type {
   WorkPackageFilters,
   WorkPackageStatus,
 } from './task-domain'
+export { canCancelTaskRun, canRetryTaskRun } from './taskRunCapabilities'
+export { canWorkPackageAction } from './workPackageCapabilities'
+export type { WorkPackageAction } from './workPackageCapabilities'

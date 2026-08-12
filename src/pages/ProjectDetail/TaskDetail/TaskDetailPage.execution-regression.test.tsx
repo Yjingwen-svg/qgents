@@ -11,7 +11,7 @@ const server = setupServer(...taskDomainHandlers)
 const projectId = 'project-browser'
 const runId = `orchestration-${projectId}-1`
 const workPackageId = `work-package-${projectId}-1`
-const taskRunId = `${workPackageId}-subtask-planner-run-1`
+const taskRunId = `${workPackageId}-subtask-developer-run-1`
 
 function renderPage(search = '') {
   const client = new QueryClient({
@@ -76,16 +76,13 @@ describe('TaskDetailPage visual structure regressions', () => {
     expect(screen.getAllByText(`任务 ID：${runId}`)[0].tagName).toBe('SPAN')
   })
 
-  it('does not load deep execution panel resources for the visual detail page', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
-    renderPage(`?workPackageId=${workPackageId}`)
+  it('keeps the task detail page free of the full execution record', async () => {
+    renderPage(`?workPackageId=${workPackageId}&taskRunId=${taskRunId}`)
 
     await waitFor(() => expect(screen.getByText('执行流程')).toBeInTheDocument())
-    const deepRequests = fetchSpy.mock.calls
-      .map(([input]) => String(input))
-      .filter((url) => /task-runs\/[^/?]+\/(steps|logs|input-requests)/.test(url))
-    expect(deepRequests).toHaveLength(0)
-    fetchSpy.mockRestore()
+    expect(screen.queryByText('Input Request')).not.toBeInTheDocument()
+    expect(screen.queryByText('Logs')).not.toBeInTheDocument()
+    expect(screen.queryByText('Execution Context')).not.toBeInTheDocument()
   })
 
   it('isolates a deliverable loading error without destroying the page structure', async () => {

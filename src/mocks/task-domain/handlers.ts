@@ -7,11 +7,12 @@ import type {
   TaskRun,
   UpdateWorkPackageInput,
 } from '@/types'
+import { canRetryTaskRun } from '@/types'
 import { createTaskDomainScenario, taskDomainScenarioNames, type TaskDomainScenario } from './fixtures'
 import {
-  canRetryTaskRun,
   InvalidStateTransitionError,
   transitionDeliverableStatus,
+  transitionTaskRunInputRequest,
   transitionTaskRunCancel,
   transitionWorkPackageStatus,
 } from './stateTransitions'
@@ -90,6 +91,13 @@ function errorResponse(error: unknown): HttpResponse<Record<string, unknown>> {
   )
 }
 
+function deliverableErrorResponse(status: 403 | 404 | 422, code: string, message: string): HttpResponse<Record<string, unknown>> {
+  return HttpResponse.json(
+    { error: { code, message, details: [] }, requestId: 'mock-request-id' },
+    { status },
+  ) as HttpResponse<Record<string, unknown>>
+}
+
 async function jsonObject(request: Request): Promise<Record<string, unknown>> {
   const body: unknown = await request.json()
   if (!body || typeof body !== 'object' || Array.isArray(body)) return {}
@@ -129,6 +137,15 @@ export const taskDomainHandlers = [
           requestId: 'mock-request-id',
         },
         { status: 422 },
+      ) as HttpResponse<Record<string, unknown>>
+    }
+    if (error === 'CONFLICT') {
+      return HttpResponse.json(
+        {
+          error: { code: 'INPUT_REQUEST_CONFLICT', message: 'Mock input request was handled elsewhere', details: [] },
+          requestId: 'mock-request-id',
+        },
+        { status: 409 },
       ) as HttpResponse<Record<string, unknown>>
     }
     return undefined
@@ -270,6 +287,34 @@ export const taskDomainHandlers = [
       updatedAt: new Date().toISOString(),
     }
     store.taskRuns.set(retry.id, retry)
+    const retrySteps = store.steps.get(taskRun.id)
+    if (retrySteps) {
+      store.steps.set(retry.id, retrySteps.map((step) => ({
+        ...step,
+        id: `${retry.id}-${step.id}`,
+        taskRunId: retry.id,
+      })))
+    }
+    const retryLogs = store.logs.get(taskRun.id)
+    if (retryLogs) {
+      store.logs.set(retry.id, retryLogs.map((log) => ({
+        ...log,
+        id: `${retry.id}-${log.id}`,
+        taskRunId: retry.id,
+      })))
+    }
+    const retryContext = store.executionContexts.get(taskRun.id)
+    if (retryContext) {
+      store.executionContexts.set(retry.id, { ...retryContext, id: `${retry.id}-context`, taskRunId: retry.id })
+    }
+    const retryRequests = store.inputRequests.get(taskRun.id)
+    if (retryRequests) {
+      store.inputRequests.set(retry.id, retryRequests.map((request) => ({
+        ...request,
+        id: `${retry.id}-${request.id}`,
+        taskRunId: retry.id,
+      })))
+    }
     return response(retry, 202)
   }),
 
@@ -325,18 +370,23 @@ export const taskDomainHandlers = [
         const body = await jsonObject(request)
         if (action === 'reply') {
           const answer = body as unknown as InputRequestAnswer
-          if (!answer.answer || typeof answer.answer.value !== 'string') {
+          if (!answer.answer || typeof answer.answer.value !== 'string' || answer.answer.value.trim().length === 0) {
             return errorResponse(new InvalidStateTransitionError('InputRequest', 'INVALID', action))
           }
           inputRequest.status = 'ANSWERED'
         } else {
           const decision = body as unknown as DecisionInput
-          if (typeof decision.reason !== 'string') {
+          if (typeof decision.reason !== 'string' || (action === 'reject' && decision.reason.trim().length === 0)) {
             return errorResponse(new InvalidStateTransitionError('InputRequest', 'INVALID', action))
           }
           inputRequest.status = action === 'approve' ? 'APPROVED' : 'REJECTED'
         }
         inputRequest.resolvedAt = new Date().toISOString()
+        const taskRun = findTaskRun(store, pathParam(params, 'taskRunId'))
+        if (taskRun && (taskRun.status === 'WAITING_INPUT' || taskRun.status === 'WAITING_APPROVAL')) {
+          taskRun.status = transitionTaskRunInputRequest(taskRun.status)
+          taskRun.updatedAt = inputRequest.resolvedAt
+        }
         return response(inputRequest, 202)
       },
     ),
@@ -353,7 +403,9 @@ export const taskDomainHandlers = [
 
   http.get('*/api/projects/:projectId/deliverables/:deliverableId', ({ params, request }) => {
     const store = getStore(pathParam(params, 'projectId'), request)
-    const deliverable = store.deliverables.get(pathParam(params, 'deliverableId'))
+    const deliverableId = pathParam(params, 'deliverableId')
+    if (deliverableId === 'forbidden') return deliverableErrorResponse(403, 'MOCK_FORBIDDEN', 'Forbidden')
+    const deliverable = store.deliverables.get(deliverableId)
     return deliverable ? response(deliverable) : errorResponse(new Error('not found'))
   }),
 
@@ -375,8 +427,8 @@ export const taskDomainHandlers = [
     const deliverable = store.deliverables.get(pathParam(params, 'deliverableId'))
     if (!deliverable) return errorResponse(new Error('not found'))
     const body = (await jsonObject(request)) as unknown as RejectDeliverableInput
-    if (typeof body.reason !== 'string' || body.reason.length === 0) {
-      return errorResponse(new InvalidStateTransitionError('Deliverable', deliverable.status, 'reject'))
+    if (typeof body.reason !== 'string' || body.reason.trim().length === 0) {
+      return deliverableErrorResponse(422, 'INVALID_REJECTION_REASON', 'Rejection reason is required')
     }
     try {
       deliverable.status = transitionDeliverableStatus(deliverable.status, 'reject')

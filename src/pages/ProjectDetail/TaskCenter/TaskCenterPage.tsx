@@ -38,8 +38,6 @@ const TASK_CENTER_SEARCH_PARAMS = new Set([
   'status',
   'groupId',
   'createdBy',
-  'deliveryType',
-  'repositoryId',
   'view',
   'panel',
 ])
@@ -127,7 +125,7 @@ export function TaskCenterPage() {
 
   function handleReset() {
     const next = new URLSearchParams(searchParams)
-    for (const key of ['status', 'createdBy', 'groupId', 'deliveryType', 'repositoryId']) next.delete(key)
+    for (const key of ['status', 'createdBy', 'groupId']) next.delete(key)
     setSearchParams(next, { replace: true })
   }
 
@@ -141,6 +139,12 @@ export function TaskCenterPage() {
 
   function handleViewDetails(runId: string) {
     navigate(PATHS.projectTaskDetail(projectId, runId), {
+      state: { from: `${location.pathname}${location.search}` },
+    })
+  }
+
+  function handleViewExecution(runId: string, taskRunId: string) {
+    navigate(PATHS.projectTaskRunDetail(projectId, runId, taskRunId), {
       state: { from: `${location.pathname}${location.search}` },
     })
   }
@@ -221,6 +225,7 @@ export function TaskCenterPage() {
           panel={panel}
           onPanelChange={handlePanelChange}
           onViewDetails={handleViewDetails}
+          onViewExecution={handleViewExecution}
         />
       </div>
     </ConfigProvider>

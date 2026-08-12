@@ -1,6 +1,9 @@
+import { canCancelTaskRun, canWorkPackageAction } from '@/types'
 import type { DeliverableStatus, TaskRunStatus, WorkPackageStatus } from '@/types'
+export { canRetryTaskRun } from '@/types'
 
-export type WorkPackageAction = 'start' | 'pause' | 'resume' | 'cancel'
+import type { WorkPackageAction } from '@/types'
+export type { WorkPackageAction } from '@/types'
 
 export class InvalidStateTransitionError extends Error {
   readonly code = 'INVALID_STATE_TRANSITION'
@@ -16,23 +19,25 @@ export function transitionWorkPackageStatus(
   status: WorkPackageStatus,
   action: WorkPackageAction,
 ): WorkPackageStatus {
-  if (action === 'start' && status === 'READY') return 'RUNNING'
-  if (action === 'pause' && status === 'RUNNING') return 'PAUSED'
-  if (action === 'resume' && status === 'PAUSED') return 'RUNNING'
-  if (action === 'cancel' && (status === 'PLANNING' || status === 'READY')) return 'CANCELLED'
-  if (action === 'cancel' && (status === 'RUNNING' || status === 'PAUSED')) return 'CANCELLING'
+  if (!canWorkPackageAction(status, action)) {
+    throw new InvalidStateTransitionError('WorkPackage', status, action)
+  }
+  if (action === 'start') return 'RUNNING'
+  if (action === 'pause') return 'PAUSED'
+  if (action === 'resume') return 'RUNNING'
+  if (status === 'PLANNING' || status === 'READY') return 'CANCELLED'
+  if (status === 'RUNNING' || status === 'PAUSED') return 'CANCELLING'
   throw new InvalidStateTransitionError('WorkPackage', status, action)
 }
 
 export function transitionTaskRunCancel(status: TaskRunStatus): TaskRunStatus {
-  if (status === 'QUEUED' || status === 'RUNNING' || status === 'WAITING_INPUT' || status === 'WAITING_APPROVAL') {
-    return 'CANCELLING'
-  }
+  if (canCancelTaskRun(status)) return 'CANCELLING'
   throw new InvalidStateTransitionError('TaskRun', status, 'cancel')
 }
 
-export function canRetryTaskRun(status: TaskRunStatus): boolean {
-  return status === 'FAILED' || status === 'CANCELLED' || status === 'BLOCKED'
+export function transitionTaskRunInputRequest(status: TaskRunStatus): TaskRunStatus {
+  if (status === 'WAITING_INPUT' || status === 'WAITING_APPROVAL') return 'RUNNING'
+  throw new InvalidStateTransitionError('TaskRun', status, 'resume after input request')
 }
 
 export function transitionDeliverableStatus(

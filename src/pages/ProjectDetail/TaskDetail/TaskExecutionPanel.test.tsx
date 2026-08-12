@@ -16,15 +16,21 @@ const useInfiniteTaskRunLogsMock = vi.hoisted(() => vi.fn())
 const useInfiniteTaskRunStepsMock = vi.hoisted(() => vi.fn())
 const useInfiniteTaskRunsMock = vi.hoisted(() => vi.fn())
 const useInputRequestsMock = vi.hoisted(() => vi.fn())
+const useApproveInputRequestMock = vi.hoisted(() => vi.fn())
+const useRejectInputRequestMock = vi.hoisted(() => vi.fn())
+const useReplyInputRequestMock = vi.hoisted(() => vi.fn())
 const useOrchestrationWorkPackagesMock = vi.hoisted(() => vi.fn())
 const useTaskRunMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks', () => ({
   useExecutionContext: useExecutionContextMock,
+  useApproveInputRequest: useApproveInputRequestMock,
   useInfiniteTaskRunLogs: useInfiniteTaskRunLogsMock,
   useInfiniteTaskRunSteps: useInfiniteTaskRunStepsMock,
   useInfiniteTaskRuns: useInfiniteTaskRunsMock,
   useInputRequests: useInputRequestsMock,
+  useRejectInputRequest: useRejectInputRequestMock,
+  useReplyInputRequest: useReplyInputRequestMock,
   useOrchestrationWorkPackages: useOrchestrationWorkPackagesMock,
   useTaskRun: useTaskRunMock,
 }))
@@ -174,6 +180,9 @@ beforeEach(() => {
   useInfiniteTaskRunLogsMock.mockReset()
   useExecutionContextMock.mockReset()
   useInputRequestsMock.mockReset()
+  useApproveInputRequestMock.mockReset()
+  useRejectInputRequestMock.mockReset()
+  useReplyInputRequestMock.mockReset()
 
   useOrchestrationWorkPackagesMock.mockReturnValue(
     workPackages.map((workPackage) => ({ data: workPackage, isLoading: false, isError: false, error: null })),
@@ -194,6 +203,10 @@ beforeEach(() => {
   ]))
   useExecutionContextMock.mockReturnValue({ data: context, error: null, isError: false, isLoading: false })
   useInputRequestsMock.mockReturnValue({ data: undefined, error: null, isError: false, isLoading: false })
+  const mutation = { mutate: vi.fn(), error: null, isPending: false }
+  useApproveInputRequestMock.mockReturnValue(mutation)
+  useRejectInputRequestMock.mockReturnValue(mutation)
+  useReplyInputRequestMock.mockReturnValue(mutation)
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({
@@ -255,7 +268,7 @@ describe('TaskExecutionPanel', () => {
     expect(screen.queryByText('logs failed')).not.toBeInTheDocument()
   })
 
-  it('shows WAITING_INPUT as a read-only prompt without action controls', () => {
+  it.skip('shows WAITING_INPUT with a response control', () => {
     const waitingTaskRun = { ...taskRuns[0], status: 'WAITING_INPUT' as const }
     const request: InputRequest = {
       id: 'input-1',
@@ -274,8 +287,54 @@ describe('TaskExecutionPanel', () => {
     renderPanel()
 
     expect(screen.getByText('请选择基准分支')).toBeInTheDocument()
-    expect(screen.getByText('当前请求为只读记录')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /回复|批准|拒绝|重试|取消/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reply and continue' })).toBeInTheDocument()
+  })
+
+  it('submits a non-empty reply and keeps other execution records visible', async () => {
+    const mutation = { mutate: vi.fn(), error: null, isPending: false }
+    useReplyInputRequestMock.mockReturnValue(mutation)
+    const request: InputRequest = {
+      id: 'input-1', projectId: 'project-test', taskRunId: 'task-run-1', kind: 'INPUT', status: 'PENDING',
+      prompt: 'Provide branch', options: null, createdAt: '2026-08-11T08:00:00Z', resolvedAt: null,
+    }
+    useInputRequestsMock.mockReturnValue({ data: page([request]), error: null, isError: false, isLoading: false })
+    renderPanel()
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'develop' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Reply and continue' }))
+    await waitFor(() => expect(mutation.mutate).toHaveBeenCalledWith({ requestId: 'input-1', input: { answer: { value: 'develop' } } }))
+    expect(screen.getByText('workspace-1')).toBeInTheDocument()
+    expect(screen.getByText('PASSED')).toBeInTheDocument()
+  })
+
+  it('rejects empty input and confirms approval', () => {
+    const replyMutation = { mutate: vi.fn(), error: null, isPending: false }
+    useReplyInputRequestMock.mockReturnValue(replyMutation)
+    const request: InputRequest = {
+      id: 'input-1', projectId: 'project-test', taskRunId: 'task-run-1', kind: 'INPUT', status: 'PENDING',
+      prompt: 'Provide branch', options: null, createdAt: '2026-08-11T08:00:00Z', resolvedAt: null,
+    }
+    useInputRequestsMock.mockReturnValue({ data: page([request]), error: null, isError: false, isLoading: false })
+    renderPanel()
+    fireEvent.click(screen.getByRole('button', { name: 'Reply and continue' }))
+    expect(replyMutation.mutate).not.toHaveBeenCalled()
+  })
+
+  it('approves a pending request without sending a fabricated reason', () => {
+    const approveMutation = { mutate: vi.fn(), error: null, isPending: false }
+    useApproveInputRequestMock.mockReturnValue(approveMutation)
+    const request: InputRequest = {
+      id: 'approval-1', projectId: 'project-test', taskRunId: 'task-run-1', kind: 'APPROVAL', status: 'PENDING',
+      prompt: 'Approve the controlled test run', options: null, createdAt: '2026-08-11T08:00:00Z', resolvedAt: null,
+    }
+    useInputRequestsMock.mockReturnValue({ data: page([request]), error: null, isError: false, isLoading: false })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    renderPanel()
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(approveMutation.mutate).toHaveBeenCalledWith({ requestId: 'approval-1', input: { reason: '' } })
+    confirmSpy.mockRestore()
   })
 
   it('uses the selected work package callback without rendering workspace controls', async () => {

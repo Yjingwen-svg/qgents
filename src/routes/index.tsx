@@ -15,6 +15,8 @@ import { CreateProjectPage } from '@/pages/CreateProject/CreateProjectPage'
 import { ProjectDetailLayout } from '@/pages/ProjectDetail/ProjectDetailLayout'
 import { RequirementChatPage } from '@/pages/ProjectDetail/RequirementChatPage'
 import { TaskDetailPage } from '@/pages/ProjectDetail/TaskDetail/TaskDetailPage'
+import { TaskRunDetailPage } from '@/pages/ProjectDetail/TaskRunDetail/TaskRunDetailPage'
+import { DeliverablesPage } from '@/pages/ProjectDetail/Deliverables/DeliverablesPage'
 import {
   OverviewPage,
   TasksPage,
@@ -69,7 +71,10 @@ export function AppRouter() {
                 <Route path="req-chat" element={<Navigate to="login" replace />} />
 
                 <Route path="tasks" element={<TasksPage />} />
+                <Route path="tasks/:runId/executions/:taskRunId" element={<TaskRunDetailPage />} />
                 <Route path="tasks/:runId" element={<TaskDetailPage />} />
+                <Route path="deliverables" element={<DeliverablesPage />} />
+                <Route path="deliverables/:deliverableId" element={<DeliverablesPage />} />
                 <Route path="workflow" element={<WorkflowPage />} />
                 <Route path="agents" element={<AgentsPage />} />
                 <Route path="skills" element={<SkillsPage />} />

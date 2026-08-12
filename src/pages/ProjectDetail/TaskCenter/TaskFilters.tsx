@@ -22,11 +22,11 @@ export function TaskFilters({ status, groupId, groupOptions, onStatusChange, onG
         <Select aria-label="需求群筛选" allowClear placeholder="全部" value={groupId} options={groupOptions} onChange={onGroupChange} className={styles.filterControl} />
       </Col>
       <Col xs={24} sm={12} lg={6}>
-        <Text type="secondary" className={styles.filterLabel}>交付类型</Text>
+        <Text type="secondary" className={styles.filterLabel}>交付类型（暂不可用）</Text>
         <Select aria-label="交付类型筛选" value="all" options={[{ value: 'all', label: '全部' }]} disabled className={styles.filterControl} />
       </Col>
       <Col xs={24} sm={12} lg={6}>
-        <Text type="secondary" className={styles.filterLabel}>仓库</Text>
+        <Text type="secondary" className={styles.filterLabel}>仓库（暂不可用）</Text>
         <Select aria-label="仓库筛选" value="all" options={[{ value: 'all', label: '全部' }]} disabled className={styles.filterControl} />
       </Col>
       <Col xs={24} sm={12} lg={6}>

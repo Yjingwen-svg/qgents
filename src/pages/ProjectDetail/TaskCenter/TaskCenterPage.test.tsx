@@ -171,6 +171,25 @@ describe('TaskCenterPage', () => {
     expect(screen.getAllByText('执行中').length).toBeGreaterThan(0)
   })
 
+  it('shows source ids and empty data states without fabricating task metrics', () => {
+    useInfiniteOrchestrationRunsMock.mockReturnValue({
+      data: { pages: [page([baseRun])], pageParams: [undefined] },
+      error: null,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage('/app/projects/project-test/tasks?runId=run-1&panel=detail')
+
+    expect(screen.getAllByText('group-project-test-login').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('demo-user').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('暂无统计').length).toBeGreaterThan(0)
+    expect(screen.getByText('暂无进度')).toBeInTheDocument()
+    expect(screen.getAllByText('暂无').length).toBeGreaterThan(0)
+  })
+
   it('passes the route projectId and URL filters to the query hook', async () => {
     useInfiniteOrchestrationRunsMock.mockReturnValue({
       data: { pages: [page([baseRun])], pageParams: [undefined] },
@@ -193,7 +212,7 @@ describe('TaskCenterPage', () => {
     )
 
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '状态筛选' }))
-    fireEvent.click((await screen.findAllByText('已完成'))[1])
+    fireEvent.click((await screen.findAllByText('已完成'))[0])
     await waitFor(() => {
       expect(screen.getByTestId('location-search')).toHaveTextContent('status=completed')
     })
@@ -291,7 +310,7 @@ describe('TaskCenterPage', () => {
       isLoading: false,
     })
 
-    renderPage('/app/projects/project-test/tasks?runId=run-1&panel=executions&workPackageId=wp-1&taskRunId=task-1&section=logs')
+    renderPage('/app/projects/project-test/tasks?runId=run-1&panel=executions&workPackageId=wp-1&taskRunId=task-1&section=logs&deliveryType=WEB_PAGE&repositoryId=repo-1')
 
     expect(screen.getAllByText('查看完整任务详情').length).toBeGreaterThan(0)
     await waitFor(() => {
@@ -300,7 +319,11 @@ describe('TaskCenterPage', () => {
       expect(screen.getByTestId('location-search')).not.toHaveTextContent('workPackageId=')
       expect(screen.getByTestId('location-search')).not.toHaveTextContent('taskRunId=')
       expect(screen.getByTestId('location-search')).not.toHaveTextContent('section=')
+      expect(screen.getByTestId('location-search')).not.toHaveTextContent('deliveryType=')
+      expect(screen.getByTestId('location-search')).not.toHaveTextContent('repositoryId=')
     })
+    expect(screen.getByRole('combobox', { name: '交付类型筛选' })).toBeDisabled()
+    expect(screen.getByRole('combobox', { name: '仓库筛选' })).toBeDisabled()
   })
 
   it('switches the three light summary tabs through the panel URL', async () => {

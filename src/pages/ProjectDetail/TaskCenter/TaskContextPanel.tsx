@@ -16,6 +16,7 @@ interface TaskContextPanelProps {
   panel: TaskCenterPanel
   onPanelChange: (panel: TaskCenterPanel) => void
   onViewDetails: (runId: string) => void
+  onViewExecution: (runId: string, taskRunId: string) => void
 }
 
 export function TaskContextPanel({
@@ -25,6 +26,7 @@ export function TaskContextPanel({
   panel,
   onPanelChange,
   onViewDetails,
+  onViewExecution,
 }: TaskContextPanelProps) {
   const detailQuery = useOrchestrationRun(projectId, summaryRun ? '' : runId ?? '')
   const run = summaryRun ?? detailQuery.data
@@ -43,7 +45,7 @@ export function TaskContextPanel({
       />
 
       {!run ? <PreviewState runId={runId} query={detailQuery} /> : (
-        <PreviewContent run={run} panel={panel} onViewDetails={onViewDetails} />
+        <PreviewContent run={run} panel={panel} onViewDetails={onViewDetails} onViewExecution={onViewExecution} />
       )}
     </aside>
   )
@@ -53,18 +55,26 @@ function PreviewContent({
   run,
   panel,
   onViewDetails,
+  onViewExecution,
 }: {
   run: OrchestrationRun
   panel: TaskCenterPanel
   onViewDetails: (runId: string) => void
+  onViewExecution: (runId: string, taskRunId: string) => void
 }) {
   return (
     <div className={styles.contextContent}>
       {panel === 'context' ? <ContextSummary run={run} /> : null}
       {panel === 'detail' ? <TaskSummary run={run} /> : null}
       {panel === 'executions' ? <ExecutionSummary run={run} /> : null}
-      <Button type="link" className={styles.previewDetailsButton} onClick={() => onViewDetails(run.id)}>
-        查看完整任务详情
+      <Button
+        type="link"
+        className={styles.previewDetailsButton}
+        onClick={() => panel === 'executions' && run.executionPreview?.latestTaskRunId
+          ? onViewExecution(run.id, run.executionPreview.latestTaskRunId)
+          : onViewDetails(run.id)}
+      >
+        {panel === 'executions' && run.executionPreview?.latestTaskRunId ? '查看完整执行记录' : '查看完整任务详情'}
       </Button>
     </div>
   )
@@ -105,7 +115,7 @@ function TaskSummary({ run }: { run: OrchestrationRun }) {
       <PreviewField label="标题" value={run.instruction} />
       <div className={styles.previewStatGrid}>
         <PreviewField label="状态" value={<TaskStatusTag status={run.status} />} />
-        <PreviewField label="进度" value={`${presentation.progressPercent}%`} />
+        <PreviewField label="进度" value={presentation.progressPercent === undefined ? '暂无进度' : `${presentation.progressPercent}%`} />
         <PreviewField label="交付类型" value={presentation.deliveryTypeLabel} />
         <PreviewField label="WorkPackage" value={`${run.workPackageIds.length} 个`} />
       </div>

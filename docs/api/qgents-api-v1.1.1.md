@@ -699,10 +699,38 @@ MR 详情的最小响应：
 - 前端临时约定：列表和详情均使用 `TaskRun` 响应；除 `id`、`projectId`、`orchestrationRunId`、`workPackageId`、`subtaskId`、`status`、`retryOfTaskRunId`、`createdAt`、`updatedAt` 外，Mock 可选返回 `subtaskTitle`、`agentNode`、`agentRole`、`startedAt`、`finishedAt`、`durationMs`、`artifactSummary` 与 `errorSummary`。
 - 为覆盖任务中心“执行记录”Tab 的轻量摘要，Mock 的 `OrchestrationRun` 可选返回 `executionPreview`，包含 `latestTaskRunId`、`latestTaskRunStatus`、`currentNode`、最近步骤、错误摘要和阻塞摘要；该对象不替代 TaskRun、Steps 正式接口，也不触发执行操作。
 - TaskRun 默认排序：服务端返回顺序，前端不重新排序；当前 Mock 按创建顺序返回。
-- retry 链路：通过 `retryOfTaskRunId` 只读展示来源，不在本阶段提供 retry 操作。
+- retry 链路：通过 `retryOfTaskRunId` 只读展示来源；执行详情页的 retry/cancel 操作仍复用正式接口与服务端状态转换。
 - Steps：使用 `cursor`/`limit` 分页，按服务端返回顺序展示；条目包含 `node`、`status`、`startedAt`、`finishedAt`、`durationMs` 和可选 `errorCode`。
 - Logs：使用 `cursor`/`limit` 分页，按服务端返回顺序展示；条目包含 `sequence`、`timestamp`、`level`、`node`（后端待确认）和 `content`。前端按纯文本展示 `content`，不解释为 Markdown/HTML。
 - ExecutionContext：只读字段为 `workspaceId`、`sandboxStatus`、`repositoryId`、`baseRef`、`headRef`、`startedAt`、`expiresAt`；不展示宿主机路径、容器控制入口、凭据或环境变量。
 - InputRequest：只读字段为 `kind`、`status`、`prompt`、`options`、`createdAt`；reply/approve/reject 留待后续阶段。
 - 交付物摘要：当前临时字段为 `artifactSummary`，后端需确认是否改为结构化交付物引用或摘要对象。
 - 后端待确认：TaskRun 列表与详情是否共用响应 Schema、Subtask 关联字段与角色字段、开始/结束时间和 duration 的正式命名、默认排序、日志 `node` 字段、空列表响应结构、sandboxStatus 正式枚举以及上述可选字段在非 Mock 环境中的兼容策略。
+
+### FE-API-009 InputRequest 展示与处理结果字段待确认
+
+- 发现日期：2026-08-12
+- 所属模块：TaskRun 执行记录 / InputRequest
+- 当前问题：v1.1.1 仅定义 `kind`、`status`、`prompt`、`options`、`createdAt`；本阶段交互还需要请求标题、请求说明、审批摘要、处理人、处理时间、回复内容和拒绝原因，但这些字段尚未在正式接口中定义。
+- 前端临时处理：请求标题按 `kind` 映射为展示文案；请求说明/审批摘要暂使用 `prompt` 展示；处理时间暂使用 `resolvedAt`；处理人、回复内容和拒绝原因不伪装为正式字段。
+- 当前前端 `DecisionInput` 将 `reason` 定义为必填，批准操作暂发送空字符串；后端需确认批准是否允许省略 `reason` 或补充正式输入字段。
+- 后端待确认：InputRequest 正式响应是否补充上述展示及处理结果字段，以及 reply/approve/reject 的正式请求体和响应 schema。
+- 状态：待后端确认
+
+### FE-API-011 交付中心页面能力待确认
+
+- 发现日期：2026-08-12
+- 所属模块：项目级交付中心列表、汇总侧栏与导出/上传入口
+- 当前问题：现有公开接口仅提供按 WorkPackage 查询 Deliverable、单个 Deliverable 详情及验收操作；未明确项目级交付物聚合列表、需求群分组摘要、提交者、检查/验收清单、仓库汇总状态、导出汇总和上传接口。
+- 前端临时处理：页面使用现有 WorkPackage、OrchestrationRun 与 Deliverable Query 在前端派生分组和基础计数；缺失字段显示“暂无”；导出和上传仅保留禁用布局入口并标记“接口待提供”。
+- 后端待确认：项目级 Deliverable list/summary schema、需求群和仓库聚合字段、检查及验收清单字段、导出接口、上传接口及权限/幂等约束。
+- 状态：待后端确认
+
+### FE-API-010 Deliverable 验收展示字段待确认
+
+- 发现日期：2026-08-12
+- 所属模块：交付中心、任务详情中的交付物摘要
+- 当前问题：Deliverable 正式响应未明确提供 WorkPackage 标题、仓库显示信息、检查摘要、验收处理人/时间及接受结果字段；当前前端仅使用正式 ID/状态字段，并对缺失字段显示“暂无”。
+- 前端临时处理：WorkPackage 标题通过现有 WorkPackage Query 获取；仓库展示 `repositoryId`，分支展示 `sourceRef`，检查摘要暂以 `diffId` 作为可用关联信息；不渲染 Diff、不执行合并或 MR 操作。
+- 后端待确认：Deliverable detail 的正式响应 schema 是否补充 `workPackage`、`repository`、`checksSummary`、`acceptedBy`、`acceptedAt`、`rejectedBy`、`rejectedAt` 及结构化验收结果。
+- 状态：待后端确认

@@ -16,6 +16,7 @@ export {
   useOrchestrationWorkPackages,
   useOrchestrationRun,
   useOrchestrationRuns,
+  useProjectDeliverables,
   usePauseWorkPackage,
   useRejectDeliverable,
   useRejectInputRequest,

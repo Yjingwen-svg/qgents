@@ -1,15 +1,20 @@
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Breadcrumb, Button, Result, Space, Spin, Tag, Typography } from 'antd'
 import { ArrowLeftOutlined, CheckCircleOutlined, ClockCircleOutlined, FileTextOutlined } from '@ant-design/icons'
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '@/api'
 import {
   useDeliverables,
-  useExecutionContext,
+  useCancelWorkPackage,
+  useInfiniteTaskRuns,
   useOrchestrationRun,
   useOrchestrationWorkPackages,
+  usePauseWorkPackage,
+  useResumeWorkPackage,
+  useStartWorkPackage,
 } from '@/hooks'
-import type { Deliverable, ExecutionContext, OrchestrationRun, TaskExecutionStage, WorkPackage } from '@/types'
+import { canWorkPackageAction } from '@/types'
+import type { Deliverable, OrchestrationRun, TaskExecutionStage, TaskRun, WorkPackage, WorkPackageAction } from '@/types'
 import { PATHS } from '@/routes/paths'
 import { TaskStatusTag } from '../TaskShared/TaskStatusTag'
 import { getTaskPresentation } from '../TaskShared/taskPresentation'
@@ -17,39 +22,25 @@ import { ORCHESTRATION_STATUS_META } from '../TaskShared/taskStatus'
 import styles from './TaskDetailPage.module.scss'
 
 const { Paragraph, Text, Title } = Typography
-const TASK_DETAIL_SEARCH_PARAMS = new Set(['workPackageId', 'taskRunId'])
-
 export function TaskDetailPage() {
   const { projectId = '', runId = '' } = useParams<{ projectId: string; runId: string }>()
   const navigate = useNavigate()
   const location = useLocation()
-  const [searchParams, setSearchParams] = useSearchParams()
 
   const runQuery = useOrchestrationRun(projectId, runId)
   const run = runQuery.data
-  const workPackageIds = run?.workPackageIds ?? []
+  const workPackageIds = useMemo(() => run?.workPackageIds ?? [], [run?.workPackageIds])
   const workPackageQueries = useOrchestrationWorkPackages(projectId, workPackageIds)
   const workPackages = useMemo(
     () => workPackageQueries.flatMap((query) => query.data ? [query.data] : []),
     [workPackageQueries],
   )
-  const requestedWorkPackageId = searchParams.get('workPackageId')?.trim() || undefined
-  const requestedTaskRunId = searchParams.get('taskRunId')?.trim() || undefined
-  const executionContextQuery = useExecutionContext(projectId, requestedTaskRunId ?? '')
-
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams)
-    let changed = false
-    for (const key of Array.from(next.keys())) {
-      if (!TASK_DETAIL_SEARCH_PARAMS.has(key)) {
-        next.delete(key)
-        changed = true
-      }
-    }
-    if (changed) setSearchParams(next, { replace: true })
-  }, [searchParams, setSearchParams])
-
-  const selectedWorkPackage = workPackages.find((workPackage) => workPackage.id === requestedWorkPackageId) ?? workPackages[0]
+  const refreshWorkPackage = useCallback((workPackageId: string) => {
+    const queryIndex = workPackageIds.indexOf(workPackageId)
+    const query = queryIndex >= 0 ? workPackageQueries[queryIndex] : undefined
+    if (query) void query.refetch()
+  }, [workPackageIds, workPackageQueries])
+  const selectedWorkPackage = workPackages[0]
   const deliverablesQuery = useDeliverables(projectId, selectedWorkPackage?.id ?? '')
   const deliverables = deliverablesQuery.data?.data ?? []
 
@@ -79,7 +70,15 @@ export function TaskDetailPage() {
             <Button aria-label="返回任务中心" type="text" icon={<ArrowLeftOutlined />} onClick={handleBackToCenter}>任务详情</Button>
             <div className={styles.topBarActions}>
               <Button onClick={() => navigate(PATHS.projectReqChat(projectId, run.groupId))}>返回需求群</Button>
-              {deliverables.length > 0 ? <Button type="primary">查看交付</Button> : null}
+              <Button
+                type="primary"
+                onClick={() => navigate(
+                  deliverables[0]
+                    ? PATHS.projectDeliverable(projectId, deliverables[0].id)
+                    : PATHS.projectDeliverables(projectId),
+                  { state: { from: `${location.pathname}${location.search}` } },
+                )}
+              >查看交付</Button>
             </div>
           </div>
           <header className={styles.taskHeader}>
@@ -100,14 +99,21 @@ export function TaskDetailPage() {
               <SummaryItem label="更新时间" value={formatDateTime(run.updatedAt)} />
             </div>
           </header>
-          <ExecutionFlow stages={run.executionPreview?.stages ?? []} />
+          <ExecutionFlow
+            projectId={projectId}
+            runId={run.id}
+            stages={run.executionPreview?.stages ?? []}
+            workPackages={workPackages}
+            onRefreshWorkPackage={refreshWorkPackage}
+            from={`${location.pathname}${location.search}`}
+          />
           <SharedContext run={run} deliverables={deliverables} />
-          <DevelopmentContext workPackage={selectedWorkPackage} context={executionContextQuery.data} summary={run.taskDetailSummary} />
-          <DeliverablesSummary query={deliverablesQuery} deliverables={deliverables} />
+          <DevelopmentContext workPackage={selectedWorkPackage} />
+          <DeliverablesSummary query={deliverablesQuery} deliverables={deliverables} projectId={projectId} from={`${location.pathname}${location.search}`} />
         </main>
 
         <aside className={styles.sideContent}>
-          <SourcePanel run={run} workPackage={selectedWorkPackage} context={executionContextQuery.data} />
+          <SourcePanel run={run} />
           <ExecutionChecklist stages={run.executionPreview?.stages ?? []} workPackages={workPackages} />
           <RoleReviewPanel run={run} />
           <NotePanel />
@@ -122,22 +128,112 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
   return <div className={styles.summaryMetaItem}><Text className={styles.label}>{label}</Text><Text className={styles.value}>{value}</Text></div>
 }
 
-function ExecutionFlow({ stages }: { stages: NonNullable<OrchestrationRun['executionPreview']>['stages'] }) {
+function ExecutionFlow({
+  projectId,
+  runId,
+  stages,
+  workPackages,
+  onRefreshWorkPackage,
+  from,
+}: {
+  projectId: string
+  runId: string
+  stages: NonNullable<OrchestrationRun['executionPreview']>['stages']
+  workPackages: WorkPackage[]
+  onRefreshWorkPackage: (workPackageId: string) => void
+  from: string
+}) {
+  const navigate = useNavigate()
+  const [taskRunsByWorkPackage, setTaskRunsByWorkPackage] = useState<Record<string, StageTaskRunQuery>>({})
+  const startMutation = useStartWorkPackage(projectId)
+  const pauseMutation = usePauseWorkPackage(projectId)
+  const resumeMutation = useResumeWorkPackage(projectId)
+  const cancelMutation = useCancelWorkPackage(projectId)
+  const handleTaskRuns = useCallback((workPackageId: string, result: StageTaskRunQuery) => {
+    setTaskRunsByWorkPackage((current) => ({ ...current, [workPackageId]: result }))
+  }, [])
+
+  function handleStageClick(taskRunId: string) {
+    navigate(PATHS.projectTaskRunDetail(projectId, runId, taskRunId), { state: { from } })
+  }
+
+  function handleWorkPackageAction(workPackageId: string, action: WorkPackageAction) {
+    if (action === 'pause' && !window.confirm('确认暂停该工作包？')) return
+    if (action === 'cancel' && !window.confirm('确认取消该工作包？服务端只会在安全检查点停止。')) return
+    const mutation = action === 'start' ? startMutation : action === 'pause' ? pauseMutation : action === 'resume' ? resumeMutation : cancelMutation
+    mutation.mutate(workPackageId)
+  }
+
   return (
     <section className={styles.section}>
       <div className={styles.sectionHeading}><Title level={4}>执行流程</Title></div>
       {stages.length === 0 ? <div className={styles.emptyCard}>暂无执行流程</div> : (
         <div className={styles.flowGrid}>
-          {stages.slice(0, 4).map((stage) => <ExecutionStageCard key={stage.id} stage={stage} />)}
+          {workPackages.map((workPackage) => (
+            <WorkPackageTaskRunsProbe
+              key={workPackage.id}
+              projectId={projectId}
+              workPackageId={workPackage.id}
+              onResult={handleTaskRuns}
+            />
+          ))}
+          {stages.slice(0, 4).map((stage) => {
+            const taskRun = workPackages
+              .flatMap((workPackage) => taskRunsByWorkPackage[workPackage.id]?.taskRuns ?? [])
+              .filter((candidate) => candidate.agentNode === stage.node)
+              .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
+            const taskRunsLoading = workPackages.some((workPackage) => !taskRunsByWorkPackage[workPackage.id])
+            const taskRunsError = workPackages.some((workPackage) => taskRunsByWorkPackage[workPackage.id]?.isError)
+            const stageWorkPackage = taskRun
+              ? workPackages.find((candidate) => candidate.id === taskRun.workPackageId)
+              : workPackages.length === 1 ? workPackages[0] : undefined
+            return (
+              <ExecutionStageCard
+                key={stage.id}
+                stage={stage}
+                taskRun={taskRun}
+                isLoading={taskRunsLoading}
+                hasError={taskRunsError}
+                onClick={taskRun ? () => handleStageClick(taskRun.id) : undefined}
+                workPackage={stageWorkPackage}
+                operationPending={isWorkPackageMutationPending(stageWorkPackage?.id, startMutation, pauseMutation, resumeMutation, cancelMutation)}
+                operationError={getWorkPackageMutationError(stageWorkPackage?.id, startMutation, pauseMutation, resumeMutation, cancelMutation)}
+                onWorkPackageAction={handleWorkPackageAction}
+                onRefreshWorkPackage={onRefreshWorkPackage}
+              />
+            )
+          })}
         </div>
       )}
     </section>
   )
 }
 
-function ExecutionStageCard({ stage }: { stage: NonNullable<OrchestrationRun['executionPreview']>['stages'][number] }) {
-  return (
-    <div className={`${styles.flowCard} ${stage.status === 'RUNNING' ? styles.flowCardCurrent : ''}`}>
+function ExecutionStageCard({
+  stage,
+  taskRun,
+  isLoading,
+  hasError,
+  onClick,
+  workPackage,
+  operationPending,
+  operationError,
+  onWorkPackageAction,
+  onRefreshWorkPackage,
+}: {
+  stage: NonNullable<OrchestrationRun['executionPreview']>['stages'][number]
+  taskRun?: TaskRun
+  isLoading: boolean
+  hasError: boolean
+  onClick?: () => void
+  workPackage?: WorkPackage
+  operationPending: boolean
+  operationError: Error | null
+  onWorkPackageAction: (workPackageId: string, action: WorkPackageAction) => void
+  onRefreshWorkPackage: (workPackageId: string) => void
+}) {
+  const content = (
+    <>
       <div className={styles.flowCardHeading}>
         <div className={styles.flowIcon}>{stage.node}</div>
         <Text className={styles.flowTitle}>{stage.title}</Text>
@@ -154,8 +250,86 @@ function ExecutionStageCard({ stage }: { stage: NonNullable<OrchestrationRun['ex
         <Tag color={stageStatusColor(stage.status)}>{stageStatusLabel(stage.status)}</Tag>
         <Text type="secondary">{formatDateTime(stage.finishedAt ?? stage.startedAt)}</Text>
       </div>
+      <Text type="secondary">{isLoading ? '正在查找执行记录' : hasError ? '执行记录暂不可用' : taskRun ? '查看当前执行记录' : '尚未开始'}</Text>
+      {workPackage ? <WorkPackageActions workPackage={workPackage} disabled={operationPending} error={operationError} onAction={onWorkPackageAction} onRefresh={onRefreshWorkPackage} /> : null}
+    </>
+  )
+
+  if (!onClick) return <div className={`${styles.flowCard} ${stage.status === 'RUNNING' ? styles.flowCardCurrent : ''}`}>{content}</div>
+  return <div role="button" tabIndex={0} className={`${styles.flowCard} ${styles.flowCardButton} ${stage.status === 'RUNNING' ? styles.flowCardCurrent : ''}`} onClick={onClick} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onClick() }}>{content}</div>
+}
+
+function WorkPackageActions({
+  workPackage,
+  disabled,
+  error,
+  onAction,
+  onRefresh,
+}: {
+  workPackage: WorkPackage
+  disabled: boolean
+  error: Error | null
+  onAction: (workPackageId: string, action: WorkPackageAction) => void
+  onRefresh: (workPackageId: string) => void
+}) {
+  const actions: Array<{ action: WorkPackageAction; label: string; danger?: boolean }> = [
+    { action: 'start', label: '启动' },
+    { action: 'pause', label: '暂停' },
+    { action: 'resume', label: '恢复' },
+    { action: 'cancel', label: '取消工作包', danger: true },
+  ]
+  return (
+    <div onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+      <Space wrap size={4}>
+        {actions.filter(({ action }) => canWorkPackageAction(workPackage.status, action)).map(({ action, label, danger }) => (
+          <Button key={action} size="small" danger={danger} disabled={disabled} onClick={() => onAction(workPackage.id, action)}>{label}</Button>
+        ))}
+      </Space>
+      {error ? <WorkPackageOperationError workPackageId={workPackage.id} error={error} onRefresh={onRefresh} /> : null}
     </div>
   )
+}
+
+function WorkPackageOperationError({ workPackageId, error, onRefresh }: { workPackageId: string; error: Error; onRefresh: (workPackageId: string) => void }) {
+  const status = error instanceof ApiError ? error.status : undefined
+  const title = status === 403 ? '暂无工作包操作权限' : status === 404 ? '工作包不存在' : status === 409 ? '工作包状态已变化，请刷新最新状态' : status === 422 ? '请求不合法' : '操作失败，可再次尝试'
+  return <Alert className={styles.executionAlert} type="error" showIcon title={title} action={status === 409 ? <Button type="link" size="small" onClick={() => onRefresh(workPackageId)}>刷新</Button> : undefined} />
+}
+
+type StageTaskRunQuery = { taskRuns: TaskRun[]; isError: boolean }
+
+function isWorkPackageMutationPending(
+  workPackageId: string | undefined,
+  ...mutations: Array<{ isPending: boolean; variables?: string }>
+): boolean {
+  return Boolean(workPackageId && mutations.some((mutation) => mutation.isPending && mutation.variables === workPackageId))
+}
+
+function getWorkPackageMutationError(
+  workPackageId: string | undefined,
+  ...mutations: Array<{ error: Error | null; variables?: string }>
+): Error | null {
+  return workPackageId ? mutations.find((mutation) => mutation.variables === workPackageId)?.error ?? null : null
+}
+
+function WorkPackageTaskRunsProbe({
+  projectId,
+  workPackageId,
+  onResult,
+}: {
+  projectId: string
+  workPackageId: string
+  onResult: (workPackageId: string, result: StageTaskRunQuery) => void
+}) {
+  const query = useInfiniteTaskRuns(projectId, workPackageId, { limit: 20 })
+  const taskRuns = useMemo(() => query.data?.pages.flatMap((page) => page.data) ?? [], [query.data])
+
+  useEffect(() => {
+    if (!query.data && !query.isError) return
+    onResult(workPackageId, { taskRuns, isError: query.isError })
+  }, [onResult, query.data, query.isError, taskRuns, workPackageId])
+
+  return null
 }
 
 function SharedContext({
@@ -172,7 +346,7 @@ function SharedContext({
       <div className={styles.contextGrid}>
         <InfoCard label="需求群讨论" value={summary?.requirementDiscussion ?? '暂无讨论摘要'} icon="▣" action />
         <InfoCard label="决策记录" value={summary?.decisionRecord ?? '暂无决策记录'} action />
-        <InfoCard label="已交付物" value={deliverables.length > 0 ? '需求群已交付的产出' : '暂无已交付物'} action />
+        <InfoCard label="已交付物" value={deliverables.length > 0 ? deliverables.map((deliverable) => deliverable.title).join('、') : '暂无已交付物'} action />
         <InfoCard label="项目 Skill / Memory" value={summary?.skillMemorySummary ?? '暂无关联摘要'} action />
       </div>
     </section>
@@ -181,30 +355,27 @@ function SharedContext({
 
 function DevelopmentContext({
   workPackage,
-  context,
-  summary,
 }: {
   workPackage?: WorkPackage
-  context?: ExecutionContext
-  summary?: OrchestrationRun['taskDetailSummary']
 }) {
   return (
     <section className={`${styles.section} ${styles.compactSection}`}>
       <div className={styles.sectionHeading}><Title level={4}>开发上下文</Title><Text type="secondary">只读</Text></div>
       {!workPackage ? <div className={styles.emptyCard}>当前暂无开发上下文</div> : (
         <div className={styles.developmentGrid}>
-          <InfoCard label="目标仓库" value={context?.repositoryId ?? workPackage.repositoryId} />
-          <InfoCard label="基础分支" value={context?.baseRef ?? workPackage.baseRef} />
-          <InfoCard label="工作分支" value={context?.headRef ?? workPackage.headRef} />
-          <InfoCard label="Workspace" value={context?.workspaceId ?? summary?.workspaceId ?? '暂无 Workspace'} />
-          <InfoCard label="Sandbox" value={context?.sandboxStatus ?? summary?.sandboxId ?? '暂无 Sandbox 状态'} />
+          <InfoCard label="目标仓库" value={workPackage.repositoryId} />
+          <InfoCard label="基础分支" value={workPackage.baseRef} />
+          <InfoCard label="工作分支" value={workPackage.headRef} />
+          <InfoCard label="Workspace" value="暂无" />
+          <InfoCard label="Sandbox" value="暂无" />
         </div>
       )}
     </section>
   )
 }
 
-function DeliverablesSummary({ query, deliverables }: { query: ReturnType<typeof useDeliverables>; deliverables: Deliverable[] }) {
+function DeliverablesSummary({ query, deliverables, projectId, from }: { query: ReturnType<typeof useDeliverables>; deliverables: Deliverable[]; projectId: string; from: string }) {
+  const navigate = useNavigate()
   return (
     <section className={`${styles.section} ${styles.compactSection}`}>
       <div className={styles.sectionHeading}><Title level={4}>交付产出</Title><Text type="secondary">仅展示摘要</Text></div>
@@ -213,7 +384,7 @@ function DeliverablesSummary({ query, deliverables }: { query: ReturnType<typeof
       {!query.isLoading && !query.isError && deliverables.length === 0 ? <div className={styles.emptyCard}>当前暂无交付产出</div> : null}
       <div className={styles.deliverableGrid}>
         {deliverables.map((deliverable) => (
-          <div className={styles.deliverableCard} key={deliverable.id}>
+          <div className={styles.deliverableCard} key={deliverable.id} role="button" tabIndex={0} onClick={() => navigate(PATHS.projectDeliverable(projectId, deliverable.id), { state: { from } })} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') navigate(PATHS.projectDeliverable(projectId, deliverable.id), { state: { from } }) }}>
             <Text strong><FileTextOutlined /> {deliverable.title}</Text>
             <Space wrap><Tag>{deliverableTypeLabel(deliverable.type)}</Tag><Tag color={deliverable.status === 'ACCEPTED' ? 'success' : 'processing'}>{deliverable.status}</Tag></Space>
             <Text type="secondary">{deliverable.summary ?? '暂无摘要'} · 版本 {deliverable.version}</Text>
@@ -228,7 +399,7 @@ function InfoCard({ label, value, icon, action = false }: { label: string; value
   return <div className={styles.infoCard}>{icon ? <span className={styles.infoIcon}>{icon}</span> : null}<Text className={styles.label}>{label}</Text><Text className={styles.value}>{value}</Text>{action ? <Text className={styles.infoAction}>查看</Text> : null}</div>
 }
 
-function SourcePanel({ run, workPackage, context }: { run: OrchestrationRun; workPackage?: WorkPackage; context?: ExecutionContext }) {
+function SourcePanel({ run }: { run: OrchestrationRun }) {
   const presentation = getTaskPresentation(run)
   return (
     <div className={styles.sideCard}>
@@ -240,7 +411,7 @@ function SourcePanel({ run, workPackage, context }: { run: OrchestrationRun; wor
       <Text className={styles.label}>发起人</Text>
       <Text className={styles.value}>{presentation.creatorLabel}</Text>
       <Text className={styles.label}>当前 Workspace/Sandbox</Text>
-      <Text type="secondary">{context ? `${context.workspaceId} · ${context.sandboxStatus}` : run.taskDetailSummary ? `${run.taskDetailSummary.workspaceId} · ${run.taskDetailSummary.sandboxId}` : workPackage ? `${workPackage.repositoryId} · ${workPackage.baseRef} → ${workPackage.headRef}` : '暂无来源摘要'}</Text>
+      <Text type="secondary">暂无</Text>
     </div>
   )
 }

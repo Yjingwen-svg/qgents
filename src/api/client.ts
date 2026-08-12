@@ -26,9 +26,13 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
   skipAuth?: boolean
 }
 
-function getStoredToken(): string | null {
+export function getStoredToken(): string | null {
   // TODO[后端联调]: 与 AuthContext / localStorage / cookie 策略对齐
   return localStorage.getItem('qgents_access_token')
+}
+
+export function getApiBaseUrl(): string {
+  return BASE_URL
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {

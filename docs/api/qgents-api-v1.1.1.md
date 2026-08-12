@@ -624,7 +624,7 @@ MR 详情的最小响应：
 - 所属模块：实时事件
 - 相关接口：GET /projects/{projectId}/events
 - 当前问题：接口要求 Bearer Token，但浏览器原生 EventSource 无法设置 Authorization Header。
-- 前端临时方案：Mock Event Bus 模拟事件推送。
+- 前端临时方案：使用 `@microsoft/fetch-event-source` 携带 `Authorization: Bearer <accessToken>` 建立 SSE；不使用原生 EventSource，不把 Token 放入 URL。
 - 后端需确认：
   1. 是否改用 Cookie 鉴权；
   2. 是否允许短期 SSE Ticket；

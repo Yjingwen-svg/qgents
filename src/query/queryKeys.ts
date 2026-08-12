@@ -34,6 +34,8 @@ export const queryKeys = {
       ['qgents', 'projects', projectId, 'task-runs', taskRunId] as const,
     steps: (projectId: string, taskRunId: string, filters: CursorPageFilters = {}) =>
       ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'steps', filters] as const,
+    stepsAll: (projectId: string, taskRunId: string) =>
+      ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'steps'] as const,
     stepsInfinite: (projectId: string, taskRunId: string, filters: Omit<CursorPageFilters, 'cursor'> = {}) =>
       ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'steps', 'infinite', filters] as const,
     logs: (projectId: string, taskRunId: string, cursor?: string, limit?: number) =>

@@ -18,6 +18,7 @@ import {
 } from '@ant-design/icons'
 import { PATHS, PROJECT_NAV } from '@/routes/paths'
 import { PROJECT_REQUIREMENTS } from './requirements'
+import { useProjectTaskDomainEvents } from '@/realtime'
 import './ProjectDetailLayout.scss'
 
 const { Sider, Content } = Layout
@@ -47,6 +48,7 @@ export function ProjectDetailLayout() {
   const isTaskDetail = /\/tasks\/[^/]+/.test(location.pathname)
   const [narrowNav, setNarrowNav] = useState(false)
   const projectName = resolveProjectName(projectId)
+  const eventStatus = useProjectTaskDomainEvents(projectId)
 
   useEffect(() => {
     if (!isTaskDetail) return
@@ -154,6 +156,20 @@ export function ProjectDetailLayout() {
       </Sider>
 
       <Content style={{ overflow: 'auto', background: token.colorBgBase }}>
+        {eventStatus === 'disconnected' ? (
+          <div
+            role="status"
+            style={{
+              padding: '6px 16px',
+              color: token.colorWarningText,
+              background: token.colorWarningBg,
+              borderBottom: `1px solid ${token.colorWarningBorder}`,
+              fontSize: 12,
+            }}
+          >
+            实时连接中断，数据可能延迟
+          </div>
+        ) : null}
         <Outlet />
       </Content>
     </Layout>

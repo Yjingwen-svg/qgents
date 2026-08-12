@@ -1,5 +1,7 @@
 import { NavLink, Outlet, useLocation, useParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { PATHS, PROJECT_NAV } from '@/routes/paths'
+import { projectApi } from '@/api'
 import { PROJECT_REQUIREMENTS } from './requirements'
 import './ProjectDetailPage.css'
 
@@ -10,7 +12,7 @@ import './ProjectDetailPage.css'
  *   /app/projects/:projectId/req-chat/:reqId
  */
 export function ProjectDetailLayout() {
-  const { projectId = 'demo-project', reqId } = useParams<{
+  const { projectId = '', reqId } = useParams<{
     projectId: string
     reqId?: string
   }>()
@@ -18,11 +20,13 @@ export function ProjectDetailLayout() {
   const onReqChat = location.pathname.includes('/req-chat')
   const activeReqId = reqId
 
-  /**
-   * 当前项目名称（从项目群聊进入后展示在导航上方）
-   * TODO[后端联调]: GET /projects/:id → name
-   */
-  const projectName = resolveProjectName(projectId)
+  // 从后端获取项目名
+  const { data: project } = useQuery({
+    queryKey: ['projects', projectId],
+    queryFn: () => projectApi.getById(projectId),
+    enabled: !!projectId,
+  })
+  const projectName = project?.name ?? projectId
 
   return (
     <div className="pd">
@@ -102,18 +106,6 @@ export function ProjectDetailLayout() {
       </div>
     </div>
   )
-}
-
-function resolveProjectName(projectId: string) {
-  // 框架阶段占位映射；联调后删除，改用接口返回的 name
-  const DEMO_NAMES: Record<string, string> = {
-    'demo-project': '电商后台重构项目',
-    'proj-qgents': 'Qgents',
-    'proj-pet': '宠影记',
-    'proj-ai': 'AI 决策系统',
-    'proj-campus': '校园助手',
-  }
-  return DEMO_NAMES[projectId] ?? projectId
 }
 
 function NavIcon({ id }: { id: string }) {

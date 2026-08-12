@@ -13,6 +13,8 @@ import { TeamDetailPage } from '@/pages/TeamDetail/TeamDetailPage'
 import { CreateProjectPage } from '@/pages/CreateProject/CreateProjectPage'
 import { ProjectDetailLayout } from '@/pages/ProjectDetail/ProjectDetailLayout'
 import { RequirementChatPage } from '@/pages/ProjectDetail/RequirementChatPage'
+import { NotFoundPage } from '@/pages/NotFoundPage'
+import { ForbiddenPage } from '@/pages/ForbiddenPage'
 import {
   OverviewPage,
   TasksPage,
@@ -75,7 +77,13 @@ export function AppRouter() {
                 <Route path="members" element={<MembersPage />} />
                 <Route path="settings" element={<SettingsPage />} />
               </Route>
+
+              {/* 已登录用户 → 404 */}
+              <Route path="*" element={<NotFoundPage />} />
             </Route>
+
+            {/* 403 页面 */}
+            <Route path="/403" element={<ForbiddenPage />} />
           </Route>
 
           <Route path="/" element={<Navigate to={PATHS.LOGIN} replace />} />

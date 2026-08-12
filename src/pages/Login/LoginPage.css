@@ -201,6 +201,17 @@
   border-radius: 2px;
 }
 
+/* —— 错误提示 —— */
+.login-card__error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #ef4444;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
 .login-card__form {
   display: flex;
   flex-direction: column;

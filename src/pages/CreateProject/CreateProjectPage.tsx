@@ -1,31 +1,43 @@
-import { type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { PATHS } from '@/routes/paths'
 import { projectApi } from '@/api'
 import './CreateProjectPage.css'
 
 /**
- * 创建项目页（框架）
+ * 创建项目页 —— 对齐接口文档 v1.1.4 §5.2
  *
- * 入口：
- * 1. 个人中心 →「创建项目」
- * 2. 团队详情（查看详情）→「创建项目」
- *
- * TODO[后端联调]:
- * - projectApi.create({ teamId, name, gitRepoUrl, autoCreateRepo })
- * - 创建成功后跳转项目详情 PATHS.projectReqChat(projectId)
- * 当前不实现表单提交业务，仅保留路由与壳
+ * POST /teams/{teamId}/projects
+ * 入口：团队详情页 →「创建项目」、个人中心 →「创建项目」
  */
 export function CreateProjectPage() {
-  const { teamId = 'demo-team' } = useParams<{ teamId: string }>()
+  const { teamId = '' } = useParams<{ teamId: string }>()
   const navigate = useNavigate()
 
-  function handleSubmit(e: FormEvent) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    // TODO: await projectApi.create(...)
-    void projectApi
-    // 框架阶段：提交后回到团队详情，便于继续联调
-    navigate(PATHS.teamDetail(teamId))
+    if (!name.trim()) return
+    setError(null)
+    setSubmitting(true)
+
+    try {
+      const project = await projectApi.create({
+        teamId,
+        name: name.trim(),
+        description: description.trim() || undefined,
+      })
+      // 创建成功后跳转到项目需求群聊
+      navigate(PATHS.projectReqChat(project.id, 'login'), { replace: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '创建项目失败，请重试')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -40,29 +52,56 @@ export function CreateProjectPage() {
       </p>
 
       <form className="create-project__card" onSubmit={handleSubmit}>
-        {/* TODO: 项目名称、简介、绑定 Git / 自动新建仓库 */}
+        {error && (
+          <div className="create-project__error" role="alert">
+            {error}
+          </div>
+        )}
+
         <label className="create-project__field">
           <span>项目名称 *</span>
-          <input placeholder="例如：Qgents Web" disabled />
+          <input
+            placeholder="例如：Qgents Web"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
         </label>
 
         <label className="create-project__field">
           <span>项目简介</span>
-          <textarea placeholder="描述项目用途（待实现）" rows={3} disabled />
+          <textarea
+            placeholder="描述项目用途与协作方向"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+          />
         </label>
 
         <label className="create-project__field">
           <span>Git 仓库</span>
-          <input placeholder="已有仓库 URL，或留空由平台自动创建（待实现）" disabled />
+          <input
+            placeholder="已有仓库 URL，或留空由平台自动创建"
+            disabled
+          />
+          <p className="create-project__hint" style={{ fontSize: 12, color: '#94a3b8', margin: '4px 0 0' }}>
+            仓库绑定将在后续版本支持，当前由平台自动创建
+          </p>
         </label>
 
         <div className="create-project__actions">
-          <Link to={PATHS.teamDetail(teamId)} className="create-project__btn create-project__btn--ghost">
+          <Link
+            to={PATHS.teamDetail(teamId)}
+            className="create-project__btn create-project__btn--ghost"
+          >
             取消
           </Link>
-          {/* 框架阶段按钮可点，仅走路由回跳，不写真实创建逻辑 */}
-          <button type="submit" className="create-project__btn create-project__btn--primary">
-            创建项目
+          <button
+            type="submit"
+            className="create-project__btn create-project__btn--primary"
+            disabled={submitting || !name.trim()}
+          >
+            {submitting ? '创建中…' : '创建项目'}
           </button>
         </div>
       </form>

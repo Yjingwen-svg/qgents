@@ -1,15 +1,20 @@
-/** 团队角色：P0 至少 owner / member 两级 */
-export type TeamRole = 'owner' | 'member'
+/**
+ * 团队相关类型 —— 对齐接口文档 v1.1.4 §3.1 §5.1
+ */
+
+/** 团队角色 */
+export type TeamRole = 'TEAM_OWNER' | 'TEAM_MEMBER'
 
 export interface Team {
   id: string
   name: string
   description?: string
   avatarUrl?: string
-  /** 成立时间，创建后由后端生成 */
   createdAt?: string
-  inviteCode?: string
+  /** 当前用户在团队中的角色 */
   myRole?: TeamRole
+  /** 团队成员数 */
+  memberCount?: number
 }
 
 export interface TeamMember {
@@ -20,17 +25,31 @@ export interface TeamMember {
   avatarUrl?: string
 }
 
+/** POST /teams 请求体 */
 export interface CreateTeamPayload {
   name: string
   description?: string
-  /** 头像上传后得到的 URL / fileId，具体以后端为准 */
-  avatarFileId?: string
-  /** 初始邀请成员（Github 邮箱），一行一个 */
-  inviteEmails?: string[]
-  /** 邀请默认角色 */
-  inviteRole?: TeamRole | 'developer'
 }
 
-export interface JoinTeamPayload {
-  inviteCode: string
+/** POST /teams/{teamId}/invitations 请求体 */
+export interface CreateInvitationPayload {
+  email: string
+  role: TeamRole
+  expiresInDays?: number
+}
+
+/** 团队邀请 */
+export interface TeamInvitation {
+  id: string
+  email: string
+  role: TeamRole
+  status: 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED'
+  createdAt: string
+  expiresAt: string
+}
+
+/** POST /team-invitations/{token}/accept 响应 */
+export interface AcceptInvitationResponse {
+  teamId: string
+  teamName: string
 }

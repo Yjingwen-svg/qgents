@@ -1,42 +1,71 @@
 import { request } from './client'
-import type { AuthTokens, LoginPayload, RegisterPayload, User } from '@/types'
+import type {
+  LoginPayload,
+  RegisterPayload,
+  AuthResponse,
+  RefreshResponse,
+  User,
+} from '@/types'
 
 /**
- * 账号 / 登录态相关 API
- * 对应后端：账号体系、Session/JWT
+ * 认证接口 —— 对齐接口文档 v1.1.4 §4
+ *
+ * RSA 公钥不再通过接口动态拉取，改为前端硬编码。
+ * 见 src/utils/rsaConfig.ts
  */
 export const authApi = {
-  /** POST /auth/login */
+  /** POST /auth/login — 邮箱密码登录 */
   login(payload: LoginPayload) {
-    return request<{ user: User; tokens: AuthTokens }>('/auth/login', {
+    return request<AuthResponse>('/auth/login', {
       method: 'POST',
       body: payload,
       skipAuth: true,
     })
   },
 
-  /** POST /auth/register */
+  /** POST /auth/register — 邮箱注册 */
   register(payload: RegisterPayload) {
-    return request<{ user: User; tokens: AuthTokens }>('/auth/register', {
+    return request<AuthResponse>('/auth/register', {
       method: 'POST',
       body: payload,
       skipAuth: true,
     })
   },
 
-  /** GET /auth/me — 刷新登录态后拉取当前用户 */
-  me() {
-    return request<User>('/auth/me')
+  /** POST /auth/refresh — 用 refreshToken 换新的 accessToken */
+  refresh(refreshToken: string) {
+    return request<RefreshResponse>('/auth/refresh', {
+      method: 'POST',
+      body: { refreshToken },
+      skipAuth: true,
+    })
   },
 
-  /** POST /auth/logout */
-  logout() {
-    return request<void>('/auth/logout', { method: 'POST' })
+  /** GET /me — 获取当前用户信息 */
+  me() {
+    return request<User>('/me')
+  },
+
+  /** POST /auth/logout — 登出，使当前 refreshToken 失效 */
+  logout(refreshToken?: string) {
+    return request<void>('/auth/logout', {
+      method: 'POST',
+      body: refreshToken ? { refreshToken } : undefined,
+    })
+  },
+
+  /** POST /auth/password-reset-requests — 发起找回密码邮件 */
+  resetPasswordRequest(email: string) {
+    return request<void>('/auth/password-reset-requests', {
+      method: 'POST',
+      body: { email },
+      skipAuth: true,
+    })
   },
 
   /**
-   * TODO[后端联调]: GitHub OAuth
-   * 前端跳转到后端提供的授权 URL，回调后落 Token
+   * GitHub OAuth 跳转地址
+   * 接口文档标注：不属于本期必需能力，仅预留
    */
   getGithubOAuthUrl() {
     return `${import.meta.env.VITE_API_BASE_URL ?? '/api'}/auth/oauth/github`

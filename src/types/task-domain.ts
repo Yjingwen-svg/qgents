@@ -60,6 +60,7 @@ export type TaskRunStatus =
   | 'SUCCEEDED'
   | 'CANCELLING'
   | 'CANCELLED'
+  | 'SKIPPED'
 
 export type TaskRunStepStatus = 'PENDING' | 'RUNNING' | 'PASSED' | 'FAILED' | 'SKIPPED' | 'CANCELLED'
 
@@ -217,6 +218,12 @@ export interface TaskRun {
   subtaskTitle?: string | null
   agentNode?: AgentNodeRole | null
   agentRole?: string | null
+  /** FE-API-WORKFLOW-001：工作流只读页临时展示字段，待后端补充正式关联 DTO。 */
+  agentId?: string | null
+  skillNames?: string[]
+  testsetNames?: string[]
+  currentStep?: string | null
+  waitingMessage?: string | null
   startedAt?: string | null
   finishedAt?: string | null
   durationMs?: number | null

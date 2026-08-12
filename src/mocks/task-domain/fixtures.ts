@@ -15,6 +15,12 @@ import type { TaskDomainState } from './store'
 
 const timestamp = '2026-08-11T08:00:00Z'
 
+const workflowAgentIds: Record<'PLANNER' | 'DEVELOPER' | 'TESTER', string> = {
+  PLANNER: 'agent-system-planner',
+  DEVELOPER: 'agent-private-backend',
+  TESTER: 'agent-idle-tester',
+}
+
 export const taskDomainScenarioNames = [
   'QUEUED',
   'PLANNING',
@@ -122,6 +128,11 @@ function createBaseState(projectId: string): TaskDomainState {
         subtaskTitle: `${role} step`,
         agentNode: role,
         agentRole: role,
+        agentId: role in workflowAgentIds ? workflowAgentIds[role as keyof typeof workflowAgentIds] : null,
+        skillNames: role === 'TESTER' ? [] : role === 'PLANNER' ? ['需求拆解'] : ['代码实现'],
+        testsetNames: role === 'TESTER' ? ['登录接口测试集'] : [],
+        currentStep: `${role} step`,
+        waitingMessage: taskRunStatus === 'WAITING_INPUT' ? '等待用户补充输入' : taskRunStatus === 'WAITING_APPROVAL' ? '等待审批结果' : null,
         startedAt: subtaskIndex === 2 ? null : timestamp,
         finishedAt: subtaskIndex === 0 ? timestamp : null,
         durationMs: subtaskIndex === 0 ? 18_000 : null,
@@ -445,6 +456,11 @@ export function addCreatedOrchestrationRunResources(
     subtaskTitle: subtask.title,
     agentNode: 'DEVELOPER',
     agentRole: 'DEVELOPER',
+    agentId: 'agent-private-backend',
+    skillNames: ['代码实现'],
+    testsetNames: [],
+    currentStep: subtask.title,
+    waitingMessage: isAuto ? '等待用户补充输入' : null,
     startedAt: isAuto ? createdAt : null,
     finishedAt: null,
     durationMs: null,

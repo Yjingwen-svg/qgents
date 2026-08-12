@@ -1,0 +1,73 @@
+.page { min-height: 100%; padding: 28px 32px 40px; color: #152650; background: #fff; }
+.loading { display: grid; min-height: 360px; place-items: center; }
+.header { margin-bottom: 20px; }
+.titleLine { display: flex; align-items: center; gap: 10px; color: #1769d2; }
+.title { margin: 0 !important; color: #152650 !important; }
+.subtitle { max-width: 1000px; margin: 6px 0 0 !important; color: #687da3 !important; line-height: 1.7; }
+.runBar { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; border: 1px solid #e0e8f2; background: #f8fafd; }
+.runBar :global(.ant-card-body) { display: flex; align-items: center; width: 100%; gap: 14px; padding: 14px 18px; }
+.runLabel { display: flex; align-items: center; gap: 7px; color: #314d7d; font-weight: 600; white-space: nowrap; }
+.runSelect { min-width: 360px; max-width: 680px; }
+.runHint { margin-left: auto; color: #667b9e; white-space: nowrap; }
+.alert { margin-bottom: 12px; }
+.inlineLoading { display: flex; align-items: center; gap: 8px; margin: 12px 0; color: #60759a; }
+.workflowLayout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: 475px; border: 1px solid #dfe7f1; border-radius: 8px; overflow: hidden; }
+.canvasPane { min-width: 0; background: linear-gradient(#fff, #fbfdff); }
+.flowScroll { overflow-x: auto; padding: 82px 34px 70px; }
+.flowTrack { display: flex; align-items: center; justify-content: center; min-width: 870px; }
+.flowItem { display: flex; align-items: center; }
+.nodeButton { display: flex; flex-direction: column; width: 148px; min-height: 176px; padding: 15px 13px; color: #18315f; text-align: left; background: #fff; border: 1px solid #cbd8e8; border-radius: 8px; box-shadow: 0 5px 16px rgba(33, 69, 113, .08); cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.nodeButton:hover { border-color: #4b8dff; box-shadow: 0 7px 20px rgba(43, 111, 213, .16); transform: translateY(-2px); }
+.nodeSelected { border: 2px solid #347eff; box-shadow: 0 0 0 3px rgba(52, 126, 255, .12); }
+.nodeTopline { display: flex; align-items: center; gap: 6px; color: #327be4; font-size: 11px; }
+.nodeIcon { display: grid; width: 28px; height: 28px; color: #176ad6; background: #edf5ff; border-radius: 7px; place-items: center; font-size: 16px; }
+.gateIcon { color: #ad7410; background: #fff6df; }
+.nodeKind { color: #7990b6; }
+.nodeLabel { margin-top: 15px; color: #163369; font-size: 16px; font-weight: 650; }
+.nodeAgent { min-height: 36px; margin-top: 8px; color: #6a80a6; font-size: 12px; line-height: 1.5; }
+.nodeStatus { margin-top: auto; }
+.statusTag { margin: 0; border: 0; font-size: 12px; }
+.status_NOT_STARTED { color: #7387a7; background: #f0f3f7; }
+.status_PLANNING, .status_QUEUED { color: #586e96; background: #eef3fa; }
+.status_RUNNING { color: #07895e; background: #e7f8ef; }
+.status_WAITING_INPUT, .status_WAITING_APPROVAL { color: #a36a00; background: #fff4d7; }
+.status_COMPLETED { color: #087dce; background: #e7f3ff; }
+.status_FAILED { color: #c23838; background: #ffeded; }
+.status_CANCELLED, .status_SKIPPED { color: #6e7d95; background: #eef1f5; }
+.connector { display: grid; width: 48px; color: #93a9c5; place-items: center; }
+.runSummary { display: flex; gap: 12px; margin: 0 32px 20px; padding: 12px 14px; color: #5f759b; background: #f7faff; border: 1px solid #e3ebf5; border-radius: 6px; }
+.runSummary span:first-child { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; color: #34598d; font-weight: 600; }
+.emptyRun { margin: 20px 32px -55px; color: #7990b3; }
+.detailPane { min-width: 0; padding: 22px 20px; border-left: 1px solid #dfe7f1; background: #fff; }
+.detailHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.detailEyebrow { display: block; color: #7890b4; font-size: 12px; }
+.detailTitle { margin: 4px 0 0 !important; color: #193362 !important; }
+.detailDescription { margin: 14px 0 20px !important; color: #667c9f !important; line-height: 1.65; }
+.detailSection { padding: 8px 0; border-top: 1px solid #edf1f6; border-bottom: 1px solid #edf1f6; }
+.detailRow { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 10px; padding: 9px 0; font-size: 13px; }
+.detailLabel { color: #8094b3; }
+.detailValue { min-width: 0; color: #294574; word-break: break-word; }
+.agentValue { display: inline-flex; align-items: center; gap: 7px; }
+.emptyValue { color: #9aabc2; }
+.detailAlert { margin-top: 12px; }
+.executionLink { display: flex; align-items: center; gap: 7px; margin-top: 20px; padding: 0; color: #176bd6; background: transparent; border: 0; cursor: pointer; }
+
+@media (max-width: 1199px) {
+  .workflowLayout { grid-template-columns: 1fr; }
+  .detailPane { border-top: 1px solid #dfe7f1; border-left: 0; }
+}
+
+@media (max-width: 767px) {
+  .page { padding: 20px 14px 28px; }
+  .runBar :global(.ant-card-body) { align-items: stretch; flex-direction: column; }
+  .runSelect { width: 100%; min-width: 0; max-width: none; }
+  .runHint { margin-left: 0; }
+  .workflowLayout { min-height: 0; }
+  .flowScroll { overflow-x: visible; padding: 30px 18px; }
+  .flowTrack { min-width: 0; flex-direction: column; }
+  .flowItem { flex-direction: column; width: 100%; }
+  .nodeButton { width: min(100%, 320px); min-height: 145px; }
+  .connector { width: auto; height: 34px; transform: rotate(90deg); }
+  .runSummary { margin: 0 18px 18px; }
+  .emptyRun { margin: 18px; }
+}

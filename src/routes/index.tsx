@@ -18,10 +18,10 @@ import { TaskDetailPage } from '@/pages/ProjectDetail/TaskDetail/TaskDetailPage'
 import { TaskRunDetailPage } from '@/pages/ProjectDetail/TaskRunDetail/TaskRunDetailPage'
 import { DeliverablesPage } from '@/pages/ProjectDetail/Deliverables/DeliverablesPage'
 import { AgentTeamPage } from '@/pages/ProjectDetail/AgentTeam/AgentTeamPage'
+import { WorkflowViewerPage } from '@/pages/ProjectDetail/Workflow/WorkflowViewerPage'
 import {
   OverviewPage,
   TasksPage,
-  WorkflowPage,
   SkillsPage,
   MemoryPage,
   CodePage,
@@ -75,7 +75,7 @@ export function AppRouter() {
                 <Route path="tasks/:runId" element={<TaskDetailPage />} />
                 <Route path="deliverables" element={<DeliverablesPage />} />
                 <Route path="deliverables/:deliverableId" element={<DeliverablesPage />} />
-                <Route path="workflow" element={<WorkflowPage />} />
+                <Route path="workflow" element={<WorkflowViewerPage />} />
                 <Route path="agents" element={<AgentTeamPage />} />
                 <Route path="skills" element={<SkillsPage />} />
                 <Route path="memory" element={<MemoryPage />} />

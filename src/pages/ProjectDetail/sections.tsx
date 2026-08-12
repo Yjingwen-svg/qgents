@@ -4,7 +4,6 @@ import { Spin } from 'antd'
 import { PROJECT_NAV } from '@/routes/paths'
 import { projectApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
-import './ProjectDetailPage.css'
 
 /**
  * 项目详情其它导航子页的统一占位壳

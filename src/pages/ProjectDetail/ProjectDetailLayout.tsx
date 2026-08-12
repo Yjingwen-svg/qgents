@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { PATHS, PROJECT_NAV } from '@/routes/paths'
 import { projectApi } from '@/api'
 import { PROJECT_REQUIREMENTS } from './requirements'
-import './ProjectDetailPage.css'
+import './ProjectDetailLayout.scss'
 
 /**
  * 项目详情布局：固定左侧导航，右侧为子路由 Outlet

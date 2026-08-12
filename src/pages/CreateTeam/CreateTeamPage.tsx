@@ -5,11 +5,6 @@ import { useAuth } from '@/context/AuthContext'
 import { teamApi } from '@/api'
 import './CreateTeamPage.css'
 
-<<<<<<< HEAD
-const { Title, Text } = Typography
-const { TextArea } = Input
-
-=======
 /**
  * 创建新团队 —— 对齐接口文档 v1.1.4 §5.1
  *
@@ -17,7 +12,6 @@ const { TextArea } = Input
  * 创建者自动成为 TEAM_OWNER
  * 邀请成员是后续操作（POST /teams/{teamId}/invitations），创建后跳团队详情再操作
  */
->>>>>>> f0eba597971fe0d9fbada5b95a318b616153d1c7
 export function CreateTeamPage() {
   const navigate = useNavigate()
   const { setHasTeam } = useAuth()
@@ -119,51 +113,6 @@ export function CreateTeamPage() {
             className="create-team__btn create-team__btn--ghost"
             onClick={() => navigate(PATHS.MY_TEAMS)}
           >
-<<<<<<< HEAD
-            <Input placeholder="例如：前端攻坚小组" />
-          </Form.Item>
-
-          <Form.Item label="团队简介" name="description">
-            <TextArea placeholder="描述团队用途、协作方向" rows={3} />
-          </Form.Item>
-
-          <Form.Item label="团队成立时间">
-            <Input placeholder="创建完成自动生成日期" disabled />
-          </Form.Item>
-
-          <Form.Item label="邀请初始成员 (Github 邮箱)" name="inviteEmails">
-            <TextArea placeholder="填入对方邮箱，一行一个；发送邮件邀请加入" rows={4} />
-          </Form.Item>
-
-          <Form.Item label="邀请角色" name="inviteRole" initialValue="Developer">
-            <Space.Compact style={{ width: '100%' }}>
-              <Form.Item name="inviteRole" noStyle initialValue="Developer">
-                <Select
-                  style={{ width: '40%' }}
-                  options={[
-                    { value: 'Developer', label: 'Developer' },
-                    { value: 'member', label: 'Member' },
-                    { value: 'owner', label: 'Owner' },
-                  ]}
-                />
-              </Form.Item>
-              <Button type="default" style={{ width: '60%' }} disabled>
-                发送邀请
-              </Button>
-            </Space.Compact>
-          </Form.Item>
-
-          <Form.Item style={{ marginBottom: 0 }}>
-            <Space>
-              <Button onClick={() => navigate(PATHS.MY_TEAMS)}>取消</Button>
-              <Button type="primary" htmlType="submit" loading={submitting}>
-                创建团队
-              </Button>
-            </Space>
-          </Form.Item>
-        </Form>
-      </Card>
-=======
             取消
           </button>
           <button
@@ -175,7 +124,6 @@ export function CreateTeamPage() {
           </button>
         </div>
       </form>
->>>>>>> f0eba597971fe0d9fbada5b95a318b616153d1c7
     </div>
   )
 }

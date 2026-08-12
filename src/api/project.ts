@@ -18,14 +18,10 @@ function unwrapData<T>(res: ApiEnvelope<T> | T): T {
  * 项目管理 API —— 对齐接口文档 v1.1.4 §5.2
  */
 export const projectApi = {
-<<<<<<< HEAD
   /**
    * GET /teams/{teamId}/projects
    * 文档：团队成员可访问；Owner 绑定仓库时列出该团队全部项目
    */
-=======
-  /** GET /teams/{teamId}/projects — 团队下的项目列表（仅返回有权限访问的） */
->>>>>>> f0eba597971fe0d9fbada5b95a318b616153d1c7
   listByTeam(teamId: string) {
     return request<ApiEnvelope<Project[]> | Project[]>(`/teams/${teamId}/projects`).then(unwrapData)
   },
@@ -43,20 +39,12 @@ export const projectApi = {
     return request<ApiEnvelope<Project> | Project>(`/projects/${projectId}`).then(unwrapData)
   },
 
-<<<<<<< HEAD
-  create(payload: CreateProjectPayload) {
-    return request<ApiEnvelope<Project> | Project>('/projects', {
-      method: 'POST',
-      body: payload,
-    }).then(unwrapData)
-=======
   /** PATCH /projects/{projectId} — 修改项目资料（仅 PROJECT_ADMIN） */
   update(projectId: string, payload: Partial<CreateProjectPayload>) {
     return request<Project>(`/projects/${projectId}`, {
       method: 'PATCH',
       body: payload,
     })
->>>>>>> f0eba597971fe0d9fbada5b95a318b616153d1c7
   },
 
   /** POST /projects/{projectId}/archive — 归档项目 */

@@ -13,15 +13,19 @@ export default defineConfig({
   server: {
     port: 5173,
     /**
-     * TODO[后端联调] 关闭 MSW（VITE_USE_MOCK=false）后，把 /api 代理到后端：
-     * - 本地演示服：http://localhost:8080（github-auth-demo-server）
-     * - 或 Java 服务地址
-     * 否则 fetch('/api/...') 可能打到 Vite 自己，返回 HTML → Unexpected token '<'
+     * 开发联调代理：前端仍请求 /api/...，由 Vite 转到后端 /api/v1/...
+     * 当前目标：https://api.qgents.dpdns.org/api/v1（后台组公网联调）
+     *
+     * 切回本地 demo：
+     *   target: 'http://localhost:8080'
+     *   并去掉 rewrite（demo 路径是 /api/... 不是 /api/v1）
      */
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'https://api.qgents.dpdns.org',
         changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api/v1'),
       },
     },
   },

@@ -1,28 +1,11 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { App } from 'antd'
 import { githubApi } from '@/api/github'
-import { ApiError } from '@/api/client'
 import { queryKeys } from '@/query/queryKeys'
+import { formatApiError } from '@/utils/formatApiError'
 import type { GithubInstallation } from '@/types/github'
 
 export type GithubAuthStatus = 'AUTHORIZED' | 'NOT_AUTHORIZED' | 'EXPIRED'
-
-/** 把 ApiError / 普通 Error 转成可读文案，方便联调看 403/401 等 */
-function formatApiError(error: unknown): string {
-  // 这个error对象是不是由这个类 new 出来的实例，返回 boolean true / false。
-  if (error instanceof ApiError) {
-    const body = error.body as
-      | { error?: { code?: string; message?: string } } //错误体的类型
-      | undefined
-    const code = body?.error?.code
-    const msg = body?.error?.message
-    if (code && msg) return `[${code}] ${msg}`
-    if (msg) return msg
-    return `请求失败 (HTTP ${error.status})`
-  }
-  if (error instanceof Error) return error.message //http 笼统报错
-  return '未知错误'
-}
 
 export function deriveGithubAuthStatus(
   installations: GithubInstallation[] | undefined,
@@ -46,6 +29,9 @@ export function deriveGithubAuthStatus(
 export function useGithubInstallRedirect(teamId: string) {
   const { message } = App.useApp()
 
+
+  // useQuery：读数据（GET，自动发请求、列表、详情）,会直接执行
+  // useMutation：写数据（POST/PUT/DELETE，创建、修改、删除），不会自动执行！要手动调用 mutate (),这个是写操作,需要向后端发起请求
   return useMutation({
     mutationFn: async () => {
       console.info('[GitHubInstall] 开始请求安装跳转地址', { teamId })

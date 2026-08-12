@@ -94,7 +94,7 @@ export const githubApi = {
    * （当前 UI 已去掉授权状态卡片，此方法仍供联调 / 后续扩展）
    */
   listInstallations(teamId: string) {
-    return request<ApiEnvelope<GithubInstallation[]>>(
+    return request<ApiEnvelope<GithubInstallation[]>>(//TS泛型用来约束返回数据类型：
       `/teams/${teamId}/integrations/github/installations`,
     ).then((res) => res.data)
   },
@@ -111,7 +111,7 @@ export const githubApi = {
     return request<ApiEnvelope<GithubAuthorizedRepository[]>>(
       `/teams/${teamId}/integrations/github/repositories`,
     ).then((res) => res.data)
-  },
+  },//只要请求回来的仓库数组
 
   /** GET /projects/{projectId}/repositories */
   listProjectRepositories(projectId: string) {

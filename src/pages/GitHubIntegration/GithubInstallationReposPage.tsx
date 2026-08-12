@@ -15,28 +15,26 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import { ArrowLeftOutlined, LinkOutlined } from '@ant-design/icons'
 import { githubApi } from '@/api/github'
-import { ApiError } from '@/api/client'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
+import { formatApiError } from '@/utils/formatApiError'
 import type { GithubAuthorizedRepository, GithubInstallation } from '@/types/github'
 
 const { Title, Paragraph, Text } = Typography
 
-function formatApiError(error: unknown): string {
-  if (error instanceof ApiError) {
-    const body = error.body as
-      | { error?: { code?: string; message?: string } }
-      | undefined
-    const code = body?.error?.code
-    const msg = body?.error?.message
-    if (code && msg) return `[${code}] ${msg}`
-    if (msg) return msg
-    return `请求失败 (HTTP ${error.status})`
-  }
-  if (error instanceof Error) return error.message
-  return '未知错误'
-}
-
+// 2.
+// export interface GithubAuthorizedRepository {
+//   repositoryId: string
+//   fullName: string
+//   githubUrl: string
+//   private: boolean
+//   /** 归属哪一次 GitHub App 安装；用于卡片「查看仓库」过滤 */
+//   installationId?: string
+//   /** 仓库默认分支（联调字段名若为 default_branch，在 api 层映射） */
+//   defaultBranch?: string
+//   /** 与 Qgents 的同步状态；缺省时前端按未同步展示 */
+//   syncStatus?: 'SYNCED' | 'NOT_SYNCED' | 'SYNCING' | 'FAILED'
+// }
 function syncStatusCell(status: GithubAuthorizedRepository['syncStatus']) {
   switch (status) {
     case 'SYNCED':
@@ -67,31 +65,34 @@ export function GithubInstallationReposPage() {
   const navigate = useNavigate()
   const { installationId = '' } = useParams<{ installationId: string }>()
   const [searchParams] = useSearchParams()
-  const teamId = searchParams.get('teamId') || 'team-xinghe'
+  const teamId = searchParams.get('teamId') || 'team-xinghe'//拿两个ID,一个是安装记录ID,还有一个是团队ID
 
   const installationsQuery = useQuery({
     queryKey: queryKeys.githubInstallations(teamId),
     queryFn: () => githubApi.listInstallations(teamId),
-    enabled: Boolean(teamId),
+    enabled: Boolean(teamId),//安装列表的数组对象
   })
 
   const reposQuery = useQuery({
     queryKey: queryKeys.githubTeamRepositories(teamId),
     queryFn: () => githubApi.listTeamRepositories(teamId),
-    enabled: Boolean(teamId),
+    enabled: Boolean(teamId),//仓库列表的数组对象
   })
-
+// 缓存计算结果，不要没事反复循环查找
+// 从一堆安装记录当中找到当前所点击的安装记录,主要还是通过路由地址进行校准
   const installation: GithubInstallation | undefined = useMemo(
-    () => installationsQuery.data?.find((i) => i.installationId === installationId),
+    () => installationsQuery.data?.find((i) => i.installationId === installationId),//查找当前地址栏url和安装记录ID是否一致
     [installationsQuery.data, installationId],
   )
-
+  // GitHub App 安装被删除 / 解绑了,仓库记录还保留在 Qgents 系统里，但关联关系失效，installationId 置空
   const repos = useMemo(() => {
     const all = reposQuery.data ?? []
-    const scoped = all.filter((r) => r.installationId === installationId)
-    if (scoped.length === 0 && all.some((r) => !r.installationId)) return all
+    const scoped = all.filter((r) => r.installationId === installationId)//按照安装id进行筛选
+    if (scoped.length === 0 && all.some((r) => !r.installationId)) return all//兜底返回全部
     return scoped
   }, [reposQuery.data, installationId])
+// 仓库列表更新,安装id发生变化
+
 
   const accountLabel =
     installation?.accountType === 'Organization' ? 'GitHub 组织' : 'GitHub 个人账号'

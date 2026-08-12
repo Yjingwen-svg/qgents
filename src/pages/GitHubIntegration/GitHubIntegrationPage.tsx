@@ -22,10 +22,10 @@ import {
   GithubOutlined,
   EyeOutlined,
 } from '@ant-design/icons'
-import { ApiError } from '@/api/client'
 import { githubApi } from '@/api/github'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
+import { formatApiError } from '@/utils/formatApiError'
 import type { GithubInstallation } from '@/types/github'
 
 /**
@@ -60,28 +60,15 @@ import type { GithubInstallation } from '@/types/github'
 
 const { Title, Paragraph, Text } = Typography
 
-/**
- * 前端请求错误格式化工具函数
- * 把 ApiError / 普通 Error 转成可读文案，方便联调看 403/401 等
- * TODO[后端联调] 可按 error.code 映射中文（如 PROJECT_ADMIN_REQUIRED）
- */
-function formatApiError(error: unknown): string {
-  // 这个error对象是不是由这个类 new 出来的实例，返回 boolean true / false。
-  if (error instanceof ApiError) {
-    const body = error.body as
-      | { error?: { code?: string; message?: string } } //错误体的类型
-      | undefined
-    const code = body?.error?.code
-    const msg = body?.error?.message
-
-    if (code && msg) return `[${code}] ${msg}`
-    if (msg) return msg
-    return `请求失败 (HTTP ${error.status})`
-  }
-  if (error instanceof Error) return error.message //http 笼统报错
-  return '未知错误'
-}
-
+// export interface GithubInstallation {
+//   installationId: string
+//   accountLogin: string
+//   accountType: 'User' | 'Organization'
+//   installedAt: string
+//   status: 'ACTIVE' | 'EXPIRED'
+//   /** 可选：后端若直接返回授权仓库数则可展示；没有则前端用 repositories 列表统计 */
+//   authorizedRepoCount?: number
+// }
 function accountTypeLabel(type: GithubInstallation['accountType']): string {
   return type === 'Organization' ? 'GitHub 组织' : 'GitHub 个人账号'
 }
@@ -99,6 +86,7 @@ export function GitHubIntegrationPage() {
   const { token } = theme.useToken()
   const { message } = App.useApp() //toast
   const navigate = useNavigate()
+  // JS 代码里做页面跳转（编程式导航）
   // ReactRouter hook，用来读写 url 问号后面参数：
   const [searchParams, setSearchParams] = useSearchParams()
   // searchParams 是 useSearchParams() 返回的对象，代表当前 url 问号后的全部参数。
@@ -124,7 +112,7 @@ export function GitHubIntegrationPage() {
     if (installed !== '1') return
     if (handledRef.current) return
     handledRef.current = true //ref防抖操作
-    message.success('GitHub App 安装/授权已完成（后端回调回跳）')
+    message.success('GitHub App 安装/授权已完成')
     // 复制一份当前所有 url 查询参数，得到一份副本对象next。
     // 清掉 installed，避免刷新反复弹 toast
     const next = new URLSearchParams(searchParams)
@@ -160,9 +148,9 @@ export function GitHubIntegrationPage() {
 
   /** GET 团队已安装的 GitHub App 列表 */
   const installationsQuery = useQuery({
-    queryKey: queryKeys.githubInstallations(teamId),
-    queryFn: () => githubApi.listInstallations(teamId),
-    enabled: Boolean(teamId),
+    queryKey: queryKeys.githubInstallations(teamId),//缓存地址
+    queryFn: () => githubApi.listInstallations(teamId),//请求函数,返回成功之后是一个对象数组
+    enabled: Boolean(teamId),//是否启用这个请求,true才执行
   })
 
   /** GET 团队已授权仓库（用于卡片上统计仓库数） */
@@ -174,7 +162,7 @@ export function GitHubIntegrationPage() {
 
   const installations = installationsQuery.data ?? []
   const allRepos = reposQuery.data ?? []
-
+  // 计算某一条 GitHub App 安装记录，绑定了多少个授权仓库
   function repoCountOf(inst: GithubInstallation): number {
     if (typeof inst.authorizedRepoCount === 'number') return inst.authorizedRepoCount
     return allRepos.filter((r) => r.installationId === inst.installationId).length

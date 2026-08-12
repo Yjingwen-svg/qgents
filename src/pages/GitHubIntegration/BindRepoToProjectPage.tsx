@@ -18,28 +18,13 @@ import {
 import { ArrowLeftOutlined, SearchOutlined } from '@ant-design/icons'
 import { projectApi } from '@/api/project'
 import { githubApi } from '@/api/github'
-import { ApiError } from '@/api/client'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
+import { formatApiError } from '@/utils/formatApiError'
 import type { Project } from '@/types'
 import type { ProjectBoundRepository } from '@/types/github'
 
 const { Title, Paragraph, Text } = Typography
-
-function formatApiError(error: unknown): string {
-  if (error instanceof ApiError) {
-    const body = error.body as
-      | { error?: { code?: string; message?: string } }
-      | undefined
-    const code = body?.error?.code
-    const msg = body?.error?.message
-    if (code && msg) return `[${code}] ${msg}`
-    if (msg) return msg
-    return `请求失败 (HTTP ${error.status})`
-  }
-  if (error instanceof Error) return error.message
-  return '未知错误'
-}
 
 /**
  * 绑定授权仓库 → 选择团队项目

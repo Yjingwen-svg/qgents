@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import {
   Alert,
   Button,
@@ -13,24 +13,36 @@ import {
   type ThemeConfig,
 } from 'antd'
 import { AppstoreOutlined, UnorderedListOutlined } from '@ant-design/icons'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/api'
 import { useInfiniteOrchestrationRuns } from '@/hooks'
 import type { OrchestrationRun } from '@/types'
+import { PATHS } from '@/routes/paths'
 import { TaskContextPanel } from './TaskContextPanel'
 import { TaskFilters } from './TaskFilters'
 import { TaskList } from './TaskList'
 import {
   TASK_CENTER_STATUS_GROUPS,
-  type TaskCenterPanel,
+  parseTaskCenterPanel,
   type TaskCenterStatusFilter,
+  type TaskCenterPanel,
   type TaskCenterView,
 } from './taskCenterConfig'
-import { getTaskCenterPresentation } from './taskCenterPresentation'
+import { getTaskPresentation } from '../TaskShared/taskPresentation'
 import styles from './TaskCenterPage.module.scss'
 
 const { Title, Text } = Typography
 const PAGE_SIZE = 20
+const TASK_CENTER_SEARCH_PARAMS = new Set([
+  'runId',
+  'status',
+  'groupId',
+  'createdBy',
+  'deliveryType',
+  'repositoryId',
+  'view',
+  'panel',
+])
 
 const taskCenterTheme: ThemeConfig = {
   algorithm: theme.defaultAlgorithm,
@@ -46,22 +58,19 @@ const taskCenterTheme: ThemeConfig = {
     borderRadius: 8,
   },
 }
-
 export function TaskCenterPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [view, setView] = useState<TaskCenterView>('board')
+  const navigate = useNavigate()
+  const location = useLocation()
   const previousProjectId = useRef(projectId)
 
   const status = parseStatusFilter(searchParams.get('status'))
   const createdBy = searchParams.get('createdBy') ?? undefined
   const groupId = searchParams.get('groupId') ?? undefined
   const requestedRunId = searchParams.get('runId')?.trim() || undefined
-  const requestedWorkPackageId = searchParams.get('workPackageId')?.trim() || undefined
-  const requestedTaskRunId = searchParams.get('taskRunId')?.trim() || undefined
-  const panel = parsePanel(searchParams.get('panel'))
-  const projectChanged = previousProjectId.current !== projectId
-  const projectScopedRunId = projectChanged ? undefined : requestedRunId
+  const view = parseView(searchParams.get('view'))
+  const panel = parseTaskCenterPanel(searchParams.get('panel'))
   const query = useInfiniteOrchestrationRuns(projectId, {
     createdBy,
     groupId,
@@ -75,44 +84,37 @@ export function TaskCenterPage() {
   }, [query.data])
 
   const visibleRuns = useMemo(
-    () =>
-      loadedRuns.filter((run) => {
-        if (status === 'all') return true
-        return TASK_CENTER_STATUS_GROUPS[status].has(run.status)
-      }),
+    () => loadedRuns.filter((run) => status === 'all' || TASK_CENTER_STATUS_GROUPS[status].has(run.status)),
     [loadedRuns, status],
   )
   const hasServerItems = query.data?.pages.some((page) => page.data.length > 0) ?? false
   const isUnfiltered = status === 'all' && !createdBy && !groupId
-  const selectedRunId = projectScopedRunId ?? visibleRuns[0]?.id
+  const selectedRunId = requestedRunId ?? visibleRuns[0]?.id
   const selectedRun = visibleRuns.find((run) => run.id === selectedRunId)
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams)
+    let changed = false
+    for (const key of Array.from(next.keys())) {
+      if (!TASK_CENTER_SEARCH_PARAMS.has(key)) {
+        next.delete(key)
+        changed = true
+      }
+    }
+    if (changed) setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
 
   useEffect(() => {
     if (previousProjectId.current === projectId) return
     previousProjectId.current = projectId
-    if (!requestedRunId && !requestedWorkPackageId && !requestedTaskRunId) return
+    if (!searchParams.has('runId')) return
     const next = new URLSearchParams(searchParams)
     next.delete('runId')
-    next.delete('workPackageId')
-    next.delete('taskRunId')
     setSearchParams(next, { replace: true })
-  }, [
-    projectId,
-    requestedRunId,
-    requestedTaskRunId,
-    requestedWorkPackageId,
-    searchParams,
-    setSearchParams,
-  ])
+  }, [projectId, searchParams, setSearchParams])
 
   const groupOptions = useMemo(
-    () =>
-      uniqueOptions(
-        loadedRuns.map((run) => ({
-          label: getTaskCenterPresentation(run).groupLabel,
-          value: run.groupId,
-        })),
-      ),
+    () => uniqueOptions(loadedRuns.map((run) => ({ label: getTaskPresentation(run).groupLabel, value: run.groupId }))),
     [loadedRuns],
   )
 
@@ -125,38 +127,26 @@ export function TaskCenterPage() {
 
   function handleReset() {
     const next = new URLSearchParams(searchParams)
-    next.delete('status')
-    next.delete('createdBy')
-    next.delete('groupId')
+    for (const key of ['status', 'createdBy', 'groupId', 'deliveryType', 'repositoryId']) next.delete(key)
     setSearchParams(next, { replace: true })
   }
 
   function handleSelectRun(runId: string) {
-    const next = new URLSearchParams(searchParams)
-    next.set('runId', runId)
-    next.delete('workPackageId')
-    next.delete('taskRunId')
-    setSearchParams(next, { replace: true })
+    updateFilter('runId', runId)
   }
 
-  function handleWorkPackageChange(workPackageId: string) {
-    const next = new URLSearchParams(searchParams)
-    next.set('workPackageId', workPackageId)
-    next.delete('taskRunId')
-    setSearchParams(next, { replace: true })
+  function handleViewChange(nextView: TaskCenterView) {
+    updateFilter('view', nextView)
   }
 
-  function handleTaskRunChange(taskRunId?: string) {
-    const next = new URLSearchParams(searchParams)
-    if (taskRunId) next.set('taskRunId', taskRunId)
-    else next.delete('taskRunId')
-    setSearchParams(next, { replace: true })
+  function handleViewDetails(runId: string) {
+    navigate(PATHS.projectTaskDetail(projectId, runId), {
+      state: { from: `${location.pathname}${location.search}` },
+    })
   }
 
   function handlePanelChange(nextPanel: TaskCenterPanel) {
-    const next = new URLSearchParams(searchParams)
-    next.set('panel', nextPanel)
-    setSearchParams(next, { replace: true })
+    updateFilter('panel', nextPanel === 'context' ? undefined : nextPanel)
   }
 
   return (
@@ -169,7 +159,13 @@ export function TaskCenterPage() {
             </Title>
             <Space>
               {query.isFetching && !query.isLoading ? <Spin size="small" /> : null}
-              <Button className={styles.contextButton}>返回需求群上下文</Button>
+              <Button
+                className={styles.contextButton}
+                disabled={!selectedRun}
+                onClick={() => selectedRun ? navigate(PATHS.projectReqChat(projectId, selectedRun.groupId)) : undefined}
+              >
+                返回需求群上下文
+              </Button>
             </Space>
           </header>
 
@@ -190,7 +186,7 @@ export function TaskCenterPage() {
             <Segmented<TaskCenterView>
               aria-label="任务视图"
               value={view}
-              onChange={setView}
+              onChange={handleViewChange}
               options={[
                 { value: 'board', label: '看板', icon: <AppstoreOutlined /> },
                 { value: 'table', label: '表格', icon: <UnorderedListOutlined /> },
@@ -206,6 +202,7 @@ export function TaskCenterPage() {
             hasServerItems={hasServerItems}
             isUnfiltered={isUnfiltered}
             onSelectRun={handleSelectRun}
+            onViewDetails={handleViewDetails}
             onRetry={() => void query.refetch()}
           />
 
@@ -222,11 +219,8 @@ export function TaskCenterPage() {
           runId={selectedRunId}
           summaryRun={selectedRun}
           panel={panel}
-          requestedWorkPackageId={requestedWorkPackageId}
-          requestedTaskRunId={requestedTaskRunId}
-          onWorkPackageChange={handleWorkPackageChange}
-          onTaskRunChange={handleTaskRunChange}
           onPanelChange={handlePanelChange}
+          onViewDetails={handleViewDetails}
         />
       </div>
     </ConfigProvider>
@@ -241,6 +235,7 @@ interface TaskCenterContentProps {
   hasServerItems: boolean
   isUnfiltered: boolean
   onSelectRun: (runId: string) => void
+  onViewDetails: (runId: string) => void
   onRetry: () => void
 }
 
@@ -252,18 +247,14 @@ function TaskCenterContent({
   hasServerItems,
   isUnfiltered,
   onSelectRun,
+  onViewDetails,
   onRetry,
 }: TaskCenterContentProps) {
   if (query.isLoading) {
-    return (
-      <div className={styles.state} role="status">
-        <Spin description="正在加载任务" />
-      </div>
-    )
+    return <div className={styles.state} role="status"><Spin description="正在加载任务" /></div>
   }
 
   const isInitialError = query.isError && !query.data
-
   if (isInitialError) {
     const isForbidden = query.error instanceof ApiError && query.error.status === 403
     return (
@@ -304,21 +295,19 @@ function TaskCenterContent({
         view={view}
         selectedRunId={selectedRunId}
         onSelectRun={onSelectRun}
+        onViewDetails={onViewDetails}
       />
     </>
   )
 }
 
 function parseStatusFilter(value: string | null): TaskCenterStatusFilter {
-  if (value === 'running' || value === 'waiting' || value === 'completed' || value === 'failed') {
-    return value
-  }
+  if (value === 'running' || value === 'waiting' || value === 'completed' || value === 'failed') return value
   return 'all'
 }
 
-function parsePanel(value: string | null): TaskCenterPanel {
-  if (value === 'context' || value === 'detail' || value === 'executions') return value
-  return 'context'
+function parseView(value: string | null): TaskCenterView {
+  return value === 'table' ? 'table' : 'board'
 }
 
 function uniqueOptions(options: Array<{ label: string; value: string }>) {

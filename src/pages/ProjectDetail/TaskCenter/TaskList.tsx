@@ -1,9 +1,9 @@
 import { Empty, Row, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { OrchestrationRun } from '@/types'
-import { TaskCard } from './TaskCard'
 import { ORCHESTRATION_STATUS_META, type TaskCenterView } from './taskCenterConfig'
-import { getTaskCenterPresentation } from './taskCenterPresentation'
+import { TaskCard } from './TaskCard'
+import { getTaskPresentation } from '../TaskShared/taskPresentation'
 import styles from './TaskCenterPage.module.scss'
 
 interface TaskListProps {
@@ -11,9 +11,9 @@ interface TaskListProps {
   view: TaskCenterView
   selectedRunId?: string
   onSelectRun: (runId: string) => void
+  onViewDetails: (runId: string) => void
 }
-
-export function TaskList({ runs, view, selectedRunId, onSelectRun }: TaskListProps) {
+export function TaskList({ runs, view, selectedRunId, onSelectRun, onViewDetails }: TaskListProps) {
   if (runs.length === 0) return <Empty description="暂无匹配任务" className={styles.empty} />
 
   if (view === 'table') {
@@ -28,22 +28,14 @@ export function TaskList({ runs, view, selectedRunId, onSelectRun }: TaskListPro
           return <Tag color={meta.color}>{meta.label}</Tag>
         },
       },
+      { title: '需求群', key: 'group', render: (_, run) => getTaskPresentation(run).groupLabel },
+      { title: 'WorkPackage', key: 'workPackages', render: (_, run) => run.workPackageIds.length },
+      { title: '发起人', key: 'creator', render: (_, run) => getTaskPresentation(run).creatorLabel },
+      { title: '最近更新时间', dataIndex: 'updatedAt', key: 'updatedAt', render: formatDate },
       {
-        title: '需求群',
-        key: 'group',
-        render: (_, run) => getTaskCenterPresentation(run).groupLabel,
-      },
-      { title: '工作包', key: 'workPackages', render: (_, run) => run.workPackageIds.length },
-      {
-        title: '发起人',
-        key: 'creator',
-        render: (_, run) => getTaskCenterPresentation(run).creatorLabel,
-      },
-      {
-        title: '更新时间',
-        dataIndex: 'updatedAt',
-        key: 'updatedAt',
-        render: (updatedAt: string) => formatDate(updatedAt),
+        title: '操作',
+        key: 'actions',
+        render: (_, run) => <a onClick={(event) => { event.stopPropagation(); onViewDetails(run.id) }}>查看详情</a>,
       },
     ]
 
@@ -54,7 +46,7 @@ export function TaskList({ runs, view, selectedRunId, onSelectRun }: TaskListPro
         columns={columns}
         dataSource={runs}
         pagination={false}
-        scroll={{ x: 720 }}
+        scroll={{ x: 820 }}
         rowClassName={(run) => run.id === selectedRunId ? styles.tableRowSelected : ''}
         onRow={(run) => ({ onClick: () => onSelectRun(run.id) })}
       />
@@ -63,14 +55,7 @@ export function TaskList({ runs, view, selectedRunId, onSelectRun }: TaskListPro
 
   return (
     <Row gutter={[16, 16]} className={styles.board}>
-      {runs.map((run) => (
-        <TaskCard
-          key={run.id}
-          run={run}
-          selected={run.id === selectedRunId}
-          onSelect={onSelectRun}
-        />
-      ))}
+      {runs.map((run) => <TaskCard key={run.id} run={run} selected={run.id === selectedRunId} onSelect={onSelectRun} onViewDetails={onViewDetails} />)}
     </Row>
   )
 }

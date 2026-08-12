@@ -7,6 +7,8 @@ import type {
   TaskRun,
   TaskRunLog,
   TaskRunStep,
+  TaskExecutionPreviewStep,
+  TaskExecutionStage,
   WorkPackage,
 } from '@/types'
 import type { TaskDomainState } from './store'
@@ -190,6 +192,128 @@ function createBaseState(projectId: string): TaskDomainState {
     },
   ])
 
+  const recentSteps: TaskExecutionPreviewStep[] = [
+    {
+      id: `${orchestrationRunId}-step-requirement`,
+      label: '需求分析与方案设计',
+      node: 'PLANNER',
+      status: 'PASSED',
+      startedAt: timestamp,
+      finishedAt: timestamp,
+    },
+    {
+      id: `${orchestrationRunId}-step-development`,
+      label: '接口开发与自测',
+      node: 'DEVELOPER',
+      status: 'RUNNING',
+      startedAt: timestamp,
+      finishedAt: null,
+    },
+    {
+      id: `${orchestrationRunId}-step-validation`,
+      label: '测试与验证',
+      node: 'TESTER',
+      status: 'PENDING',
+      startedAt: null,
+      finishedAt: null,
+    },
+  ]
+
+  const executionStages: TaskExecutionStage[] = [
+    {
+      id: `${orchestrationRunId}-stage-planning`,
+      title: '需求分析与方案设计',
+      node: 'PLANNER',
+      status: 'COMPLETED',
+      steps: [
+        { id: `${orchestrationRunId}-planning-1`, label: '需求分析', node: 'PLANNER', status: 'PASSED', startedAt: timestamp, finishedAt: timestamp },
+        { id: `${orchestrationRunId}-planning-2`, label: '方案设计', node: 'PLANNER', status: 'PASSED', startedAt: timestamp, finishedAt: timestamp },
+        { id: `${orchestrationRunId}-planning-3`, label: '接口定义', node: 'PLANNER', status: 'PASSED', startedAt: timestamp, finishedAt: timestamp },
+      ],
+      startedAt: timestamp,
+      finishedAt: timestamp,
+    },
+    {
+      id: `${orchestrationRunId}-stage-development`,
+      title: '接口开发与自测',
+      node: 'DEVELOPER',
+      status: 'COMPLETED',
+      steps: [
+        { id: `${orchestrationRunId}-development-1`, label: '接口开发', node: 'DEVELOPER', status: 'PASSED', startedAt: timestamp, finishedAt: timestamp },
+        { id: `${orchestrationRunId}-development-2`, label: '单元测试', node: 'DEVELOPER', status: 'PASSED', startedAt: timestamp, finishedAt: timestamp },
+        { id: `${orchestrationRunId}-development-3`, label: '自测验证', node: 'DEVELOPER', status: 'PASSED', startedAt: timestamp, finishedAt: timestamp },
+      ],
+      startedAt: timestamp,
+      finishedAt: timestamp,
+    },
+    {
+      id: `${orchestrationRunId}-stage-validation`,
+      title: '测试与验证',
+      node: 'TESTER',
+      status: 'COMPLETED',
+      steps: [
+        { id: `${orchestrationRunId}-validation-1`, label: '功能测试', node: 'TESTER', status: 'PASSED', startedAt: timestamp, finishedAt: timestamp },
+        { id: `${orchestrationRunId}-validation-2`, label: '接口测试', node: 'TESTER', status: 'PASSED', startedAt: timestamp, finishedAt: timestamp },
+        { id: `${orchestrationRunId}-validation-3`, label: '安全测试', node: 'TESTER', status: 'PASSED', startedAt: timestamp, finishedAt: timestamp },
+      ],
+      startedAt: timestamp,
+      finishedAt: timestamp,
+    },
+    {
+      id: `${orchestrationRunId}-stage-delivery`,
+      title: '交付整理',
+      node: 'GENERAL',
+      status: 'RUNNING',
+      steps: [
+        { id: `${orchestrationRunId}-delivery-1`, label: '交付物整理', node: 'GENERAL', status: 'RUNNING', startedAt: timestamp, finishedAt: null },
+        { id: `${orchestrationRunId}-delivery-2`, label: '文档同步', node: 'GENERAL', status: 'PENDING', startedAt: null, finishedAt: null },
+        { id: `${orchestrationRunId}-delivery-3`, label: '验收准备', node: 'GENERAL', status: 'PENDING', startedAt: null, finishedAt: null },
+      ],
+      startedAt: timestamp,
+      finishedAt: null,
+    },
+  ]
+
+  orchestrationRun.taskCenterSummary = {
+    requirementGroupName: '登录功能',
+    deliveryType: 'SERVICE_API',
+    description: '实现邮箱登录、刷新机制，并补充 API 测试。',
+    executionTarget: '登录接口与 API 测试',
+    targetRepositoryId: `repository-${projectId}`,
+    targetRef: 'feat/login-api',
+    taskCount: 4,
+    progressPercent: 62,
+    statusCounts: { running: 2, pending: 1, completed: 1 },
+    acceptanceCriteria: [
+      '登录成功返回有效会话信息',
+      '刷新机制覆盖过期与异常场景',
+      'API 测试覆盖核心登录路径',
+    ],
+    participants: [
+      { id: 'demo-user', name: 'Demo 用户', role: 'OWNER' },
+      { id: 'developer-agent', name: 'Backend Developer Agent', role: 'AGENT' },
+    ],
+    agentName: 'Backend Developer Agent',
+  }
+  orchestrationRun.taskDetailSummary = {
+    priorityLabel: '高',
+    currentStage: '接口开发与自测',
+    requirementDiscussion: '完整讨论记录与澄清',
+    decisionRecord: '设计决策与权衡',
+    skillMemorySummary: '相关技能与经验沉淀',
+    workspaceId: `/workspace/${workPackages.get(workPackageIds[0])?.repositoryId ?? `repository-${projectId}`}`,
+    sandboxId: 'sandbox/feat-login-api',
+  }
+  orchestrationRun.executionPreview = {
+    latestTaskRunId: developerRunId,
+    latestTaskRunStatus: taskRuns.get(developerRunId)?.status ?? null,
+    currentNode: 'DEVELOPER',
+    recentSteps,
+    stages: executionStages,
+    errorSummary: null,
+    blockedSummary: null,
+  }
+
   const pendingDeliverable: Deliverable = {
     id: `deliverable-${projectId}-pending`,
     projectId,
@@ -204,19 +328,33 @@ function createBaseState(projectId: string): TaskDomainState {
     diffId: `diff-${projectId}-login`,
     mergeRequestId: null,
     rejectionReason: null,
+    summary: '登录 API 实现与相关接口变更。',
     createdAt: timestamp,
     updatedAt: timestamp,
   }
   const acceptedDeliverable: Deliverable = {
     ...pendingDeliverable,
     id: `deliverable-${projectId}-accepted`,
-    workPackageId: workPackageIds[1],
+    workPackageId: workPackageIds[0],
     status: 'ACCEPTED',
     sourceRef: 'feat/login-tests',
     version: 2,
+    summary: '登录接口核心场景测试报告。',
+  }
+  const contractDeliverable: Deliverable = {
+    ...pendingDeliverable,
+    id: `deliverable-${projectId}-contract`,
+    workPackageId: workPackageIds[0],
+    title: '登录 API 契约文档',
+    type: 'DOCUMENT',
+    status: 'ACCEPTED',
+    sourceRef: 'main',
+    version: 1,
+    summary: '登录接口字段、错误码和调用示例。',
   }
   deliverables.set(pendingDeliverable.id, pendingDeliverable)
   deliverables.set(acceptedDeliverable.id, acceptedDeliverable)
+  deliverables.set(contractDeliverable.id, contractDeliverable)
 
   return {
     projectId,

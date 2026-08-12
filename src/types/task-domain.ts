@@ -82,6 +82,78 @@ export type AgentNodeRole =
 
 export type StartMode = 'AUTO' | 'MANUAL'
 
+/** FE-API-006/007 临时 Mock 展示契约：后端正式字段确认后再收敛。 */
+export type DeliveryType = 'SERVICE_API' | 'WEB_PAGE' | 'SHARED_SDK' | 'DOCUMENT'
+
+export type TaskParticipantRole = 'OWNER' | 'DEVELOPER' | 'AGENT'
+
+export interface TaskParticipant {
+  id: string
+  name: string
+  role: TaskParticipantRole
+}
+
+export interface TaskCenterSummary {
+  requirementGroupName: string
+  deliveryType: DeliveryType
+  description: string
+  executionTarget: string
+  targetRepositoryId: string | null
+  targetRef: string | null
+  taskCount: number
+  progressPercent: number
+  statusCounts: {
+    running: number
+    pending: number
+    completed: number
+  }
+  acceptanceCriteria: string[]
+  participants: TaskParticipant[]
+  agentName: string
+}
+
+export interface TaskDetailSummary {
+  priorityLabel: string
+  currentStage: string
+  requirementDiscussion: string
+  decisionRecord: string
+  skillMemorySummary: string
+  /** FE-API-007 临时 Mock 展示字段：详情页开发上下文。 */
+  workspaceId: string
+  sandboxId: string
+}
+
+export interface TaskExecutionPreviewStep {
+  id: string
+  label: string
+  node: AgentNodeRole
+  status: TaskRunStepStatus
+  startedAt: string | null
+  finishedAt: string | null
+}
+
+export type TaskExecutionStageStatus = 'COMPLETED' | 'RUNNING' | 'PENDING' | 'FAILED'
+
+export interface TaskExecutionStage {
+  id: string
+  title: string
+  node: AgentNodeRole
+  status: TaskExecutionStageStatus
+  steps: TaskExecutionPreviewStep[]
+  startedAt: string | null
+  finishedAt: string | null
+}
+
+export interface TaskExecutionPreview {
+  latestTaskRunId: string | null
+  latestTaskRunStatus: TaskRunStatus | null
+  currentNode: AgentNodeRole | null
+  recentSteps: TaskExecutionPreviewStep[]
+  stages: TaskExecutionStage[]
+  errorSummary: string | null
+  blockedSummary: string | null
+}
+
 export interface OrchestrationRun {
   id: string
   projectId: string
@@ -94,6 +166,10 @@ export interface OrchestrationRun {
   workPackageIds: string[]
   createdAt: string
   updatedAt: string
+  /** FE-API-006/007/008：仅由当前 Mock 提供的原型展示摘要。 */
+  taskCenterSummary?: TaskCenterSummary
+  taskDetailSummary?: TaskDetailSummary
+  executionPreview?: TaskExecutionPreview
 }
 
 export interface WorkPackage {
@@ -227,6 +303,8 @@ export interface Deliverable {
   diffId: string | null
   mergeRequestId: string | null
   rejectionReason: string | null
+  /** FE-API-007 临时 Mock 摘要字段，正式接口需确认结构化交付引用。 */
+  summary?: string | null
   createdAt: string
   updatedAt: string
 }

@@ -58,6 +58,7 @@ export const PATHS = {
     `/app/projects/${projectId}/req-chat/${reqId}`,
 
   projectTasks: (projectId: string) => `/app/projects/${projectId}/tasks`,
+  projectTaskDetail: (projectId: string, runId: string) => `/app/projects/${projectId}/tasks/${runId}`,
   projectWorkflow: (projectId: string) => `/app/projects/${projectId}/workflow`,
   projectAgents: (projectId: string) => `/app/projects/${projectId}/agents`,
   projectSkills: (projectId: string) => `/app/projects/${projectId}/skills`,

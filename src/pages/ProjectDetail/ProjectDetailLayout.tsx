@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Layout, Menu, Typography, Badge, theme } from 'antd'
 import type { MenuProps } from 'antd'
@@ -41,7 +42,18 @@ export function ProjectDetailLayout() {
   const { projectId = 'demo-project', reqId } = useParams<{ projectId: string; reqId?: string }>()
   const location = useLocation()
   const onReqChat = location.pathname.includes('/req-chat')
+  const isTaskDetail = /\/tasks\/[^/]+/.test(location.pathname)
+  const [narrowNav, setNarrowNav] = useState(false)
   const projectName = resolveProjectName(projectId)
+
+  useEffect(() => {
+    if (!isTaskDetail) return
+    const media = window.matchMedia('(max-width: 1023px)')
+    const update = () => setNarrowNav(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [isTaskDetail])
 
   const navItems: MenuProps['items'] = PROJECT_NAV.map((item) => ({
     key: item.path,
@@ -68,17 +80,20 @@ export function ProjectDetailLayout() {
   }
 
   return (
-    <Layout style={{ height: 'calc(100vh - 56px)', background: token.colorBgBase }}>
+    <Layout className={isTaskDetail ? 'pd-layout pd-task-detail-layout' : 'pd-layout'} style={{ height: '100%', background: token.colorBgBase }}>
       <Sider
-        width={240}
+        width={isTaskDetail ? (narrowNav ? 64 : 190) : 240}
+        collapsed={isTaskDetail && narrowNav}
+        collapsedWidth={64}
         theme="dark"
         style={{
-          background: token.colorBgContainer,
-          borderRight: `1px solid ${token.colorBorder}`,
+          background: isTaskDetail ? '#001529' : token.colorBgContainer,
+          borderRight: isTaskDetail ? '1px solid #16324f' : `1px solid ${token.colorBorder}`,
           overflow: 'auto',
         }}
       >
-        <div style={{ padding: '16px 16px 8px' }}>
+        {isTaskDetail ? <div className="pd-task-detail-brand">Qgents</div> : null}
+        <div className="pd-project-heading" style={{ padding: '16px 16px 8px', display: isTaskDetail ? 'none' : undefined }}>
           <Text type="secondary" style={{ fontSize: 11 }}>
             当前项目
           </Text>
@@ -92,13 +107,14 @@ export function ProjectDetailLayout() {
         <Menu
           mode="inline"
           theme="dark"
+          inlineCollapsed={isTaskDetail && narrowNav}
           selectedKeys={[selectedNavKey]}
           items={navItems}
           onClick={handleNavClick}
           style={{ background: 'transparent', border: 'none' }}
         />
 
-        <div style={{ padding: '8px 12px 16px' }}>
+        <div className="pd-project-requests" style={{ padding: '8px 12px 16px' }}>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8, paddingLeft: 4 }}>
             需求
           </Text>

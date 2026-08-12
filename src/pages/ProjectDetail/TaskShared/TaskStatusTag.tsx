@@ -1,6 +1,6 @@
 import { Tag } from 'antd'
 import type { OrchestrationRunStatus } from '@/types'
-import { ORCHESTRATION_STATUS_META } from './taskCenterConfig'
+import { ORCHESTRATION_STATUS_META } from './taskStatus'
 
 export function TaskStatusTag({ status }: { status: OrchestrationRunStatus }) {
   const meta = ORCHESTRATION_STATUS_META[status]
@@ -19,3 +19,4 @@ export function TaskStatusTag({ status }: { status: OrchestrationRunStatus }) {
     </Tag>
   )
 }
+

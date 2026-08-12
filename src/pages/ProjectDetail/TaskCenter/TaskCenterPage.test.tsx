@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CursorPage, OrchestrationRun, WorkPackage } from '@/types'
+import type { CursorPage, OrchestrationRun } from '@/types'
 import { ApiError } from '@/api'
 import { TaskCenterPage } from './TaskCenterPage'
 
@@ -29,25 +29,6 @@ const baseRun: OrchestrationRun = {
   updatedAt: '2026-08-11T08:30:00Z',
 }
 
-const baseWorkPackage: WorkPackage = {
-  id: 'work-package-1',
-  projectId: 'project-test',
-  orchestrationRunId: 'run-1',
-  groupId: 'group-project-test-login',
-  repositoryId: 'repository-project-test',
-  baseRef: 'main',
-  headRef: 'feat/login-api',
-  title: '实现登录 API',
-  description: '完成邮箱登录和刷新机制',
-  priority: 1,
-  testsetIds: ['testset-required'],
-  startMode: 'AUTO',
-  status: 'RUNNING',
-  subtaskIds: ['subtask-planner'],
-  createdAt: '2026-08-11T08:00:00Z',
-  updatedAt: '2026-08-11T08:30:00Z',
-}
-
 function page(runs: OrchestrationRun[]): CursorPage<OrchestrationRun> {
   return {
     data: runs,
@@ -69,7 +50,9 @@ function renderPage(initialEntry = '/app/projects/project-test/tasks') {
             </>
           }
         />
+        <Route path="/app/projects/:projectId/tasks/:runId" element={<DetailProbe />} />
       </Routes>
+      <LocationPathProbe />
     </MemoryRouter>,
   )
 }
@@ -77,6 +60,15 @@ function renderPage(initialEntry = '/app/projects/project-test/tasks') {
 function SearchProbe() {
   const location = useLocation()
   return <output data-testid="location-search">{location.search}</output>
+}
+
+function DetailProbe() {
+  return <output data-testid="detail-route">detail</output>
+}
+
+function LocationPathProbe() {
+  const location = useLocation()
+  return <output data-testid="location-path">{location.pathname}{location.search}</output>
 }
 
 beforeEach(() => {
@@ -201,7 +193,7 @@ describe('TaskCenterPage', () => {
     )
 
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '状态筛选' }))
-    fireEvent.click(await screen.findByText('已完成'))
+    fireEvent.click((await screen.findAllByText('已完成'))[1])
     await waitFor(() => {
       expect(screen.getByTestId('location-search')).toHaveTextContent('status=completed')
     })
@@ -281,7 +273,7 @@ describe('TaskCenterPage', () => {
     })
   })
 
-  it('restores a URL-selected run and falls back invalid panel values', () => {
+  it('restores a URL-selected run, preserves the summary panel, and removes obsolete deep parameters', async () => {
     useInfiniteOrchestrationRunsMock.mockReturnValue({
       data: { pages: [page([baseRun])], pageParams: [undefined] },
       error: null,
@@ -299,14 +291,42 @@ describe('TaskCenterPage', () => {
       isLoading: false,
     })
 
-    renderPage('/app/projects/project-test/tasks?runId=run-1&panel=invalid')
+    renderPage('/app/projects/project-test/tasks?runId=run-1&panel=executions&workPackageId=wp-1&taskRunId=task-1&section=logs')
 
-    expect(useOrchestrationRunMock).toHaveBeenCalledWith('project-test', 'run-1')
-    expect(screen.getByRole('tab', { name: '需求上下文' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('button', { name: /实现登录接口/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getAllByText('查看完整任务详情').length).toBeGreaterThan(0)
+    await waitFor(() => {
+      expect(screen.getByTestId('location-search')).toHaveTextContent('runId=run-1')
+      expect(screen.getByTestId('location-search')).toHaveTextContent('panel=executions')
+      expect(screen.getByTestId('location-search')).not.toHaveTextContent('workPackageId=')
+      expect(screen.getByTestId('location-search')).not.toHaveTextContent('taskRunId=')
+      expect(screen.getByTestId('location-search')).not.toHaveTextContent('section=')
+    })
   })
 
-  it('writes the selected detail panel to the URL', async () => {
+  it('switches the three light summary tabs through the panel URL', async () => {
+    useInfiniteOrchestrationRunsMock.mockReturnValue({
+      data: { pages: [page([baseRun])], pageParams: [undefined] },
+      error: null,
+      isError: false,
+      isFetching: false,
+      isLoading: false,
+      hasNextPage: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage('/app/projects/project-test/tasks?runId=run-1&panel=context')
+
+    expect(screen.getByRole('tab', { name: '需求上下文' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '任务详情' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '执行记录' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: '执行记录' }))
+    await waitFor(() => expect(screen.getByTestId('location-search')).toHaveTextContent('panel=executions'))
+    expect(screen.getByText('执行记录摘要')).toBeInTheDocument()
+    expect(screen.getAllByText('查看完整任务详情').length).toBeGreaterThan(0)
+  })
+
+  it('navigates to the independent task detail page from the card action', async () => {
     useInfiniteOrchestrationRunsMock.mockReturnValue({
       data: { pages: [page([baseRun])], pageParams: [undefined] },
       error: null,
@@ -318,14 +338,15 @@ describe('TaskCenterPage', () => {
     })
 
     renderPage('/app/projects/project-test/tasks?runId=run-1')
-    fireEvent.click(screen.getByRole('tab', { name: '任务详情' }))
+    fireEvent.click(screen.getAllByText('查看完整任务详情')[0])
 
     await waitFor(() => {
-      expect(screen.getByTestId('location-search')).toHaveTextContent('panel=detail')
+      expect(screen.getByTestId('detail-route')).toBeInTheDocument()
+      expect(screen.getByTestId('location-path')).toHaveTextContent('/app/projects/project-test/tasks/run-1')
     })
   })
 
-  it('shows detail error without clearing the task list', () => {
+  it('keeps the list when the selected preview run is invalid', () => {
     useInfiniteOrchestrationRunsMock.mockReturnValue({
       data: { pages: [page([baseRun])], pageParams: [undefined] },
       error: null,
@@ -343,38 +364,10 @@ describe('TaskCenterPage', () => {
       isLoading: false,
     })
 
-    renderPage('/app/projects/project-test/tasks?runId=missing&panel=detail')
+    renderPage('/app/projects/project-test/tasks?runId=missing')
 
     expect(screen.getAllByText('实现登录接口').length).toBeGreaterThan(0)
     expect(screen.getByText('任务不存在或不可见')).toBeInTheDocument()
   })
 
-  it('renders work package and subtask ids from detail queries', () => {
-    useInfiniteOrchestrationRunsMock.mockReturnValue({
-      data: { pages: [page([baseRun])], pageParams: [undefined] },
-      error: null,
-      isError: false,
-      isFetching: false,
-      isLoading: false,
-      hasNextPage: false,
-      refetch: vi.fn(),
-    })
-    useOrchestrationRunMock.mockReturnValue({
-      data: baseRun,
-      error: null,
-      isError: false,
-      isFetching: false,
-      isLoading: false,
-    })
-    useOrchestrationWorkPackagesMock.mockReturnValue([
-      { data: baseWorkPackage, isLoading: false, isError: false },
-    ])
-
-    renderPage('/app/projects/project-test/tasks?runId=run-1&panel=detail')
-
-    expect(screen.getByText('workflowId')).toBeInTheDocument()
-    expect(screen.getByText('实现登录 API')).toBeInTheDocument()
-    expect(screen.getByText('subtask-planner')).toBeInTheDocument()
-    expect(screen.getAllByText('待接口字段').length).toBeGreaterThan(0)
-  })
 })

@@ -4,6 +4,42 @@
   gap: 4px;
 }
 
+.pd-task-detail-brand {
+  height: 58px;
+  padding: 14px 20px;
+  border-bottom: 1px solid #16324f;
+  color: #19c6c0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.pd-task-detail-layout .ant-menu {
+  padding-top: 10px;
+  background: #001529;
+}
+
+.pd-task-detail-layout .ant-menu-item,
+.pd-task-detail-layout .ant-menu-submenu-title {
+  width: calc(100% - 16px);
+  margin: 2px 8px;
+  border-radius: 6px;
+}
+
+.pd-task-detail-layout .ant-menu-item-selected {
+  background: #12466e;
+}
+
+.pd-task-detail-layout .pd-project-requests {
+  color: #d8e5f0;
+}
+
+@media (max-width: 1023px) {
+  .pd-task-detail-layout .pd-project-requests {
+    display: none;
+  }
+}
+
 .pd-req-item {
   display: block;
   padding: 8px 12px;

@@ -7,7 +7,6 @@ import {
   useInfiniteTaskRunSteps,
   useInfiniteTaskRuns,
   useInputRequests,
-  useOrchestrationWorkPackages,
   useTaskRun,
 } from '@/hooks'
 import type {
@@ -16,18 +15,26 @@ import type {
   InputRequest,
   TaskRun,
   TaskRunLog,
+  WorkPackage,
 } from '@/types'
-import styles from './TaskCenterPage.module.scss'
+import styles from './TaskDetailPage.module.scss'
 
 const { Text, Title } = Typography
 const PAGE_SIZE = 20
 const DETAIL_PAGE_SIZE = 40
+export interface WorkPackageQuery {
+  data?: WorkPackage
+  error?: Error | null
+  isError: boolean
+  isLoading: boolean
+}
 
 interface TaskExecutionPanelProps {
   projectId: string
   runId?: string
   run?: { id: string; projectId: string; workPackageIds: string[] }
   runQuery: { isLoading: boolean; isError: boolean; error: Error | null }
+  workPackageQueries: WorkPackageQuery[]
   requestedWorkPackageId?: string
   requestedTaskRunId?: string
   onWorkPackageChange: (workPackageId: string) => void
@@ -39,13 +46,13 @@ export function TaskExecutionPanel({
   runId,
   run,
   runQuery,
+  workPackageQueries,
   requestedWorkPackageId,
   requestedTaskRunId,
   onWorkPackageChange,
   onTaskRunChange,
 }: TaskExecutionPanelProps) {
   const workPackageIds = run?.workPackageIds ?? []
-  const workPackageQueries = useOrchestrationWorkPackages(projectId, workPackageIds)
   const workPackages = useMemo(
     () => workPackageQueries.flatMap((query) => query.data ? [query.data] : []),
     [workPackageQueries],
@@ -331,14 +338,14 @@ function TaskRunDetail({ query }: { query: ReturnType<typeof useTaskRun> }) {
           className={styles.executionAlert}
           type="warning"
           showIcon
-          title={`${statusLabel(taskRun.status)}：仅展示只读提示，操作能力将在后续阶段接入`}
+          title={`${statusLabel(taskRun.status)}：当前任务记录为只读状态`}
         />
       ) : null}
       <Descriptions column={1} size="small" bordered>
         <Descriptions.Item label="TaskRun ID">{taskRun.id}</Descriptions.Item>
         <Descriptions.Item label="关联 Subtask">{taskRun.subtaskTitle ?? taskRun.subtaskId}</Descriptions.Item>
         <Descriptions.Item label="当前节点">
-          {taskRun.agentNode ?? '待接口字段'} / {taskRun.agentRole ?? '待接口字段'}
+          {taskRun.agentNode ?? '暂无节点'} / {taskRun.agentRole ?? '暂无 Agent'}
         </Descriptions.Item>
         <Descriptions.Item label="开始时间">{formatDateTime(taskRun.startedAt ?? taskRun.createdAt)}</Descriptions.Item>
         <Descriptions.Item label="结束时间">
@@ -515,7 +522,7 @@ function InputRequestItem({ request }: { request: InputRequest }) {
         </Space>
       ) : null}
       <Text type="secondary">创建时间：{formatDateTime(request.createdAt)}</Text>
-      <Text type="secondary">操作能力将在后续阶段接入</Text>
+      <Text type="secondary">当前请求为只读记录</Text>
     </div>
   )
 }

@@ -151,6 +151,13 @@ function renderPanel({
       runId="run-1"
       run={run}
       runQuery={{ isLoading: false, isError: false, error: null }}
+      workPackageQueries={workPackages.map((workPackage) => ({
+        data: workPackage,
+        error: null,
+        isError: false,
+        isLoading: false,
+        isFetching: false,
+      }))}
       requestedWorkPackageId={requestedWorkPackageId}
       requestedTaskRunId={requestedTaskRunId}
       onWorkPackageChange={onWorkPackageChange}
@@ -267,7 +274,7 @@ describe('TaskExecutionPanel', () => {
     renderPanel()
 
     expect(screen.getByText('请选择基准分支')).toBeInTheDocument()
-    expect(screen.getByText('操作能力将在后续阶段接入')).toBeInTheDocument()
+    expect(screen.getByText('当前请求为只读记录')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /回复|批准|拒绝|重试|取消/ })).not.toBeInTheDocument()
   })
 

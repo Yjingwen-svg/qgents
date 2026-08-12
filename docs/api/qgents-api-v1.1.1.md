@@ -673,7 +673,7 @@ MR 详情的最小响应：
 - 发现日期：2026-08-11
 - 所属模块：任务中心（OrchestrationRun 列表）
 - 当前问题：当前任务中心原型需要需求群名称、发起人显示名、进度百分比、等待原因和错误摘要，但 v1.1.1 的 `OrchestrationRun` 列表只定义了 `groupId`、`createdBy`、状态、工作包 ID 列表及时间字段。
-- 前端临时处理：页面直接展示正式字段；需求群名称和发起人显示名使用明确的前端展示映射；进度、等待原因和错误摘要使用状态映射的临时展示值，不作为请求字段提交。
+- 前端临时处理：页面直接展示正式字段；需求群名称和发起人显示名使用明确的前端展示映射。为覆盖 V3 原型，Mock 的 `OrchestrationRun` 可选返回 `taskCenterSummary`，包含 `requirementGroupName`、`deliveryType`、`description`、`executionTarget`、`targetRepositoryId`、`targetRef`、`taskCount`、`progressPercent`、`statusCounts`、`acceptanceCriteria`、`participants` 和 `agentName`；该对象仅用于展示，不作为正式请求字段或后端契约。
 - 后端待确认：正式的群组摘要/名称、用户显示名、编排进度与错误摘要字段，以及列表摘要和详情字段的边界。
 - 状态筛选待确认：`running`、`waiting`、`completed`、`failed` 是前端展示分组，分别映射多个 `OrchestrationRunStatus`；当前接口仅明确单值 `status` 过滤，前端暂不把分组值伪装成正式请求参数，需确认多状态参数格式（数组、重复参数或服务端聚合值）。
 - 统计与选项待确认：任务中心状态概览数量、发起人选项和需求组选项当前只能从已加载的 cursor 页面派生；需确认是否提供项目级总数/分组统计及成员、需求群目录接口，避免分页未加载时出现不完整筛选项或数量。
@@ -684,7 +684,7 @@ MR 详情的最小响应：
 - 发现日期：2026-08-11
 - 所属模块：任务中心右侧任务详情
 - 当前问题：v1.1.1 仅给出 `OrchestrationRun` 的最小关联字段；详情响应是否包含工作包摘要、总体进度、等待原因、失败摘要及完整需求上下文尚未明确。
-- 前端临时处理：详情仍通过 `useOrchestrationRun(projectId, runId)` 获取；工作包 ID 通过独立的 WorkPackage detail Query 获取并按 Query Key 去重；未定义的字段显示为明确的“待接口字段”或阶段占位，不作为正式数据提交。
+- 前端临时处理：详情仍通过 `useOrchestrationRun(projectId, runId)` 获取；工作包 ID 通过独立的 WorkPackage detail Query 获取并按 Query Key 去重。为覆盖 V3 原型，Mock 的 `OrchestrationRun` 可选返回 `taskDetailSummary`，包含优先级、当前执行阶段、需求群讨论、决策记录和 Skill/Memory 摘要；`Deliverable` 可选返回 `summary`。这些字段仅用于展示，不作为正式数据提交。
 - 编排详情待确认：完整详情响应结构、`instruction`/状态/发起人/需求群/workflow/startMode/时间字段的摘要与详情边界，以及总体进度计算来源。
 - 编排与 WorkPackage 关联待确认：详情是否直接返回工作包摘要，还是仅返回 `workPackageIds`；若仅返回 ID，需确认服务端是否提供批量详情或关联查询接口。
 - WorkPackage 摘要待确认：标题、说明、状态、优先级、`repositoryId`、`baseRef`、`headRef`、`startMode`、Testset 摘要、子任务数量及时间字段是否稳定返回。
@@ -697,6 +697,7 @@ MR 详情的最小响应：
 - 发现日期：2026-08-11
 - 所属模块：TaskRun 执行记录面板
 - 前端临时约定：列表和详情均使用 `TaskRun` 响应；除 `id`、`projectId`、`orchestrationRunId`、`workPackageId`、`subtaskId`、`status`、`retryOfTaskRunId`、`createdAt`、`updatedAt` 外，Mock 可选返回 `subtaskTitle`、`agentNode`、`agentRole`、`startedAt`、`finishedAt`、`durationMs`、`artifactSummary` 与 `errorSummary`。
+- 为覆盖任务中心“执行记录”Tab 的轻量摘要，Mock 的 `OrchestrationRun` 可选返回 `executionPreview`，包含 `latestTaskRunId`、`latestTaskRunStatus`、`currentNode`、最近步骤、错误摘要和阻塞摘要；该对象不替代 TaskRun、Steps 正式接口，也不触发执行操作。
 - TaskRun 默认排序：服务端返回顺序，前端不重新排序；当前 Mock 按创建顺序返回。
 - retry 链路：通过 `retryOfTaskRunId` 只读展示来源，不在本阶段提供 retry 操作。
 - Steps：使用 `cursor`/`limit` 分页，按服务端返回顺序展示；条目包含 `node`、`status`、`startedAt`、`finishedAt`、`durationMs` 和可选 `errorCode`。

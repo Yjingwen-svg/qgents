@@ -1,12 +1,10 @@
-import { Alert, Collapse, Descriptions, Divider, Empty, Progress, Result, Space, Spin, Table, Tabs, Tag, Typography } from 'antd'
-import type { ColumnsType } from 'antd/es/table'
+import { Alert, Button, Empty, Result, Space, Spin, Tabs, Tag, Typography } from 'antd'
 import { ApiError } from '@/api'
-import { useOrchestrationRun, useOrchestrationWorkPackages } from '@/hooks'
-import type { OrchestrationRun, WorkPackage } from '@/types'
-import { TaskStatusTag } from './TaskStatusTag'
-import { TaskExecutionPanel } from './TaskExecutionPanel'
-import { getTaskCenterPresentation } from './taskCenterPresentation'
-import { type TaskCenterPanel } from './taskCenterConfig'
+import { useOrchestrationRun } from '@/hooks'
+import type { OrchestrationRun, TaskExecutionPreviewStep } from '@/types'
+import { TASK_CENTER_PANEL_OPTIONS, type TaskCenterPanel } from './taskCenterConfig'
+import { TaskStatusTag } from '../TaskShared/TaskStatusTag'
+import { getTaskPresentation } from '../TaskShared/taskPresentation'
 import styles from './TaskCenterPage.module.scss'
 
 const { Paragraph, Text, Title } = Typography
@@ -16,11 +14,8 @@ interface TaskContextPanelProps {
   runId?: string
   summaryRun?: OrchestrationRun
   panel: TaskCenterPanel
-  requestedWorkPackageId?: string
-  requestedTaskRunId?: string
-  onWorkPackageChange: (workPackageId: string) => void
-  onTaskRunChange: (taskRunId?: string) => void
   onPanelChange: (panel: TaskCenterPanel) => void
+  onViewDetails: (runId: string) => void
 }
 
 export function TaskContextPanel({
@@ -28,304 +23,178 @@ export function TaskContextPanel({
   runId,
   summaryRun,
   panel,
-  requestedWorkPackageId,
-  requestedTaskRunId,
-  onWorkPackageChange,
-  onTaskRunChange,
   onPanelChange,
+  onViewDetails,
 }: TaskContextPanelProps) {
-  const detailQuery = useOrchestrationRun(projectId, runId ?? '')
-  const detailRun = detailQuery.data
-  const headerRun = detailRun ?? summaryRun
-  const presentation = headerRun ? getTaskCenterPresentation(headerRun) : undefined
+  const detailQuery = useOrchestrationRun(projectId, summaryRun ? '' : runId ?? '')
+  const run = summaryRun ?? detailQuery.data
 
   return (
-    <aside className={styles.contextPanel} aria-label="任务上下文">
+    <aside className={styles.contextPanel} aria-label="任务轻量预览">
       <div className={styles.contextHeader}>
         <Text className={styles.contextId}>任务 ID：{runId ?? '—'}</Text>
-        {headerRun ? <TaskStatusTag status={headerRun.status} /> : null}
-        <Text type="secondary" className={styles.contextPlaceholder}>···</Text>
+        {run ? <TaskStatusTag status={run.status} /> : null}
       </div>
-
       <Tabs
-        className={styles.contextTabs}
         activeKey={panel}
+        items={TASK_CENTER_PANEL_OPTIONS.map((option) => ({ key: option.key, label: option.label }))}
         onChange={(key) => onPanelChange(parsePanelKey(key))}
-        items={[
-          {
-            key: 'context',
-            label: '需求上下文',
-            children: (
-              <ContextPanelContent
-                run={headerRun}
-                runId={runId}
-                query={detailQuery}
-              />
-            ),
-          },
-          {
-            key: 'detail',
-            label: '任务详情',
-            children: (
-              <DetailPanelContent
-                run={detailRun}
-                runId={runId}
-                query={detailQuery}
-              />
-            ),
-          },
-          {
-            key: 'executions',
-            label: '执行记录',
-            children: (
-              <TaskExecutionPanel
-                projectId={projectId}
-                runId={runId}
-                run={headerRun}
-                runQuery={detailQuery}
-                requestedWorkPackageId={requestedWorkPackageId}
-                requestedTaskRunId={requestedTaskRunId}
-                onWorkPackageChange={onWorkPackageChange}
-                onTaskRunChange={onTaskRunChange}
-              />
-            ),
-          },
-        ]}
+        className={styles.contextTabs}
       />
 
-      {headerRun && presentation ? (
-        <div className={styles.contextFooter}>
-          <Text type="secondary">执行主体</Text>
-          <Space wrap>
-            <Tag className={styles.roleTag}>{presentation.creatorLabel}</Tag>
-            <Tag className={styles.roleTag}>Agent 编排</Tag>
-          </Space>
-        </div>
-      ) : null}
+      {!run ? <PreviewState runId={runId} query={detailQuery} /> : (
+        <PreviewContent run={run} panel={panel} onViewDetails={onViewDetails} />
+      )}
     </aside>
   )
 }
 
-interface ContextPanelContentProps {
-  run?: OrchestrationRun
-  runId?: string
-  query: ReturnType<typeof useOrchestrationRun>
-}
-
-function ContextPanelContent({ run, runId, query }: ContextPanelContentProps) {
-  if (!run) return <PanelQueryState runId={runId} query={query} />
-
-  const presentation = getTaskCenterPresentation(run)
-
+function PreviewContent({
+  run,
+  panel,
+  onViewDetails,
+}: {
+  run: OrchestrationRun
+  panel: TaskCenterPanel
+  onViewDetails: (runId: string) => void
+}) {
   return (
     <div className={styles.contextContent}>
-      <section>
-        <Title level={5}>共享需求上下文</Title>
-        <Text type="secondary" className={styles.contextLabel}>需求群</Text>
-        <Text className={styles.contextValue}>{presentation.groupLabel}</Text>
-        <Text type="secondary" className={styles.contextLabel}>需求描述</Text>
-        <Paragraph ellipsis={{ rows: 4 }} className={styles.contextDescription}>
-          {run.instruction}
-        </Paragraph>
-        <Text className={styles.contextLink}>查看完整需求</Text>
-      </section>
-
-      <Divider />
-
-      <section>
-        <Title level={5}>可选执行目标 <Text type="secondary">（只读）</Text></Title>
-        <Text type="secondary" className={styles.contextLabel}>工作包</Text>
-        {run.workPackageIds.length > 0 ? (
-          <Space wrap>
-            {run.workPackageIds.map((workPackageId) => <Tag key={workPackageId}>{workPackageId}</Tag>)}
-          </Space>
-        ) : (
-          <Text type="secondary">暂无工作包</Text>
-        )}
-        <Text type="secondary" className={styles.contextNote}>
-          仓库、分支和验收标准将在交付阶段提供。
-        </Text>
-      </section>
-
-      <Divider />
-
-      <section>
-        <Title level={5}>参与角色 <Text type="secondary">（只读）</Text></Title>
-        <div className={styles.roleGrid}>
-          <div className={styles.roleCard}>
-            <Text type="secondary">发起人</Text>
-            <Text strong>{presentation.creatorLabel}</Text>
-          </div>
-          <div className={styles.roleCard}>
-            <Text type="secondary">Agent</Text>
-            <Text strong>云端编排</Text>
-          </div>
-        </div>
-      </section>
+      {panel === 'context' ? <ContextSummary run={run} /> : null}
+      {panel === 'detail' ? <TaskSummary run={run} /> : null}
+      {panel === 'executions' ? <ExecutionSummary run={run} /> : null}
+      <Button type="link" className={styles.previewDetailsButton} onClick={() => onViewDetails(run.id)}>
+        查看完整任务详情
+      </Button>
     </div>
   )
 }
 
-interface DetailPanelContentProps {
-  run?: OrchestrationRun
-  runId?: string
-  query: ReturnType<typeof useOrchestrationRun>
+function ContextSummary({ run }: { run: OrchestrationRun }) {
+  const presentation = getTaskPresentation(run)
+  const summary = run.taskCenterSummary
+  return (
+    <section>
+      <Title level={5}>共享需求上下文</Title>
+      <PreviewField label="需求群" value={presentation.groupLabel} accent />
+      <PreviewField label="需求描述" value={summary?.description ?? presentation.description} paragraph />
+      <PreviewField label="执行目标" value={presentation.executionTarget} />
+      <div className={styles.contextLabel}>验收标准</div>
+      <ul className={styles.criteriaList}>
+        {(summary?.acceptanceCriteria ?? []).length > 0 ? (summary?.acceptanceCriteria ?? []).map((criterion) => (
+          <li key={criterion}><span className={styles.checkMark}>✓</span>{criterion}</li>
+        )) : <li>暂无验收标准</li>}
+      </ul>
+      <div className={styles.contextLabel}>参与者 / Agent</div>
+      <Space wrap>
+        {(summary?.participants ?? []).map((participant) => (
+          <Tag className={styles.roleTag} key={participant.id}>{participant.role} · {participant.name}</Tag>
+        ))}
+        {summary?.agentName ? <Tag className={styles.roleTag}>{summary.agentName}</Tag> : null}
+      </Space>
+    </section>
+  )
 }
 
-function DetailPanelContent({ run, runId, query }: DetailPanelContentProps) {
-  const workPackageQueries = useOrchestrationWorkPackages(run?.projectId ?? '', run?.workPackageIds ?? [])
-  if (!run) return <PanelQueryState runId={runId} query={query} />
-
-  const presentation = getTaskCenterPresentation(run)
-  const workPackages = workPackageQueries.flatMap((result) => result.data ? [result.data] : [])
-  const workPackagesLoading = workPackageQueries.some((result) => result.isLoading)
-  const workPackagesFailed = workPackageQueries.some((result) => result.isError)
-
+function TaskSummary({ run }: { run: OrchestrationRun }) {
+  const presentation = getTaskPresentation(run)
+  const summary = run.taskDetailSummary
   return (
-    <Spin spinning={query.isFetching && !query.isLoading}>
-      <div className={styles.detailContent}>
-        {query.isError ? (
-          <Alert type="warning" showIcon title="任务详情刷新失败，已保留上次内容" className={styles.detailAlert} />
-        ) : null}
-        <section>
-          <Title level={5}>编排详情</Title>
-          <Descriptions column={1} size="small" bordered>
-            <Descriptions.Item label="编排 ID">{run.id}</Descriptions.Item>
-            <Descriptions.Item label="instruction">{run.instruction}</Descriptions.Item>
-            <Descriptions.Item label="状态"><TaskStatusTag status={run.status} /></Descriptions.Item>
-            <Descriptions.Item label="发起人">{presentation.creatorLabel}</Descriptions.Item>
-            <Descriptions.Item label="需求群">{presentation.groupLabel}</Descriptions.Item>
-            <Descriptions.Item label="workflowId">{run.workflowId}</Descriptions.Item>
-            <Descriptions.Item label="startMode">{run.startMode}</Descriptions.Item>
-            <Descriptions.Item label="创建时间">{formatDateTime(run.createdAt)}</Descriptions.Item>
-            <Descriptions.Item label="更新时间">{formatDateTime(run.updatedAt)}</Descriptions.Item>
-          </Descriptions>
-          <Text type="secondary" className={styles.contextLabel}>总体进度（临时展示）</Text>
-          <Progress percent={presentation.progressPercent} size="small" />
-          {presentation.waitingLabel ? <Alert type="warning" showIcon title={presentation.waitingLabel} /> : null}
-          {presentation.errorSummary ? <Alert type="error" showIcon title={presentation.errorSummary} /> : null}
-        </section>
-
-        <Divider />
-
-        <section>
-          <Title level={5}>工作包详情</Title>
-          {workPackagesLoading && workPackages.length === 0 ? <Spin /> : null}
-          {workPackagesFailed ? (
-            <Alert type="warning" showIcon title="部分工作包详情暂时无法加载" className={styles.detailAlert} />
-          ) : null}
-          {run.workPackageIds.length === 0 ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无工作包" />
-          ) : (
-            <Collapse
-              defaultActiveKey={run.workPackageIds[0]}
-              items={workPackageQueries.map((result, index) => {
-                const workPackage = result.data
-                return {
-                  key: workPackage?.id ?? run.workPackageIds[index],
-                  label: workPackage?.title ?? run.workPackageIds[index],
-                  children: workPackage ? <WorkPackageContent workPackage={workPackage} /> : <WorkPackageState result={result} />,
-                }
-              })}
-              bordered={false}
-              size="small"
-            />
-          )}
-        </section>
+    <section>
+      <Title level={5}>任务详情摘要</Title>
+      <PreviewField label="标题" value={run.instruction} />
+      <div className={styles.previewStatGrid}>
+        <PreviewField label="状态" value={<TaskStatusTag status={run.status} />} />
+        <PreviewField label="进度" value={`${presentation.progressPercent}%`} />
+        <PreviewField label="交付类型" value={presentation.deliveryTypeLabel} />
+        <PreviewField label="WorkPackage" value={`${run.workPackageIds.length} 个`} />
       </div>
-    </Spin>
+      <PreviewField label="执行阶段" value={summary?.currentStage ?? run.status} />
+      <PreviewField label="执行目标" value={presentation.targetLabel} />
+      <PreviewField label="发起人" value={presentation.creatorLabel} />
+      <PreviewField label="时间" value={`${formatDate(run.createdAt)} · ${formatDate(run.updatedAt)}`} />
+    </section>
   )
 }
 
-function WorkPackageContent({ workPackage }: { workPackage: WorkPackage }) {
+function ExecutionSummary({ run }: { run: OrchestrationRun }) {
+  const preview = run.executionPreview
   return (
-    <div className={styles.workPackageContent}>
-      <Descriptions column={1} size="small">
-        <Descriptions.Item label="说明">{workPackage.description}</Descriptions.Item>
-        <Descriptions.Item label="状态"><Tag>{workPackage.status}</Tag></Descriptions.Item>
-        <Descriptions.Item label="优先级">P{workPackage.priority}</Descriptions.Item>
-        <Descriptions.Item label="repositoryId">{workPackage.repositoryId}</Descriptions.Item>
-        <Descriptions.Item label="baseRef">{workPackage.baseRef}</Descriptions.Item>
-        <Descriptions.Item label="headRef">{workPackage.headRef}</Descriptions.Item>
-        <Descriptions.Item label="startMode">{workPackage.startMode}</Descriptions.Item>
-        <Descriptions.Item label="Testset 摘要">
-          {workPackage.testsetIds.length > 0 ? workPackage.testsetIds.join(', ') : '暂无 Testset'}
-        </Descriptions.Item>
-        <Descriptions.Item label="子任务数量">{workPackage.subtaskIds.length}</Descriptions.Item>
-        <Descriptions.Item label="创建/更新时间">
-          {formatDateTime(workPackage.createdAt)} / {formatDateTime(workPackage.updatedAt)}
-        </Descriptions.Item>
-      </Descriptions>
-      <Title level={5}>子任务</Title>
-      {workPackage.subtaskIds.length > 0 ? <SubtaskTable subtaskIds={workPackage.subtaskIds} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无子任务" />}
+    <section>
+      <Title level={5}>执行记录摘要</Title>
+      <div className={styles.previewStatGrid}>
+        <PreviewField label="最新 TaskRun" value={preview?.latestTaskRunId ?? '暂无记录'} />
+        <PreviewField label="当前节点" value={preview?.currentNode ?? '暂无节点'} />
+      </div>
+      {preview?.errorSummary ? <Alert type="error" showIcon title={preview.errorSummary} /> : null}
+      {preview?.blockedSummary ? <Alert type="warning" showIcon title={preview.blockedSummary} /> : null}
+      <div className={styles.contextLabel}>最近步骤</div>
+      <ul className={styles.executionPreviewList}>
+        {(preview?.recentSteps ?? []).length > 0 ? (preview?.recentSteps ?? []).slice(0, 5).map((step) => (
+          <li key={step.id}><ExecutionPreviewItem step={step} /></li>
+        )) : <li>暂无执行步骤</li>}
+      </ul>
+    </section>
+  )
+}
+
+function ExecutionPreviewItem({ step }: { step: TaskExecutionPreviewStep }) {
+  return (
+    <div>
+      <div className={styles.previewStep}>
+        <Text strong>{step.label}</Text>
+        <Space size={6}>
+          <Tag>{step.node}</Tag>
+          <Text type="secondary">{step.status}</Text>
+        </Space>
+      </div>
     </div>
   )
 }
 
-function SubtaskTable({ subtaskIds }: { subtaskIds: string[] }) {
-  const columns: ColumnsType<{ id: string; order: number }> = [
-    { title: '子任务', dataIndex: 'id', key: 'id', ellipsis: true },
-    { title: '顺序', dataIndex: 'order', key: 'order', width: 48 },
-    { title: '角色', key: 'role', render: () => <Text type="secondary">待接口字段</Text> },
-    { title: '状态', key: 'status', render: () => <Text type="secondary">待接口字段</Text> },
-  ]
-
-  return (
-    <Table
-      aria-label="子任务列表"
-      size="small"
-      pagination={false}
-      rowKey="id"
-      columns={columns}
-      dataSource={subtaskIds.map((id, index) => ({ id, order: index + 1 }))}
-      scroll={{ x: 360 }}
-    />
-  )
-}
-
-function WorkPackageState({ result }: { result: ReturnType<typeof useOrchestrationWorkPackages>[number] }) {
-  if (result.isLoading) return <Spin size="small" />
-  return <Text type="secondary">工作包详情暂不可用</Text>
-}
-
-function PanelQueryState({
-  runId,
-  query,
+function PreviewField({
+  label,
+  value,
+  accent = false,
+  paragraph = false,
 }: {
-  runId?: string
-  query: ReturnType<typeof useOrchestrationRun>
+  label: string
+  value: React.ReactNode
+  accent?: boolean
+  paragraph?: boolean
 }) {
-  if (!runId) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请选择任务" />
-  if (query.isLoading) return <div className={styles.panelState}><Spin description="正在加载任务详情" /></div>
-  if (query.isError) return <PanelError error={query.error} />
-  return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无任务详情" />
+  return (
+    <div className={styles.previewField}>
+      <Text type="secondary" className={styles.contextLabel}>{label}</Text>
+      {paragraph ? <Paragraph className={styles.contextDescription}>{value}</Paragraph> : <Text className={`${styles.contextValue} ${accent ? styles.contextAccent : ''}`}>{value}</Text>}
+    </div>
+  )
 }
 
-function PanelError({ error }: { error: Error | null }) {
-  const status = error instanceof ApiError ? error.status : undefined
-  return (
-    <Result
-      className={styles.panelResult}
-      status={status === 403 ? '403' : status === 404 ? '404' : 'error'}
-      title={status === 403 ? '暂无权限查看任务' : status === 404 ? '任务不存在或不可见' : '任务详情加载失败'}
-      subTitle="未显示技术错误信息。"
-    />
-  )
+function PreviewState({ runId, query }: { runId?: string; query: ReturnType<typeof useOrchestrationRun> }) {
+  if (!runId) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请选择任务" />
+  if (query.isLoading) return <div className={styles.panelState}><Spin description="正在加载任务预览" /></div>
+  if (query.isError) {
+    const status = query.error instanceof ApiError ? query.error.status : undefined
+    return (
+      <Result
+        className={styles.panelResult}
+        status={status === 403 ? '403' : status === 404 ? '404' : 'error'}
+        title={status === 403 ? '暂无权限查看任务' : status === 404 ? '任务不存在或不可见' : '任务预览加载失败'}
+        subTitle="任务中心列表仍可继续使用。"
+      />
+    )
+  }
+  return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无任务预览" />
 }
 
 function parsePanelKey(value: string): TaskCenterPanel {
-  if (value === 'context' || value === 'detail' || value === 'executions') return value
+  if (value === 'detail' || value === 'executions') return value
   return 'context'
 }
 
-function formatDateTime(value: string): string {
+function formatDate(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
+  return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' }).format(date)
 }

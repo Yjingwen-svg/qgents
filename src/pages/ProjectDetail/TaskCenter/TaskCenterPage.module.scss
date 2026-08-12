@@ -8,7 +8,7 @@
 
 .main {
   min-width: 0;
-  padding: 28px 32px 48px;
+  padding: 24px 28px 48px;
 }
 
 .header,
@@ -20,7 +20,7 @@
 }
 
 .header {
-  margin-bottom: 28px;
+  margin-bottom: 22px;
 }
 
 .title {
@@ -43,7 +43,7 @@
 }
 
 .filters {
-  margin-bottom: 28px;
+  margin-bottom: 20px;
 }
 
 .filterLabel {
@@ -93,13 +93,17 @@
 }
 
 .taskCard {
-  min-height: 420px;
+  min-height: 0;
   height: 100%;
   border-color: #e4eaf2;
   border-radius: 8px;
   box-shadow: 0 2px 10px rgba(22, 47, 82, 0.04);
   cursor: pointer;
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.taskCard :global(.ant-card-body) {
+  padding: 16px;
 }
 
 .taskCard:hover,
@@ -113,6 +117,25 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.taskCardTitleLine {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.taskCardTitleLine h5 {
+  min-width: 0;
+  margin: 0;
+}
+
+.taskCount {
+  flex: 0 0 auto;
+  color: #52627b;
+  font-size: 12px;
 }
 
 .taskCardHeading h5 {
@@ -134,10 +157,42 @@
   font-weight: 600;
 }
 
+.deliveryTag {
+  margin: 0;
+  border-color: #d9e9f7;
+  color: #1269c7;
+  background: #f3f8fd;
+}
+
 .taskCardCopy {
-  min-height: 44px;
-  margin: 16px 0;
+  min-height: 40px;
+  margin: 14px 0;
   color: #6d7d95;
+}
+
+.taskCardTarget {
+  display: grid;
+  gap: 5px;
+  color: #243855;
+  font-size: 12px;
+}
+
+.taskCardCounts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.statusCount {
+  display: grid;
+  gap: 3px;
+  padding: 8px 0;
+  border-right: 1px solid #edf1f5;
+  text-align: center;
+}
+
+.statusCount:last-child {
+  border-right: 0;
 }
 
 .taskCardMeta > span:first-child,
@@ -160,6 +215,16 @@
   padding: 8px 10px;
   border-radius: 6px;
   font-size: 12px;
+}
+
+.cardDetailsButton,
+.previewDetailsButton {
+  padding-inline: 0;
+  color: #1269c7;
+}
+
+.cardDetailsButton {
+  margin-top: 12px;
 }
 
 .waitingNotice {
@@ -232,6 +297,24 @@
   margin-bottom: 14px;
 }
 
+.contextTabs {
+  margin: 0 -4px 18px;
+}
+
+.contextTabs :global(.ant-tabs-nav) {
+  margin-bottom: 18px;
+}
+
+.contextTabs :global(.ant-tabs-tab) {
+  padding: 8px 4px;
+  color: #52627b;
+}
+
+.contextTabs :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
+  color: #0d8d91;
+  font-weight: 600;
+}
+
 .contextId {
   flex: 1;
   min-width: 0;
@@ -239,22 +322,6 @@
   color: #52627b;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.contextPlaceholder {
-  letter-spacing: 2px;
-}
-
-.contextTabs :global(.ant-tabs-nav) {
-  margin-bottom: 22px;
-}
-
-.contextTabs :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
-  color: #0d9b9b;
-}
-
-.contextTabs :global(.ant-tabs-ink-bar) {
-  background: #0d9b9b;
 }
 
 .contextContent h5 {
@@ -276,8 +343,67 @@
 
 .contextValue {
   margin-top: 4px;
-  color: #0d8d91;
+  color: #243855;
   font-weight: 600;
+}
+
+.contextAccent {
+  color: #0d8d91;
+}
+
+.previewField {
+  margin-bottom: 14px;
+}
+
+.previewStatGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.previewStatGrid .previewField {
+  min-width: 0;
+  margin-bottom: 0;
+  padding: 8px;
+  border: 1px solid #edf1f5;
+  border-radius: 6px;
+}
+
+.criteriaList,
+.executionPreviewList {
+  padding: 0;
+  margin: 4px 0 14px;
+  list-style: none;
+}
+
+.criteriaList li,
+.executionPreviewList li {
+  padding: 7px 0;
+  border-bottom-color: #edf1f5;
+  border-bottom: 1px solid #edf1f5;
+  color: #52627b;
+  font-size: 12px;
+}
+
+.checkMark {
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  place-items: center;
+  border: 1px solid #24a9ad;
+  border-radius: 50%;
+  color: #0d8d91;
+  font-size: 10px;
+}
+
+.previewStep {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .contextDescription {
@@ -286,34 +412,9 @@
   line-height: 1.65;
 }
 
-.contextLink {
-  display: inline-block;
-  margin-top: 10px;
-  color: #1269c7;
-  font-size: 13px;
-}
-
 .contextNote {
   margin-top: 16px;
   line-height: 1.6;
-}
-
-.roleGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.roleCard {
-  display: flex;
-  min-height: 62px;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid #e4eaf2;
-  border-radius: 8px;
-  background: #ffffff;
 }
 
 .roleTag {
@@ -323,53 +424,8 @@
   background: #ffffff;
 }
 
-.contextFooter {
+.previewDetailsButton {
   margin-top: 18px;
-}
-
-.detailContent,
-.workPackageContent {
-  min-width: 0;
-}
-
-.detailContent h5,
-.workPackageContent h5 {
-  margin: 0 0 14px;
-  color: #12213d;
-}
-
-.detailContent :global(.ant-descriptions-item-label),
-.detailContent :global(.ant-descriptions-item-content),
-.workPackageContent :global(.ant-descriptions-item-label),
-.workPackageContent :global(.ant-descriptions-item-content) {
-  padding: 7px 9px;
-  font-size: 12px;
-}
-
-.detailContent :global(.ant-descriptions-item-label),
-.workPackageContent :global(.ant-descriptions-item-label) {
-  color: #6d7d95;
-}
-
-.detailContent :global(.ant-progress) {
-  margin: 6px 0 14px;
-}
-
-.detailAlert {
-  margin-bottom: 14px;
-}
-
-.workPackageContent :global(.ant-collapse) {
-  margin-top: 4px;
-  background: transparent;
-}
-
-.workPackageContent :global(.ant-collapse-content-box) {
-  padding: 12px 0 4px;
-}
-
-.workPackageContent :global(.ant-table-wrapper) {
-  margin-top: 10px;
 }
 
 .panelState {
@@ -380,173 +436,6 @@
 
 .panelResult {
   padding: 48px 0;
-}
-
-.executionPanel {
-  min-width: 0;
-}
-
-.executionHeader,
-.executionSectionHeading,
-.taskRunItemHeader,
-.stepItemHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.executionHeader {
-  align-items: flex-start;
-  margin-bottom: 18px;
-}
-
-.executionHeader h5,
-.executionSectionHeading h5 {
-  margin: 0;
-  color: #12213d;
-}
-
-.executionHeader > div {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.executionSection {
-  margin-bottom: 18px;
-  padding-top: 16px;
-  border-top: 1px solid #edf1f5;
-}
-
-.executionSectionHeading {
-  margin-bottom: 10px;
-}
-
-.executionSelect {
-  width: 100%;
-}
-
-.workPackageSummary {
-  display: grid;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 10px;
-  border: 1px solid #e4eaf2;
-  border-radius: 8px;
-  background: #f9fbfd;
-}
-
-.executionAlert {
-  margin-top: 10px;
-}
-
-.taskRunList,
-.stepList,
-.logList {
-  display: grid;
-  gap: 8px;
-}
-
-.taskRunItem {
-  display: grid;
-  width: 100%;
-  gap: 5px;
-  padding: 10px;
-  border: 1px solid #e4eaf2;
-  border-radius: 8px;
-  color: #243855;
-  background: #ffffff;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 0.18s ease, background-color 0.18s ease;
-}
-
-.taskRunItem:hover,
-.taskRunItemSelected {
-  border-color: #0d9b9b;
-  background: #f1fbfa;
-}
-
-.taskRunItemHeader {
-  min-width: 0;
-}
-
-.taskRunItemHeader > span:first-child {
-  min-width: 0;
-}
-
-.taskRunItemMeta,
-.retryLine {
-  overflow-wrap: anywhere;
-  color: #6d7d95;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.retryLine {
-  color: #8a5a00;
-}
-
-.stepItem,
-.inputRequestItem {
-  display: grid;
-  gap: 5px;
-  padding: 10px;
-  border: 1px solid #e4eaf2;
-  border-radius: 8px;
-  background: #ffffff;
-}
-
-.stepItemHeader {
-  color: #243855;
-}
-
-.logList {
-  max-height: 280px;
-  overflow: auto;
-  padding: 10px;
-  border: 1px solid #1f2d43;
-  border-radius: 8px;
-  background: #111b2b;
-  color: #e4edf8;
-  font-family: 'Cascadia Mono', 'SFMono-Regular', Consolas, monospace;
-  font-size: 11px;
-}
-
-.logLine {
-  display: grid;
-  grid-template-columns: max-content max-content max-content minmax(0, 1fr);
-  align-items: baseline;
-  gap: 7px;
-  min-width: 0;
-  line-height: 1.6;
-}
-
-.logTimestamp {
-  color: #91a4c1;
-  white-space: nowrap;
-}
-
-.logContent {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.inputPrompt {
-  color: #243855;
-  line-height: 1.55;
-}
-
-.executionLoadMore {
-  display: flex;
-  justify-content: center;
-  margin-top: 10px;
-}
-
-.executionEmpty {
-  padding: 20px 0;
 }
 
 @media (max-width: 1320px) {

@@ -32,7 +32,7 @@ export function CreateProjectPage() {
         description: description.trim() || undefined,
       })
       // 创建成功后跳转到项目需求群聊
-      navigate(PATHS.projectReqChat(project.id, 'login'), { replace: true })
+      navigate(PATHS.projectDetail(project.id), { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建项目失败，请重试')
     } finally {

@@ -24,17 +24,15 @@ export type {
   Group,
   GroupMember,
   Message,
+  MessageContentType,
+  MessageSenderType,
+  TextMessageContent,
+  CodeMessageContent,
   SendMessagePayload,
   CreateGroupPayload,
+  Page,
 } from './group'
 export type { Agent, AgentRoleTag } from './agent'
-export type {
-  ChatSession,
-  ChatMessage,
-  MessageType,
-  TaskStatusCardPayload,
-  DiffCardPayload,
-} from './message'
 export type { Task, TaskStatus } from './task'
 export type {
   GithubInstallation,

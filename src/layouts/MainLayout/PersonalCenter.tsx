@@ -119,7 +119,7 @@ export function PersonalCenter() {
                     <Button
                       type="link"
                       style={{ padding: 0, height: 'auto' }}
-                      onClick={() => handleNav(PATHS.projectReqChat(p.id, 'login'))}
+                      onClick={() => handleNav(PATHS.projectDetail(p.id))}
                     >
                       <Space>
                         <span>{p.name}</span>

@@ -57,15 +57,16 @@ export function AppRouter() {
               <Route path="chat" element={<ChatWorkspacePage />} />
 
               <Route path="projects/:projectId" element={<ProjectDetailLayout />}>
-                {/* 默认进入「登录功能」需求群聊 */}
-                <Route index element={<Navigate to="req-chat/login" replace />} />
+                {/* 默认进入项目总群（由 ProjectDetailLayout 根据群列表跳转） */}
+                <Route index element={<Navigate to="req-chat" replace />} />
                 <Route path="overview" element={<OverviewPage />} />
 
                 {/*
-                  需求群聊：每个需求独立路由，IM 外壳相同、会话按 reqId 隔离
+                  群聊：每个群独立路由，IM 外壳相同、会话按 groupId 隔离
+                  req-chat 无参数时由 ProjectDetailLayout 重定向到项目总群
                 */}
-                <Route path="req-chat/:reqId" element={<RequirementChatPage />} />
-                <Route path="req-chat" element={<Navigate to="login" replace />} />
+                <Route path="req-chat/:groupId" element={<RequirementChatPage />} />
+                <Route path="req-chat" element={<RequirementChatPage />} />
 
                 <Route path="tasks" element={<TasksPage />} />
                 <Route path="workflow" element={<WorkflowPage />} />

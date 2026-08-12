@@ -92,7 +92,7 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
           </span>
         </div>
       </div>
-      <Link to={PATHS.projectReqChat(project.id, 'login')} className="team-detail__enter-project">
+      <Link to={PATHS.projectDetail(project.id)} className="team-detail__enter-project">
         进入项目
       </Link>
     </article>

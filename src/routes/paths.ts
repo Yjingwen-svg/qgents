@@ -44,11 +44,11 @@ export const PATHS = {
   projectOverview: (projectId: string) => `/app/projects/${projectId}/overview`,
 
   /**
-   * 需求群聊（导航入口，默认落到第一个需求）
-   * 具体某个需求：projectReqChat(projectId, reqId)
+   * 群聊（项目总群 / 需求群）
+   * 具体某个群：projectReqChat(projectId, groupId)
    */
-  projectReqChat: (projectId: string, reqId = 'login') =>
-    `/app/projects/${projectId}/req-chat/${reqId}`,
+  projectReqChat: (projectId: string, groupId: string) =>
+    `/app/projects/${projectId}/req-chat/${groupId}`,
 
   projectTasks: (projectId: string) => `/app/projects/${projectId}/tasks`,
   projectWorkflow: (projectId: string) => `/app/projects/${projectId}/workflow`,
@@ -79,8 +79,8 @@ export const PROJECT_NAV = [
   {
     path: 'req-chat',
     label: '需求群聊',
-    /** 导航高亮用前缀路径；实际落地到默认需求 */
-    to: (projectId: string) => PATHS.projectReqChat(projectId, 'login'),
+    /** 跳到项目根，由 ProjectDetailLayout 重定向到项目总群 */
+    to: (projectId: string) => PATHS.projectDetail(projectId),
   },
   { path: 'tasks', label: '任务中心', to: PATHS.projectTasks, badge: 3 },
   { path: 'workflow', label: '工作流编排', to: PATHS.projectWorkflow },

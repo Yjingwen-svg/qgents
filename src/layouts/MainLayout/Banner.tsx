@@ -1,5 +1,5 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Layout, Menu, Button, Badge, Avatar, Space, Typography, theme } from 'antd'
+import { Layout, Menu, Button, Badge, Avatar, Space, Typography } from 'antd'
 import { HomeOutlined, MessageOutlined, BellOutlined } from '@ant-design/icons'
 import { useAuth } from '@/context/AuthContext'
 import { usePersonalCenter } from '@/context/PersonalCenterContext'
@@ -16,7 +16,6 @@ const { Text } = Typography
  * 不跟随 antd light theme token。
  */
 export function Banner() {
-  const { token } = theme.useToken()
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuth()

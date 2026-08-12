@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { GithubAuthorizedRepository, GithubInstallation } from '@/types/github'
+import type { Group, Message } from '@/types/group'
 
 // ══════════════════════════════════════════════
 // Mock 数据
@@ -52,6 +53,134 @@ const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: st
 
 let nextTeamId = 10
 let nextProjectId = 10
+
+// ══════════════════════════════════════════════
+// 群聊（Group / Message）Mock 数据 —— 对齐接口文档 v1.1.8 §7
+// ══════════════════════════════════════════════
+
+const MOCK_GROUPS: Record<string, Group[]> = {
+  'proj-001': [
+    {
+      id: 'group-main-proj-001',
+      projectId: 'proj-001',
+      type: 'PROJECT_MAIN',
+      title: '项目总群',
+      description: '项目级讨论与结构化动态',
+      status: 'ACTIVE',
+      memberCount: 5,
+      latestActivityAt: '2026-08-12T10:05:00Z',
+      unreadCount: 0,
+      isPinned: true,
+      isArchived: false,
+    },
+    {
+      id: 'group-login-proj-001',
+      projectId: 'proj-001',
+      type: 'REQUIREMENT',
+      title: '登录功能',
+      description: '账号与登录体验',
+      status: 'ACTIVE',
+      memberCount: 3,
+      latestActivityAt: '2026-08-12T10:03:00Z',
+      unreadCount: 2,
+      isPinned: false,
+      isArchived: false,
+    },
+    {
+      id: 'group-pay-proj-001',
+      projectId: 'proj-001',
+      type: 'REQUIREMENT',
+      title: '支付回调',
+      description: '支付回调与对账',
+      status: 'ACTIVE',
+      memberCount: 3,
+      latestActivityAt: '2026-08-11T18:00:00Z',
+      unreadCount: 0,
+      isPinned: false,
+      isArchived: false,
+    },
+  ],
+}
+
+const MOCK_MESSAGES: Record<string, Message[]> = {
+  'group-main-proj-001': [
+    {
+      id: 'msg-main-001',
+      groupId: 'group-main-proj-001',
+      type: 'TEXT',
+      content: { text: '欢迎来到 Qgents 项目总群。需求讨论请到对应需求群。' },
+      senderType: 'SYSTEM',
+      sequence: 1,
+      createdAt: '2026-08-12T09:00:00Z',
+      replyToId: null,
+    },
+    {
+      id: 'msg-main-002',
+      groupId: 'group-main-proj-001',
+      type: 'TEXT',
+      content: { text: '登录功能的需求群已经建好了，大家进去领一下。' },
+      senderType: 'USER',
+      senderId: 'user-001',
+      senderName: '陈同学',
+      sequence: 2,
+      createdAt: '2026-08-12T09:30:00Z',
+      replyToId: null,
+    },
+  ],
+  'group-login-proj-001': [
+    {
+      id: 'msg-login-001',
+      groupId: 'group-login-proj-001',
+      type: 'TEXT',
+      content: { text: '登录接口需要支持邮箱和密码两种方式。' },
+      senderType: 'USER',
+      senderId: 'user-001',
+      senderName: '陈同学',
+      sequence: 1,
+      createdAt: '2026-08-12T10:00:00Z',
+      replyToId: null,
+    },
+    {
+      id: 'msg-login-002',
+      groupId: 'group-login-proj-001',
+      type: 'CODE',
+      content: {
+        code: 'POST /auth/login\n{ "email": "...", "password": "..." }',
+        language: 'http',
+      },
+      senderType: 'AGENT',
+      senderId: 'agent-orchestrator',
+      senderName: 'AgentOrchestrator',
+      sequence: 2,
+      createdAt: '2026-08-12T10:01:00Z',
+      replyToId: null,
+    },
+    {
+      id: 'msg-login-003',
+      groupId: 'group-login-proj-001',
+      type: 'TEXT',
+      content: { text: '好的，我按接口文档实现，完成后给出 Diff。' },
+      senderType: 'AGENT',
+      senderId: 'agent-orchestrator',
+      senderName: 'AgentOrchestrator',
+      sequence: 3,
+      createdAt: '2026-08-12T10:02:00Z',
+      replyToId: null,
+    },
+    {
+      id: 'msg-login-004',
+      groupId: 'group-login-proj-001',
+      type: 'TEXT',
+      content: { text: '密码要用 RSA 加密后传输，别发明文。' },
+      senderType: 'USER',
+      senderId: 'user-002',
+      senderName: '张工',
+      sequence: 4,
+      createdAt: '2026-08-12T10:03:00Z',
+      replyToId: null,
+    },
+  ],
+}
 
 // ══════════════════════════════════════════════
 // GitHub 集成 Mock 数据
@@ -363,6 +492,74 @@ export const handlers = [
   http.post('/api/projects/:projectId/archive', () => HttpResponse.json({ data: null })),
 
   http.post('/api/projects/:projectId/restore', () => HttpResponse.json({ data: null })),
+
+  // ── Group 与消息 ──
+  http.get('/api/projects/:projectId/groups', ({ params }) => {
+    const groups = MOCK_GROUPS[params.projectId as string] ?? []
+    // 按最近活跃排序（项目总群固定靠前由前端处理，这里直接返回）
+    return HttpResponse.json({ data: groups })
+  }),
+
+  http.post('/api/projects/:projectId/groups', async ({ params, request }) => {
+    const projectId = params.projectId as string
+    const body = (await request.json()) as { title?: string; description?: string; type?: string }
+    // 只接受 REQUIREMENT（省略 type 也按 REQUIREMENT 处理），PROJECT_MAIN 返回 422
+    if (body.type === 'PROJECT_MAIN') {
+      return HttpResponse.json(
+        { error: { code: 'SYSTEM_GROUP_MANAGED', message: '项目总群由系统管理，不可创建' } },
+        { status: 422 },
+      )
+    }
+    const group: Group = {
+      id: 'group-' + Date.now(),
+      projectId,
+      type: 'REQUIREMENT',
+      title: body.title || '未命名需求群',
+      description: body.description || '',
+      status: 'ACTIVE',
+      memberCount: 1,
+      latestActivityAt: new Date().toISOString(),
+      unreadCount: 0,
+      isPinned: false,
+      isArchived: false,
+    }
+    const list = MOCK_GROUPS[projectId] ?? (MOCK_GROUPS[projectId] = [])
+    list.push(group)
+    return HttpResponse.json({ data: group }, { status: 201 })
+  }),
+
+  http.get('/api/projects/:projectId/groups/:groupId/messages', ({ params }) => {
+    const messages = MOCK_MESSAGES[params.groupId as string] ?? []
+    return HttpResponse.json({
+      data: messages,
+      page: { nextCursor: null, hasMore: false },
+    })
+  }),
+
+  http.post('/api/projects/:projectId/groups/:groupId/messages', async ({ params, request }) => {
+    const groupId = params.groupId as string
+    const body = (await request.json()) as {
+      type?: Message['type']
+      content?: unknown
+      senderId?: string
+      clientMessageId?: string
+    }
+    const list = MOCK_MESSAGES[groupId] ?? (MOCK_MESSAGES[groupId] = [])
+    const message: Message = {
+      id: 'msg-' + Date.now(),
+      groupId,
+      type: body.type ?? 'TEXT',
+      content: body.content ?? { text: '' },
+      senderType: 'USER',
+      senderId: 'user-001',
+      senderName: '陈同学',
+      sequence: list.length + 1,
+      createdAt: new Date().toISOString(),
+      replyToId: null,
+    }
+    list.push(message)
+    return HttpResponse.json({ data: message }, { status: 201 })
+  }),
 
   // ── 项目仓库绑定（GitHub）──
   ...createRepoBindingHandlers(),

@@ -1,4 +1,7 @@
-/** 任务看板状态（云端 Agent 执行生命周期） */
+/**
+ * @deprecated 任务领域以 OrchestrationRun 为聚合根；此类型仅为旧占位页面保留。
+ * 新代码应使用 `src/types/task-domain.ts` 中的实体。
+ */
 export type TaskStatus =
   | 'pending'
   | 'sandbox_creating'

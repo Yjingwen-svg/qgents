@@ -1,66 +1,308 @@
+import { useState } from 'react'
+import {
+  ApartmentOutlined,
+  BranchesOutlined,
+  CheckCircleFilled,
+  ClockCircleOutlined,
+  FolderOutlined,
+  GithubOutlined,
+  PlusOutlined,
+  RobotOutlined,
+  SettingOutlined,
+  TeamOutlined,
+} from '@ant-design/icons'
+import { Button, Space, Spin } from 'antd'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { Typography, Button, Card, Space } from 'antd'
-import { ArrowLeftOutlined, PlusOutlined, GithubOutlined } from '@ant-design/icons'
+import { useQuery } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
+import { projectApi, teamApi } from '@/api'
+import { EmptyState } from '@/components/EmptyState'
+import type { Project, TeamMember } from '@/types'
+import './TeamDetailPage.css'
 
-const { Title, Paragraph, Text } = Typography
+type TeamDetailView = 'projects' | 'members'
+
+const projectAccentColors = ['#0d9b8a', '#f59e0b', '#6d5dfc', '#2563eb']
+
+function getProjectInitial(projectName: string) {
+  return projectName.trim().slice(0, 2).toUpperCase() || 'Q'
+}
+
+function getProjectAccent(index: number) {
+  return projectAccentColors[index % projectAccentColors.length]
+}
+
+function getRoleLabel(role?: string) {
+  if (role === 'TEAM_OWNER') return 'Owner'
+  if (role === 'PROJECT_ADMIN') return 'Maintainer'
+  return 'Developer'
+}
+
+function getRecentActivities(projects: Project[]) {
+  return projects.slice(0, 4).map((project, index) => ({
+    id: project.id,
+    title: index % 2 === 0 ? `进入 ${project.name} 总群` : `${project.name} 项目资料已同步`,
+    meta: index % 2 === 0 ? '项目协作入口已就绪' : '项目配置已更新',
+    time: index === 0 ? '刚刚' : `${index + 1} 小时前`,
+  }))
+}
+
+function MemberPreview({ member }: { member: TeamMember }) {
+  return (
+    <li className="team-detail__member-row">
+      <span className="team-detail__member-avatar" aria-hidden>
+        {member.displayName.slice(0, 1)}
+      </span>
+      <div className="team-detail__member-copy">
+        <strong>{member.displayName}</strong>
+        <span>{member.email}</span>
+      </div>
+      <span className="team-detail__member-role">{getRoleLabel(member.role)}</span>
+    </li>
+  )
+}
+
+function ProjectCard({ project, index }: { project: Project; index: number }) {
+  const repositoryCount = project.repositoryCount ?? 0
+  const accent = getProjectAccent(index)
+
+  return (
+    <article className="team-detail__project-card">
+      <div className="team-detail__project-icon" style={{ background: accent }}>
+        {getProjectInitial(project.name)}
+      </div>
+      <div className="team-detail__project-body">
+        <div className="team-detail__project-heading">
+          <h3>{project.name}</h3>
+          <span className="team-detail__project-role">{getRoleLabel(project.myRole)}</span>
+        </div>
+        <p>{project.description || '暂无项目简介'}</p>
+        <div className="team-detail__project-meta">
+          <span>
+            <TeamOutlined /> 项目成员
+          </span>
+          <span>
+            <RobotOutlined /> Agent 待配置
+          </span>
+          <span>
+            <BranchesOutlined /> {repositoryCount} 个仓库
+          </span>
+          <span>
+            <ClockCircleOutlined /> 协作中
+          </span>
+        </div>
+      </div>
+      <Link to={PATHS.projectReqChat(project.id, 'login')} className="team-detail__enter-project">
+        进入项目
+      </Link>
+    </article>
+  )
+}
 
 /**
  * 团队详情
  *
- * 「GitHub 集成」入口：仅从「我创建的团队 → 查看详情」进入时展示（?as=owner）
- * 点击后跳转原 Banner 小猫图标对应页面：/app/integrations/github?teamId=...
+ * 「GitHub 集成」入口：Team Owner 可见（接口 myRole === TEAM_OWNER；
+ * 兼容旧链接 ?as=owner，例如从「我创建的团队 → 查看详情」进入）
+ * 点击后跳转：/app/integrations/github?teamId=...
  */
 export function TeamDetailPage() {
-  const { teamId = 'demo-team' } = useParams<{ teamId: string }>()
+  const { teamId = '' } = useParams<{ teamId: string }>()
   const [searchParams] = useSearchParams()
-  /** 来自「我创建的团队」时为 true；联调后改为接口返回的 TEAM_OWNER 角色判断 */
-  const isTeamOwner = searchParams.get('as') === 'owner'
+  const [activeView, setActiveView] = useState<TeamDetailView>('projects')
+
+  const {
+    data: team,
+    isLoading: teamLoading,
+    isError: teamError,
+  } = useQuery({
+    queryKey: ['teams', teamId],
+    queryFn: () => teamApi.getById(teamId),
+    enabled: !!teamId,
+  })
+
+  const { data: members = [], isLoading: membersLoading } = useQuery({
+    queryKey: ['teams', teamId, 'members'],
+    queryFn: () => teamApi.listMembers(teamId),
+    enabled: !!teamId,
+  })
+
+  const { data: projects = [], isLoading: projectsLoading } = useQuery({
+    queryKey: ['teams', teamId, 'projects'],
+    queryFn: () => projectApi.listByTeam(teamId),
+    enabled: !!teamId,
+  })
+
+  const isLoading = teamLoading || membersLoading || projectsLoading
+  const recentActivities = getRecentActivities(projects)
+  const ownerCount = members.filter((member) => member.role === 'TEAM_OWNER').length
+
+  /** 优先接口角色；兼容历史 ?as=owner */
+  const isTeamOwner =
+    team?.myRole === 'TEAM_OWNER' || searchParams.get('as') === 'owner'
+
+  if (isLoading) {
+    return (
+      <div className="team-detail team-detail--centered">
+        <Spin size="large" />
+      </div>
+    )
+  }
+
+  if (teamError || !team) {
+    return (
+      <div className="team-detail team-detail--centered">
+        <EmptyState icon="🔎" title="团队未找到" description="该团队不存在，或你暂无访问权限" />
+      </div>
+    )
+  }
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto' }}>
-      <Link to={PATHS.MY_TEAMS}>
-        <Button type="link" icon={<ArrowLeftOutlined />} style={{ paddingLeft: 0, marginBottom: 16 }}>
-          返回我的团队
-        </Button>
-      </Link>
-
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 24 }} align="start">
-        <div>
-          <Title level={2} style={{ marginTop: 0 }}>
-            团队详情
-          </Title>
-          <Paragraph type="secondary">
-            teamId: <Text code>{teamId}</Text>
-            {!isTeamOwner ? (
-              <>
-                {' · '}
-                <Text type="secondary">参与成员视图</Text>
-              </>
-            ) : null}
-          </Paragraph>
+    <div className="team-detail">
+      <aside className="team-detail__sidebar" aria-label="团队导航">
+        <div className="team-detail__team-card">
+          <div className="team-detail__team-logo">{team.name.slice(0, 1)}</div>
+          <div>
+            <h2>{team.name}</h2>
+            <p>{team.description || '团队项目协作空间'}</p>
+          </div>
+          <span className="team-detail__team-role">{getRoleLabel(team.myRole)}</span>
         </div>
 
-        <Space>
-          {/* 仅 Owner：GitHub 图标 +「github集成」文字 → 集成页 */}
-          {isTeamOwner ? (
-            <Link to={PATHS.githubIntegration(teamId)}>
-              <Button icon={<GithubOutlined />}>github集成</Button>
+        <nav className="team-detail__nav">
+          <button
+            type="button"
+            className={`team-detail__nav-item ${activeView === 'projects' ? 'team-detail__nav-item--active' : ''}`}
+            onClick={() => setActiveView('projects')}
+          >
+            <ApartmentOutlined />
+            团队首页
+          </button>
+          <button
+            type="button"
+            className={`team-detail__nav-item ${activeView === 'projects' ? 'team-detail__nav-item--active-soft' : ''}`}
+            onClick={() => setActiveView('projects')}
+          >
+            <FolderOutlined />
+            项目
+          </button>
+          <button
+            type="button"
+            className={`team-detail__nav-item ${activeView === 'members' ? 'team-detail__nav-item--active' : ''}`}
+            onClick={() => setActiveView('members')}
+          >
+            <TeamOutlined />
+            团队通讯录
+          </button>
+          <span className="team-detail__nav-item team-detail__nav-item--disabled">
+            <SettingOutlined />
+            团队设置
+          </span>
+        </nav>
+      </aside>
+
+      <main className="team-detail__main">
+        <section className="team-detail__hero">
+          <div>
+            <Link to={PATHS.MY_TEAMS} className="team-detail__back">
+              返回我的团队
             </Link>
-          ) : null}
+            <h1>{team.name}</h1>
+            <p>从个人中心切换团队或项目，进入项目总群继续协作。</p>
+          </div>
+          <Space wrap>
+            {isTeamOwner ? (
+              <Link to={PATHS.githubIntegration(teamId)}>
+                <Button icon={<GithubOutlined />}>github集成</Button>
+              </Link>
+            ) : null}
+            <Link to={PATHS.createProject(teamId)}>
+              <Button type="primary" icon={<PlusOutlined />}>
+                创建项目
+              </Button>
+            </Link>
+          </Space>
+        </section>
 
-          <Link to={PATHS.createProject(teamId)}>
-            <Button type="primary" icon={<PlusOutlined />}>
-              创建项目
-            </Button>
-          </Link>
-        </Space>
-      </Space>
+        {activeView === 'projects' ? (
+          <section className="team-detail__section">
+            <div className="team-detail__section-heading">
+              <h2>项目</h2>
+              <span>{projects.length} 个项目</span>
+            </div>
 
-      <Card>
-        <Paragraph>团队详情内容区（框架占位）</Paragraph>
-        <Paragraph type="secondary">后续在此展示项目列表、成员等；创建项目请用右上角按钮。</Paragraph>
-      </Card>
+            {projects.length === 0 ? (
+              <EmptyState
+                icon="📁"
+                title="暂无项目"
+                description="创建第一个项目后，团队成员就可以进入项目总群开始协作"
+              />
+            ) : (
+              <div className="team-detail__project-list">
+                {projects.map((project, index) => (
+                  <ProjectCard key={project.id} project={project} index={index} />
+                ))}
+              </div>
+            )}
+
+            <div className="team-detail__notice">
+              <CheckCircleFilled />
+              <div>
+                <strong>项目权限相互隔离：同一成员在不同项目可拥有不同角色。</strong>
+                <span>项目的数据、配置、任务、分支组、成员权限等均相互独立，互不影响。</span>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <section className="team-detail__section">
+            <div className="team-detail__section-heading">
+              <h2>团队通讯录</h2>
+              <span>
+                {members.length} 人 · {ownerCount} 位 Owner
+              </span>
+            </div>
+
+            <div className="team-detail__directory">
+              {members.map((member) => (
+                <MemberPreview key={member.userId} member={member} />
+              ))}
+            </div>
+          </section>
+        )}
+      </main>
+
+      <aside className="team-detail__aside">
+        <section className="team-detail__panel">
+          <div className="team-detail__panel-heading">
+            <h2>最近动态</h2>
+            <Link to={PATHS.MY_TEAMS}>查看全部</Link>
+          </div>
+          {recentActivities.length === 0 ? (
+            <p className="team-detail__muted">创建项目后会显示团队动态。</p>
+          ) : (
+            <ul className="team-detail__activity-list">
+              {recentActivities.map((activity) => (
+                <li key={activity.id} className="team-detail__activity-item">
+                  <CheckCircleFilled />
+                  <div>
+                    <strong>{activity.title}</strong>
+                    <span>{activity.meta}</span>
+                  </div>
+                  <time>{activity.time}</time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="team-detail__panel">
+          <div className="team-detail__panel-heading">
+            <h2>待处理的团队邀请</h2>
+            <span>0 个</span>
+          </div>
+          <p className="team-detail__muted">当前接口没有待处理项目邀请列表，这里先保留原型中的信息区位置。</p>
+        </section>
+      </aside>
     </div>
   )
 }

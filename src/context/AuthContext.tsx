@@ -2,104 +2,171 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import type { User } from '@/types'
 import { authApi, teamApi } from '@/api'
+import { RSA_KEY_ID, encryptPassword } from '@/utils/rsaConfig'
 
 interface AuthContextValue {
+  /** 当前用户，null = 未登录 */
   user: User | null
+  /** 是否已登录 */
   isAuthenticated: boolean
-  /** 是否已加入至少一个团队（决定进 Welcome 还是主应用） */
+  /** 是否已加入至少一个团队 */
   hasTeam: boolean
-  /** 框架阶段：登录仅做前端状态切换，真正请求见 authApi */
-  loginDemo: (user?: Partial<User>) => void
-  logout: () => void
+  /** 是否正在初始化（bootstrap 阶段） */
+  isBootstrapping: boolean
+
+  /** 登录：返回 hasTeam，调用方据此决定跳转目标 */
+  login: (email: string, password: string) => Promise<boolean>
+  /** 注册：新用户一定没有团队，返回 false */
+  register: (email: string, password: string, displayName: string) => Promise<boolean>
+  /** 退出登录 */
+  logout: () => Promise<void>
+  /** 设置 hasTeam（创建/加入团队后调用） */
   setHasTeam: (v: boolean) => void
-  /**
-   * TODO[后端联调]:
-   * - 启动时调 authApi.me() 恢复会话
-   * - 调 teamApi.listMine() 判断 hasTeam
-   */
-  bootstrap: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-const TOKEN_KEY = 'qgents_access_token'
-const HAS_TEAM_KEY = 'qgents_has_team'
-
-const DEMO_USER: User = {
-  id: 'demo-user',
-  email: 'chen@example.com',
-  displayName: '陈同学',
-  avatarChar: '陈',
-}
-
-/**
- * 从 localStorage 恢复会话（保留原注释意图：联调后改为从 token 恢复）
- * 说明：跳转 GitHub 是整页离开，回来会重新加载；若不恢复，RequireAuth 会踢回 /login
- */
-function readStoredSession(): { user: User | null; hasTeam: boolean } {
-  const token = localStorage.getItem(TOKEN_KEY)
-  if (!token) return { user: null, hasTeam: false }
-  return {
-    user: DEMO_USER,
-    hasTeam: localStorage.getItem(HAS_TEAM_KEY) === '1',
-  }
-}
+/** localStorage key */
+const ACCESS_TOKEN_KEY = 'qgents_access_token'
+const REFRESH_TOKEN_KEY = 'qgents_refresh_token'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // 框架阶段默认未登录；联调后改为从 token 恢复
-  const initial = readStoredSession()
-  const [user, setUser] = useState<User | null>(initial.user)
-  const [hasTeam, setHasTeamState] = useState(initial.hasTeam)
+  const [user, setUser] = useState<User | null>(null)
+  const [hasTeam, setHasTeam] = useState(false)
+  const [isBootstrapping, setIsBootstrapping] = useState(true)
+  // 防止 StrictMode 下 useEffect 执行两次
+  const bootstrapped = useRef(false)
 
-  const setHasTeam = useCallback((v: boolean) => {
-    setHasTeamState(v)
-    localStorage.setItem(HAS_TEAM_KEY, v ? '1' : '0')
+  /**
+   * 启动时恢复登录态
+   * 说明：跳转 GitHub App 安装是整页离开，回调回来会重新加载 SPA。
+   * 必须用 localStorage 里的 token 调 /me 恢复会话，否则 RequireAuth 会误踢到 /login。
+   * AppProviders 的 BootstrapGate 会等 isBootstrapping=false 再渲染路由。
+   */
+  useEffect(() => {
+    if (bootstrapped.current) return
+    bootstrapped.current = true
+
+    let cancelled = false
+
+    async function restore() {
+      const token = localStorage.getItem(ACCESS_TOKEN_KEY)
+      if (!token) {
+        setIsBootstrapping(false)
+        return
+      }
+
+      try {
+        const me = await authApi.me()
+        if (cancelled) return
+        setUser(me)
+
+        const teams = await teamApi.listMine()
+        if (cancelled) return
+        setHasTeam(teams.length > 0)
+      } catch {
+        // token 过期或无效 → 清掉
+        if (!cancelled) {
+          localStorage.removeItem(ACCESS_TOKEN_KEY)
+          localStorage.removeItem(REFRESH_TOKEN_KEY)
+        }
+      } finally {
+        // 注意：这里不能检查 cancelled，因为 StrictMode 开发模式下
+        // cleanup 会先设 cancelled=true，导致 setIsBootstrapping(false) 被跳过
+        setIsBootstrapping(false)
+      }
+    }
+
+    restore()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const loginDemo = useCallback((partial?: Partial<User>) => {
-    setUser({ ...DEMO_USER, ...partial })
-    // 模拟：新用户尚无团队 → 进入 Welcome
-    // 若本地已有 hasTeam 标记（例如 GitHub 回跳后再进登录），则保留
-    const knownTeam = localStorage.getItem(HAS_TEAM_KEY) === '1'
-    setHasTeamState(knownTeam)
-    localStorage.setItem(TOKEN_KEY, 'demo-token')
+  // ──── 登录（返回 hasTeam，调用方用于决定跳转目标）────
+  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+    // 使用硬编码的固定 RSA 公钥加密密码（mock 阶段 encryptPassword 直传明文）
+    const encryptedPassword = await encryptPassword(password)
+
+    const result = await authApi.login({
+      email,
+      password: encryptedPassword,
+      passwordKeyId: RSA_KEY_ID,
+    })
+
+    localStorage.setItem(ACCESS_TOKEN_KEY, result.accessToken)
+    localStorage.setItem(REFRESH_TOKEN_KEY, result.refreshToken)
+    setUser(result.user)
+
+    // 登录后检查用户是否有团队
+    try {
+      const teams = await teamApi.listMine()
+      const haveTeam = teams.length > 0
+      setHasTeam(haveTeam)
+      return haveTeam
+    } catch {
+      setHasTeam(false)
+      return false
+    }
   }, [])
 
-  const logout = useCallback(() => {
+  // ──── 注册（新用户没有团队，返回 false）────
+  const register = useCallback(
+    async (email: string, password: string, displayName: string): Promise<boolean> => {
+      // 使用硬编码的固定 RSA 公钥加密密码（mock 阶段 encryptPassword 直传明文）
+      const encryptedPassword = await encryptPassword(password)
+
+      const result = await authApi.register({
+        email,
+        password: encryptedPassword,
+        passwordKeyId: RSA_KEY_ID,
+        displayName,
+      })
+
+      localStorage.setItem(ACCESS_TOKEN_KEY, result.accessToken)
+      localStorage.setItem(REFRESH_TOKEN_KEY, result.refreshToken)
+      setUser(result.user)
+      setHasTeam(false)
+      return false
+    },
+    [],
+  )
+
+  // ──── 退出 ────
+  const logout = useCallback(async () => {
+    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY) ?? undefined
+    try {
+      await authApi.logout(refreshToken)
+    } catch {
+      // 即使接口失败也要清除本地状态
+    }
     setUser(null)
-    setHasTeamState(false)
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(HAS_TEAM_KEY)
-    // TODO: await authApi.logout()
+    setHasTeam(false)
+    localStorage.removeItem(ACCESS_TOKEN_KEY)
+    localStorage.removeItem(REFRESH_TOKEN_KEY)
   }, [])
 
-  const bootstrap = useCallback(async () => {
-    // TODO[后端联调] 示例：
-    // const me = await authApi.me()
-    // setUser(me)
-    // const teams = await teamApi.listMine()
-    // setHasTeam(teams.length > 0)
-    void authApi
-    void teamApi
-  }, [])
-
-  const value = useMemo(
+  const value = useMemo<AuthContextValue>(
     () => ({
       user,
       isAuthenticated: !!user,
       hasTeam,
-      loginDemo,
+      isBootstrapping,
+      login,
+      register,
       logout,
       setHasTeam,
-      bootstrap,
     }),
-    [user, hasTeam, loginDemo, logout, setHasTeam, bootstrap],
+    [user, hasTeam, isBootstrapping, login, register, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

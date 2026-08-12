@@ -90,6 +90,12 @@ export const PATHS = {
     `/app/projects/${projectId}/req-chat/${reqId}`,
 
   projectTasks: (projectId: string) => `/app/projects/${projectId}/tasks`,
+  projectDeliverables: (projectId: string) => `/app/projects/${projectId}/deliverables`,
+  projectDeliverable: (projectId: string, deliverableId: string) =>
+    `/app/projects/${projectId}/deliverables/${deliverableId}`,
+  projectTaskDetail: (projectId: string, runId: string) => `/app/projects/${projectId}/tasks/${runId}`,
+  projectTaskRunDetail: (projectId: string, runId: string, taskRunId: string) =>
+    `/app/projects/${projectId}/tasks/${runId}/executions/${taskRunId}`,
   projectWorkflow: (projectId: string) => `/app/projects/${projectId}/workflow`,
   projectAgents: (projectId: string) => `/app/projects/${projectId}/agents`,
   projectSkills: (projectId: string) => `/app/projects/${projectId}/skills`,
@@ -110,6 +116,7 @@ export const PROJECT_NAV = [
     to: (projectId: string) => PATHS.projectReqChat(projectId, 'login'),
   },
   { path: 'tasks', label: '任务中心', to: PATHS.projectTasks, badge: 3 },
+  { path: 'deliverables', label: '交付中心', to: PATHS.projectDeliverables },
   { path: 'workflow', label: '工作流编排', to: PATHS.projectWorkflow },
   { path: 'agents', label: 'Agent 团队', to: PATHS.projectAgents },
   { path: 'skills', label: '共享 Skill', to: PATHS.projectSkills },

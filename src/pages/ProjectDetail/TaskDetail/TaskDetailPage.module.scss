@@ -1,0 +1,654 @@
+.page {
+  min-height: 100vh;
+  padding: 0 18px 32px;
+  background: #ffffff;
+  color: #12213d;
+}
+
+.topBar,
+.summaryHeader,
+.sectionHeading,
+.executionHeader,
+.executionSectionHeading,
+.taskRunItemHeader,
+.stepItemHeader,
+.sideHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 58px;
+  margin-bottom: 0;
+  border-bottom: 1px solid #edf1f5;
+}
+
+.detailToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  border-bottom: 1px solid #edf1f5;
+}
+
+.breadcrumb {
+  color: #52627b;
+}
+
+.topBarActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detailToolbar button {
+  color: #12213d;
+}
+
+.detailToolbar .topBarActions button {
+  border-color: #d7e0eb;
+  background: #ffffff;
+  color: #12213d;
+}
+
+.detailToolbar .topBarActions button.ant-btn-primary {
+  border-color: #1269c7;
+  background: #1269c7;
+  color: #ffffff;
+}
+
+.taskHeader {
+  padding: 16px 8px 18px;
+  border-bottom: 1px solid #edf1f5;
+}
+
+.detailTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.summaryHeader {
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.title {
+  margin: 0;
+  color: #12213d;
+  font-weight: 700;
+}
+
+.title:global(.ant-typography) {
+  color: #12213d;
+}
+
+.title :global(.ant-typography) {
+  color: #6d7d95;
+}
+
+.summaryId {
+  color: #6d7d95;
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px;
+}
+
+.summaryMeta,
+.summaryGrid,
+.flowGrid,
+.contextGrid,
+.developmentGrid,
+.deliverableGrid,
+.checklist {
+  display: grid;
+  gap: 12px;
+}
+
+.summaryMeta {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 0;
+}
+
+.summaryMetaItem {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.infoCard,
+.flowCard,
+.deliverableCard,
+.checklistItem {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e4eaf2;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.label {
+  color: #6d7d95;
+  font-size: 12px;
+}
+
+.value {
+  color: #243855;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 22px;
+  align-items: start;
+  padding-top: 12px;
+}
+
+.mainContent,
+.sideContent {
+  min-width: 0;
+}
+
+.section {
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid #e4eaf2;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.compactSection {
+  margin-bottom: 10px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 0;
+}
+
+.compactSection .sectionHeading {
+  margin-bottom: 8px;
+}
+
+.sectionHeading {
+  margin-bottom: 14px;
+}
+
+.sectionHeading h4,
+.sectionHeading h5,
+.executionHeader h5,
+.executionSectionHeading h5,
+.sideHeader h5 {
+  margin: 0;
+  color: #12213d;
+}
+
+.flowGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 26px;
+}
+
+.flowGrid > .flowCard:not(:last-child)::after {
+  position: absolute;
+  top: 50%;
+  right: -20px;
+  width: 16px;
+  height: 16px;
+  border-top: 1px solid #7890ad;
+  border-right: 1px solid #7890ad;
+  background: #ffffff;
+  transform: translateY(-50%) rotate(45deg);
+  content: '';
+}
+
+.flowCard {
+  position: relative;
+  display: grid;
+  min-height: 214px;
+  gap: 10px;
+  align-content: space-between;
+}
+
+.flowCardButton {
+  width: 100%;
+  border: 1px solid #e4eaf2;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.flowCardButton:hover {
+  border-color: #0d9b9b;
+}
+
+.flowCardHeading {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.flowIcon {
+  flex: 0 0 auto;
+  color: #12213d;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.flowStepList {
+  display: grid;
+  gap: 7px;
+}
+
+.flowStep {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #52627b;
+  font-size: 12px;
+}
+
+.flowStep > :global(.ant-typography) {
+  color: #52627b;
+}
+
+.flowStepStatus {
+  color: #0d8d91;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.flowFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 9px;
+  border-top: 1px solid #edf1f5;
+}
+
+.flowFooter > :global(.ant-typography) {
+  color: #6d7d95;
+  font-size: 11px;
+}
+
+.flowCardCurrent {
+  border-color: #1269c7;
+  box-shadow: 0 0 0 2px rgba(18, 105, 199, 0.1);
+}
+
+.flowTitle {
+  color: #12213d;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.flowTitle:global(.ant-typography) {
+  color: #12213d;
+}
+
+.flowSubtasks {
+  color: #6d7d95;
+  font-size: 12px;
+}
+
+.contextGrid,
+.developmentGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.developmentGrid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.infoCard {
+  display: grid;
+  gap: 6px;
+  min-height: 92px;
+}
+
+.contextGrid .infoCard {
+  position: relative;
+  height: 92px;
+  min-height: 92px;
+  padding: 11px 12px;
+  gap: 4px;
+}
+
+.contextGrid .infoCard .value {
+  padding-right: 28px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.contextGrid .infoAction {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+}
+
+.developmentGrid .infoCard {
+  height: 74px;
+  min-height: 74px;
+  padding: 10px 12px;
+  gap: 3px;
+}
+
+.infoIcon {
+  color: #1269c7;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.infoAction {
+  color: #1269c7;
+  font-size: 12px;
+  text-align: right;
+}
+
+.emptyCard {
+  padding: 18px 0;
+  color: #6d7d95;
+  text-align: center;
+}
+
+.deliverableGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.deliverableCard {
+  display: grid;
+  gap: 8px;
+}
+
+.deliverableCard > :global(.ant-typography) {
+  color: #12213d;
+}
+
+.sideContent {
+  position: sticky;
+  top: 12px;
+}
+
+.sideCard {
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid #e4eaf2;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.noteCard {
+  margin-bottom: 16px;
+  padding: 14px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.noteCard :global(.ant-typography) {
+  color: #52627b;
+}
+
+.noteCard h5 {
+  margin: 0 0 10px;
+  color: #12213d;
+}
+
+.sideTaskId {
+  padding: 6px 2px;
+  color: #52627b;
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 11px;
+  text-align: right;
+}
+
+.sideHeader {
+  margin-bottom: 14px;
+}
+
+.sideDescription {
+  color: #52627b;
+  line-height: 1.65;
+}
+
+.checklistItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+}
+
+.checklistLabel {
+  min-width: 0;
+  color: #243855;
+  overflow-wrap: anywhere;
+}
+
+.executionPanel {
+  min-width: 0;
+}
+
+.executionHeader {
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.executionHeader > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.executionSection {
+  margin-bottom: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #edf1f5;
+}
+
+.executionSectionHeading {
+  margin-bottom: 10px;
+}
+
+.executionSelect {
+  width: 100%;
+}
+
+.workPackageSummary {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #e4eaf2;
+  border-radius: 8px;
+  background: #f9fbfd;
+}
+
+.executionAlert {
+  margin-top: 10px;
+}
+
+.taskRunList,
+.stepList {
+  display: grid;
+  gap: 8px;
+}
+
+.taskRunItem {
+  display: grid;
+  width: 100%;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #e4eaf2;
+  border-radius: 8px;
+  color: #243855;
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.taskRunItem:hover,
+.taskRunItemSelected {
+  border-color: #0d9b9b;
+  background: #f1fbfa;
+}
+
+.taskRunItemHeader {
+  min-width: 0;
+}
+
+.taskRunItemHeader > span:first-child {
+  min-width: 0;
+}
+
+.taskRunItemMeta,
+.retryLine {
+  overflow-wrap: anywhere;
+  color: #6d7d95;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.retryLine {
+  color: #8a5a00;
+}
+
+.stepItem,
+.inputRequestItem {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #e4eaf2;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.stepItemHeader {
+  color: #243855;
+}
+
+.logList {
+  display: grid;
+  max-height: 360px;
+  gap: 8px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid #1f2d43;
+  border-radius: 8px;
+  background: #111b2b;
+  color: #e4edf8;
+  font-family: 'Cascadia Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 11px;
+}
+
+.logLine {
+  display: grid;
+  grid-template-columns: max-content max-content max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  line-height: 1.6;
+}
+
+.logTimestamp {
+  color: #91a4c1;
+  white-space: nowrap;
+}
+
+.logContent {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.inputPrompt {
+  color: #243855;
+  line-height: 1.55;
+}
+
+.executionLoadMore {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.executionEmpty,
+.panelState {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+}
+
+@media (max-width: 1100px) {
+  .summaryMeta {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .contentGrid {
+    grid-template-columns: minmax(0, 1fr) 260px;
+  }
+}
+
+@media (max-width: 1279px) {
+  .flowGrid {
+    grid-template-columns: repeat(4, minmax(210px, 1fr));
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  .flowGrid > .flowCard:not(:last-child)::after {
+    display: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  .page {
+    padding: 0 14px 28px;
+  }
+
+  .contentGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sideContent {
+    position: static;
+  }
+
+  .contextGrid,
+  .developmentGrid,
+  .deliverableGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .summaryMeta,
+  .contextGrid,
+  .developmentGrid,
+  .deliverableGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .topBar,
+  .detailTitleRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .topBar {
+    padding: 8px 0;
+  }
+
+  .topBarActions {
+    width: 100%;
+  }
+}

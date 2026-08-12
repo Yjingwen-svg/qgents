@@ -17,11 +17,16 @@ import { CreateProjectPage } from '@/pages/CreateProject/CreateProjectPage'
 import { TeamAuthorizedReposPage } from '@/pages/GitHubIntegration/TeamAuthorizedReposPage'
 import { ProjectDetailLayout } from '@/pages/ProjectDetail/ProjectDetailLayout'
 import { RequirementChatPage } from '@/pages/ProjectDetail/RequirementChatPage'
+import { TaskDetailPage } from '@/pages/ProjectDetail/TaskDetail/TaskDetailPage'
+import { TaskRunDetailPage } from '@/pages/ProjectDetail/TaskRunDetail/TaskRunDetailPage'
+import { DeliverablesPage } from '@/pages/ProjectDetail/Deliverables/DeliverablesPage'
+import { AgentTeamPage } from '@/pages/ProjectDetail/AgentTeam/AgentTeamPage'
+import { WorkflowViewerPage } from '@/pages/ProjectDetail/Workflow/WorkflowViewerPage'
+import { NotFoundPage } from '@/pages/NotFoundPage'
+import { ForbiddenPage } from '@/pages/ForbiddenPage'
 import {
   OverviewPage,
   TasksPage,
-  WorkflowPage,
-  AgentsPage,
   SkillsPage,
   MemoryPage,
   CodePage,
@@ -73,15 +78,20 @@ export function AppRouter() {
                 <Route index element={<Navigate to="req-chat/login" replace />} />
                 <Route path="overview" element={<OverviewPage />} />
 
-                {/*
-                  需求群聊：每个需求独立路由，IM 外壳相同、会话按 reqId 隔离
-                */}
+                {/* 需求群聊 */}
                 <Route path="req-chat/:reqId" element={<RequirementChatPage />} />
                 <Route path="req-chat" element={<Navigate to="login" replace />} />
 
+                {/* B 的任务模块 */}
                 <Route path="tasks" element={<TasksPage />} />
-                <Route path="workflow" element={<WorkflowPage />} />
-                <Route path="agents" element={<AgentsPage />} />
+                <Route path="tasks/:runId/executions/:taskRunId" element={<TaskRunDetailPage />} />
+                <Route path="tasks/:runId" element={<TaskDetailPage />} />
+                <Route path="deliverables" element={<DeliverablesPage />} />
+                <Route path="deliverables/:deliverableId" element={<DeliverablesPage />} />
+                <Route path="workflow" element={<WorkflowViewerPage />} />
+                <Route path="agents" element={<AgentTeamPage />} />
+
+                {/* 其他子页 */}
                 <Route path="skills" element={<SkillsPage />} />
                 <Route path="memory" element={<MemoryPage />} />
                 <Route path="code" element={<CodePage />} />
@@ -89,7 +99,13 @@ export function AppRouter() {
                 <Route path="members" element={<MembersPage />} />
                 <Route path="settings" element={<SettingsPage />} />
               </Route>
+
+              {/* 已登录用户 → 404 */}
+              <Route path="*" element={<NotFoundPage />} />
             </Route>
+
+            {/* 403 页面 */}
+            <Route path="/403" element={<ForbiddenPage />} />
           </Route>
 
           <Route path="/" element={<Navigate to={PATHS.LOGIN} replace />} />

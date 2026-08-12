@@ -57,7 +57,12 @@ describe('task domain MSW scenarios', () => {
     const createResponse = await fetch(`${baseUrl}/projects/project-test/orchestration-runs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'test-create-1' },
-      body: JSON.stringify({ groupId: 'group-test', instruction: 'run tests' }),
+      body: JSON.stringify({
+        groupId: 'group-test',
+        instruction: 'run tests',
+        workflowId: 'system-default-code-delivery',
+        startMode: 'AUTO',
+      }),
     })
     expect(createResponse.status).toBe(202)
 
@@ -71,6 +76,88 @@ describe('task domain MSW scenarios', () => {
     expect(list.data).toHaveLength(1)
     expect(list.page.hasMore).toBe(true)
     expect(list.page.nextCursor).toBe('1')
+  })
+
+  it('validates required orchestration fields and workflow inputs', async () => {
+    const missingInstruction = await fetch(`${baseUrl}/projects/project-validation/orchestration-runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        groupId: 'group-validation',
+        workflowId: 'system-default-code-delivery',
+        startMode: 'AUTO',
+      }),
+    })
+    expect(missingInstruction.status).toBe(422)
+
+    const invalidWorkflow = await fetch(`${baseUrl}/projects/project-validation/orchestration-runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        groupId: 'group-validation',
+        instruction: 'run tests',
+        workflowId: 'invalid-workflow',
+        startMode: 'AUTO',
+      }),
+    })
+    expect(invalidWorkflow.status).toBe(422)
+  })
+
+  it.each([
+    ['AUTO', 'PLANNING'],
+    ['MANUAL', 'QUEUED'],
+  ] as const)('creates a new %s orchestration run in %s', async (startMode, status) => {
+    const createResponse = await fetch(`${baseUrl}/projects/project-start-mode/orchestration-runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        groupId: 'group-start-mode',
+        instruction: `start ${startMode}`,
+        workflowId: 'system-default-code-delivery',
+        startMode,
+      }),
+    })
+    const created = await jsonResponse<{ data: { id: string; status: string; startMode: string } }>(createResponse)
+    expect(createResponse.status).toBe(202)
+    expect(created.data.id).not.toBe('orchestration-project-start-mode-1')
+    expect(created.data.status).toBe(status)
+    expect(created.data.startMode).toBe(startMode)
+
+    const listResponse = await fetch(
+      `${baseUrl}/projects/project-start-mode/orchestration-runs?groupId=group-start-mode`,
+    )
+    const list = await jsonResponse<{ data: Array<{ id: string }> }>(listResponse)
+    expect(listResponse.status).toBe(200)
+    expect(list.data.some((item) => item.id === created.data.id)).toBe(true)
+
+    const detailResponse = await fetch(
+      `${baseUrl}/projects/project-start-mode/orchestration-runs/${created.data.id}`,
+    )
+    const detail = await jsonResponse<{ data: { id: string; instruction: string } }>(detailResponse)
+    expect(detailResponse.status).toBe(200)
+    expect(detail.data.id).toBe(created.data.id)
+    expect(detail.data.instruction).toBe(`start ${startMode}`)
+  })
+
+  it.each([
+    ['FORBIDDEN', 403],
+    ['CONFLICT', 409],
+    ['INVALID', 422],
+  ] as const)('returns %s errors from orchestration creation', async (error, status) => {
+    const response = await fetch(
+      `${baseUrl}/projects/project-errors/orchestration-runs?error=${error}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId: 'group-errors',
+          instruction: 'trigger error',
+          workflowId: 'system-default-code-delivery',
+          startMode: 'AUTO',
+        }),
+      },
+    )
+    expect(response.status).toBe(status)
   })
 
   it('enforces work package pause/resume and rejects illegal pause', async () => {

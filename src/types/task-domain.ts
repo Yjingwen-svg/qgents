@@ -328,8 +328,8 @@ export interface TaskRunFilters extends CursorPageFilters {
 export interface CreateOrchestrationRunInput {
   groupId: string
   instruction: string
-  workflowId?: string
-  startMode?: StartMode
+  workflowId: 'system-default-code-delivery'
+  startMode: StartMode
   testsetIds?: string[]
 }
 

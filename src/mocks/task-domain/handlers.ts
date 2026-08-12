@@ -2,6 +2,7 @@ import { http, HttpResponse, type PathParams } from 'msw'
 import type {
   DecisionInput,
   InputRequestAnswer,
+  OrchestrationRun,
   RejectDeliverableInput,
   StartMode,
   TaskRun,
@@ -104,8 +105,25 @@ async function jsonObject(request: Request): Promise<Record<string, unknown>> {
   return body as Record<string, unknown>
 }
 
-function stringValue(value: unknown, fallback: string): string {
-  return typeof value === 'string' && value.length > 0 ? value : fallback
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+function validationError(message: string, field: string): HttpResponse<Record<string, unknown>> {
+  return HttpResponse.json(
+    {
+      error: { code: 'VALIDATION_FAILED', message, details: [{ field, reason: 'required' }] },
+      requestId: 'mock-request-id',
+    },
+    { status: 422 },
+  ) as HttpResponse<Record<string, unknown>>
+}
+
+function newResourceId(projectId: string, resource: string): string {
+  const suffix = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return `${resource}-${projectId}-${suffix}`
 }
 
 function numberValue(value: unknown, fallback: number): number {
@@ -155,16 +173,28 @@ export const taskDomainHandlers = [
     const projectId = pathParam(params, 'projectId')
     const store = getStore(projectId, request)
     const body = await jsonObject(request)
+    if (!isNonEmptyString(projectId)) return validationError('projectId is required', 'projectId')
+    if (!isNonEmptyString(body.groupId)) return validationError('groupId is required', 'groupId')
+    if (!isNonEmptyString(body.instruction)) return validationError('instruction is required', 'instruction')
+    if (body.workflowId !== 'system-default-code-delivery') {
+      return validationError('Only the system default workflow is supported', 'workflowId')
+    }
+    if (body.startMode !== 'AUTO' && body.startMode !== 'MANUAL') {
+      return validationError('startMode must be AUTO or MANUAL', 'startMode')
+    }
+    if (body.testsetIds !== undefined && (!Array.isArray(body.testsetIds) || !body.testsetIds.every(isNonEmptyString))) {
+      return validationError('testsetIds must be an array of ids', 'testsetIds')
+    }
     const now = new Date().toISOString()
-    const startMode: StartMode = body.startMode === 'MANUAL' ? 'MANUAL' : 'AUTO'
-    const run = {
-      id: `orchestration-${projectId}-${store.orchestrationRuns.size + 1}`,
+    const startMode = body.startMode as StartMode
+    const run: OrchestrationRun = {
+      id: newResourceId(projectId, 'orchestration'),
       projectId,
-      groupId: stringValue(body.groupId, `group-${projectId}-default`),
-      instruction: stringValue(body.instruction, 'Mock orchestration instruction'),
-      workflowId: stringValue(body.workflowId, 'system-default-code-delivery'),
-      startMode,
-      status: 'QUEUED' as const,
+      groupId: body.groupId.trim(),
+      instruction: body.instruction.trim(),
+      workflowId: 'system-default-code-delivery' as const,
+      startMode: startMode as StartMode,
+      status: startMode === 'AUTO' ? 'PLANNING' : 'QUEUED',
       createdBy: 'demo-user',
       workPackageIds: [],
       createdAt: now,

@@ -15,6 +15,7 @@ import {
   workPackagesApi,
 } from '@/api'
 import { queryClient, queryKeys } from '@/query'
+import { ApiError } from '@/api'
 import type {
   CreateOrchestrationRunInput,
   CursorPageFilters,
@@ -317,6 +318,15 @@ export function useCancelOrchestrationRun(
     onSuccess: (run) => {
       queryClient.setQueryData(queryKeys.orchestrationRuns.detail(projectId, run.id), run)
       void queryClient.invalidateQueries({ queryKey: queryKeys.orchestrationRuns.all(projectId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.workPackages.all(projectId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.taskRuns.all(projectId) })
+    },
+    onError: (error, runId) => {
+      if (error instanceof ApiError && error.status === 409) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.orchestrationRuns.detail(projectId, runId),
+        })
+      }
     },
   })
 }

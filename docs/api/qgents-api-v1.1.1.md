@@ -667,6 +667,16 @@ MR 详情的最小响应：
 - 后端待确认：资源级错误码、取消异步完成事件及重试响应字段。
 - 状态：待后端确认
 
+### FE-API-012 OrchestrationRun 取消状态矩阵待确认
+
+- 发现日期：2026-08-12
+- 所属模块：OrchestrationRun
+- 相关接口：`POST /projects/{projectId}/orchestration-runs/{runId}/cancel`
+- 当前问题：接口仅说明取消“尚未完成”的编排，未逐项列出 `QUEUED`、`PLANNING`、`RUNNING`、等待输入/审批、`BLOCKED` 等状态的正式可取消矩阵，以及 `CANCELLING` 的重复取消错误码。
+- 前端临时约定：仅上述未完成状态显示取消入口；`CANCELLING` 和 `SUCCEEDED`、`FAILED`、`CANCELLED` 不显示入口；Mock 对终态重复取消返回 `409`，参数/业务校验错误保留 `422`。
+- 后端待确认：完整可取消状态矩阵、权限失败/状态冲突/业务校验的正式错误码，以及 `CANCELLING -> CANCELLED` 的异步完成契约。
+- 状态：待后端确认
+
 
 ### FE-API-006 任务中心列表展示字段待确认
 

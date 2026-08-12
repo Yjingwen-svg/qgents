@@ -1,20 +1,28 @@
 import { http, HttpResponse, type PathParams } from 'msw'
 import type {
   DecisionInput,
+  InputRequest,
   InputRequestAnswer,
   OrchestrationRun,
   RejectDeliverableInput,
   StartMode,
   TaskRun,
   UpdateWorkPackageInput,
+  WorkPackage,
 } from '@/types'
 import { canRetryTaskRun } from '@/types'
-import { createTaskDomainScenario, taskDomainScenarioNames, type TaskDomainScenario } from './fixtures'
+import {
+  addCreatedOrchestrationRunResources,
+  createTaskDomainScenario,
+  taskDomainScenarioNames,
+  type TaskDomainScenario,
+} from './fixtures'
 import {
   InvalidStateTransitionError,
   transitionDeliverableStatus,
   transitionTaskRunInputRequest,
   transitionTaskRunCancel,
+  transitionOrchestrationRunCancel,
   transitionWorkPackageStatus,
 } from './stateTransitions'
 import {
@@ -136,6 +144,35 @@ function completeCancellation(resource: { status: string }): void {
   })
 }
 
+function activateManualWorkPackage(store: TaskDomainState, workPackage: WorkPackage): void {
+  const run = findOrchestrationRun(store, workPackage.orchestrationRunId)
+  if (!run || run.status !== 'QUEUED') return
+
+  run.status = 'RUNNING'
+  run.updatedAt = workPackage.updatedAt
+  for (const taskRun of store.taskRuns.values()) {
+    if (taskRun.workPackageId !== workPackage.id || taskRun.status !== 'QUEUED') continue
+    taskRun.status = 'WAITING_INPUT'
+    taskRun.startedAt = workPackage.updatedAt
+    taskRun.updatedAt = workPackage.updatedAt
+    const request: InputRequest = {
+      id: `${taskRun.id}-input-request`,
+      projectId: taskRun.projectId,
+      taskRunId: taskRun.id,
+      kind: 'INPUT',
+      status: 'PENDING',
+      prompt: 'Select the target branch',
+      options: [
+        { value: 'main', label: 'main' },
+        { value: 'develop', label: 'develop' },
+      ],
+      createdAt: workPackage.updatedAt,
+      resolvedAt: null,
+    }
+    store.inputRequests.set(taskRun.id, [request])
+  }
+}
+
 export const taskDomainHandlers = [
   http.all('*/api/projects/:projectId/*', ({ request }) => {
     const error = new URL(request.url).searchParams.get('error')
@@ -194,12 +231,13 @@ export const taskDomainHandlers = [
       instruction: body.instruction.trim(),
       workflowId: 'system-default-code-delivery' as const,
       startMode: startMode as StartMode,
-      status: startMode === 'AUTO' ? 'PLANNING' : 'QUEUED',
+      status: startMode === 'AUTO' ? 'RUNNING' : 'QUEUED',
       createdBy: 'demo-user',
       workPackageIds: [],
       createdAt: now,
       updatedAt: now,
     }
+    addCreatedOrchestrationRunResources(store, run)
     store.orchestrationRuns.set(run.id, run)
     return response(run, 202)
   }),
@@ -225,10 +263,14 @@ export const taskDomainHandlers = [
     const store = getStore(pathParam(params, 'projectId'), request)
     const run = findOrchestrationRun(store, pathParam(params, 'runId'))
     if (!run) return errorResponse(new Error('not found'))
-    run.status = run.status === 'RUNNING' ? 'CANCELLING' : 'CANCELLED'
-    run.updatedAt = new Date().toISOString()
-    if (run.status === 'CANCELLING') completeCancellation(run)
-    return response(run, 202)
+    try {
+      run.status = transitionOrchestrationRunCancel(run.status)
+      run.updatedAt = new Date().toISOString()
+      if (run.status === 'CANCELLING') completeCancellation(run)
+      return response(run, 202)
+    } catch (error: unknown) {
+      return errorResponse(error)
+    }
   }),
 
   http.get('*/api/projects/:projectId/work-packages', ({ params, request }) => {
@@ -277,6 +319,7 @@ export const taskDomainHandlers = [
       try {
         workPackage.status = transitionWorkPackageStatus(workPackage.status, action)
         workPackage.updatedAt = new Date().toISOString()
+        if (action === 'start') activateManualWorkPackage(store, workPackage)
         if (action === 'cancel' && workPackage.status === 'CANCELLING') completeCancellation(workPackage)
         return response(workPackage, 202)
       } catch (error: unknown) {

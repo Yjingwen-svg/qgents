@@ -19,6 +19,7 @@ const useStartWorkPackageMock = vi.hoisted(() => vi.fn())
 const usePauseWorkPackageMock = vi.hoisted(() => vi.fn())
 const useResumeWorkPackageMock = vi.hoisted(() => vi.fn())
 const useCancelWorkPackageMock = vi.hoisted(() => vi.fn())
+const useCancelOrchestrationRunMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks', () => ({
   useDeliverables: useDeliverablesMock,
@@ -34,6 +35,7 @@ vi.mock('@/hooks', () => ({
   usePauseWorkPackage: usePauseWorkPackageMock,
   useResumeWorkPackage: useResumeWorkPackageMock,
   useCancelWorkPackage: useCancelWorkPackageMock,
+  useCancelOrchestrationRun: useCancelOrchestrationRunMock,
 }))
 
 const run: OrchestrationRun = {
@@ -201,9 +203,95 @@ beforeEach(() => {
     mutationMock.mockReset()
     mutationMock.mockReturnValue({ mutate: vi.fn(), error: null, isPending: false, variables: undefined })
   }
+  useCancelOrchestrationRunMock.mockReset()
+  useCancelOrchestrationRunMock.mockReturnValue({ mutate: vi.fn(), error: null, isPending: false, variables: undefined })
 })
 
 describe('TaskDetailPage routing and URL state', () => {
+  it('shows the orchestration cancel action only for a cancellable status', () => {
+    const view = renderPage('/app/projects/project-test/tasks/run-1')
+    expect(screen.getByRole('button', { name: '取消任务' })).toBeInTheDocument()
+
+    useOrchestrationRunMock.mockReturnValue({
+      data: { ...run, status: 'SUCCEEDED' },
+      error: null,
+      isError: false,
+      isLoading: false,
+    })
+    view.rerender(
+      <MemoryRouter initialEntries={['/app/projects/project-test/tasks/run-1']}>
+        <Routes>
+          <Route path="/app/projects/:projectId/tasks/:runId" element={<TaskDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(screen.queryByRole('button', { name: '取消任务' })).not.toBeInTheDocument()
+  })
+
+  it('confirms before cancelling, prevents duplicate submission, and uses the mutation response', async () => {
+    const mutation = { mutate: vi.fn(), error: null, isPending: false, variables: undefined as string | undefined }
+    useCancelOrchestrationRunMock.mockReturnValue(mutation)
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const view = renderPage('/app/projects/project-test/tasks/run-1')
+
+    fireEvent.click(screen.getByRole('button', { name: '取消任务' }))
+    expect(confirmSpy).toHaveBeenCalledWith('确认取消整个任务？这可能同时终止尚未完成的 WorkPackage 和 TaskRun。')
+    expect(mutation.mutate).not.toHaveBeenCalled()
+
+    confirmSpy.mockReturnValue(true)
+    fireEvent.click(screen.getByRole('button', { name: '取消任务' }))
+    expect(mutation.mutate).toHaveBeenCalledWith('run-1')
+
+    mutation.isPending = true
+    mutation.variables = 'run-1'
+    view.rerender(
+      <MemoryRouter initialEntries={['/app/projects/project-test/tasks/run-1']}>
+        <Routes>
+          <Route path="/app/projects/:projectId/tasks/:runId" element={<TaskDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('button', { name: /取消任务/ })).toBeDisabled()
+    confirmSpy.mockRestore()
+  })
+
+  it.each([
+    [403, '暂无取消任务的权限'],
+    [404, '任务不存在'],
+    [422, '当前任务不可取消'],
+    [500, '取消任务失败，可再次尝试'],
+  ] as const)('keeps cancellation errors scoped to the operation area (%s)', (status, message) => {
+    useCancelOrchestrationRunMock.mockReturnValue({
+      mutate: vi.fn(),
+      error: new ApiError('cancel failed', status),
+      isPending: false,
+      variables: 'run-1',
+    })
+    renderPage('/app/projects/project-test/tasks/run-1')
+    expect(screen.getByText(message)).toBeInTheDocument()
+    expect(screen.getByText('执行流程')).toBeInTheDocument()
+  })
+
+  it('refreshes the current detail after a cancellation conflict', () => {
+    const refetch = vi.fn()
+    useOrchestrationRunMock.mockReturnValue({
+      data: run,
+      error: null,
+      isError: false,
+      isLoading: false,
+      refetch,
+    })
+    useCancelOrchestrationRunMock.mockReturnValue({
+      mutate: vi.fn(),
+      error: new ApiError('conflict', 409),
+      isPending: false,
+      variables: 'run-1',
+    })
+    renderPage('/app/projects/project-test/tasks/run-1')
+    fireEvent.click(screen.getByRole('button', { name: '刷新' }))
+    expect(refetch).toHaveBeenCalled()
+  })
+
   it('restores WorkPackage and TaskRun selections after refresh', () => {
     renderPage('/app/projects/project-test/tasks/run-1?workPackageId=wp-1&taskRunId=task-run-1')
 

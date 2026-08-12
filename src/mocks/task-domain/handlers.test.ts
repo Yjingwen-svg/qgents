@@ -78,6 +78,58 @@ describe('task domain MSW scenarios', () => {
     expect(list.page.nextCursor).toBe('1')
   })
 
+  it('cancels a running orchestration and then completes it asynchronously', async () => {
+    const response = await fetch(
+      `${baseUrl}/projects/project-cancel-run/orchestration-runs/orchestration-project-cancel-run-1/cancel`,
+      { method: 'POST', headers: { 'Idempotency-Key': 'cancel-run-1' } },
+    )
+    const body = await jsonResponse<{ data: { status: string } }>(response)
+    expect(response.status).toBe(202)
+    expect(body.data.status).toBe('CANCELLING')
+
+    await Promise.resolve()
+    const detailResponse = await fetch(
+      `${baseUrl}/projects/project-cancel-run/orchestration-runs/orchestration-project-cancel-run-1`,
+    )
+    const detail = await jsonResponse<{ data: { status: string } }>(detailResponse)
+    expect(detail.data.status).toBe('CANCELLED')
+  })
+
+  it('cancels queued runs immediately and rejects terminal duplicate cancellation', async () => {
+    const queuedResponse = await fetch(
+      `${baseUrl}/projects/project-cancel-queued/orchestration-runs/orchestration-project-cancel-queued-1/cancel?scenario=QUEUED`,
+      { method: 'POST', headers: { 'Idempotency-Key': 'cancel-queued-1' } },
+    )
+    const queued = await jsonResponse<{ data: { status: string } }>(queuedResponse)
+    expect(queuedResponse.status).toBe(202)
+    expect(queued.data.status).toBe('CANCELLED')
+
+    const terminalResponse = await fetch(
+      `${baseUrl}/projects/project-cancel-terminal/orchestration-runs/orchestration-project-cancel-terminal-1/cancel?scenario=SUCCEEDED`,
+      { method: 'POST', headers: { 'Idempotency-Key': 'cancel-terminal-1' } },
+    )
+    expect(terminalResponse.status).toBe(409)
+  })
+
+  it.each([
+    ['FORBIDDEN', 403],
+    ['INVALID', 422],
+  ] as const)('returns %s cancellation errors', async (error, status) => {
+    const response = await fetch(
+      `${baseUrl}/projects/project-cancel-errors/orchestration-runs/orchestration-project-cancel-errors-1/cancel?error=${error}`,
+      { method: 'POST', headers: { 'Idempotency-Key': `cancel-${error}` } },
+    )
+    expect(response.status).toBe(status)
+  })
+
+  it('returns 404 when the orchestration run does not exist', async () => {
+    const response = await fetch(
+      `${baseUrl}/projects/project-cancel-errors/orchestration-runs/missing-run/cancel`,
+      { method: 'POST', headers: { 'Idempotency-Key': 'cancel-missing' } },
+    )
+    expect(response.status).toBe(404)
+  })
+
   it('validates required orchestration fields and workflow inputs', async () => {
     const missingInstruction = await fetch(`${baseUrl}/projects/project-validation/orchestration-runs`, {
       method: 'POST',
@@ -104,7 +156,7 @@ describe('task domain MSW scenarios', () => {
   })
 
   it.each([
-    ['AUTO', 'PLANNING'],
+    ['AUTO', 'RUNNING'],
     ['MANUAL', 'QUEUED'],
   ] as const)('creates a new %s orchestration run in %s', async (startMode, status) => {
     const createResponse = await fetch(`${baseUrl}/projects/project-start-mode/orchestration-runs`, {
@@ -117,7 +169,9 @@ describe('task domain MSW scenarios', () => {
         startMode,
       }),
     })
-    const created = await jsonResponse<{ data: { id: string; status: string; startMode: string } }>(createResponse)
+    const created = await jsonResponse<{
+      data: { id: string; status: string; startMode: string; workPackageIds: string[] }
+    }>(createResponse)
     expect(createResponse.status).toBe(202)
     expect(created.data.id).not.toBe('orchestration-project-start-mode-1')
     expect(created.data.status).toBe(status)
@@ -137,6 +191,232 @@ describe('task domain MSW scenarios', () => {
     expect(detailResponse.status).toBe(200)
     expect(detail.data.id).toBe(created.data.id)
     expect(detail.data.instruction).toBe(`start ${startMode}`)
+
+    const workPackageResponse = await fetch(
+      `${baseUrl}/projects/project-start-mode/work-packages/${created.data.workPackageIds[0]}`,
+    )
+    const workPackage = await jsonResponse<{ data: { orchestrationRunId: string; status: string } }>(workPackageResponse)
+    expect(workPackage.data.orchestrationRunId).toBe(created.data.id)
+    expect(workPackage.data.status).toBe(startMode === 'AUTO' ? 'RUNNING' : 'READY')
+  })
+
+  it('walks one newly-created MANUAL run through its related resource graph', async () => {
+    const projectId = 'project-created-chain'
+    const createResponse = await fetch(`${baseUrl}/projects/${projectId}/orchestration-runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'created-chain-1' },
+      body: JSON.stringify({
+        groupId: 'group-created-chain',
+        instruction: 'implement created chain',
+        workflowId: 'system-default-code-delivery',
+        startMode: 'MANUAL',
+      }),
+    })
+    const created = await jsonResponse<{
+      data: { id: string; projectId: string; status: string; workPackageIds: string[] }
+    }>(createResponse)
+    expect(createResponse.status).toBe(202)
+    expect(created.data.projectId).toBe(projectId)
+    expect(created.data.status).toBe('QUEUED')
+    expect(created.data.workPackageIds).toHaveLength(1)
+
+    const runId = created.data.id
+    const workPackageId = created.data.workPackageIds[0]
+    const taskCenter = await jsonResponse<{ data: Array<{ id: string; projectId: string }> }>(await fetch(
+      `${baseUrl}/projects/${projectId}/orchestration-runs?groupId=group-created-chain`,
+    ))
+    expect(taskCenter.data.some((run) => run.id === runId && run.projectId === projectId)).toBe(true)
+    const runDetail = await jsonResponse<{
+      data: { id: string; projectId: string; workPackageIds: string[] }
+    }>(await fetch(`${baseUrl}/projects/${projectId}/orchestration-runs/${runId}`))
+    expect(runDetail.data.id).toBe(runId)
+    expect(runDetail.data.workPackageIds).toEqual([workPackageId])
+
+    const workPackage = await jsonResponse<{
+      data: { id: string; projectId: string; orchestrationRunId: string; subtaskIds: string[]; status: string }
+    }>(await fetch(`${baseUrl}/projects/${projectId}/work-packages/${workPackageId}`))
+    expect(workPackage.data.projectId).toBe(projectId)
+    expect(workPackage.data.orchestrationRunId).toBe(runId)
+    expect(workPackage.data.subtaskIds).toHaveLength(1)
+
+    const started = await jsonResponse<{ data: { status: string } }>(await fetch(
+      `${baseUrl}/projects/${projectId}/work-packages/${workPackageId}/start`,
+      { method: 'POST', headers: { 'Idempotency-Key': 'created-chain-start' } },
+    ))
+    expect(started.data.status).toBe('RUNNING')
+    const paused = await jsonResponse<{ data: { status: string } }>(await fetch(
+      `${baseUrl}/projects/${projectId}/work-packages/${workPackageId}/pause`,
+      { method: 'POST', headers: { 'Idempotency-Key': 'created-chain-pause' } },
+    ))
+    expect(paused.data.status).toBe('PAUSED')
+    const resumed = await jsonResponse<{ data: { status: string } }>(await fetch(
+      `${baseUrl}/projects/${projectId}/work-packages/${workPackageId}/resume`,
+      { method: 'POST', headers: { 'Idempotency-Key': 'created-chain-resume' } },
+    ))
+    expect(resumed.data.status).toBe('RUNNING')
+
+    const taskRunPage = await jsonResponse<{
+      data: Array<{
+        id: string
+        projectId: string
+        orchestrationRunId: string
+        workPackageId: string
+        status: string
+      }>
+    }>(await fetch(`${baseUrl}/projects/${projectId}/work-packages/${workPackageId}/task-runs`))
+    expect(taskRunPage.data).toHaveLength(1)
+    const taskRun = taskRunPage.data[0]
+    expect(taskRun.projectId).toBe(projectId)
+    expect(taskRun.orchestrationRunId).toBe(runId)
+    expect(taskRun.workPackageId).toBe(workPackageId)
+    expect(taskRun.status).toBe('WAITING_INPUT')
+
+    const [steps, logs, executionContext, inputRequests] = await Promise.all([
+      fetch(`${baseUrl}/projects/${projectId}/task-runs/${taskRun.id}/steps`).then((response) =>
+        jsonResponse<{ data: Array<{ taskRunId: string }> }>(response)),
+      fetch(`${baseUrl}/projects/${projectId}/task-runs/${taskRun.id}/logs`).then((response) =>
+        jsonResponse<{ data: Array<{ taskRunId: string }> }>(response)),
+      fetch(`${baseUrl}/projects/${projectId}/task-runs/${taskRun.id}/execution-context`).then((response) =>
+        jsonResponse<{ data: { taskRunId: string } }>(response)),
+      fetch(`${baseUrl}/projects/${projectId}/task-runs/${taskRun.id}/input-requests`).then((response) =>
+        jsonResponse<{ data: Array<{ id: string; taskRunId: string; status: string }> }>(response)),
+    ])
+    expect(steps.data[0].taskRunId).toBe(taskRun.id)
+    expect(logs.data[0].taskRunId).toBe(taskRun.id)
+    expect(executionContext.data.taskRunId).toBe(taskRun.id)
+    expect(inputRequests.data).toHaveLength(1)
+    expect(inputRequests.data[0].taskRunId).toBe(taskRun.id)
+    expect(inputRequests.data[0].status).toBe('PENDING')
+
+    const inputResponse = await fetch(
+      `${baseUrl}/projects/${projectId}/task-runs/${taskRun.id}/input-requests/${inputRequests.data[0].id}/reply`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'created-chain-input' },
+        body: JSON.stringify({ answer: { value: 'main' } }),
+      },
+    )
+    expect(inputResponse.status).toBe(202)
+    const handledTaskRun = await jsonResponse<{ data: { status: string } }>(await fetch(
+      `${baseUrl}/projects/${projectId}/task-runs/${taskRun.id}`,
+    ))
+    expect(handledTaskRun.data.status).toBe('RUNNING')
+
+    const cancelTaskRun = await jsonResponse<{ data: { id: string; status: string } }>(await fetch(
+      `${baseUrl}/projects/${projectId}/task-runs/${taskRun.id}/cancel`,
+      { method: 'POST', headers: { 'Idempotency-Key': 'created-chain-task-cancel' } },
+    ))
+    expect(cancelTaskRun.data.status).toBe('CANCELLING')
+    await Promise.resolve()
+    const retry = await jsonResponse<{
+      data: { id: string; status: string; retryOfTaskRunId: string | null; workPackageId: string }
+    }>(await fetch(
+      `${baseUrl}/projects/${projectId}/task-runs/${taskRun.id}/retry`,
+      { method: 'POST', headers: { 'Idempotency-Key': 'created-chain-task-retry' } },
+    ))
+    expect(retry.data.id).not.toBe(taskRun.id)
+    expect(retry.data.status).toBe('QUEUED')
+    expect(retry.data.retryOfTaskRunId).toBe(taskRun.id)
+    expect(retry.data.workPackageId).toBe(workPackageId)
+    const originalTaskRun = await jsonResponse<{ data: { status: string } }>(await fetch(
+      `${baseUrl}/projects/${projectId}/task-runs/${taskRun.id}`,
+    ))
+    expect(originalTaskRun.data.status).toBe('CANCELLED')
+
+    const deliverables = await jsonResponse<{
+      data: Array<{
+        id: string
+        projectId: string
+        workPackageId: string
+        taskRunId: string
+        status: string
+      }>
+    }>(await fetch(`${baseUrl}/projects/${projectId}/work-packages/${workPackageId}/deliverables`))
+    expect(deliverables.data).toHaveLength(1)
+    const deliverable = deliverables.data[0]
+    expect(deliverable.projectId).toBe(projectId)
+    expect(deliverable.workPackageId).toBe(workPackageId)
+    expect(deliverable.taskRunId).toBe(taskRun.id)
+    expect(deliverable.status).toBe('PENDING_REVIEW')
+    const accepted = await jsonResponse<{ data: { status: string } }>(await fetch(
+      `${baseUrl}/projects/${projectId}/deliverables/${deliverable.id}/accept`,
+      { method: 'POST', headers: { 'Idempotency-Key': 'created-chain-deliverable-accept' } },
+    ))
+    expect(accepted.data.status).toBe('ACCEPTED')
+
+    const repeatAccept = await fetch(
+      `${baseUrl}/projects/${projectId}/deliverables/${deliverable.id}/accept`,
+      { method: 'POST', headers: { 'Idempotency-Key': 'created-chain-deliverable-repeat' } },
+    )
+    expect(repeatAccept.status).toBe(409)
+    const deliverableAfterConflict = await jsonResponse<{ data: { status: string } }>(await fetch(
+      `${baseUrl}/projects/${projectId}/deliverables/${deliverable.id}`,
+    ))
+    expect(deliverableAfterConflict.data.status).toBe('ACCEPTED')
+
+    const forbidden = await fetch(`${baseUrl}/projects/${projectId}/task-runs/${taskRun.id}?error=FORBIDDEN`)
+    expect(forbidden.status).toBe(403)
+    const missing = await fetch(`${baseUrl}/projects/${projectId}/task-runs/missing-task-run`)
+    expect(missing.status).toBe(404)
+    const taskRunAfterErrors = await fetch(`${baseUrl}/projects/${projectId}/task-runs/${taskRun.id}`)
+    expect(taskRunAfterErrors.status).toBe(200)
+
+    const cancelledWorkPackage = await jsonResponse<{ data: { status: string } }>(await fetch(
+      `${baseUrl}/projects/${projectId}/work-packages/${workPackageId}/cancel`,
+      { method: 'POST', headers: { 'Idempotency-Key': 'created-chain-work-package-cancel' } },
+    ))
+    expect(cancelledWorkPackage.data.status).toBe('CANCELLING')
+    await Promise.resolve()
+    const cancelledRun = await jsonResponse<{ data: { status: string } }>(await fetch(
+      `${baseUrl}/projects/${projectId}/orchestration-runs/${runId}/cancel`,
+      { method: 'POST', headers: { 'Idempotency-Key': 'created-chain-run-cancel' } },
+    ))
+    expect(cancelledRun.data.status).toBe('CANCELLING')
+    await Promise.resolve()
+    const finalRun = await jsonResponse<{ data: { status: string } }>(await fetch(
+      `${baseUrl}/projects/${projectId}/orchestration-runs/${runId}`,
+    ))
+    expect(finalRun.data.status).toBe('CANCELLED')
+  })
+
+  it('creates an isolated MANUAL graph that starts its own work package', async () => {
+    const projectId = 'project-manual-created'
+    const response = await fetch(`${baseUrl}/projects/${projectId}/orchestration-runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'manual-created-1' },
+      body: JSON.stringify({
+        groupId: 'group-manual-created',
+        instruction: 'manual created chain',
+        workflowId: 'system-default-code-delivery',
+        startMode: 'MANUAL',
+      }),
+    })
+    const created = await jsonResponse<{
+      data: { id: string; projectId: string; status: string; workPackageIds: string[] }
+    }>(response)
+    expect(created.data.status).toBe('QUEUED')
+    expect(created.data.workPackageIds).toHaveLength(1)
+    const workPackageId = created.data.workPackageIds[0]
+    const workPackage = await jsonResponse<{ data: { projectId: string; orchestrationRunId: string; status: string } }>(
+      await fetch(`${baseUrl}/projects/${projectId}/work-packages/${workPackageId}`),
+    )
+    expect(workPackage.data.projectId).toBe(projectId)
+    expect(workPackage.data.orchestrationRunId).toBe(created.data.id)
+    expect(workPackage.data.status).toBe('READY')
+    const started = await jsonResponse<{ data: { status: string } }>(await fetch(
+      `${baseUrl}/projects/${projectId}/work-packages/${workPackageId}/start`,
+      { method: 'POST', headers: { 'Idempotency-Key': 'manual-created-start' } },
+    ))
+    expect(started.data.status).toBe('RUNNING')
+
+    const otherProject = await fetch(
+      `http://localhost/api/projects/project-other/orchestration-runs/${created.data.id}`,
+    )
+    expect(otherProject.status).toBe(404)
+    const otherProjectList = await jsonResponse<{ data: Array<{ id: string }> }>(await fetch(
+      'http://localhost/api/projects/project-other/orchestration-runs',
+    ))
+    expect(otherProjectList.data.some((run) => run.id === created.data.id)).toBe(false)
   })
 
   it.each([

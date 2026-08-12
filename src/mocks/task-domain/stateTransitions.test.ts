@@ -3,6 +3,7 @@ import {
   canRetryTaskRun,
   InvalidStateTransitionError,
   transitionDeliverableStatus,
+  transitionOrchestrationRunCancel,
   transitionWorkPackageStatus,
 } from './stateTransitions'
 import { queryKeys } from '@/query'
@@ -24,6 +25,15 @@ describe('task domain state transitions', () => {
   it('does not accept a deliverable twice', () => {
     expect(transitionDeliverableStatus('PENDING_REVIEW', 'accept')).toBe('ACCEPTED')
     expect(() => transitionDeliverableStatus('ACCEPTED', 'accept')).toThrow(InvalidStateTransitionError)
+  })
+
+  it('cancels queued/planning runs immediately and running runs asynchronously', () => {
+    expect(transitionOrchestrationRunCancel('QUEUED')).toBe('CANCELLED')
+    expect(transitionOrchestrationRunCancel('PLANNING')).toBe('CANCELLED')
+    expect(transitionOrchestrationRunCancel('RUNNING')).toBe('CANCELLING')
+    expect(transitionOrchestrationRunCancel('WAITING_INPUT')).toBe('CANCELLING')
+    expect(() => transitionOrchestrationRunCancel('SUCCEEDED')).toThrow(InvalidStateTransitionError)
+    expect(() => transitionOrchestrationRunCancel('CANCELLED')).toThrow(InvalidStateTransitionError)
   })
 
   it('scopes task query keys to the project', () => {

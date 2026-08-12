@@ -5,6 +5,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '@/api'
 import {
   useDeliverables,
+  useCancelOrchestrationRun,
   useCancelWorkPackage,
   useInfiniteTaskRuns,
   useOrchestrationRun,
@@ -13,7 +14,7 @@ import {
   useResumeWorkPackage,
   useStartWorkPackage,
 } from '@/hooks'
-import { canWorkPackageAction } from '@/types'
+import { canCancelOrchestrationRun, canWorkPackageAction } from '@/types'
 import type { Deliverable, OrchestrationRun, TaskExecutionStage, TaskRun, WorkPackage, WorkPackageAction } from '@/types'
 import { PATHS } from '@/routes/paths'
 import { TaskStatusTag } from '../TaskShared/TaskStatusTag'
@@ -28,6 +29,7 @@ export function TaskDetailPage() {
   const location = useLocation()
 
   const runQuery = useOrchestrationRun(projectId, runId)
+  const cancelOrchestrationMutation = useCancelOrchestrationRun(projectId)
   const run = runQuery.data
   const workPackageIds = useMemo(() => run?.workPackageIds ?? [], [run?.workPackageIds])
   const workPackageQueries = useOrchestrationWorkPackages(projectId, workPackageIds)
@@ -69,6 +71,17 @@ export function TaskDetailPage() {
           <div className={styles.detailToolbar}>
             <Button aria-label="返回任务中心" type="text" icon={<ArrowLeftOutlined />} onClick={handleBackToCenter}>任务详情</Button>
             <div className={styles.topBarActions}>
+              {canCancelOrchestrationRun(run.status) ? (
+                <Button
+                  danger
+                  loading={cancelOrchestrationMutation.isPending}
+                  disabled={cancelOrchestrationMutation.isPending}
+                  onClick={() => {
+                    if (!window.confirm('确认取消整个任务？这可能同时终止尚未完成的 WorkPackage 和 TaskRun。')) return
+                    cancelOrchestrationMutation.mutate(run.id)
+                  }}
+                >取消任务</Button>
+              ) : null}
               <Button onClick={() => navigate(PATHS.projectReqChat(projectId, run.groupId))}>返回需求群</Button>
               <Button
                 type="primary"
@@ -81,6 +94,12 @@ export function TaskDetailPage() {
               >查看交付</Button>
             </div>
           </div>
+          {cancelOrchestrationMutation.error ? (
+            <OrchestrationCancelError
+              error={cancelOrchestrationMutation.error}
+              onRefresh={() => void runQuery.refetch()}
+            />
+          ) : null}
           <header className={styles.taskHeader}>
             <div className={styles.detailTitleRow}>
               <Title level={2} className={styles.title}>
@@ -126,6 +145,28 @@ export function TaskDetailPage() {
 
 function SummaryItem({ label, value }: { label: string; value: string }) {
   return <div className={styles.summaryMetaItem}><Text className={styles.label}>{label}</Text><Text className={styles.value}>{value}</Text></div>
+}
+
+function OrchestrationCancelError({ error, onRefresh }: { error: Error; onRefresh: () => void }) {
+  const status = error instanceof ApiError ? error.status : undefined
+  const title = status === 403
+    ? '暂无取消任务的权限'
+    : status === 404
+      ? '任务不存在'
+      : status === 409
+        ? '任务状态已变化，请刷新最新详情'
+        : status === 422
+          ? '当前任务不可取消'
+          : '取消任务失败，可再次尝试'
+  return (
+    <Alert
+      className={styles.executionAlert}
+      type="error"
+      showIcon
+      title={title}
+      action={status === 409 ? <Button type="link" size="small" onClick={onRefresh}>刷新</Button> : undefined}
+    />
+  )
 }
 
 function ExecutionFlow({

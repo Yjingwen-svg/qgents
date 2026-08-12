@@ -17,11 +17,11 @@ import { RequirementChatPage } from '@/pages/ProjectDetail/RequirementChatPage'
 import { TaskDetailPage } from '@/pages/ProjectDetail/TaskDetail/TaskDetailPage'
 import { TaskRunDetailPage } from '@/pages/ProjectDetail/TaskRunDetail/TaskRunDetailPage'
 import { DeliverablesPage } from '@/pages/ProjectDetail/Deliverables/DeliverablesPage'
+import { AgentTeamPage } from '@/pages/ProjectDetail/AgentTeam/AgentTeamPage'
 import {
   OverviewPage,
   TasksPage,
   WorkflowPage,
-  AgentsPage,
   SkillsPage,
   MemoryPage,
   CodePage,
@@ -76,7 +76,7 @@ export function AppRouter() {
                 <Route path="deliverables" element={<DeliverablesPage />} />
                 <Route path="deliverables/:deliverableId" element={<DeliverablesPage />} />
                 <Route path="workflow" element={<WorkflowPage />} />
-                <Route path="agents" element={<AgentsPage />} />
+                <Route path="agents" element={<AgentTeamPage />} />
                 <Route path="skills" element={<SkillsPage />} />
                 <Route path="memory" element={<MemoryPage />} />
                 <Route path="code" element={<CodePage />} />

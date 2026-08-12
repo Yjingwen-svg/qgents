@@ -8,6 +8,14 @@ import type {
 export const queryKeys = {
   all: ['qgents'] as const,
   projects: (projectId: string) => ['qgents', 'projects', projectId] as const,
+  agents: {
+    all: (teamId: string) => ['qgents', 'teams', teamId, 'agents'] as const,
+    list: (teamId: string, scenario?: string) =>
+      ['qgents', 'teams', teamId, 'agents', 'list', scenario ?? null] as const,
+    detail: (teamId: string, agentId: string) =>
+      ['qgents', 'teams', teamId, 'agents', agentId] as const,
+  },
+  projectSkills: (projectId: string) => ['qgents', 'projects', projectId, 'skills'] as const,
   orchestrationRuns: {
     all: (projectId: string) => ['qgents', 'projects', projectId, 'orchestration-runs'] as const,
     list: (projectId: string, filters: OrchestrationRunFilters = {}) =>

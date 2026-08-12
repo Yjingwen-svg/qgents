@@ -1,4 +1,5 @@
 import { request } from './client'
+import { requestData } from './taskDomain'
 import type { CreateProjectPayload, Project } from '@/types'
 
 /**
@@ -11,7 +12,7 @@ export const projectApi = {
   },
 
   getById(projectId: string) {
-    return request<Project>(`/projects/${projectId}`)
+    return requestData<Project>(`/projects/${projectId}`)
   },
 
   create(payload: CreateProjectPayload) {

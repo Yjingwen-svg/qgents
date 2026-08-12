@@ -6,7 +6,23 @@
 export type { User, AuthTokens, LoginPayload, RegisterPayload } from './auth'
 export type { Team, TeamRole, TeamMember, CreateTeamPayload, JoinTeamPayload } from './team'
 export type { Project, CreateProjectPayload } from './project'
-export type { Agent, AgentRoleTag } from './agent'
+export type {
+  Agent,
+  AgentAvailability,
+  AgentDetail,
+  AgentDetailTab,
+  AgentPermissions,
+  AgentPresentation,
+  AgentRole,
+  AgentRoleTag,
+  AgentRunRecord,
+  AgentSkillBinding,
+  AgentSummary,
+  AgentVisibility,
+  CreateAgentPayload,
+  ProjectSkillOption,
+  UpdateAgentPayload,
+} from './agent'
 export type {
   ChatSession,
   ChatMessage,

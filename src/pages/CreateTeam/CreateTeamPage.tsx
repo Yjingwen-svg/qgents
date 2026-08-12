@@ -15,7 +15,7 @@ import { PATHS } from '@/routes/paths'
 import { useAuth } from '@/context/AuthContext'
 import { teamApi } from '@/api'
 
-const { Title, Paragraph, Text } = Typography
+const { Title, Text } = Typography
 const { TextArea } = Input
 
 export function CreateTeamPage() {
@@ -111,10 +111,6 @@ export function CreateTeamPage() {
           </Form.Item>
         </Form>
       </Card>
-
-      <Paragraph type="secondary" style={{ marginTop: 16 }}>
-        TODO[后端联调]: teamApi.create / teamApi.invite
-      </Paragraph>
     </div>
   )
 }

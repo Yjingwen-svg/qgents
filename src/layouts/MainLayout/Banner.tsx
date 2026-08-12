@@ -1,11 +1,6 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Layout, Menu, Button, Badge, Avatar, Space, Typography, theme } from 'antd'
-import {
-  HomeOutlined,
-  MessageOutlined,
-  BellOutlined,
-  GithubOutlined,
-} from '@ant-design/icons'
+import { HomeOutlined, MessageOutlined, BellOutlined } from '@ant-design/icons'
 import { useAuth } from '@/context/AuthContext'
 import { usePersonalCenter } from '@/context/PersonalCenterContext'
 import { PATHS } from '@/routes/paths'
@@ -25,11 +20,14 @@ export function Banner() {
   const name = user?.displayName ?? '用户'
   const avatarChar = user?.avatarChar ?? name.slice(0, 1)
 
+  // 「团队首页」高亮范围：我的团队 / 团队详情 / 创建加入 / GitHub 集成 / 项目…
+  // GitHub 集成从团队详情进入，同属团队首页模块，应保持底部绿线选中
   const selectedKey = location.pathname.startsWith(PATHS.CHAT)
     ? 'chat'
     : location.pathname.startsWith(PATHS.MY_TEAMS) ||
         location.pathname.startsWith('/app/teams') ||
-        location.pathname.startsWith('/app/projects')
+        location.pathname.startsWith('/app/projects') ||
+        location.pathname.startsWith(PATHS.GITHUB_INTEGRATION)
       ? 'teams'
       : ''
 
@@ -79,19 +77,6 @@ export function Banner() {
         <Badge dot>
           <Button type="text" icon={<BellOutlined />} aria-label="通知" />
         </Badge>
-
-        <NavLink to={PATHS.GITHUB_INTEGRATION} aria-label="GitHub 集成" title="GitHub 集成">
-          <Button
-            type="text"
-            icon={<GithubOutlined />}
-            aria-label="GitHub 集成"
-            style={
-              location.pathname === PATHS.GITHUB_INTEGRATION
-                ? { color: token.colorPrimary }
-                : undefined
-            }
-          />
-        </NavLink>
 
         <Button type="text" onClick={openPersonalCenter} aria-label="打开个人中心">
           <Space size={8}>

@@ -9,7 +9,6 @@ describe('AppProviders', () => {
         <span>foundation-ready</span>
       </AppProviders>,
     )
-
     expect(screen.getByText('foundation-ready')).toBeInTheDocument()
   })
 })

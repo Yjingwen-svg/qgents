@@ -7,7 +7,7 @@
  */
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
-
+// 自定义的接口请求异常类,继承原生 Error，额外加上 status、body 两个属性的类。
 export class ApiError extends Error {
   status: number
   body: unknown

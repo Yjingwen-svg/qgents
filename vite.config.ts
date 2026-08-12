@@ -12,12 +12,17 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    // TODO: 后端联调时开启代理，指向 Java 服务地址
-    // proxy: {
-    //   '/api': {
-    //     target: 'http://localhost:8080',
-    //     changeOrigin: true,
-    //   },
-    // },
+    /**
+     * TODO[后端联调] 关闭 MSW（VITE_USE_MOCK=false）后，把 /api 代理到后端：
+     * - 本地演示服：http://localhost:8080（github-auth-demo-server）
+     * - 或 Java 服务地址
+     * 否则 fetch('/api/...') 可能打到 Vite 自己，返回 HTML → Unexpected token '<'
+     */
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
   },
 })

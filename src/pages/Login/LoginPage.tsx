@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Row,
   Col,
@@ -37,10 +37,23 @@ type AuthTab = 'login' | 'register'
  */
 export function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { loginDemo, hasTeam } = useAuth()
   const [tab, setTab] = useState<AuthTab>('login')
   const [submitting, setSubmitting] = useState(false)
   const [form] = Form.useForm()
+
+  /** 被守卫踢来时带上 from（例如 GitHub 回调后的集成页 + installed=1） */
+  const from =
+    (location.state as { from?: { pathname?: string; search?: string } } | null)?.from
+
+  function goAfterLogin() {
+    if (from?.pathname) {
+      navigate(`${from.pathname}${from.search || ''}`, { replace: true })
+      return
+    }
+    navigate(hasTeam ? PATHS.MY_TEAMS : PATHS.WELCOME, { replace: true })
+  }
 
   async function handleSubmit(values: { email?: string; password?: string; remember?: boolean }) {
     setSubmitting(true)
@@ -48,7 +61,7 @@ export function LoginPage() {
       void authApi
       void values.remember
       loginDemo({ email: values.email || undefined })
-      navigate(hasTeam ? PATHS.MY_TEAMS : PATHS.WELCOME, { replace: true })
+      goAfterLogin()
     } finally {
       setSubmitting(false)
     }
@@ -56,7 +69,7 @@ export function LoginPage() {
 
   function handleGithubLogin() {
     loginDemo({ displayName: 'GitHub 用户', avatarChar: 'G' })
-    navigate(PATHS.WELCOME, { replace: true })
+    goAfterLogin()
   }
 
   const features = [

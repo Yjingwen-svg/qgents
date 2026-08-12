@@ -10,8 +10,11 @@ import { JoinTeamPage } from '@/pages/JoinTeam/JoinTeamPage'
 import { MyTeamsPage } from '@/pages/MyTeams/MyTeamsPage'
 import { ChatWorkspacePage } from '@/pages/ChatWorkspace/ChatWorkspacePage'
 import { GitHubIntegrationPage } from '@/pages/GitHubIntegration/GitHubIntegrationPage'
+import { GithubInstallationReposPage } from '@/pages/GitHubIntegration/GithubInstallationReposPage'
+import { BindRepoToProjectPage } from '@/pages/GitHubIntegration/BindRepoToProjectPage'
 import { TeamDetailPage } from '@/pages/TeamDetail/TeamDetailPage'
 import { CreateProjectPage } from '@/pages/CreateProject/CreateProjectPage'
+import { TeamAuthorizedReposPage } from '@/pages/GitHubIntegration/TeamAuthorizedReposPage'
 import { ProjectDetailLayout } from '@/pages/ProjectDetail/ProjectDetailLayout'
 import { RequirementChatPage } from '@/pages/ProjectDetail/RequirementChatPage'
 import {
@@ -53,8 +56,17 @@ export function AppRouter() {
               <Route path="teams/join" element={<JoinTeamPage />} />
               <Route path="teams/:teamId" element={<TeamDetailPage />} />
               <Route path="teams/:teamId/projects/create" element={<CreateProjectPage />} />
+              <Route
+                path="teams/:teamId/github/authorized-repos"
+                element={<TeamAuthorizedReposPage />}
+              />
               <Route path="chat" element={<ChatWorkspacePage />} />
               <Route path="integrations/github" element={<GitHubIntegrationPage />} />
+              <Route
+                path="integrations/github/installations/:installationId/repositories"
+                element={<GithubInstallationReposPage />}
+              />
+              <Route path="integrations/github/bind-repo" element={<BindRepoToProjectPage />} />
 
               <Route path="projects/:projectId" element={<ProjectDetailLayout />}>
                 {/* 默认进入「登录功能」需求群聊 */}

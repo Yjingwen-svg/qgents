@@ -1,279 +1,338 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useGithubInstallRedirect } from '@/hooks/useGithubInstall'
 import {
   Typography,
   Card,
   Button,
   Tag,
-  Select,
   Space,
   Empty,
-  List,
   Alert,
-  Popconfirm,
+  App,
   theme,
+  Row,
+  Col,
+  Spin,
 } from 'antd'
-import { LinkOutlined } from '@ant-design/icons'
+import {
+  PlusOutlined,
+  ArrowLeftOutlined,
+  GithubOutlined,
+  EyeOutlined,
+} from '@ant-design/icons'
+import { ApiError } from '@/api/client'
+import { githubApi } from '@/api/github'
+import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
+import type { GithubInstallation } from '@/types/github'
 
 /**
- * GitHub 集成页 —— Ant Design Card / List / Tag
- * 对应分工 C §1 + 接口文档 §6
+ * ============================================================================
+ * GitHub 集成页 —— 接口文档 §6
+ *
+ * 入口：我的团队 → 我创建的团队 → 查看详情 →「github集成」
+ * 路由：/app/integrations/github?teamId=xxx
+ *
+ * 【本页「安装Github App」按钮职责】
+ * 1. 校验 teamId（来自 URL query）
+ * 2. POST /teams/{teamId}/integrations/github/installations
+ * 3. 使用返回的 installationUrl 整页跳转 GitHub
+ *
+ * 【回调说明】
+ * GET /integrations/github/callback 由 GitHub 打到后端，前端不直接请求。
+ * 后端处理完后应重定向回本页，建议带：
+ *   ?teamId=xxx&installed=1
+ * 本页检测到 installed=1 时提示安装成功（见下方 useEffect）。
+ *
+ * 【页面结构】
+ * - 上：已安装的 GitHub App（个人 User / 组织 Organization 卡片）
+ * - 卡片「查看仓库」→ 跳转独立页 GithubInstallationReposPage
+ * - 仓库页「绑定该仓库到项目」→ BindRepoToProjectPage（团队项目列表）
+ *
+ * 相关文件：
+ * - API：src/api/github.ts
+ * - 类型：src/types/github.ts
+ * - Mock：src/mocks/handlers.ts
+ * ============================================================================
  */
-
-type AuthStatus = 'AUTHORIZED' | 'NOT_AUTHORIZED' | 'EXPIRED'
-type SyncStatus = 'SYNCED' | 'SYNCING' | 'FAILED'
-
-interface BoundRepositoryRow {
-  id: string
-  fullName: string
-  githubUrl: string
-  boundProjectName: string
-  boundProjectId: string
-  defaultBranch: string
-  syncStatus: SyncStatus
-  lastSyncedAt?: string
-  syncError?: string
-}
 
 const { Title, Paragraph, Text } = Typography
 
-const DEMO_AUTH_STATUS: AuthStatus = 'AUTHORIZED'
+/**
+ * 前端请求错误格式化工具函数
+ * 把 ApiError / 普通 Error 转成可读文案，方便联调看 403/401 等
+ * TODO[后端联调] 可按 error.code 映射中文（如 PROJECT_ADMIN_REQUIRED）
+ */
+function formatApiError(error: unknown): string {
+  // 这个error对象是不是由这个类 new 出来的实例，返回 boolean true / false。
+  if (error instanceof ApiError) {
+    const body = error.body as
+      | { error?: { code?: string; message?: string } } //错误体的类型
+      | undefined
+    const code = body?.error?.code
+    const msg = body?.error?.message
 
-const DEMO_INSTALLATION = {
-  accountLogin: 'Yjingwen-svg',
-  installedAt: '2026-08-01T08:00:00Z',
-}
-
-const DEMO_BOUND_REPOS: BoundRepositoryRow[] = [
-  {
-    id: 'repo-1',
-    fullName: 'Yjingwen-svg/qgents-web',
-    githubUrl: 'https://github.com/Yjingwen-svg/qgents-web',
-    boundProjectName: 'Qgents Web',
-    boundProjectId: 'proj-qgents',
-    defaultBranch: 'main',
-    syncStatus: 'SYNCED',
-    lastSyncedAt: '2026-08-10T12:30:00Z',
-  },
-  {
-    id: 'repo-2',
-    fullName: 'Yjingwen-svg/qgents-server',
-    githubUrl: 'https://github.com/Yjingwen-svg/qgents-server',
-    boundProjectName: 'Qgents 后端',
-    boundProjectId: 'proj-server',
-    defaultBranch: 'main',
-    syncStatus: 'SYNCING',
-    lastSyncedAt: '2026-08-10T12:00:00Z',
-  },
-  {
-    id: 'repo-3',
-    fullName: 'star-river/pet-app',
-    githubUrl: 'https://github.com/star-river/pet-app',
-    boundProjectName: '宠影记',
-    boundProjectId: 'proj-pet',
-    defaultBranch: 'develop',
-    syncStatus: 'FAILED',
-    lastSyncedAt: '2026-08-09T18:00:00Z',
-    syncError: 'GitHub API rate limit exceeded',
-  },
-]
-
-function authStatusTag(status: AuthStatus) {
-  switch (status) {
-    case 'AUTHORIZED':
-      return <Tag color="success">已授权</Tag>
-    case 'NOT_AUTHORIZED':
-      return <Tag>未授权</Tag>
-    case 'EXPIRED':
-      return <Tag color="error">授权已过期</Tag>
+    if (code && msg) return `[${code}] ${msg}`
+    if (msg) return msg
+    return `请求失败 (HTTP ${error.status})`
   }
+  if (error instanceof Error) return error.message //http 笼统报错
+  return '未知错误'
 }
 
-function syncStatusTag(status: SyncStatus) {
-  switch (status) {
-    case 'SYNCED':
-      return <Tag color="success">已同步</Tag>
-    case 'SYNCING':
-      return <Tag color="processing">同步中</Tag>
-    case 'FAILED':
-      return <Tag color="error">同步失败</Tag>
-  }
+function accountTypeLabel(type: GithubInstallation['accountType']): string {
+  return type === 'Organization' ? 'GitHub 组织' : 'GitHub 个人账号'
 }
 
+function statusTag(status: GithubInstallation['status']) {
+  return status === 'ACTIVE' ? (
+    <Tag color="success">已启用</Tag>
+  ) : (
+    <Tag color="warning">已过期</Tag>
+  )
+}
+
+// 给当前团队安装 GitHub App
 export function GitHubIntegrationPage() {
   const { token } = theme.useToken()
+  const { message } = App.useApp() //toast
+  const navigate = useNavigate()
+  // ReactRouter hook，用来读写 url 问号后面参数：
+  const [searchParams, setSearchParams] = useSearchParams()
+  // searchParams 是 useSearchParams() 返回的对象，代表当前 url 问号后的全部参数。
 
+  /**
+   * teamId 来源（优先级）：
+   * 1. URL ?teamId=xxx（团队详情「github集成」按钮带入）
+   * 2. 缺省 mock：team-xinghe（仅本地演示；联调后应强制要求 URL 带 teamId）
+   *
+   * TODO[后端联调] 若无 teamId，应提示用户从团队详情进入，而不是静默用默认值
+   */
+  const teamId = searchParams.get('teamId') || 'team-xinghe' //A是假值就返回B
+
+  /**
+   * 后端回调回跳约定（请与后端对齐）：
+   * GET /integrations/github/callback 处理完后 302 →
+   * /app/integrations/github?teamId={id}&installed=1
+   */
+  const handledRef = useRef(false)
+  // 处理 GitHub 安装完成回调回跳
+  useEffect(() => {
+    const installed = searchParams.get('installed')
+    if (installed !== '1') return
+    if (handledRef.current) return
+    handledRef.current = true //ref防抖操作
+    message.success('GitHub App 安装/授权已完成（后端回调回跳）')
+    // 复制一份当前所有 url 查询参数，得到一份副本对象next。
+    // 清掉 installed，避免刷新反复弹 toast
+    const next = new URLSearchParams(searchParams)
+    next.delete('installed')
+    // 把 key 为installed的参数删掉。
+    setSearchParams(next, { replace: true })
+    // 默认模式:用户点浏览器左上角回退按钮，会退回到记录 A，url 又出现installed=1，又会触发 useEffect，再次弹出「安装完成」提示，bug。
+    //替换模式:不新增历史，直接覆盖当前这一条历史记录
+
+    // TODO[后端联调] 安装成功后刷新 installations / repositories 列表
+  }, [searchParams, setSearchParams, message])
+  // searchParams:url 查询参数对象。
+  // 只要浏览器 url 问号后面参数发生变化，searchParams 引用就会变，触发 useEffect 执行。
+  //主要是看searchParams的变化,其余那两个引用一直不变
+
+  /**
+   * 「安装Github App」核心 mutation
+   * ----------------------------------------------------------------------------
+   * mutationFn → githubApi.createInstallation(teamId)
+   *   POST /api/teams/{teamId}/integrations/github/installations
+   *
+   * onSuccess → 校验 installationUrl → 整页跳转 GitHub
+   * onError   → toast 展示后端错误（403 非 Owner 等）
+   * ----------------------------------------------------------------------------
+   */
+  // 修改类 / 触发式网络请求
+  const installMutation = useGithubInstallRedirect(teamId)
+
+  /** 按钮点击入口：仅触发 mutation，业务全在上面 */
   function handleInstallApp() {
-    // TODO[后端联调]: POST /teams/{teamId}/integrations/github/installations
+    installMutation.mutate()
   }
 
-  function handleReauthorize() {
-    // TODO[后端联调]
-  }
+  /** GET 团队已安装的 GitHub App 列表 */
+  const installationsQuery = useQuery({
+    queryKey: queryKeys.githubInstallations(teamId),
+    queryFn: () => githubApi.listInstallations(teamId),
+    enabled: Boolean(teamId),
+  })
 
-  function handleRefreshSync(_repoId: string) {
-    // TODO[后端联调]
-  }
+  /** GET 团队已授权仓库（用于卡片上统计仓库数） */
+  const reposQuery = useQuery({
+    queryKey: queryKeys.githubTeamRepositories(teamId),
+    queryFn: () => githubApi.listTeamRepositories(teamId),
+    enabled: Boolean(teamId),
+  })
 
-  function handleChangeDefaultBranch(_repoId: string, _branch: string) {
-    // TODO[后端联调]: PATCH defaultBranch
-  }
+  const installations = installationsQuery.data ?? []
+  const allRepos = reposQuery.data ?? []
 
-  function handleUnbind(_repoId: string) {
-    // TODO[后端联调]: DELETE 解绑
-  }
-
-  function handleBindNewRepo() {
-    // TODO[后端联调]: 绑定弹窗
+  function repoCountOf(inst: GithubInstallation): number {
+    if (typeof inst.authorizedRepoCount === 'number') return inst.authorizedRepoCount
+    return allRepos.filter((r) => r.installationId === inst.installationId).length
   }
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
-      <header style={{ marginBottom: 24 }}>
-        <Title level={2} style={{ marginTop: 0 }}>
-          GitHub 集成
-        </Title>
-        <Paragraph type="secondary">
-          团队级 GitHub App 授权与项目仓库绑定。代码操作由服务端受控执行，前端不持有 Git 凭据。
-        </Paragraph>
+      {/* 入口来自团队详情「github集成」，提供返回，避免只能靠浏览器后退 */}
+      <Link to={PATHS.teamDetail(teamId, true)}>
+        <Button type="link" icon={<ArrowLeftOutlined />} style={{ paddingLeft: 0, marginBottom: 16 }}>
+          返回团队详情
+        </Button>
+      </Link>
+
+      <header
+        style={{
+          marginBottom: 24,
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 16,
+        }}
+      >
+        <div>
+          <Title level={2} style={{ marginTop: 0, marginBottom: 8 }}>
+            GitHub 集成
+          </Title>
+          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            团队级 GitHub App 授权与项目仓库绑定。代码操作由服务端受控执行，前端不持有 Git 凭据。
+            {' · '}
+            teamId: <Text code>{teamId}</Text>
+          </Paragraph>
+        </div>
+
+        {/*
+          安装按钮（Team Owner）
+          点击 → POST .../installations → location.assign(installationUrl)
+          可再次安装到另一个个人账号或组织
+        */}
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          loading={installMutation.isPending}
+          onClick={handleInstallApp}
+        >
+          安装Github App
+        </Button>
       </header>
 
-      <Card title="GitHub App 安装" style={{ marginBottom: 16 }}>
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          <Space>
-            <Text type="secondary">授权状态</Text>
-            {authStatusTag(DEMO_AUTH_STATUS)}
-          </Space>
-
-          {DEMO_AUTH_STATUS === 'AUTHORIZED' && (
-            <Text type="secondary">
-              已安装至账号 <Text strong>{DEMO_INSTALLATION.accountLogin}</Text>
-            </Text>
-          )}
-
-          {DEMO_AUTH_STATUS === 'EXPIRED' && (
-            <Alert type="error" message="授权已过期，请重新授权以继续同步仓库。" showIcon />
-          )}
-
-          {DEMO_AUTH_STATUS === 'NOT_AUTHORIZED' ? (
-            <Button type="primary" onClick={handleInstallApp}>
-              安装 GitHub App
-            </Button>
-          ) : DEMO_AUTH_STATUS === 'EXPIRED' ? (
-            <Button type="primary" onClick={handleReauthorize}>
-              重新授权
-            </Button>
-          ) : (
-            <Button onClick={handleInstallApp}>管理 GitHub App 安装</Button>
-          )}
-        </Space>
-      </Card>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="GitHub App 以团队为边界授权。安装时可选择个人账号或组织，并勾选授权仓库；Qgents 只访问你明确选择的仓库。"
+      />
 
       <Card
-        title="已授权仓库"
+        title="已安装的 GitHub App"
         extra={
-          <Button type="primary" size="small" onClick={handleBindNewRepo}>
-            绑定仓库到项目
-          </Button>
+          <Text type="secondary">当前团队已关联 {installations.length} 个安装</Text>
         }
         style={{ marginBottom: 16 }}
       >
-        {DEMO_BOUND_REPOS.length === 0 ? (
-          <Empty description="暂无已绑定仓库">
-            <Paragraph type="secondary">安装 GitHub App 后，可将授权仓库绑定到项目。</Paragraph>
+        {installationsQuery.isLoading ? (
+          <div style={{ textAlign: 'center', padding: 24 }}>
+            <Spin />
+          </div>
+        ) : installationsQuery.isError ? (
+          <Alert
+            type="error"
+            showIcon
+            message={formatApiError(installationsQuery.error)}
+            action={
+              <Button size="small" onClick={() => void installationsQuery.refetch()}>
+                重试
+              </Button>
+            }
+          />
+        ) : installations.length === 0 ? (
+          <Empty description="尚未安装 GitHub App">
+            <Paragraph type="secondary">
+              点击右上角「安装Github App」，在 GitHub 选择个人或组织并勾选仓库。
+            </Paragraph>
           </Empty>
         ) : (
-          <List
-            dataSource={DEMO_BOUND_REPOS}
-            renderItem={(repo) => (
-              <List.Item
-                key={repo.id}
-                style={{
-                  display: 'block',
-                  padding: '16px 0',
-                  borderBottom: `1px solid ${token.colorBorder}`,
-                }}
-              >
-                <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start">
-                  <div style={{ flex: 1 }}>
-                    <Space>
-                      <Text strong>{repo.fullName}</Text>
-                      <a href={repo.githubUrl} target="_blank" rel="noopener noreferrer">
-                        <Button type="text" size="small" icon={<LinkOutlined />} title="在 GitHub 打开" />
-                      </a>
-                    </Space>
-
-                    <div style={{ marginTop: 8 }}>
-                      <Space wrap>
-                        <Text type="secondary">
-                          绑定项目：
-                          <Link to={PATHS.projectDetail(repo.boundProjectId)}>{repo.boundProjectName}</Link>
+          <Row gutter={[16, 16]}>
+            {installations.map((inst) => (
+              <Col xs={24} md={12} key={inst.installationId}>
+                <Card
+                  size="small"
+                  styles={{
+                    body: {
+                      background: token.colorBgContainer,
+                    },
+                  }}
+                  style={{
+                    borderColor: token.colorBorder,
+                    height: '100%',
+                  }}
+                >
+                  <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start">
+                    <Space align="start">
+                      <GithubOutlined style={{ fontSize: 28, marginTop: 4 }} />
+                      <div>
+                        <Space wrap>
+                          <Text strong style={{ fontSize: 16 }}>
+                            {inst.accountLogin}
+                          </Text>
+                          {statusTag(inst.status)}
+                        </Space>
+                        <div style={{ marginTop: 4 }}>
+                          <Text type="secondary">
+                            {accountTypeLabel(inst.accountType)}
+                            {' · '}
+                            {repoCountOf(inst)} 个仓库已授权
+                          </Text>
+                        </div>
+                        <Text
+                          type="secondary"
+                          style={{ display: 'block', marginTop: 8, fontSize: 12 }}
+                        >
+                          安装于 {inst.installedAt}
                         </Text>
-                        {syncStatusTag(repo.syncStatus)}
-                      </Space>
-                    </div>
-
-                    {repo.syncStatus === 'FAILED' && repo.syncError && (
-                      <Alert type="error" message={repo.syncError} style={{ marginTop: 8 }} showIcon />
-                    )}
-
-                    {repo.lastSyncedAt && (
-                      <Text type="secondary" style={{ display: 'block', marginTop: 4, fontSize: 12 }}>
-                        上次同步：{repo.lastSyncedAt}
-                      </Text>
-                    )}
-                  </div>
-
-                  <Space direction="vertical" align="end">
-                    <Space>
-                      <Text type="secondary">默认分支</Text>
-                      <Select
-                        value={repo.defaultBranch}
-                        disabled
-                        style={{ width: 120 }}
-                        onChange={(v) => handleChangeDefaultBranch(repo.id, v)}
-                        options={[
-                          { value: 'main', label: 'main' },
-                          { value: 'develop', label: 'develop' },
-                          { value: 'master', label: 'master' },
-                        ]}
-                      />
-                    </Space>
-                    <Space>
-                      <Button
-                        size="small"
-                        onClick={() => handleRefreshSync(repo.id)}
-                        loading={repo.syncStatus === 'SYNCING'}
-                      >
-                        {repo.syncStatus === 'SYNCING' ? '同步中…' : '刷新同步'}
-                      </Button>
-                      <Popconfirm
-                        title="确认解除绑定？"
-                        description="仅解除 Qgents 与仓库的关联，不会删除 GitHub 仓库。"
-                        onConfirm={() => handleUnbind(repo.id)}
-                        okText="解除绑定"
-                        cancelText="取消"
-                        okButtonProps={{ danger: true }}
-                      >
-                        <Button size="small" danger>
-                          解除绑定
-                        </Button>
-                      </Popconfirm>
+                      </div>
                     </Space>
                   </Space>
-                </Space>
-              </List.Item>
-            )}
-          />
+
+                  <Button
+                    type="default"
+                    icon={<EyeOutlined />}
+                    style={{ marginTop: 16 }}
+                    block
+                    onClick={() =>
+                      navigate(PATHS.githubInstallationRepos(teamId, inst.installationId))
+                    }
+                  >
+                    查看仓库
+                  </Button>
+                </Card>
+              </Col>
+            ))}
+          </Row>
         )}
       </Card>
 
       <Card title="说明" type="inner">
         <ul style={{ margin: 0, paddingLeft: 20, color: token.colorTextSecondary }}>
-          <li>GitHub App 授权为<strong>团队级</strong>，绑定仓库为<strong>项目级</strong>（需 PROJECT_ADMIN）。</li>
-          <li>解除绑定不会删除 GitHub 仓库，仅解除 Qgents 项目与仓库的关联。</li>
-          <li>同步失败时请检查 GitHub App 权限或点击「刷新同步」重试。</li>
-          <li>默认分支用于 Agent 创建 MR 时的 targetBranch 等场景。</li>
+          <li>
+            GitHub App 授权为<strong>团队级</strong>；一次安装对应一个<strong>个人账号</strong>或
+            <strong>组织</strong>（安装时在 GitHub 上选择）。
+          </li>
+          <li>
+            「查看仓库」进入独立页面；仓库后的「绑定该仓库到项目」会进入本团队项目列表（Owner 可见全部项目）。
+          </li>
+          <li>
+            点击「安装Github App」→ POST 获取 <code>installationUrl</code> → 跳转 GitHub；回调由后端
+            <code> GET /integrations/github/callback </code>处理。
+          </li>
         </ul>
       </Card>
     </div>

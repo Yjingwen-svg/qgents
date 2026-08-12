@@ -35,7 +35,14 @@ const DEMO_JOINED = [
   },
 ]
 
-function TeamCard({ team }: { team: (typeof DEMO_OWNED)[0] }) {
+function TeamCard({
+  team,
+  asOwner,
+}: {
+  team: (typeof DEMO_OWNED)[0]
+  /** 仅「我创建的团队」为 true → 详情页展示 GitHub 授权 */
+  asOwner: boolean
+}) {
   const { token } = theme.useToken()
 
   return (
@@ -49,7 +56,7 @@ function TeamCard({ team }: { team: (typeof DEMO_OWNED)[0] }) {
       </Title>
       <Text type="secondary">{team.members} 位成员</Text>
       <div style={{ marginTop: 12 }}>
-        <Link to={PATHS.teamDetail(team.id)}>
+        <Link to={PATHS.teamDetail(team.id, asOwner)}>
           <Button type="link" style={{ padding: 0, color: token.colorPrimary }}>
             查看详情
           </Button>
@@ -91,7 +98,7 @@ export function MyTeamsPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
         {DEMO_OWNED.map((t) => (
           <Col xs={24} sm={12} md={8} key={t.id}>
-            <TeamCard team={t} />
+            <TeamCard team={t} asOwner />
           </Col>
         ))}
         <Col xs={24} sm={12} md={8}>
@@ -120,7 +127,7 @@ export function MyTeamsPage() {
       <Row gutter={[16, 16]}>
         {DEMO_JOINED.map((t) => (
           <Col xs={24} sm={12} md={8} key={t.id}>
-            <TeamCard team={t} />
+            <TeamCard team={t} asOwner={false} />
           </Col>
         ))}
       </Row>

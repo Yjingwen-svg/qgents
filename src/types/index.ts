@@ -15,3 +15,10 @@ export type {
   DiffCardPayload,
 } from './message'
 export type { Task, TaskStatus } from './task'
+export type {
+  GithubInstallation,
+  GithubInstallationRedirect,
+  GithubAuthorizedRepository,
+  ProjectBoundRepository,
+  BindProjectRepositoryPayload,
+} from './github'

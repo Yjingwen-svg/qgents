@@ -6,45 +6,38 @@ import { teamApi } from '@/api'
 import './CreateTeamPage.css'
 
 /**
- * 创建新团队（原型图 4）
- * 位于 MainLayout 内（顶部 Banner）
- * TODO[后端联调]:
- * - 头像上传接口
- * - teamApi.create / teamApi.invite
+ * 创建新团队 —— 对齐接口文档 v1.1.4 §5.1
+ *
+ * POST /teams 创建团队
+ * 创建者自动成为 TEAM_OWNER
+ * 邀请成员是后续操作（POST /teams/{teamId}/invitations），创建后跳团队详情再操作
  */
 export function CreateTeamPage() {
   const navigate = useNavigate()
   const { setHasTeam } = useAuth()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [inviteEmails, setInviteEmails] = useState('')
-  const [inviteRole, setInviteRole] = useState('Developer')
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
+    setError(null)
     setSubmitting(true)
+
     try {
-      // TODO[后端联调]:
-      // const team = await teamApi.create({
-      //   name: name.trim(),
-      //   description,
-      //   inviteEmails: inviteEmails.split('\n').map(s => s.trim()).filter(Boolean),
-      //   inviteRole,
-      // })
-      void teamApi
-      void inviteRole
+      const team = await teamApi.create({
+        name: name.trim(),
+        description: description.trim() || undefined,
+      })
       setHasTeam(true)
-      navigate(PATHS.MY_TEAMS, { replace: true })
+      navigate(PATHS.teamDetail(team.id), { replace: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '创建失败，请重试')
     } finally {
       setSubmitting(false)
     }
-  }
-
-  function handleSendInvite() {
-    // TODO[后端联调]: 创建前可先缓存邀请列表；创建后调 teamApi.invite
-    // 框架阶段仅占位
   }
 
   return (
@@ -59,14 +52,21 @@ export function CreateTeamPage() {
       <h1 className="create-team__title">创建新团队</h1>
 
       <form className="create-team__card" onSubmit={handleSubmit}>
-        {/* 头像 */}
+        {/* 头像 —— 暂为占位，本期不实现上传 */}
         <div className="create-team__avatar-row">
-          <button type="button" className="create-team__avatar-btn" aria-label="上传头像">
+          <button type="button" className="create-team__avatar-btn" disabled aria-label="上传头像（暂未开放）">
             <CameraIcon />
             <span>上传头像</span>
           </button>
-          <p className="create-team__hint">支持 JPG / PNG，建议 200*200 方形图片</p>
+          <p className="create-team__hint">支持 JPG / PNG，建议 200×200 方形图片（暂未开放）</p>
         </div>
+
+        {/* —— 错误提示 —— */}
+        {error && (
+          <div className="create-team__error" role="alert">
+            {error}
+          </div>
+        )}
 
         <label className="create-team__field">
           <span className="create-team__label">
@@ -93,36 +93,18 @@ export function CreateTeamPage() {
         <label className="create-team__field">
           <span className="create-team__label">团队成立时间</span>
           <input
-            value=""
-            placeholder="创建完成自动生成日期"
+            value="创建后自动生成"
             disabled
             readOnly
           />
         </label>
 
+        {/* 邀请成员 —— 创建完成后在团队详情页操作，此处仅提示 */}
         <div className="create-team__field">
-          <span className="create-team__label">邀请初始成员 (Github 邮箱)</span>
-          <textarea
-            value={inviteEmails}
-            onChange={(e) => setInviteEmails(e.target.value)}
-            placeholder="填入对方邮箱，一行一个；发送邮件邀请加入"
-            rows={4}
-          />
-          <div className="create-team__invite-row">
-            <select
-              value={inviteRole}
-              onChange={(e) => setInviteRole(e.target.value)}
-              aria-label="邀请角色"
-            >
-              {/* 后端角色枚举对齐后可扩展 owner / member / developer 等 */}
-              <option value="Developer">Developer</option>
-              <option value="member">Member</option>
-              <option value="owner">Owner</option>
-            </select>
-            <button type="button" className="create-team__invite-btn" onClick={handleSendInvite}>
-              发送邀请
-            </button>
-          </div>
+          <span className="create-team__label">邀请成员</span>
+          <p className="create-team__hint" style={{ margin: 0 }}>
+            团队创建后，可在团队详情页通过邮箱邀请成员加入
+          </p>
         </div>
 
         <div className="create-team__actions">
@@ -138,7 +120,7 @@ export function CreateTeamPage() {
             className="create-team__btn create-team__btn--primary"
             disabled={submitting || !name.trim()}
           >
-            创建团队
+            {submitting ? '创建中…' : '创建团队'}
           </button>
         </div>
       </form>
@@ -149,13 +131,7 @@ export function CreateTeamPage() {
 function BackIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M15 6l-6 6 6 6"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

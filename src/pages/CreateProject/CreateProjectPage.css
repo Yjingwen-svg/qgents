@@ -30,6 +30,15 @@
   border-radius: 4px;
 }
 
+.create-project__error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #ef4444;
+  font-size: 13px;
+}
+
 .create-project__card {
   background: var(--qg-navy-card);
   border: 1px solid var(--qg-border-dark);

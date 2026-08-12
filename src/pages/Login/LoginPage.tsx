@@ -2,51 +2,55 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { PATHS } from '@/routes/paths'
-import { authApi } from '@/api'
 import './LoginPage.css'
 
 type AuthTab = 'login' | 'register'
 
 /**
- * 登录 / 注册页（原型图 2）
+ * 登录 / 注册页 —— 对齐接口文档 v1.1.3 §4
  * 左：品牌与价值主张；右：登录卡片
- * TODO[后端联调]: 调用 authApi.login / authApi.register，失败展示错误态
  */
 export function LoginPage() {
   const navigate = useNavigate()
-  const { loginDemo, hasTeam } = useAuth()
+  const { login, register } = useAuth()
   const [tab, setTab] = useState<AuthTab>('login')
   const [email, setEmail] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [remember, setRemember] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    setError(null)
     setSubmitting(true)
+
     try {
-      // --- 框架阶段：本地 demo 登录，跳过真实接口 ---
-      // const result = await authApi.login({ email, password, rememberMe: remember })
-      // localStorage.setItem('qgents_access_token', result.tokens.accessToken)
-      void authApi
-      void remember
-      loginDemo({ email: email || undefined })
+      let hasTeam: boolean
+      if (tab === 'login') {
+        hasTeam = await login(email, password)
+      } else {
+        hasTeam = await register(email, password, displayName || email.split('@')[0])
+      }
       navigate(hasTeam ? PATHS.MY_TEAMS : PATHS.WELCOME, { replace: true })
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : '网络异常，请稍后重试'
+      setError(message)
     } finally {
       setSubmitting(false)
     }
   }
 
-  function handleGithubLogin() {
-    // TODO[后端联调]: window.location.href = authApi.getGithubOAuthUrl()
-    loginDemo({ displayName: 'GitHub 用户', avatarChar: 'G' })
-    navigate(PATHS.WELCOME, { replace: true })
+  function switchTab(t: AuthTab) {
+    setTab(t)
+    setError(null)
   }
 
   return (
     <div className="login-page">
-      {/* ===== 左侧品牌区 ===== */}
+      {/* ===== 左侧品牌区（不变） ===== */}
       <aside className="login-page__brand" aria-label="品牌介绍">
         <div className="login-page__brand-logo">
           <span className="login-page__q">Q</span>
@@ -103,8 +107,12 @@ export function LoginPage() {
       <section className="login-page__panel">
         <div className="login-card">
           <header className="login-card__header">
-            <h2>登录 Qgents</h2>
-            <p>使用个人账号进入你的团队</p>
+            <h2>{tab === 'login' ? '登录 Qgents' : '注册 Qgents'}</h2>
+            <p>
+              {tab === 'login'
+                ? '使用个人账号进入你的团队'
+                : '创建账号，开始团队协作'}
+            </p>
           </header>
 
           <div className="login-card__tabs" role="tablist">
@@ -113,7 +121,7 @@ export function LoginPage() {
               role="tab"
               aria-selected={tab === 'login'}
               className={tab === 'login' ? 'is-active' : ''}
-              onClick={() => setTab('login')}
+              onClick={() => switchTab('login')}
             >
               登录
             </button>
@@ -122,13 +130,21 @@ export function LoginPage() {
               role="tab"
               aria-selected={tab === 'register'}
               className={tab === 'register' ? 'is-active' : ''}
-              onClick={() => setTab('register')}
+              onClick={() => switchTab('register')}
             >
               注册
             </button>
           </div>
 
+          {/* —— 错误提示 —— */}
+          {error && (
+            <div className="login-card__error" role="alert">
+              {error}
+            </div>
+          )}
+
           <form className="login-card__form" onSubmit={handleSubmit}>
+            {/* 邮箱 */}
             <label className="login-field">
               <span className="sr-only">邮箱地址</span>
               <span className="login-field__icon" aria-hidden>
@@ -140,9 +156,28 @@ export function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
+                required
               />
             </label>
 
+            {/* 昵称 —— 仅注册时显示 */}
+            {tab === 'register' && (
+              <label className="login-field">
+                <span className="sr-only">昵称</span>
+                <span className="login-field__icon" aria-hidden>
+                  <UserIcon />
+                </span>
+                <input
+                  type="text"
+                  placeholder="你的昵称"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  autoComplete="name"
+                />
+              </label>
+            )}
+
+            {/* 密码 */}
             <label className="login-field">
               <span className="sr-only">密码</span>
               <span className="login-field__icon" aria-hidden>
@@ -154,6 +189,7 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
+                required
               />
               <button
                 type="button"
@@ -167,15 +203,12 @@ export function LoginPage() {
 
             {tab === 'login' && (
               <div className="login-card__meta">
+                {/* 保持登录 checkbox 保存在 UI 里，但接口文档没有此字段 */}
                 <label className="login-card__remember">
-                  <input
-                    type="checkbox"
-                    checked={remember}
-                    onChange={(e) => setRemember(e.target.checked)}
-                  />
+                  <input type="checkbox" defaultChecked />
                   保持登录
                 </label>
-                {/* TODO: 忘记密码流程 */}
+                {/* TODO[P1]: 忘记密码流程 */}
                 <button type="button" className="login-card__link">
                   忘记密码
                 </button>
@@ -183,7 +216,11 @@ export function LoginPage() {
             )}
 
             <button type="submit" className="login-card__submit" disabled={submitting}>
-              {tab === 'login' ? '登录' : '注册'}
+              {submitting
+                ? '请稍候…'
+                : tab === 'login'
+                  ? '登录'
+                  : '注册'}
             </button>
           </form>
 
@@ -191,7 +228,8 @@ export function LoginPage() {
             <span>或</span>
           </div>
 
-          <button type="button" className="login-card__github" onClick={handleGithubLogin}>
+          {/* GitHub 登录 —— 非本期必需，仅占位 */}
+          <button type="button" className="login-card__github" disabled aria-label="GitHub 登录（暂未开放）">
             <GithubIcon />
             使用 GitHub 登录
           </button>
@@ -200,14 +238,22 @@ export function LoginPage() {
             {tab === 'login' ? (
               <>
                 还没有账号？
-                <button type="button" className="login-card__link" onClick={() => setTab('register')}>
+                <button
+                  type="button"
+                  className="login-card__link"
+                  onClick={() => switchTab('register')}
+                >
                   立即注册
                 </button>
               </>
             ) : (
               <>
                 已有账号？
-                <button type="button" className="login-card__link" onClick={() => setTab('login')}>
+                <button
+                  type="button"
+                  className="login-card__link"
+                  onClick={() => switchTab('login')}
+                >
                   去登录
                 </button>
               </>
@@ -220,6 +266,8 @@ export function LoginPage() {
     </div>
   )
 }
+
+// ──── 图标组件（不变）────
 
 function ChatIcon() {
   return (
@@ -264,6 +312,20 @@ function MailIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
       <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
       <path d="M4 7l8 6 8-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function UserIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M5 20c1.2-3.5 3.8-5.5 7-5.5s5.8 2 7 5.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }

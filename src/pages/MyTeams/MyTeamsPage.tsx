@@ -1,48 +1,62 @@
 import { Link } from 'react-router-dom'
+import { Spin } from 'antd'
+import { useQuery } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
+import { teamApi } from '@/api'
+import { EmptyState } from '@/components/EmptyState'
 import './MyTeamsPage.css'
 
 /**
- * 我的团队列表（框架）
+ * 我的团队列表
  *
- * - 「查看详情」→ 团队详情页（内含创建项目入口）
- * - 「+ 创建团队」→ 创建团队路由
- *
- * TODO[后端联调]: teamApi.listMine() 区分「我创建的 / 我参与的」
+ * - 调 GET /teams 获取当前用户的团队列表
+ * - 按 myRole 拆成「我创建的」和「我参与的」
+ * - 加载中显示 Spin，加载失败显示错误，无团队显示空状态
  */
-
-/** 占位卡片 —— 仅用于打通「查看详情」路由，联调后替换 */
-const DEMO_OWNED = [
-  {
-    id: 'team-xinghe',
-    name: '星河工作室',
-    role: 'Maintainer',
-    letter: 'X',
-    color: '#3b82f6',
-    members: 5,
-  },
-]
-
-const DEMO_JOINED = [
-  {
-    id: 'team-pet',
-    name: '宠影记',
-    role: 'Developer',
-    letter: 'P',
-    color: '#8b5cf6',
-    members: 8,
-  },
-  {
-    id: 'team-ai',
-    name: 'AI 决策系统',
-    role: 'Reviewer',
-    letter: 'A',
-    color: '#14b8a6',
-    members: 6,
-  },
-]
-
 export function MyTeamsPage() {
+  const {
+    data: teams,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: ['teams', 'mine'],
+    queryFn: teamApi.listMine,
+  })
+
+  // ──── 加载中 ────
+  if (isLoading) {
+    return (
+      <div className="my-teams">
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '120px 0' }}>
+          <Spin size="large" />
+        </div>
+      </div>
+    )
+  }
+
+  // ──── 加载失败 ────
+  if (isError) {
+    return (
+      <div className="my-teams">
+        <EmptyState
+          icon="⚠️"
+          title="加载失败"
+          description="无法获取团队列表，请检查网络后重试"
+          action={
+            <button className="my-teams__btn my-teams__btn--primary" onClick={() => refetch()}>
+              重新加载
+            </button>
+          }
+        />
+      </div>
+    )
+  }
+
+  // ──── 拆分团队 ────
+  const ownedTeams = (teams ?? []).filter((t) => t.myRole === 'TEAM_OWNER')
+  const joinedTeams = (teams ?? []).filter((t) => t.myRole !== 'TEAM_OWNER')
+
   return (
     <div className="my-teams">
       <div className="my-teams__header">
@@ -60,53 +74,68 @@ export function MyTeamsPage() {
         </div>
       </div>
 
+      {/* ──── 我创建的 ──── */}
       <section className="my-teams__section">
         <h2>我创建的团队</h2>
-        <div className="my-teams__grid">
-          {DEMO_OWNED.map((t) => (
-            <article key={t.id} className="my-teams__card">
-              <div className="my-teams__card-top">
-                <span className="my-teams__logo" style={{ background: t.color }}>
-                  {t.letter}
-                </span>
-                <span className="my-teams__role">{t.role}</span>
-              </div>
-              <h3>{t.name}</h3>
-              <p className="my-teams__meta">{t.members} 位成员</p>
-              {/* 查看详情 → 团队详情（可创建项目） */}
-              <Link to={PATHS.teamDetail(t.id)} className="my-teams__detail">
-                查看详情
-              </Link>
-            </article>
-          ))}
-
-          <Link to={PATHS.CREATE_TEAM} className="my-teams__card my-teams__card--create">
-            <span aria-hidden>+</span>
-            新建团队
-          </Link>
-        </div>
+        {ownedTeams.length === 0 ? (
+          <EmptyState
+            icon="🏠"
+            title="还没有创建团队"
+            description="创建你的第一个团队，邀请成员一起协作"
+          />
+        ) : (
+          <div className="my-teams__grid">
+            {ownedTeams.map((t) => (
+              <TeamCard key={t.id} team={t} />
+            ))}
+            <Link to={PATHS.CREATE_TEAM} className="my-teams__card my-teams__card--create">
+              <span aria-hidden>+</span>
+              新建团队
+            </Link>
+          </div>
+        )}
       </section>
 
+      {/* ──── 我参与的 ──── */}
       <section className="my-teams__section">
         <h2>我参与的团队</h2>
-        <div className="my-teams__grid">
-          {DEMO_JOINED.map((t) => (
-            <article key={t.id} className="my-teams__card">
-              <div className="my-teams__card-top">
-                <span className="my-teams__logo" style={{ background: t.color }}>
-                  {t.letter}
-                </span>
-                <span className="my-teams__role">{t.role}</span>
-              </div>
-              <h3>{t.name}</h3>
-              <p className="my-teams__meta">{t.members} 位成员</p>
-              <Link to={PATHS.teamDetail(t.id)} className="my-teams__detail">
-                查看详情
-              </Link>
-            </article>
-          ))}
-        </div>
+        {joinedTeams.length === 0 ? (
+          <EmptyState
+            icon="🤝"
+            title="还没有加入其他团队"
+            description="让朋友邀请你，或输入邀请码加入已有团队"
+          />
+        ) : (
+          <div className="my-teams__grid">
+            {joinedTeams.map((t) => (
+              <TeamCard key={t.id} team={t} />
+            ))}
+          </div>
+        )}
       </section>
     </div>
+  )
+}
+
+/** 团队卡片 */
+function TeamCard({ team }: { team: { id: string; name: string; myRole?: string; memberCount?: number } }) {
+  const letter = team.name.slice(0, 1)
+  const color = team.myRole === 'TEAM_OWNER' ? '#3b82f6' : '#8b5cf6'
+  const roleLabel = team.myRole === 'TEAM_OWNER' ? 'Owner' : 'Member'
+
+  return (
+    <article className="my-teams__card">
+      <div className="my-teams__card-top">
+        <span className="my-teams__logo" style={{ background: color }}>
+          {letter}
+        </span>
+        <span className="my-teams__role">{roleLabel}</span>
+      </div>
+      <h3>{team.name}</h3>
+      <p className="my-teams__meta">{team.memberCount ?? '—'} 位成员</p>
+      <Link to={PATHS.teamDetail(team.id)} className="my-teams__detail">
+        查看详情
+      </Link>
+    </article>
   )
 }

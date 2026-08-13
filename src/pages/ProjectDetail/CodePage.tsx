@@ -62,8 +62,8 @@ export function CodePage() {
 
   const [requirementId, setRequirementId] = useState<string | undefined>()
   const [drawer, setDrawer] = useState<{
-    repo: ProjectBoundRepository
-    branch: ProjectBranchRow
+    repo: ProjectBoundRepository//项目绑定到仓库的选择,主要涵盖的是仓库的信息
+    branch: ProjectBranchRow//?
   } | null>(null)
 
   const reposQuery = useQuery({
@@ -75,23 +75,25 @@ export function CodePage() {
   const repos = useMemo(() => {
     const fromApi = reposQuery.data ?? []
     if (fromApi.length > 0) return fromApi
-    return demoBoundReposForProject(projectId)
+    return demoBoundReposForProject(projectId)//用到mock数据,模拟返回仓库列表,在请求数据没有的时候
   }, [reposQuery.data, projectId])
+//改变项目,或者后端数据变化才会重新执行
 
+// 筛选逻辑
   const repoCards = useMemo(() => {
     return repos.map((repo) => {
       const allBranches = branchesForBoundRepo(repo)
       const branches = requirementId
         ? allBranches.filter((b) => b.requirementGroupId === requirementId)
-        : allBranches
+        : allBranches//如果没有筛选条件,就返回该仓库下所有分支
       return { repo, branches }
     })
   }, [repos, requirementId])
 
-  const visibleCards = requirementId
+  const visibleCards = requirementId//有没有暂无数据
     ? repoCards.filter((c) => c.branches.length > 0)
-    : repoCards
-
+    : repoCards//决定卡片要不要渲染
+//需求组（requirementId 存在），就只保留「里面有匹配分支」的仓库卡片；没选需求组，全部卡片原样保留。
   async function copyBranchName(name: string) {
     try {
       await navigator.clipboard.writeText(name)
@@ -100,12 +102,12 @@ export function CodePage() {
       message.error('复制失败，请手动复制')
     }
   }
-
+  // navigator.clipboard.writeText(name)：浏览器原生剪贴板 API，把分支名写入剪贴板
   function openCreateMrPlaceholder() {
     // TODO: Diff 预览、手动创建 MR
     message.info('创建 MR 需要已接受的 Diff；本页第一版先占位，不新开页面')
   }
-
+  // 当前正在使用演示兜底数据
   const usingDemoFallback =
     (reposQuery.data?.length ?? 0) === 0 && demoBoundReposForProject(projectId).length > 0
 
@@ -161,6 +163,7 @@ export function CodePage() {
           {visibleCards.map(({ repo, branches }) => (
             <RepoBranchCard
               key={repo.id}
+              projectId={projectId}
               repo={repo}
               branches={branches}
               tokenColorBorder={token.colorBorder}
@@ -202,11 +205,13 @@ export function CodePage() {
 }
 
 function RepoBranchCard({
+  projectId,
   repo,
   branches,
   tokenColorBorder,
   onOpenDrawer,
 }: {
+  projectId: string
   repo: ProjectBoundRepository
   branches: ProjectBranchRow[]
   tokenColorBorder: string
@@ -260,11 +265,7 @@ function RepoBranchCard({
       key: 'diff',
       width: 120,
       render: (_value, record) => (
-        <Text>
-          <Text type="success">+{record.diffAdditions}</Text>
-          {' / '}
-          <Text type="danger">-{record.diffDeletions}</Text>
-        </Text>
+        <DiffStatLink projectId={projectId} branch={record} />
       ),
     },
     {
@@ -399,13 +400,40 @@ function BranchDetailBody({
         </Descriptions.Item>
         <Descriptions.Item label="提交数">{branch.commitCount}</Descriptions.Item>
         <Descriptions.Item label="Diff">
-          <Text type="success">+{branch.diffAdditions}</Text>
-          {' / '}
-          <Text type="danger">-{branch.diffDeletions}</Text>
+          <DiffStatLink projectId={projectId} branch={branch} />
         </Descriptions.Item>
         <Descriptions.Item label="MR">{branch.mrCount}</Descriptions.Item>
       </Descriptions>
     </>
+  )
+}
+
+function DiffStatLink({
+  projectId,
+  branch,
+}: {
+  projectId: string
+  branch: ProjectBranchRow
+}) {
+  const inner = (
+    <>
+      <Text type="success">+{branch.diffAdditions}</Text>
+      {' / '}
+      <Text type="danger">-{branch.diffDeletions}</Text>
+    </>
+  )
+  const hasDiff = branch.diffAdditions > 0 || branch.diffDeletions > 0
+  if (!hasDiff) {
+    return <Text type="secondary">{inner}</Text>
+  }
+  return (
+    <Link
+      to={PATHS.projectCodeDiff(projectId, branch.id)}
+      title="查看该分支 Diff"
+      style={{ display: 'inline-block', padding: '2px 4px', borderRadius: 4 }}
+    >
+      {inner}
+    </Link>
   )
 }
 

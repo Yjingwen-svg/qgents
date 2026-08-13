@@ -15,6 +15,7 @@ function readStoredProjectDetailNav(): { projectId: string } | null {
 }
 
 interface AppUiStore {
+  // ──── UI 开关 ────
   sidebarCollapsed: boolean
   taskPanelOpen: boolean
   /**
@@ -28,9 +29,20 @@ interface AppUiStore {
   toggleTaskPanel: () => void
   openProjectDetailNav: (projectId: string) => void
   clearProjectDetailNav: () => void
+
+  // ──── 全局上下文 ────
+  /** 当前所在团队 ID，null = 尚未进入任何团队 */
+  currentTeamId: string | null
+  /** 当前所在项目 ID，null = 尚未进入任何项目 */
+  currentProjectId: string | null
+  setCurrentTeam: (teamId: string) => void
+  setCurrentProject: (projectId: string) => void
+  /** 退出登录或切换团队时清空 */
+  clearContext: () => void
 }
 
 export const useAppUiStore = create<AppUiStore>((set) => ({
+  // ──── UI 开关 ────
   sidebarCollapsed: false,
   taskPanelOpen: false,
   projectDetailNav: readStoredProjectDetailNav(),
@@ -47,8 +59,17 @@ export const useAppUiStore = create<AppUiStore>((set) => ({
     sessionStorage.removeItem(PROJECT_DETAIL_NAV_KEY)
     set({ projectDetailNav: null })
   },
+
+  // ──── 全局上下文 ────
+  currentTeamId: null,
+  currentProjectId: null,
+  setCurrentTeam: (teamId) => set({ currentTeamId: teamId, currentProjectId: null }),
+  setCurrentProject: (projectId) => set({ currentProjectId: projectId }),
+  clearContext: () => set({ currentTeamId: null, currentProjectId: null }),
 }))
 
 export const useSidebarCollapsed = () => useAppUiStore((state) => state.sidebarCollapsed)
 export const useTaskPanelOpen = () => useAppUiStore((state) => state.taskPanelOpen)
 export const useProjectDetailNav = () => useAppUiStore((state) => state.projectDetailNav)
+export const useCurrentTeamId = () => useAppUiStore((state) => state.currentTeamId)
+export const useCurrentProjectId = () => useAppUiStore((state) => state.currentProjectId)

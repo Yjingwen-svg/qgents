@@ -21,6 +21,7 @@ export const PATHS = {
 
   /**
    * 团队详情（我的团队卡片「查看详情」）
+   * 此页提供「创建项目」入口
    * @param asOwner 是否来自「我创建的团队」——仅 Owner 可见「GitHub 集成」入口
    */
   teamDetail: (teamId: string, asOwner = false) =>
@@ -45,6 +46,32 @@ export const PATHS = {
    */
   CHAT: '/app/chat',
 
+  /** 项目详情根路径（会重定向到默认子页） */
+  projectDetail: (projectId: string) => `/app/projects/${projectId}`,
+
+  /** 项目详情 — 各左侧导航子路由 */
+  projectOverview: (projectId: string) => `/app/projects/${projectId}/overview`,
+
+  /**
+   * 群聊（项目总群 / 需求群）
+   * 具体某个群：projectReqChat(projectId, groupId)
+   */
+  projectReqChat: (projectId: string, groupId: string) =>
+    `/app/projects/${projectId}/req-chat/${groupId}`,
+
+  projectTasks: (projectId: string) => `/app/projects/${projectId}/tasks`,
+  projectWorkflow: (projectId: string) => `/app/projects/${projectId}/workflow`,
+  projectAgents: (projectId: string) => `/app/projects/${projectId}/agents`,
+  projectSkills: (projectId: string) => `/app/projects/${projectId}/skills`,
+  projectMemory: (projectId: string) => `/app/projects/${projectId}/memory`,
+  projectCode: (projectId: string) => `/app/projects/${projectId}/code`,
+  /** 某条分支的 Diff / CR 详情（入口：代码与 Branch 表格 Diff 列 +/-） */
+  projectCodeDiff: (projectId: string, branchId: string) =>
+    `/app/projects/${projectId}/code/diff/${encodeURIComponent(branchId)}`,
+  projectTestset: (projectId: string) => `/app/projects/${projectId}/testset`,
+  projectMembers: (projectId: string) => `/app/projects/${projectId}/members`,
+  projectSettings: (projectId: string) => `/app/projects/${projectId}/settings`,
+
   /**
    * GitHub 集成（入口：我创建的团队 → 查看详情 →「GitHub 集成」按钮）
    * 团队级 GitHub App 授权 + 仓库绑定管理
@@ -66,38 +93,16 @@ export const PATHS = {
    */
   bindRepoToProject: (
     teamId: string,
-    opts: { installationId: string; repositoryId: string; fullName: string },
+    opts: { installationId: string; repositoryId: string; fullName?: string },
   ) => {
     const q = new URLSearchParams({
       teamId,
       installationId: opts.installationId,
       repositoryId: opts.repositoryId,
-      fullName: opts.fullName,
     })
+    if (opts.fullName) q.set('fullName', opts.fullName)
     return `/app/integrations/github/bind-repo?${q.toString()}`
   },
-  /** 项目详情根路径（会重定向到默认子页） */
-  projectDetail: (projectId: string) => `/app/projects/${projectId}`,
-
-  /** 项目详情 — 各左侧导航子路由 */
-  projectOverview: (projectId: string) => `/app/projects/${projectId}/overview`,
-
-  /**
-   * 需求群聊（导航入口，默认落到第一个需求）
-   * 具体某个需求：projectReqChat(projectId, reqId)
-   */
-  projectReqChat: (projectId: string, reqId = 'login') =>
-    `/app/projects/${projectId}/req-chat/${reqId}`,
-
-  projectTasks: (projectId: string) => `/app/projects/${projectId}/tasks`,
-  projectWorkflow: (projectId: string) => `/app/projects/${projectId}/workflow`,
-  projectAgents: (projectId: string) => `/app/projects/${projectId}/agents`,
-  projectSkills: (projectId: string) => `/app/projects/${projectId}/skills`,
-  projectMemory: (projectId: string) => `/app/projects/${projectId}/memory`,
-  projectCode: (projectId: string) => `/app/projects/${projectId}/code`,
-  projectTestset: (projectId: string) => `/app/projects/${projectId}/testset`,
-  projectMembers: (projectId: string) => `/app/projects/${projectId}/members`,
-  projectSettings: (projectId: string) => `/app/projects/${projectId}/settings`,
 } as const
 
 /** 项目详情左侧导航 path 段（相对 projects/:projectId） */
@@ -106,8 +111,8 @@ export const PROJECT_NAV = [
   {
     path: 'req-chat',
     label: '需求群聊',
-    /** 导航高亮用前缀路径；实际落地到默认需求 */
-    to: (projectId: string) => PATHS.projectReqChat(projectId, 'login'),
+    /** 跳到项目根，由 ProjectDetailLayout 重定向到项目总群 */
+    to: (projectId: string) => PATHS.projectDetail(projectId),
   },
   { path: 'tasks', label: '任务中心', to: PATHS.projectTasks, badge: 3 },
   { path: 'workflow', label: '工作流编排', to: PATHS.projectWorkflow },

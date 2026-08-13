@@ -1,22 +1,298 @@
 import { http, HttpResponse } from 'msw'
 import type { GithubAuthorizedRepository, GithubInstallation } from '@/types/github'
+import type { Group, GroupMember, Message } from '@/types/group'
+import type { Notification } from '@/types'
 
-/**
- * MSW Mock —— 接口文档 §6 GitHub App
- *
- * ============================================================================
- * 启用条件：.env 中 VITE_USE_MOCK=true，且 main.tsx 已调用 worker.start()
- *
- * 联调真实后端时：
- * 1. 将 VITE_USE_MOCK 设为 false（或删掉）
- * 2. 在 vite.config.ts 打开 proxy，把 /api 转到 Java（如 http://localhost:8080）
- * 3. 本文件的 handler 将不再拦截（或可暂时注释掉 github 相关路由）
- * ============================================================================
- */
+// ══════════════════════════════════════════════
+// Mock 数据
+// ══════════════════════════════════════════════
 
-const MOCK_TEAM_ID = 'team-xinghe'
+const MOCK_USER = {
+  id: 'user-001',
+  email: 'demo@qgents.dev',
+  displayName: '陈同学',
+  avatarChar: '陈',
+}
 
-/** 模拟：团队已安装记录（个人 + 组织） */
+const MOCK_TEAMS = [
+  {
+    id: 'team-owned-001',
+    name: '星河工作室',
+    description: '全栈开发团队，专注内部工具与开源项目',
+    createdAt: '2026-06-01T08:00:00Z',
+    myRole: 'TEAM_OWNER' as const,
+    memberCount: 5,
+  },
+  {
+    id: 'team-joined-001',
+    name: '广工创新团队',
+    description: '校园技术团队，AI 与 Web 方向',
+    createdAt: '2026-05-15T08:00:00Z',
+    myRole: 'TEAM_MEMBER' as const,
+    memberCount: 8,
+  },
+]
+
+const MOCK_TEAM_MEMBERS = [
+  { userId: 'user-001', displayName: '陈同学', email: 'demo@qgents.dev', role: 'TEAM_OWNER' as const },
+  { userId: 'user-002', displayName: '张工', email: 'zhang@example.com', role: 'TEAM_MEMBER' as const },
+  { userId: 'user-003', displayName: '李设计', email: 'li@example.com', role: 'TEAM_MEMBER' as const },
+  { userId: 'user-004', displayName: '王测试', email: 'wang@example.com', role: 'TEAM_MEMBER' as const },
+  { userId: 'user-005', displayName: '赵架构', email: 'zhao@example.com', role: 'TEAM_MEMBER' as const },
+]
+
+const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: string; description: string; createdAt: string; myRole: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'; repositoryCount: number }>> = {
+  'team-owned-001': [
+    { id: 'proj-001', teamId: 'team-owned-001', name: 'Qgents', description: '团队多人 + 多 Agent 云端协作开发平台', createdAt: '2026-07-01T08:00:00Z', myRole: 'PROJECT_ADMIN', repositoryCount: 3 },
+    { id: 'proj-002', teamId: 'team-owned-001', name: '宠影记', description: '宠物健康管理小程序', createdAt: '2026-07-15T08:00:00Z', myRole: 'PROJECT_ADMIN', repositoryCount: 1 },
+  ],
+  'team-joined-001': [
+    { id: 'proj-003', teamId: 'team-joined-001', name: 'AI 决策系统', description: '校园选课推荐与学业规划', createdAt: '2026-06-10T08:00:00Z', myRole: 'PROJECT_MEMBER', repositoryCount: 2 },
+    { id: 'proj-004', teamId: 'team-joined-001', name: '校园助手', description: '课表、成绩、图书馆一站式查询', createdAt: '2026-08-01T08:00:00Z', myRole: 'PROJECT_MEMBER', repositoryCount: 1 },
+  ],
+}
+
+let nextTeamId = 10
+let nextProjectId = 10
+
+// ══════════════════════════════════════════════
+// 群聊（Group / Message）Mock 数据 —— 对齐接口文档 v1.1.8 §7
+// ══════════════════════════════════════════════
+
+const MOCK_GROUPS: Record<string, Group[]> = {
+  'proj-001': [
+    {
+      id: 'group-main-proj-001',
+      projectId: 'proj-001',
+      type: 'PROJECT_MAIN',
+      title: '项目总群',
+      description: '项目级讨论与结构化动态',
+      status: 'ACTIVE',
+      latestActivityAt: '2026-08-12T10:05:00Z',
+      unreadCount: 0,
+      isPinned: true,
+      isArchived: false,
+    },
+    {
+      id: 'group-login-proj-001',
+      projectId: 'proj-001',
+      type: 'REQUIREMENT',
+      title: '登录功能',
+      description: '账号与登录体验',
+      status: 'ACTIVE',
+      latestActivityAt: '2026-08-12T10:03:00Z',
+      unreadCount: 2,
+      isPinned: false,
+      isArchived: false,
+    },
+    {
+      id: 'group-pay-proj-001',
+      projectId: 'proj-001',
+      type: 'REQUIREMENT',
+      title: '支付回调',
+      description: '支付回调与对账',
+      status: 'ACTIVE',
+      latestActivityAt: '2026-08-11T18:00:00Z',
+      unreadCount: 0,
+      isPinned: false,
+      isArchived: false,
+    },
+  ],
+}
+
+const MOCK_MESSAGES: Record<string, Message[]> = {
+  'group-main-proj-001': [
+    {
+      id: 'msg-main-001',
+      groupId: 'group-main-proj-001',
+      type: 'TEXT',
+      content: { text: '欢迎来到 Qgents 项目总群。需求讨论请到对应需求群。' },
+      senderType: 'SYSTEM',
+      sequence: 1,
+      createdAt: '2026-08-12T09:00:00Z',
+      replyToId: null,
+    },
+    {
+      id: 'msg-main-002',
+      groupId: 'group-main-proj-001',
+      type: 'TEXT',
+      content: { text: '登录功能的需求群已经建好了，大家进去领一下。' },
+      senderType: 'USER',
+      senderId: 'user-001',
+      senderName: '陈同学',
+      sequence: 2,
+      createdAt: '2026-08-12T09:30:00Z',
+      replyToId: null,
+    },
+  ],
+  'group-login-proj-001': [
+    {
+      id: 'msg-login-001',
+      groupId: 'group-login-proj-001',
+      type: 'TEXT',
+      content: { text: '登录接口需要支持邮箱和密码两种方式。' },
+      senderType: 'USER',
+      senderId: 'user-001',
+      senderName: '陈同学',
+      sequence: 1,
+      createdAt: '2026-08-12T10:00:00Z',
+      replyToId: null,
+    },
+    {
+      id: 'msg-login-002',
+      groupId: 'group-login-proj-001',
+      type: 'CODE',
+      content: {
+        code: 'POST /auth/login\n{ "email": "...", "password": "..." }',
+        language: 'http',
+      },
+      senderType: 'AGENT',
+      senderId: 'agent-orchestrator',
+      senderName: 'AgentOrchestrator',
+      sequence: 2,
+      createdAt: '2026-08-12T10:01:00Z',
+      replyToId: null,
+    },
+    {
+      id: 'msg-login-003',
+      groupId: 'group-login-proj-001',
+      type: 'TEXT',
+      content: { text: '好的，我按接口文档实现，完成后给出 Diff。' },
+      senderType: 'AGENT',
+      senderId: 'agent-orchestrator',
+      senderName: 'AgentOrchestrator',
+      sequence: 3,
+      createdAt: '2026-08-12T10:02:00Z',
+      replyToId: null,
+    },
+    {
+      id: 'msg-login-004',
+      groupId: 'group-login-proj-001',
+      type: 'TEXT',
+      content: { text: '密码要用 RSA 加密后传输，别发明文。' },
+      senderType: 'USER',
+      senderId: 'user-002',
+      senderName: '张工',
+      sequence: 4,
+      createdAt: '2026-08-12T10:03:00Z',
+      replyToId: null,
+    },
+  ],
+}
+
+// ══════════════════════════════════════════════
+// 群成员数据 —— 对齐接口文档 v1.1.8 §7「群成员 = 项目成员 + 群内 Agent」
+// ══════════════════════════════════════════════
+
+interface MockProjectMember {
+  userId: string
+  displayName: string
+  email: string
+  role: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'
+}
+
+// 项目成员（按项目隔离，作为群 USER 成员来源；同时供 GET /projects/:id/members 复用）
+const MOCK_PROJECT_MEMBERS: Record<string, MockProjectMember[]> = {
+  'proj-001': [
+    { userId: 'user-001', displayName: '陈同学', email: 'demo@qgents.dev', role: 'PROJECT_ADMIN' },
+    { userId: 'user-002', displayName: '张工', email: 'zhang@example.com', role: 'PROJECT_MEMBER' },
+    { userId: 'user-003', displayName: '李设计', email: 'li@example.com', role: 'PROJECT_MEMBER' },
+  ],
+}
+
+// 每个群参与的 Agent（按群隔离：不同需求触发不同 Agent 回群）
+const MOCK_GROUP_AGENTS: Record<string, GroupMember[]> = {
+  'group-main-proj-001': [
+    { id: 'agent-orchestrator', displayName: 'AgentOrchestrator', memberType: 'AGENT' },
+  ],
+  'group-login-proj-001': [
+    { id: 'agent-orchestrator', displayName: 'AgentOrchestrator', memberType: 'AGENT' },
+    { id: 'agent-planner', displayName: 'Planner', memberType: 'AGENT' },
+    { id: 'agent-developer', displayName: 'Developer', memberType: 'AGENT' },
+    { id: 'agent-tester', displayName: 'Tester', memberType: 'AGENT' },
+    { id: 'agent-reviewer', displayName: 'Reviewer', memberType: 'AGENT' },
+  ],
+  'group-pay-proj-001': [
+    { id: 'agent-orchestrator', displayName: 'AgentOrchestrator', memberType: 'AGENT' },
+    { id: 'agent-developer', displayName: 'Developer', memberType: 'AGENT' },
+  ],
+}
+
+// 群成员 = 项目成员（USER）+ 该群参与的 Agent；memberCount 与此函数保持一致
+function getGroupMembers(projectId: string, groupId: string): GroupMember[] {
+  const users: GroupMember[] = (MOCK_PROJECT_MEMBERS[projectId] ?? []).map(
+    (m): GroupMember => ({ id: m.userId, displayName: m.displayName, memberType: 'USER' }),
+  )
+  return [...users, ...(MOCK_GROUP_AGENTS[groupId] ?? [])]
+}
+
+// ══════════════════════════════════════════════
+// 通知中心 Mock 数据 —— 对齐分工安排「通知中心」（本轮前端 Mock）
+// ══════════════════════════════════════════════
+
+const MOCK_NOTIFICATIONS: Notification[] = [
+  {
+    id: 'notif-1',
+    kind: 'TASK_COMPLETED',
+    title: '登录功能任务已完成',
+    description: 'Agent 已完成「实现邮箱登录」，Diff 待你验收',
+    isRead: false,
+    createdAt: '2026-08-13T01:00:00Z',
+    projectId: 'proj-001',
+    groupId: 'group-login-proj-001',
+    resourceId: 'task-001',
+  },
+  {
+    id: 'notif-2',
+    kind: 'AGENT_INPUT_REQUIRED',
+    title: 'Agent 需要你补充信息',
+    description: 'Developer 在「支付回调」任务中请求补充验收说明',
+    isRead: false,
+    createdAt: '2026-08-13T00:40:00Z',
+    projectId: 'proj-001',
+    groupId: 'group-pay-proj-001',
+    resourceId: 'task-002',
+  },
+  {
+    id: 'notif-3',
+    kind: 'MR_PENDING',
+    title: 'MR 待处理',
+    description: 'feature/login-api 已提交，等待质量门禁与合并',
+    isRead: false,
+    createdAt: '2026-08-12T23:30:00Z',
+    projectId: 'proj-001',
+    resourceId: 'mr-001',
+  },
+  {
+    id: 'notif-4',
+    kind: 'TASK_FAILED',
+    title: '测试任务失败',
+    description: 'Tester 在「登录功能」中报告测试未通过',
+    isRead: true,
+    createdAt: '2026-08-12T22:10:00Z',
+    projectId: 'proj-001',
+    groupId: 'group-login-proj-001',
+    resourceId: 'task-003',
+  },
+  {
+    id: 'notif-5',
+    kind: 'DELIVERABLE_PENDING',
+    title: '交付物待验收',
+    description: '「登录功能」产出代码交付物，请验收',
+    isRead: true,
+    createdAt: '2026-08-12T21:00:00Z',
+    projectId: 'proj-001',
+    groupId: 'group-login-proj-001',
+    resourceId: 'task-001',
+  },
+]
+
+// ══════════════════════════════════════════════
+// GitHub 集成 Mock 数据
+// ══════════════════════════════════════════════
+
+const MOCK_TEAM_ID = 'team-owned-001'
+
 let mockInstallations: GithubInstallation[] = [
   {
     id: 'gh-install-1001',
@@ -38,7 +314,6 @@ let mockInstallations: GithubInstallation[] = [
   },
 ]
 
-/** 团队授权仓库（带 installationId，便于按安装过滤） */
 const mockAuthorizedRepos: GithubAuthorizedRepository[] = [
   {
     id: 'repo-1',
@@ -78,10 +353,216 @@ const mockAuthorizedRepos: GithubAuthorizedRepository[] = [
   },
 ]
 
+// ══════════════════════════════════════════════
+// 项目仓库绑定（内存表）
+// ══════════════════════════════════════════════
+
+/** 项目已绑定仓库内存表（MSW 进程内） */
+// 用闭包变量模拟后端落库
+function createRepoBindingHandlers() {
+  const bindings = new Map<string, import('@/types/github').ProjectBoundRepository[]>()
+  bindings.set('proj-qgents', [
+    {
+      id: 'bound-proj-qgents-repo-1',
+      repositoryId: 'repo-1',
+      installationId: 'gh-install-1001',
+      providerRepositoryId: 987654321,
+      fullName: 'Yjingwen-svg/qgents-web',
+      githubUrl: 'https://github.com/Yjingwen-svg/qgents-web',
+      displayName: 'qgents-web',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T10:00:00Z',
+      boundAt: '2026-08-10T12:00:00Z',
+    },
+  ])
+  bindings.set('demo-project', [
+    {
+      id: 'bound-demo-auth-service',
+      repositoryId: 'repo-2',
+      installationId: 'gh-install-1001',
+      providerRepositoryId: 987654322,
+      fullName: 'Yjingwen-svg/qgents-server',
+      githubUrl: 'https://github.com/Yjingwen-svg/qgents-server',
+      displayName: 'auth-service',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T10:00:00Z',
+      boundAt: '2026-08-10T12:00:00Z',
+    },
+    {
+      id: 'bound-demo-web-console',
+      repositoryId: 'repo-1',
+      installationId: 'gh-install-1001',
+      providerRepositoryId: 987654321,
+      fullName: 'Yjingwen-svg/qgents-web',
+      githubUrl: 'https://github.com/Yjingwen-svg/qgents-web',
+      displayName: 'web-console',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T10:00:00Z',
+      boundAt: '2026-08-10T12:00:00Z',
+    },
+    {
+      id: 'bound-demo-shared-sdk',
+      repositoryId: 'repo-3',
+      installationId: 'gh-install-1002',
+      providerRepositoryId: 987654323,
+      fullName: 'qgents-lab/pet-app',
+      githubUrl: 'https://github.com/qgents-lab/pet-app',
+      displayName: 'shared-sdk',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T09:00:00Z',
+      boundAt: '2026-08-11T09:00:00Z',
+    },
+  ])
+
+  return [
+    http.get('/api/projects/:projectId/repositories', ({ params }) => {
+      const projectId = String(params.projectId)
+      return HttpResponse.json({
+        data: bindings.get(projectId) ?? [],
+        requestId: 'req_mock_project_repos',
+      })
+    }),
+
+    http.post('/api/projects/:projectId/repositories', async ({ params, request }) => {
+      const projectId = String(params.projectId)
+      const body = (await request.json().catch(() => ({}))) as {
+        installationId?: string
+        repositoryId?: string
+        displayName?: string
+      }
+      const source = mockAuthorizedRepos.find((r) => r.id === body.repositoryId)
+      const record: import('@/types/github').ProjectBoundRepository = {
+        id: `bound-${projectId}-${body.repositoryId ?? 'repo'}`,
+        installationId: body.installationId ?? source?.installationId ?? 'unknown',
+        repositoryId: body.repositoryId ?? 'unknown',
+        providerRepositoryId: source?.providerRepositoryId ?? 0,
+        fullName: source?.fullName ?? body.displayName ?? 'demo/repo',
+        githubUrl: source?.githubUrl ?? `https://github.com/${body.displayName ?? 'demo/repo'}`,
+        displayName:
+          body.displayName ?? source?.fullName.split('/').pop() ?? source?.fullName,
+        defaultBranch: source?.defaultBranch ?? '',
+        authorizationStatus: source?.authorizationStatus ?? 'AUTHORIZED',
+        metadataSyncedAt: source?.metadataSyncedAt ?? new Date().toISOString(),
+        boundAt: new Date().toISOString(),
+      }
+      const prev = (bindings.get(projectId) ?? []).filter(
+        (b) => b.repositoryId !== record.repositoryId,
+      )
+      bindings.set(projectId, [...prev, record])
+      return HttpResponse.json({ data: record, requestId: 'req_mock_bind_repo' })
+    }),
+
+    http.delete('/api/projects/:projectId/repositories/:bindingId', ({ params }) => {
+      const projectId = String(params.projectId)
+      const bindingId = String(params.bindingId)
+      const next = (bindings.get(projectId) ?? []).filter(
+        (b) => b.id !== bindingId && b.repositoryId !== bindingId,
+      )
+      bindings.set(projectId, next)
+      return new HttpResponse(null, { status: 204 })
+    }),
+  ]
+}
+
+// ══════════════════════════════════════════════
+// 所有 Handlers
+// ══════════════════════════════════════════════
+
 export const handlers = [
+  // ── health ──
   http.get('/api/health', () => HttpResponse.json({ status: 'ok', source: 'msw' })),
 
-  /** GET /teams/{teamId}/integrations/github/installations */
+  // ── Auth ──
+  http.post('/api/auth/login', async ({ request }) => {
+    const body = (await request.json()) as { email?: string }
+    if (!body.email?.includes('@')) {
+      return HttpResponse.json({ error: { code: 'INVALID_CREDENTIALS', message: '邮箱或密码错误' } }, { status: 401 })
+    }
+    return HttpResponse.json({
+      data: {
+        accessToken: 'mock-access-token-' + Date.now(),
+        accessTokenExpiresIn: 900,
+        refreshToken: 'mock-refresh-token-' + Date.now(),
+        refreshTokenExpiresIn: 2592000,
+        user: { ...MOCK_USER, email: body.email },
+      },
+    })
+  }),
+
+  http.post('/api/auth/register', async ({ request }) => {
+    const body = (await request.json()) as { email?: string; displayName?: string }
+    if (!body.email?.includes('@')) {
+      return HttpResponse.json({ error: { code: 'INVALID_INPUT', message: '邮箱格式不正确' } }, { status: 400 })
+    }
+    return HttpResponse.json({
+      data: {
+        accessToken: 'mock-access-token-' + Date.now(),
+        accessTokenExpiresIn: 900,
+        refreshToken: 'mock-refresh-token-' + Date.now(),
+        refreshTokenExpiresIn: 2592000,
+        user: { id: 'user-' + Date.now(), email: body.email!, displayName: body.displayName || body.email!.split('@')[0], avatarChar: (body.displayName || '用')[0] },
+      },
+    })
+  }),
+
+  http.get('/api/me', () => HttpResponse.json({ data: MOCK_USER })),
+
+  http.post('/api/auth/logout', () => HttpResponse.json({ data: null })),
+
+  // ── Teams ──
+  http.get('/api/teams', () => HttpResponse.json({ data: MOCK_TEAMS })),
+
+  http.post('/api/teams', async ({ request }) => {
+    const body = (await request.json()) as { name?: string; description?: string }
+    const newTeam = {
+      id: 'team-new-' + nextTeamId++,
+      name: body.name || '未命名团队',
+      description: body.description || '',
+      createdAt: new Date().toISOString(),
+      myRole: 'TEAM_OWNER' as const,
+      memberCount: 1,
+    }
+    return HttpResponse.json({ data: newTeam }, { status: 201 })
+  }),
+
+  http.get('/api/teams/:teamId', ({ params }) => {
+    const team = MOCK_TEAMS.find((t) => t.id === params.teamId)
+    if (!team) return HttpResponse.json({ error: { code: 'NOT_FOUND', message: '团队不存在' } }, { status: 404 })
+    return HttpResponse.json({ data: team })
+  }),
+
+  http.patch('/api/teams/:teamId', async ({ params, request }) => {
+    const body = (await request.json()) as { name?: string; description?: string }
+    const team = MOCK_TEAMS.find((t) => t.id === params.teamId)
+    if (!team) return HttpResponse.json({ error: { code: 'NOT_FOUND', message: '团队不存在' } }, { status: 404 })
+    return HttpResponse.json({ data: { ...team, ...body } })
+  }),
+
+  http.get('/api/teams/:teamId/members', ({ params }) => {
+    const members = params.teamId === 'team-joined-001'
+      ? MOCK_TEAM_MEMBERS.map((m) => (m.userId === 'user-001' ? { ...m, role: 'TEAM_MEMBER' as const } : m))
+      : MOCK_TEAM_MEMBERS
+    return HttpResponse.json({ data: members })
+  }),
+
+  http.post('/api/teams/:teamId/invitations', async ({ request }) => {
+    const body = (await request.json()) as { email?: string; role?: string }
+    return HttpResponse.json({
+      data: { id: 'inv-' + Date.now(), email: body.email || '', role: body.role || 'TEAM_MEMBER', status: 'PENDING', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() },
+    }, { status: 201 })
+  }),
+
+  http.get('/api/teams/:teamId/invitations', () => HttpResponse.json({ data: [] })),
+
+  http.post('/api/team-invitations/:token/accept', () =>
+    HttpResponse.json({ data: { teamId: 'team-joined-001', teamName: '广工创新团队' } }),
+  ),
+
+  // ── GitHub 集成 ──
   http.get('/api/teams/:teamId/integrations/github/installations', ({ params }) => {
     if (params.teamId !== MOCK_TEAM_ID) {
       return HttpResponse.json({ data: [], requestId: 'req_mock_empty' })
@@ -92,7 +573,6 @@ export const handlers = [
     })
   }),
 
-  /** GET /teams/{teamId}/integrations/github/repositories */
   http.get('/api/teams/:teamId/integrations/github/repositories', ({ params }) => {
     if (params.teamId !== MOCK_TEAM_ID) {
       return HttpResponse.json({ data: [], requestId: 'req_mock_repos_empty' })
@@ -103,16 +583,6 @@ export const handlers = [
     })
   }),
 
-  /**
-   * POST /teams/{teamId}/integrations/github/installations
-   *
-   * 模拟后端「生成安装跳转地址」：
-   * - 真实环境 URL 由后端签发（含 state）
-   * - Mock 返回 GitHub App 安装页形态，便于前端验证「拿到 URL 后整页跳转」
-   *
-   * 注意：若 GitHub 上尚无名为 qgents 的 App，跳转后可能 404，这只说明
-   * 「前端跳转逻辑已通」；真联调时以后端返回的 installationUrl 为准。
-   */
   http.post('/api/teams/:teamId/integrations/github/installations', ({ params, request }) => {
     const teamId = String(params.teamId)
     const idempotencyKey = request.headers.get('Idempotency-Key')
@@ -171,146 +641,168 @@ export const handlers = [
   ),
 
   /** GET /teams/{teamId}/projects —— Owner 绑定仓库时用 */
+  // ── Projects ──
   http.get('/api/teams/:teamId/projects', ({ params }) => {
-    if (params.teamId !== MOCK_TEAM_ID) {
-      return HttpResponse.json({ data: [], requestId: 'req_mock_projects_empty' })
+    const projects = MOCK_PROJECTS[params.teamId as string] || []
+    return HttpResponse.json({ data: projects })
+  }),
+
+  http.post('/api/teams/:teamId/projects', async ({ params, request }) => {
+    const body = (await request.json()) as { name?: string; description?: string }
+    const teamId = params.teamId as string
+    const newProject = {
+      id: 'proj-new-' + nextProjectId++,
+      teamId,
+      name: body.name || '未命名项目',
+      description: body.description || '',
+      createdAt: new Date().toISOString(),
+      myRole: 'PROJECT_ADMIN' as const,
+      repositoryCount: 0,
     }
+    // 写回内存，保证后续 GET /projects/:id 能查到
+    if (!MOCK_PROJECTS[teamId]) MOCK_PROJECTS[teamId] = []
+    MOCK_PROJECTS[teamId].push(newProject)
+
+    // 新建项目的成员只有创建者本人
+    MOCK_PROJECT_MEMBERS[newProject.id] = [
+      { userId: 'user-001', displayName: '陈同学', email: 'demo@qgents.dev', role: 'PROJECT_ADMIN' },
+    ]
+
+    // 对齐接口文档 §7：创建项目时服务端自动创建唯一的 PROJECT_MAIN 总群
+    const mainGroupId = 'group-main-' + newProject.id
+    if (!MOCK_GROUPS[newProject.id]) MOCK_GROUPS[newProject.id] = []
+    MOCK_GROUPS[newProject.id].push({
+      id: mainGroupId,
+      projectId: newProject.id,
+      type: 'PROJECT_MAIN',
+      title: '项目总群',
+      description: '项目级讨论与结构化动态',
+      status: 'ACTIVE',
+      memberCount: getGroupMembers(newProject.id, mainGroupId).length,
+      latestActivityAt: new Date().toISOString(),
+      unreadCount: 0,
+      isPinned: true,
+      isArchived: false,
+    })
+
+    return HttpResponse.json({ data: newProject }, { status: 201 })
+  }),
+
+  http.get('/api/projects/:projectId', ({ params }) => {
+    for (const list of Object.values(MOCK_PROJECTS)) {
+      const proj = list.find((p) => p.id === params.projectId)
+      if (proj) return HttpResponse.json({ data: proj })
+    }
+    return HttpResponse.json({ error: { code: 'NOT_FOUND', message: '项目不存在' } }, { status: 404 })
+  }),
+
+  http.get('/api/projects/:projectId/members', ({ params }) =>
+    HttpResponse.json({ data: MOCK_PROJECT_MEMBERS[params.projectId as string] ?? [] }),
+  ),
+
+  http.post('/api/projects/:projectId/members', () => HttpResponse.json({ data: null }, { status: 201 })),
+
+  http.post('/api/projects/:projectId/archive', () => HttpResponse.json({ data: null })),
+
+  http.post('/api/projects/:projectId/restore', () => HttpResponse.json({ data: null })),
+
+  // ── Group 与消息 ──
+  http.get('/api/projects/:projectId/groups', ({ params }) => {
+    const projectId = params.projectId as string
+    // memberCount 由群成员派生（= 项目成员 + 群内 Agent），与 GET .../members 保持一致
+    const groups = (MOCK_GROUPS[projectId] ?? []).map((g) => ({
+      ...g,
+      memberCount: getGroupMembers(projectId, g.id).length,
+    }))
+    return HttpResponse.json({ data: groups })
+  }),
+
+  http.post('/api/projects/:projectId/groups', async ({ params, request }) => {
+    const projectId = params.projectId as string
+    const body = (await request.json()) as { title?: string; description?: string; type?: string }
+    // 只接受 REQUIREMENT（省略 type 也按 REQUIREMENT 处理），PROJECT_MAIN 返回 422
+    if (body.type === 'PROJECT_MAIN') {
+      return HttpResponse.json(
+        { error: { code: 'SYSTEM_GROUP_MANAGED', message: '项目总群由系统管理，不可创建' } },
+        { status: 422 },
+      )
+    }
+    const groupId = 'group-' + Date.now()
+    const group: Group = {
+      id: groupId,
+      projectId,
+      type: 'REQUIREMENT',
+      title: body.title || '未命名需求群',
+      description: body.description || '',
+      status: 'ACTIVE',
+      // 新需求群默认只有项目成员，无 Agent 参与
+      memberCount: getGroupMembers(projectId, groupId).length,
+      latestActivityAt: new Date().toISOString(),
+      unreadCount: 0,
+      isPinned: false,
+      isArchived: false,
+    }
+    const list = MOCK_GROUPS[projectId] ?? (MOCK_GROUPS[projectId] = [])
+    list.push(group)
+    return HttpResponse.json({ data: group }, { status: 201 })
+  }),
+
+  http.get('/api/projects/:projectId/groups/:groupId/members', ({ params }) => {
+    // 群成员 = 项目成员 + 群内 Agent，群内成员平等、无角色区分
     return HttpResponse.json({
-      data: [
-        {
-          id: 'proj-qgents',
-          teamId: MOCK_TEAM_ID,
-          name: 'Qgents Web',
-          description: '前端与联调演示项目',
-          createdAt: '2026-08-01T00:00:00Z',
-        },
-        {
-          id: 'proj-server',
-          teamId: MOCK_TEAM_ID,
-          name: 'Qgents 后端',
-          description: '服务端项目',
-          createdAt: '2026-08-02T00:00:00Z',
-        },
-        {
-          id: 'proj-pet',
-          teamId: MOCK_TEAM_ID,
-          name: '宠影记',
-          description: '示例业务项目',
-          createdAt: '2026-08-03T00:00:00Z',
-        },
-      ],
-      requestId: 'req_mock_team_projects',
+      data: getGroupMembers(params.projectId as string, params.groupId as string),
     })
   }),
 
-  /** 项目已绑定仓库内存表（MSW 进程内） */
-  // 用闭包变量模拟后端落库
-  ...(() => {
-    const bindings = new Map<string, import('@/types/github').ProjectBoundRepository[]>()
-    bindings.set('proj-qgents', [
-      {
-        id: 'bound-proj-qgents-repo-1',
-        repositoryId: 'repo-1',
-        installationId: 'gh-install-1001',
-        providerRepositoryId: 987654321,
-        fullName: 'Yjingwen-svg/qgents-web',
-        githubUrl: 'https://github.com/Yjingwen-svg/qgents-web',
-        displayName: 'qgents-web',
-        defaultBranch: 'main',
-        authorizationStatus: 'AUTHORIZED',
-        metadataSyncedAt: '2026-08-13T10:00:00Z',
-        boundAt: '2026-08-10T12:00:00Z',
-      },
-    ])
-    bindings.set('demo-project', [
-      {
-        id: 'bound-demo-auth-service',
-        repositoryId: 'repo-2',
-        installationId: 'gh-install-1001',
-        providerRepositoryId: 987654322,
-        fullName: 'Yjingwen-svg/qgents-server',
-        githubUrl: 'https://github.com/Yjingwen-svg/qgents-server',
-        displayName: 'auth-service',
-        defaultBranch: 'main',
-        authorizationStatus: 'AUTHORIZED',
-        metadataSyncedAt: '2026-08-13T10:00:00Z',
-        boundAt: '2026-08-10T12:00:00Z',
-      },
-      {
-        id: 'bound-demo-web-console',
-        repositoryId: 'repo-1',
-        installationId: 'gh-install-1001',
-        providerRepositoryId: 987654321,
-        fullName: 'Yjingwen-svg/qgents-web',
-        githubUrl: 'https://github.com/Yjingwen-svg/qgents-web',
-        displayName: 'web-console',
-        defaultBranch: 'main',
-        authorizationStatus: 'AUTHORIZED',
-        metadataSyncedAt: '2026-08-13T10:00:00Z',
-        boundAt: '2026-08-10T12:00:00Z',
-      },
-      {
-        id: 'bound-demo-shared-sdk',
-        repositoryId: 'repo-3',
-        installationId: 'gh-install-1002',
-        providerRepositoryId: 987654323,
-        fullName: 'qgents-lab/pet-app',
-        githubUrl: 'https://github.com/qgents-lab/pet-app',
-        displayName: 'shared-sdk',
-        defaultBranch: 'main',
-        authorizationStatus: 'AUTHORIZED',
-        metadataSyncedAt: '2026-08-13T09:00:00Z',
-        boundAt: '2026-08-11T09:00:00Z',
-      },
-    ])
+  http.get('/api/projects/:projectId/groups/:groupId/messages', ({ params }) => {
+    const messages = MOCK_MESSAGES[params.groupId as string] ?? []
+    return HttpResponse.json({
+      data: messages,
+      page: { nextCursor: null, hasMore: false },
+    })
+  }),
 
-    return [
-      http.get('/api/projects/:projectId/repositories', ({ params }) => {
-        const projectId = String(params.projectId)
-        return HttpResponse.json({
-          data: bindings.get(projectId) ?? [],
-          requestId: 'req_mock_project_repos',
-        })
-      }),
+  http.post('/api/projects/:projectId/groups/:groupId/messages', async ({ params, request }) => {
+    const groupId = params.groupId as string
+    const body = (await request.json()) as {
+      type?: Message['type']
+      content?: unknown
+      senderId?: string
+      clientMessageId?: string
+    }
+    const list = MOCK_MESSAGES[groupId] ?? (MOCK_MESSAGES[groupId] = [])
+    const message: Message = {
+      id: 'msg-' + Date.now(),
+      groupId,
+      type: body.type ?? 'TEXT',
+      content: body.content ?? { text: '' },
+      senderType: 'USER',
+      senderId: 'user-001',
+      senderName: '陈同学',
+      sequence: list.length + 1,
+      createdAt: new Date().toISOString(),
+      replyToId: null,
+    }
+    list.push(message)
+    return HttpResponse.json({ data: message }, { status: 201 })
+  }),
 
-      http.post('/api/projects/:projectId/repositories', async ({ params, request }) => {
-        const projectId = String(params.projectId)
-        const body = (await request.json().catch(() => ({}))) as {
-          installationId?: string
-          repositoryId?: string
-          displayName?: string
-        }
-        const source = mockAuthorizedRepos.find((r) => r.id === body.repositoryId)
-        const record: import('@/types/github').ProjectBoundRepository = {
-          id: `bound-${projectId}-${body.repositoryId ?? 'repo'}`,
-          installationId: body.installationId ?? source?.installationId ?? 'unknown',
-          repositoryId: body.repositoryId ?? 'unknown',
-          providerRepositoryId: source?.providerRepositoryId ?? 0,
-          fullName: source?.fullName ?? body.displayName ?? 'demo/repo',
-          githubUrl: source?.githubUrl ?? `https://github.com/${body.displayName ?? 'demo/repo'}`,
-          displayName:
-            body.displayName ?? source?.fullName.split('/').pop() ?? source?.fullName,
-          defaultBranch: source?.defaultBranch ?? '',
-          authorizationStatus: source?.authorizationStatus ?? 'AUTHORIZED',
-          metadataSyncedAt: source?.metadataSyncedAt ?? new Date().toISOString(),
-          boundAt: new Date().toISOString(),
-        }
-        const prev = (bindings.get(projectId) ?? []).filter(
-          (b) => b.repositoryId !== record.repositoryId,
-        )
-        bindings.set(projectId, [...prev, record])
-        return HttpResponse.json({ data: record, requestId: 'req_mock_bind_repo' })
-      }),
+  // ── 项目仓库绑定（GitHub）──
+  ...createRepoBindingHandlers(),
 
-      http.delete('/api/projects/:projectId/repositories/:bindingId', ({ params }) => {
-        const projectId = String(params.projectId)
-        const bindingId = String(params.bindingId)
-        const next = (bindings.get(projectId) ?? []).filter(
-          (b) => b.id !== bindingId && b.repositoryId !== bindingId,
-        )
-        bindings.set(projectId, next)
-        return new HttpResponse(null, { status: 204 })
-      }),
-    ]
-  })(),
+  // ── 通知中心（本轮前端 Mock）──
+  http.get('/api/notifications', () => HttpResponse.json({ data: MOCK_NOTIFICATIONS })),
+
+  http.post('/api/notifications/:id/read', ({ params }) => {
+    const n = MOCK_NOTIFICATIONS.find((x) => x.id === params.id)
+    if (n) n.isRead = true
+    return HttpResponse.json({ data: null })
+  }),
+
+  http.post('/api/notifications/read-all', () => {
+    MOCK_NOTIFICATIONS.forEach((n) => {
+      n.isRead = true
+    })
+    return HttpResponse.json({ data: null })
+  }),
 ]

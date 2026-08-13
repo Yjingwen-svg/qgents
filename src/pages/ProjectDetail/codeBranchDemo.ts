@@ -265,6 +265,26 @@ export function demoBoundReposForProject(projectId: string): ProjectBoundReposit
   return []
 }
 
+/** 按分支行 id 找回演示仓库 + 分支，供 Diff 详情页展示路径与任务信息 */
+export function findDemoBranchById(branchId: string): {
+  repo: ProjectBoundRepository
+  branch: ProjectBranchRow
+} | undefined {
+  for (const repo of DEMO_BOUND_REPOS) {
+    const branch = branchesForBoundRepo(repo).find((row) => row.id === branchId)
+    if (branch) return { repo, branch }
+  }
+
+  for (const [bindingId, rows] of Object.entries(BRANCHES_BY_BINDING)) {
+    const branch = rows.find((row) => branchId === row.id || branchId.endsWith(`-${row.id}`))
+    if (!branch) continue
+    const repo = DEMO_BOUND_REPOS.find((item) => item.id === bindingId)
+    if (repo) return { repo, branch }
+  }
+
+  return undefined
+}
+
 /**
  * 分支列表：优先按绑定 id 取演示行；没有则按 fullName；再没有则只展示默认分支占位。
  * 不得把缺失的 defaultBranch 回退成 main。

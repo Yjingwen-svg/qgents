@@ -155,7 +155,7 @@ export function ChatWorkspacePage() {
           <Space>
             <Button type="text" icon={<MoreOutlined />} disabled />
             <Link
-              to={PATHS.projectReqChat(demoProjectId, 'login')}
+              to={PATHS.projectDetail(demoProjectId)}
               onClick={() => openProjectDetailNav(demoProjectId)}
             >
               <Button type="primary">进入项目详情</Button>

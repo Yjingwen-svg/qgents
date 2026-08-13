@@ -1,22 +1,35 @@
 /**
- * 项目：团队下隔离单元
- * Skill / Memory / 群聊 / 任务均按 projectId 隔离，禁止跨项目污染上下文
+ * 项目相关类型 —— 对齐接口文档 v1.1.4 §3.1 §5.2
  */
+
+/** 项目角色 */
+export type ProjectRole = 'PROJECT_ADMIN' | 'PROJECT_MEMBER'
+
 export interface Project {
   id: string
   teamId: string
   name: string
   description?: string
-  /** 绑定的 Git 仓库地址；创建时可绑定已有仓库或由平台自动新建 */
-  gitRepoUrl?: string
   createdAt?: string
+  /** 当前用户在项目中的角色 */
+  myRole?: ProjectRole
+  /** 绑定的仓库数量 */
+  repositoryCount?: number
 }
 
+export interface ProjectMember {
+  userId: string
+  displayName: string
+  email: string
+  role: ProjectRole
+  avatarUrl?: string
+}
+
+/** POST /teams/{teamId}/projects 请求体 */
 export interface CreateProjectPayload {
   teamId: string
   name: string
   description?: string
-  /** 已有仓库 URL；为空时后端可自动创建并绑定 */
-  gitRepoUrl?: string
-  autoCreateRepo?: boolean
+  /** 初始项目成员 userId 列表 */
+  memberIds?: string[]
 }

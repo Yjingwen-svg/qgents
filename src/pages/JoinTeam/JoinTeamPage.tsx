@@ -1,61 +1,88 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Typography, Button, Card, Form, Input, Empty } from 'antd'
-import { ArrowLeftOutlined } from '@ant-design/icons'
 import { PATHS } from '@/routes/paths'
 import { useAuth } from '@/context/AuthContext'
 import { teamApi } from '@/api'
+import './JoinTeamPage.css'
 
-const { Title, Paragraph } = Typography
-
+/**
+ * 加入已有团队 —— 对齐接口文档 v1.1.4 §5.1
+ *
+ * 用户粘贴邮件邀请中的邀请令牌，调 POST /team-invitations/{token}/accept
+ */
 export function JoinTeamPage() {
   const navigate = useNavigate()
   const { setHasTeam } = useAuth()
+  const [token, setToken] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [form] = Form.useForm()
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
 
-  async function handleSubmit(_values: { inviteCode: string }) {
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!token.trim()) return
+    setError(null)
+    setSuccess(null)
     setSubmitting(true)
+
     try {
-      void teamApi
+      const result = await teamApi.acceptInvitation(token.trim())
       setHasTeam(true)
-      navigate(PATHS.MY_TEAMS, { replace: true })
+      setSuccess(`已成功加入「${result.teamName}」`)
+      // 延迟跳转，让用户看到成功提示
+      setTimeout(() => {
+        navigate(PATHS.teamDetail(result.teamId), { replace: true })
+      }, 1000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加入失败，邀请令牌可能已过期')
     } finally {
       setSubmitting(false)
     }
   }
 
   return (
-    <div style={{ maxWidth: 560, margin: '0 auto' }}>
-      <Link to={PATHS.MY_TEAMS}>
-        <Button type="link" icon={<ArrowLeftOutlined />} style={{ paddingLeft: 0, marginBottom: 16 }}>
-          返回我的团队
-        </Button>
+    <div className="join-team">
+      <Link to={PATHS.MY_TEAMS} className="join-team__back">
+        ← 返回我的团队
       </Link>
+      <h1>加入已有团队</h1>
+      <p className="join-team__desc">
+        输入团队邀请邮件中的邀请令牌，即可加入团队
+      </p>
 
-      <Title level={2}>加入已有团队</Title>
-      <Paragraph type="secondary">填写邀请码加入，或处理别人发送给你的团队邀请</Paragraph>
+      <form className="join-team__card" onSubmit={handleSubmit}>
+        {error && (
+          <div className="join-team__error" role="alert">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="join-team__success" role="status">
+            {success}
+          </div>
+        )}
 
-      <Card style={{ marginBottom: 24 }}>
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
-          <Form.Item
-            label="邀请码"
-            name="inviteCode"
-            rules={[{ required: true, message: '请输入邀请码' }]}
-          >
-            <Input placeholder="粘贴团队邀请码" />
-          </Form.Item>
-          <Form.Item style={{ marginBottom: 0 }}>
-            <Button type="primary" htmlType="submit" loading={submitting} block>
-              加入团队
-            </Button>
-          </Form.Item>
-        </Form>
-      </Card>
+        <label>
+          <span>邀请令牌</span>
+          <input
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="粘贴邀请邮件中的令牌"
+            required
+          />
+        </label>
+        <button type="submit" disabled={submitting || !token.trim()}>
+          {submitting ? '加入中…' : '加入团队'}
+        </button>
+      </form>
 
-      <Card title="待处理邀请">
-        <Empty description="暂无待处理邀请（接口联调后在此渲染）" />
-      </Card>
+      {/* 待处理邀请列表 —— 后续批次 */}
+      <section className="join-team__pending">
+        <h2>待处理邀请</h2>
+        <p className="join-team__placeholder">
+          暂无待处理邀请（后续版本支持从站内直接查看和处理邀请）
+        </p>
+      </section>
     </div>
   )
 }

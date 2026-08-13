@@ -1,252 +1,365 @@
-import { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
-import {
-  Row,
-  Col,
-  Card,
-  Tabs,
-  Form,
-  Input,
-  Button,
-  Checkbox,
-  Divider,
-  Typography,
-  Space,
-  ConfigProvider,
-} from 'antd'
-import {
-  MessageOutlined,
-  RobotOutlined,
-  CodeOutlined,
-  GithubOutlined,
-  MailOutlined,
-  LockOutlined,
-} from '@ant-design/icons'
+import { useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { PATHS } from '@/routes/paths'
-import { authApi } from '@/api'
-import { qgLoginLightTheme } from '@/theme/antdTheme'
-
-const { Title, Paragraph, Text } = Typography
+import { formatApiError } from '@/utils/formatApiError'
+import './LoginPage.css'
 
 type AuthTab = 'login' | 'register'
 
 /**
- * 登录 / 注册页
- * 左侧：深色品牌区；右侧：浅色表单区（嵌套 light ConfigProvider，对齐原型）
+ * 登录 / 注册页 —— 对齐接口文档 v1.1.3 §4
+ * 左：品牌与价值主张；右：登录卡片
  */
 export function LoginPage() {
   const navigate = useNavigate()
-  const location = useLocation()
-  const { loginDemo, hasTeam } = useAuth()
+  const { login, register } = useAuth()
   const [tab, setTab] = useState<AuthTab>('login')
+  const [email, setEmail] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [form] = Form.useForm()
+  const [error, setError] = useState<string | null>(null)
 
-  /** 被守卫踢来时带上 from（例如 GitHub 回调后的集成页 + installed=1） */
-  const from =
-    (location.state as { from?: { pathname?: string; search?: string } } | null)?.from
-
-  function goAfterLogin() {
-    if (from?.pathname) {
-      navigate(`${from.pathname}${from.search || ''}`, { replace: true })
-      return
-    }
-    navigate(hasTeam ? PATHS.MY_TEAMS : PATHS.WELCOME, { replace: true })
-  }
-
-  async function handleSubmit(values: { email?: string; password?: string; remember?: boolean }) {
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
     setSubmitting(true)
+
     try {
-      void authApi
-      void values.remember
-      loginDemo({ email: values.email || undefined })
-      goAfterLogin()
+      let hasTeam: boolean
+      if (tab === 'login') {
+        hasTeam = await login(email, password)
+      } else {
+        hasTeam = await register(email, password, displayName || email.split('@')[0])
+      }
+      navigate(hasTeam ? PATHS.MY_TEAMS : PATHS.WELCOME, { replace: true })
+    } catch (err) {
+      setError(formatApiError(err))
     } finally {
       setSubmitting(false)
     }
   }
 
-  function handleGithubLogin() {
-    loginDemo({ displayName: 'GitHub 用户', avatarChar: 'G' })
-    goAfterLogin()
+  function switchTab(t: AuthTab) {
+    setTab(t)
+    setError(null)
   }
 
-  const features = [
-    {
-      icon: <MessageOutlined />,
-      title: '项目群聊驱动任务',
-      desc: '讨论在项目群，@Agent 发起任务，进度实时透明',
-    },
-    {
-      icon: <RobotOutlined />,
-      title: '多 Agent 协同执行',
-      desc: '多 Agent 协作分工，高效完成复杂任务',
-    },
-    {
-      icon: <CodeOutlined />,
-      title: 'Diff 与 MR 可审查交付',
-      desc: '以 Diff 形式交付，支持 MR 审查，变更可追溯',
-    },
-  ]
-
   return (
-    <Row style={{ minHeight: '100vh' }}>
-      <Col
-        xs={0}
-        lg={12}
-        style={{
-          background: `linear-gradient(135deg, #111c2e 0%, #0b1424 100%)`,
-          padding: '48px 56px',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-        }}
-      >
-        <Space size={8} style={{ marginBottom: 32 }}>
-          <span
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: '50%',
-              background: '#14b8a6',
-              color: '#0b1424',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-            }}
-          >
-            Q
-          </span>
-          <Text strong style={{ color: '#14b8a6', fontSize: 22 }}>
-            gents
-          </Text>
-        </Space>
+    <div className="login-page">
+      {/* ===== 左侧品牌区（不变） ===== */}
+      <aside className="login-page__brand" aria-label="品牌介绍">
+        <div className="login-page__brand-logo">
+          <span className="login-page__q">Q</span>
+          <span>gents</span>
+        </div>
 
-        <Title level={2} style={{ marginBottom: 32, color: '#f3f4f6' }}>
+        <h1 className="login-page__headline">
           团队与 Agent, 在同一个项目现场协作
-        </Title>
+        </h1>
 
-        <Space direction="vertical" size={20} style={{ marginBottom: 40 }}>
-          {features.map((f) => (
-            <Space key={f.title} align="start" size={12}>
-              <span
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 8,
-                  background: '#162033',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#14b8a6',
-                }}
-              >
-                {f.icon}
+        <ul className="login-page__features">
+          <li>
+            <span className="login-page__feature-icon" aria-hidden>
+              <ChatIcon />
+            </span>
+            <div>
+              <strong>项目群聊驱动任务</strong>
+              <p>讨论在项目群，@Agent 发起任务，进度实时透明</p>
+            </div>
+          </li>
+          <li>
+            <span className="login-page__feature-icon" aria-hidden>
+              <BotIcon />
+            </span>
+            <div>
+              <strong>多 Agent 协同执行</strong>
+              <p>多 Agent 协作分工，高效完成复杂任务</p>
+            </div>
+          </li>
+          <li>
+            <span className="login-page__feature-icon" aria-hidden>
+              <CodeIcon />
+            </span>
+            <div>
+              <strong>Diff 与 MR 可审查交付</strong>
+              <p>以 Diff 形式交付，支持 MR 审查，变更可追溯</p>
+            </div>
+          </li>
+        </ul>
+
+        <div className="login-page__illustration" aria-hidden>
+          <div className="login-page__illu-node">💬</div>
+          <span className="login-page__illu-arrow" />
+          <div className="login-page__illu-node login-page__illu-node--bot">🤖</div>
+          <span className="login-page__illu-arrow" />
+          <div className="login-page__illu-diff">
+            <span>diff</span>
+            <small>+12 −3</small>
+          </div>
+        </div>
+      </aside>
+
+      {/* ===== 右侧登录卡片 ===== */}
+      <section className="login-page__panel">
+        <div className="login-card">
+          <header className="login-card__header">
+            <h2>{tab === 'login' ? '登录 Qgents' : '注册 Qgents'}</h2>
+            <p>
+              {tab === 'login'
+                ? '使用个人账号进入你的团队'
+                : '创建账号，开始团队协作'}
+            </p>
+          </header>
+
+          <div className="login-card__tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'login'}
+              className={tab === 'login' ? 'is-active' : ''}
+              onClick={() => switchTab('login')}
+            >
+              登录
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'register'}
+              className={tab === 'register' ? 'is-active' : ''}
+              onClick={() => switchTab('register')}
+            >
+              注册
+            </button>
+          </div>
+
+          {/* —— 错误提示 —— */}
+          {error && (
+            <div className="login-card__error" role="alert">
+              {error}
+            </div>
+          )}
+
+          <form className="login-card__form" onSubmit={handleSubmit}>
+            {/* 邮箱 */}
+            <label className="login-field">
+              <span className="sr-only">邮箱地址</span>
+              <span className="login-field__icon" aria-hidden>
+                <MailIcon />
               </span>
-              <div>
-                <Text strong style={{ color: '#f3f4f6' }}>
-                  {f.title}
-                </Text>
-                <Paragraph style={{ margin: 0, color: '#9aa3b5' }}>{f.desc}</Paragraph>
-              </div>
-            </Space>
-          ))}
-        </Space>
-      </Col>
+              <input
+                type="email"
+                placeholder="邮箱地址"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
+              />
+            </label>
 
-      <Col
-        xs={24}
-        lg={12}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 24,
-          background: '#f3f5f7',
-        }}
-      >
-        <ConfigProvider theme={qgLoginLightTheme}>
-          <Card style={{ width: '100%', maxWidth: 420 }} bordered={false}>
-            <Title level={3} style={{ marginTop: 0 }}>
-              登录 Qgents
-            </Title>
-            <Paragraph type="secondary">使用个人账号进入你的团队</Paragraph>
-
-            <Tabs
-              activeKey={tab}
-              onChange={(k) => setTab(k as AuthTab)}
-              items={[
-                { key: 'login', label: '登录' },
-                { key: 'register', label: '注册' },
-              ]}
-              style={{ marginBottom: 16 }}
-            />
-
-            <Form form={form} layout="vertical" onFinish={handleSubmit}>
-              <Form.Item name="email" rules={[{ type: 'email', message: '请输入有效邮箱' }]}>
-                <Input prefix={<MailOutlined />} placeholder="邮箱地址" autoComplete="email" />
-              </Form.Item>
-
-              <Form.Item name="password">
-                <Input.Password
-                  prefix={<LockOutlined />}
-                  placeholder="密码"
-                  autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
+            {/* 昵称 —— 仅注册时显示 */}
+            {tab === 'register' && (
+              <label className="login-field">
+                <span className="sr-only">昵称</span>
+                <span className="login-field__icon" aria-hidden>
+                  <UserIcon />
+                </span>
+                <input
+                  type="text"
+                  placeholder="你的昵称"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  autoComplete="name"
                 />
-              </Form.Item>
+              </label>
+            )}
 
-              {tab === 'login' && (
-                <Form.Item>
-                  <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                    <Form.Item name="remember" valuePropName="checked" noStyle initialValue>
-                      <Checkbox>保持登录</Checkbox>
-                    </Form.Item>
-                    <Button type="link" style={{ padding: 0 }}>
-                      忘记密码
-                    </Button>
-                  </Space>
-                </Form.Item>
-              )}
+            {/* 密码 */}
+            <label className="login-field">
+              <span className="sr-only">密码</span>
+              <span className="login-field__icon" aria-hidden>
+                <LockIcon />
+              </span>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                placeholder="密码"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
+                required
+              />
+              <button
+                type="button"
+                className="login-field__eye"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? '隐藏密码' : '显示密码'}
+              >
+                <EyeIcon />
+              </button>
+            </label>
 
-              <Form.Item>
-                <Button type="primary" htmlType="submit" block loading={submitting}>
-                  {tab === 'login' ? '登录' : '注册'}
-                </Button>
-              </Form.Item>
-            </Form>
+            {tab === 'login' && (
+              <div className="login-card__meta">
+                {/* 保持登录 checkbox 保存在 UI 里，但接口文档没有此字段 */}
+                <label className="login-card__remember">
+                  <input type="checkbox" defaultChecked />
+                  保持登录
+                </label>
+                {/* TODO[P1]: 忘记密码流程 */}
+                <button type="button" className="login-card__link">
+                  忘记密码
+                </button>
+              </div>
+            )}
 
-            <Divider plain>或</Divider>
+            <button type="submit" className="login-card__submit" disabled={submitting}>
+              {submitting
+                ? '请稍候…'
+                : tab === 'login'
+                  ? '登录'
+                  : '注册'}
+            </button>
+          </form>
 
-            <Button block icon={<GithubOutlined />} onClick={handleGithubLogin}>
-              使用 GitHub 登录
-            </Button>
+          <div className="login-card__divider">
+            <span>或</span>
+          </div>
 
-            <Paragraph type="secondary" style={{ textAlign: 'center', marginTop: 16, marginBottom: 0 }}>
-              {tab === 'login' ? (
-                <>
-                  还没有账号？{' '}
-                  <Button type="link" style={{ padding: 0 }} onClick={() => setTab('register')}>
-                    立即注册
-                  </Button>
-                </>
-              ) : (
-                <>
-                  已有账号？{' '}
-                  <Button type="link" style={{ padding: 0 }} onClick={() => setTab('login')}>
-                    去登录
-                  </Button>
-                </>
-              )}
-            </Paragraph>
+          {/* GitHub 登录 —— 非本期必需，仅占位 */}
+          <button type="button" className="login-card__github" disabled aria-label="GitHub 登录（暂未开放）">
+            <GithubIcon />
+            使用 GitHub 登录
+          </button>
 
-            <Paragraph type="secondary" style={{ textAlign: 'center', marginTop: 8, marginBottom: 0, fontSize: 12 }}>
-              登录后可选择或创建团队
-            </Paragraph>
-          </Card>
-        </ConfigProvider>
-      </Col>
-    </Row>
+          <p className="login-card__switch">
+            {tab === 'login' ? (
+              <>
+                还没有账号？
+                <button
+                  type="button"
+                  className="login-card__link"
+                  onClick={() => switchTab('register')}
+                >
+                  立即注册
+                </button>
+              </>
+            ) : (
+              <>
+                已有账号？
+                <button
+                  type="button"
+                  className="login-card__link"
+                  onClick={() => switchTab('login')}
+                >
+                  去登录
+                </button>
+              </>
+            )}
+          </p>
+
+          <p className="login-card__footnote">登录后可选择或创建团队</p>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+// ──── 图标组件（不变）────
+
+function ChatIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v6A2.5 2.5 0 0 1 16.5 15H10l-4 4v-4.2A2.5 2.5 0 0 1 5 12.5v-6z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function BotIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <rect x="5" y="8" width="14" height="11" rx="3" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="9.5" cy="13" r="1.2" fill="currentColor" />
+      <circle cx="14.5" cy="13" r="1.2" fill="currentColor" />
+      <path d="M12 4v4M8 19v2M16 19v2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function CodeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M9 7L4 12l5 5M15 7l5 5-5 5"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function MailIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M4 7l8 6 8-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function UserIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M5 20c1.2-3.5 3.8-5.5 7-5.5s5.8 2 7 5.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+function LockIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <rect x="5" y="10" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M8 10V7a4 4 0 0 1 8 0v3"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+function EyeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  )
+}
+
+function GithubIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M12 2C6.48 2 2 6.58 2 12.26c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.48 0-.24-.01-.87-.01-1.7-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.55-1.14-4.55-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.7 0 0 .84-.27 2.75 1.05A9.2 9.2 0 0 1 12 6.84c.85 0 1.71.12 2.51.35 1.9-1.32 2.74-1.05 2.74-1.05.55 1.4.2 2.44.1 2.7.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .26.18.59.69.48A10.04 10.04 0 0 0 22 12.26C22 6.58 17.52 2 12 2z" />
+    </svg>
   )
 }

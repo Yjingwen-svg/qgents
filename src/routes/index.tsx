@@ -17,6 +17,9 @@ import { CreateProjectPage } from '@/pages/CreateProject/CreateProjectPage'
 import { TeamAuthorizedReposPage } from '@/pages/GitHubIntegration/TeamAuthorizedReposPage'
 import { ProjectDetailLayout } from '@/pages/ProjectDetail/ProjectDetailLayout'
 import { RequirementChatPage } from '@/pages/ProjectDetail/RequirementChatPage'
+import { DiffReviewPage } from '@/pages/ProjectDetail/DiffReviewPage'
+import { NotFoundPage } from '@/pages/NotFoundPage'
+import { ForbiddenPage } from '@/pages/ForbiddenPage'
 import {
   OverviewPage,
   TasksPage,
@@ -69,27 +72,35 @@ export function AppRouter() {
               <Route path="integrations/github/bind-repo" element={<BindRepoToProjectPage />} />
 
               <Route path="projects/:projectId" element={<ProjectDetailLayout />}>
-                {/* 默认进入「登录功能」需求群聊 */}
-                <Route index element={<Navigate to="req-chat/login" replace />} />
+                {/* 默认进入项目总群（由 ProjectDetailLayout 根据群列表跳转） */}
+                <Route index element={<Navigate to="req-chat" replace />} />
                 <Route path="overview" element={<OverviewPage />} />
 
                 {/*
-                  需求群聊：每个需求独立路由，IM 外壳相同、会话按 reqId 隔离
+                  群聊：每个群独立路由，IM 外壳相同、会话按 groupId 隔离
+                  req-chat 无参数时由 ProjectDetailLayout 重定向到项目总群
                 */}
-                <Route path="req-chat/:reqId" element={<RequirementChatPage />} />
-                <Route path="req-chat" element={<Navigate to="login" replace />} />
+                <Route path="req-chat/:groupId" element={<RequirementChatPage />} />
+                <Route path="req-chat" element={<RequirementChatPage />} />
 
                 <Route path="tasks" element={<TasksPage />} />
                 <Route path="workflow" element={<WorkflowPage />} />
                 <Route path="agents" element={<AgentsPage />} />
                 <Route path="skills" element={<SkillsPage />} />
                 <Route path="memory" element={<MemoryPage />} />
+                <Route path="code/diff/:branchId" element={<DiffReviewPage />} />
                 <Route path="code" element={<CodePage />} />
                 <Route path="testset" element={<TestsetPage />} />
                 <Route path="members" element={<MembersPage />} />
                 <Route path="settings" element={<SettingsPage />} />
               </Route>
+
+              {/* 已登录用户 → 404 */}
+              <Route path="*" element={<NotFoundPage />} />
             </Route>
+
+            {/* 403 页面 */}
+            <Route path="/403" element={<ForbiddenPage />} />
           </Route>
 
           <Route path="/" element={<Navigate to={PATHS.LOGIN} replace />} />

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Drawer,
@@ -18,6 +19,8 @@ import {
 } from '@ant-design/icons'
 import { useAuth } from '@/context/AuthContext'
 import { usePersonalCenter } from '@/context/PersonalCenterContext'
+import { useCurrentTeamId } from '@/store/appUiStore'
+import { CreateProjectModal } from '@/components/CreateProjectModal'
 import { PATHS } from '@/routes/paths'
 
 const { Title, Text } = Typography
@@ -47,8 +50,6 @@ const DEMO_TEAM_TREE = [
   },
 ]
 
-const DEFAULT_TEAM_FOR_CREATE_PROJECT = 'team-xinghe'
-
 /**
  * 个人中心 —— Ant Design Drawer
  * 明确不包含「当前空间」「账号设置」
@@ -58,6 +59,8 @@ export function PersonalCenter() {
   const { token } = theme.useToken()
   const { user, logout } = useAuth()
   const { open, closePersonalCenter } = usePersonalCenter()
+  const currentTeamId = useCurrentTeamId()
+  const [createOpen, setCreateOpen] = useState(false)
 
   const name = user?.displayName ?? '用户'
   const email = user?.email ?? '—'
@@ -72,6 +75,16 @@ export function PersonalCenter() {
   function handleNav(to: string) {
     closePersonalCenter()
     navigate(to)
+  }
+
+  function handleCreateProject() {
+    // 未进入任何团队时，先回到团队列表选团队
+    if (!currentTeamId) {
+      closePersonalCenter()
+      navigate(PATHS.MY_TEAMS)
+      return
+    }
+    setCreateOpen(true)
   }
 
   return (
@@ -144,15 +157,21 @@ export function PersonalCenter() {
             创建团队
           </Button>
         </Link>
-        <Link to={PATHS.createProject(DEFAULT_TEAM_FOR_CREATE_PROJECT)} onClick={closePersonalCenter}>
-          <Button block icon={<FolderAddOutlined />}>
-            创建项目
-          </Button>
-        </Link>
+        <Button block icon={<FolderAddOutlined />} onClick={handleCreateProject}>
+          创建项目
+        </Button>
         <Button block danger icon={<LogoutOutlined />} onClick={handleLogout}>
           退出登录
         </Button>
       </Space>
+
+      {currentTeamId && (
+        <CreateProjectModal
+          teamId={currentTeamId}
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+        />
+      )}
     </Drawer>
   )
 }

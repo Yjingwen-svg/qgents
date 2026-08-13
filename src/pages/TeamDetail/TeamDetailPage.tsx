@@ -11,11 +11,12 @@ import {
   TeamOutlined,
 } from '@ant-design/icons'
 import { Button, Spin } from 'antd'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
+import { CreateProjectModal } from '@/components/CreateProjectModal'
 import { useAppUiStore } from '@/store/appUiStore'
 import type { Project, TeamMember } from '@/types'
 import './TeamDetailPage.css'
@@ -102,7 +103,7 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
 export function TeamDetailPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
   const [activeView, setActiveView] = useState<TeamDetailView>('projects')
-  const navigate = useNavigate()
+  const [createOpen, setCreateOpen] = useState(false)
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
 
   // 进入团队详情即记录当前团队，供顶部「团队首页」按钮回到此团队
@@ -208,7 +209,7 @@ export function TeamDetailPage() {
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => navigate(PATHS.createProject(teamId))}
+            onClick={() => setCreateOpen(true)}
           >
             创建项目
           </Button>
@@ -293,6 +294,12 @@ export function TeamDetailPage() {
           <p className="team-detail__muted">当前接口没有待处理项目邀请列表，这里先保留原型中的信息区位置。</p>
         </section>
       </aside>
+
+      <CreateProjectModal
+        teamId={teamId}
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+      />
     </div>
   )
 }

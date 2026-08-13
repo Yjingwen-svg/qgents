@@ -99,15 +99,7 @@ export function MemoryPage() {
   )
 }
 
-export function CodePage() {
-  return (
-    <ProjectSectionPage
-      section="code"
-      title="代码与 Branch"
-      todos={['TODO: 仓库绑定 / 分支列表', 'TODO: Diff 预览、手动创建 MR']}
-    />
-  )
-}
+export { CodePage } from './CodePage'
 
 export function TestsetPage() {
   return (

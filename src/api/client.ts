@@ -52,11 +52,15 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   })
 
   if (!res.ok) {
-    let errBody: unknown
-    try {
-      errBody = await res.json()
-    } catch {
-      errBody = await res.text()
+    // 响应体只能读一次：先 text，再尝试 JSON.parse
+    const raw = await res.text()
+    let errBody: unknown = raw || undefined
+    if (raw) {
+      try {
+        errBody = JSON.parse(raw) as unknown
+      } catch {
+        // 非 JSON 保留原文
+      }
     }
     throw new ApiError(`Request failed: ${res.status}`, res.status, errBody)
   }

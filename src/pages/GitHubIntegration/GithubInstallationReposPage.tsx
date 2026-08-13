@@ -1,6 +1,6 @@
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Typography,
   Button,
@@ -11,14 +11,19 @@ import {
   Spin,
   Alert,
   Table,
+  App,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { ArrowLeftOutlined, LinkOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, LinkOutlined, ReloadOutlined } from '@ant-design/icons'
 import { githubApi } from '@/api/github'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
-import type { GithubAuthorizedRepository, GithubInstallation } from '@/types/github'
+import {
+  isGithubRepoBindable,
+  type GithubAuthorizedRepository,
+  type GithubInstallation,
+} from '@/types/github'
 
 const { Title, Paragraph, Text } = Typography
 
@@ -35,22 +40,20 @@ const { Title, Paragraph, Text } = Typography
 //   /** 与 Qgents 的同步状态；缺省时前端按未同步展示 */
 //   syncStatus?: 'SYNCED' | 'NOT_SYNCED' | 'SYNCING' | 'FAILED'
 // }
-function syncStatusCell(status: GithubAuthorizedRepository['syncStatus']) {
-  switch (status) {
-    case 'SYNCED':
-      return (
-        <Text style={{ color: '#3fb950' }}>
-          <span style={{ marginRight: 6 }}>●</span>已同步
-        </Text>
-      )
-    case 'SYNCING':
-      return <Text type="warning">● 同步中</Text>
-    case 'FAILED':
-      return <Text type="danger">● 同步失败</Text>
-    case 'NOT_SYNCED':
-    default:
-      return <Text type="secondary">● 未同步</Text>
-  }
+// 已冻结见 docs：主键为 id；visibility 替代 private；metadataSyncedAt + authorizationStatus 替代 syncStatus。
+
+function visibilityTag(visibility: GithubAuthorizedRepository['visibility']) {
+  if (visibility === 'PRIVATE') return <Tag>Private</Tag>
+  if (visibility === 'INTERNAL') return <Tag>Internal</Tag>
+  return <Tag color="blue">Public</Tag>
+}
+
+function authorizationTag(status: GithubAuthorizedRepository['authorizationStatus']) {
+  return status === 'AUTHORIZED' ? (
+    <Tag color="success">已授权</Tag>
+  ) : (
+    <Tag color="error">已撤销</Tag>
+  )
 }
 
 /**
@@ -63,6 +66,8 @@ function syncStatusCell(status: GithubAuthorizedRepository['syncStatus']) {
  */
 export function GithubInstallationReposPage() {
   const navigate = useNavigate()
+  const { message } = App.useApp()
+  const queryClient = useQueryClient()
   const { installationId = '' } = useParams<{ installationId: string }>()
   const [searchParams] = useSearchParams()
   const teamId = searchParams.get('teamId') || 'team-xinghe'//拿两个ID,一个是安装记录ID,还有一个是团队ID
@@ -81,7 +86,7 @@ export function GithubInstallationReposPage() {
 // 缓存计算结果，不要没事反复循环查找
 // 从一堆安装记录当中找到当前所点击的安装记录,主要还是通过路由地址进行校准
   const installation: GithubInstallation | undefined = useMemo(
-    () => installationsQuery.data?.find((i) => i.installationId === installationId),//查找当前地址栏url和安装记录ID是否一致
+    () => installationsQuery.data?.find((i) => i.id === installationId),//查找当前地址栏url和安装记录ID是否一致
     [installationsQuery.data, installationId],
   )
   // GitHub App 安装被删除 / 解绑了,仓库记录还保留在 Qgents 系统里，但关联关系失效，installationId 置空
@@ -93,9 +98,20 @@ export function GithubInstallationReposPage() {
   }, [reposQuery.data, installationId])
 // 仓库列表更新,安装id发生变化
 
+  const syncMutation = useMutation({
+    mutationFn: () => githubApi.syncInstallation(teamId, installationId),
+    onSuccess: async () => {
+      message.success('已刷新授权仓库')
+      await queryClient.invalidateQueries({ queryKey: queryKeys.githubInstallations(teamId) })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.githubTeamRepositories(teamId) })
+    },
+    onError: (error) => {
+      message.error(formatApiError(error))
+    },
+  })
 
   const accountLabel =
-    installation?.accountType === 'Organization' ? 'GitHub 组织' : 'GitHub 个人账号'
+    installation?.accountType === 'ORGANIZATION' ? 'GitHub 组织' : 'GitHub 个人账号'
 
   const columns: ColumnsType<GithubAuthorizedRepository> = [
     {
@@ -107,7 +123,8 @@ export function GithubInstallationReposPage() {
           <a href={repo.githubUrl} target="_blank" rel="noopener noreferrer">
             {repo.fullName}
           </a>
-          {repo.private ? <Tag>Private</Tag> : <Tag color="blue">Public</Tag>}
+          {visibilityTag(repo.visibility)}
+          {repo.archived ? <Tag>已归档</Tag> : null}
           <a href={repo.githubUrl} target="_blank" rel="noopener noreferrer">
             <LinkOutlined />
           </a>
@@ -120,38 +137,54 @@ export function GithubInstallationReposPage() {
       key: 'defaultBranch',
       width: 140,
       align: 'center',
-      render: (branch: string | undefined) => branch || '—',
+      render: (branch: string | null | undefined) => branch || '—',
     },
     {
-      title: '同步状态',
-      dataIndex: 'syncStatus',
-      key: 'syncStatus',
-      width: 140,
-      render: (status: GithubAuthorizedRepository['syncStatus'] | undefined) =>
-        syncStatusCell(status ?? 'NOT_SYNCED'),
+      title: '授权状态',
+      dataIndex: 'authorizationStatus',
+      key: 'authorizationStatus',
+      width: 110,
+      render: (status: GithubAuthorizedRepository['authorizationStatus']) =>
+        authorizationTag(status),
+    },
+    {
+      title: '元数据同步',
+      dataIndex: 'metadataSyncedAt',
+      key: 'metadataSyncedAt',
+      width: 180,
+      render: (at: string | undefined) => at || '—',
     },
     {
       title: '操作',
       key: 'action',
       width: 160,
       align: 'right',
-      render: (_value, repo) => (
-        <Button
-          type="primary"
-          size="small"
-          onClick={() =>
-            navigate(
-              PATHS.bindRepoToProject(teamId, {
-                installationId: repo.installationId || installationId,
-                repositoryId: repo.repositoryId,
-                fullName: repo.fullName,
-              }),
-            )
-          }
-        >
-          绑定该仓库到项目
-        </Button>
-      ),
+      render: (_value, repo) => {
+        const bindable = isGithubRepoBindable(repo, installation)
+        return (
+          <Button
+            type="primary"
+            size="small"
+            disabled={!bindable}
+            title={
+              bindable
+                ? undefined
+                : '当前仓库不可绑定：需已授权、未归档、默认分支非空，且 Installation 为 ACTIVE。请刷新授权仓库信息。'
+            }
+            onClick={() =>
+              navigate(
+                PATHS.bindRepoToProject(teamId, {
+                  installationId: repo.installationId || installationId,
+                  repositoryId: repo.id,
+                  fullName: repo.fullName,
+                }),
+              )
+            }
+          >
+            绑定该仓库到项目
+          </Button>
+        )
+      },
     },
   ]
 
@@ -163,16 +196,36 @@ export function GithubInstallationReposPage() {
         </Button>
       </Link>
 
-      <Title level={2} style={{ marginTop: 0, marginBottom: 8 }}>
-        {installation?.accountLogin ?? installationId} · 已授权仓库
-      </Title>
-      <Paragraph type="secondary">
-        {installation ? accountLabel : '加载安装信息…'}
-        {' · '}
-        installationId: <Text code>{installationId}</Text>
-        {' · '}
-        teamId: <Text code>{teamId}</Text>
-      </Paragraph>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 16,
+          marginBottom: 8,
+        }}
+      >
+        <div>
+          <Title level={2} style={{ marginTop: 0, marginBottom: 8 }}>
+            {installation?.accountLogin ?? installationId} · 已授权仓库
+          </Title>
+          <Paragraph type="secondary">
+            {installation ? accountLabel : '加载安装信息…'}
+            {' · '}
+            installationId: <Text code>{installationId}</Text>
+            {' · '}
+            teamId: <Text code>{teamId}</Text>
+          </Paragraph>
+        </div>
+        <Button
+          icon={<ReloadOutlined />}
+          loading={syncMutation.isPending}
+          disabled={!installationId}
+          onClick={() => syncMutation.mutate()}
+        >
+          刷新授权仓库
+        </Button>
+      </div>
 
       <Card>
         {reposQuery.isLoading || installationsQuery.isLoading ? (
@@ -189,7 +242,7 @@ export function GithubInstallationReposPage() {
           </Empty>
         ) : (
           <Table
-            rowKey="repositoryId"
+            rowKey="id"
             columns={columns}
             dataSource={repos}
             pagination={false}

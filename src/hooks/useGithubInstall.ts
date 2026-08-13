@@ -5,14 +5,15 @@ import { queryKeys } from '@/query/queryKeys'
 import { formatApiError } from '@/utils/formatApiError'
 import type { GithubInstallation } from '@/types/github'
 
-export type GithubAuthStatus = 'AUTHORIZED' | 'NOT_AUTHORIZED' | 'EXPIRED'
+export type GithubAuthStatus = 'AUTHORIZED' | 'NOT_AUTHORIZED' | 'SUSPENDED' | 'DELETED'
 
 export function deriveGithubAuthStatus(
   installations: GithubInstallation[] | undefined,
 ): GithubAuthStatus {
   if (!installations || installations.length === 0) return 'NOT_AUTHORIZED'
   if (installations.some((i) => i.status === 'ACTIVE')) return 'AUTHORIZED'
-  return 'EXPIRED'
+  if (installations.some((i) => i.status === 'SUSPENDED')) return 'SUSPENDED'
+  return 'DELETED'
 }
 
 /**
@@ -83,7 +84,9 @@ export function githubAuthActionLabel(status: GithubAuthStatus): string {
       return '安装 GitHub App'
     case 'AUTHORIZED':
       return '添加/调整授权仓库'
-    case 'EXPIRED':
+    case 'SUSPENDED':
+      return '安装已暂停，请到 GitHub 恢复授权'
+    case 'DELETED':
       return '重新授权'
   }
 }

@@ -16,6 +16,12 @@ export type {
 } from './message'
 export type { Task, TaskStatus } from './task'
 export type {
+  BranchHealthStatus,
+  BranchTestStatus,
+  BranchRelatedTask,
+  ProjectBranchRow,
+} from './codeBranch'
+export type {
   GithubInstallation,
   GithubInstallationRedirect,
   GithubAuthorizedRepository,

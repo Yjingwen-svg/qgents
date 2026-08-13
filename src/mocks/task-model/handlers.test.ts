@@ -27,8 +27,53 @@ describe('independent Task model mock chain', () => {
     expect(steps.data).toHaveLength(3)
     expect(steps.data[1]?.dependencies).toEqual([steps.data[0]?.id])
     const runs = await taskRunsApi.list('project-create', task.id)
-    expect(runs.data).toHaveLength(1)
+    expect(runs.data.length).toBeGreaterThanOrEqual(2)
+    expect(runs.data.every((run) => run.taskId === task.id)).toBe(true)
     expect(runs.data[0]).not.toHaveProperty('artifactSummary')
+  })
+
+  it('walks one newly-created resource chain through input, retry, Diff review, and Task cancel', async () => {
+    const projectId = 'project-e2e'
+    const task = await tasksApi.create(projectId, {
+      requirementGroupId: 'group-e2e',
+      title: 'End-to-end Task',
+      requirement: 'Verify the complete Task model chain',
+      repositoryIds: ['repository-e2e'],
+      baseRef: 'main',
+    })
+    const fetchedTask = await tasksApi.get(projectId, task.id)
+    const steps = (await tasksApi.listSteps(projectId, task.id)).data
+    const runs = (await taskRunsApi.list(projectId, task.id)).data
+    expect(fetchedTask.id).toBe(task.id)
+    expect(steps.length).toBeGreaterThanOrEqual(3)
+    expect(runs.every((run) => run.taskId === task.id && steps.some((step) => step.id === run.taskStepId))).toBe(true)
+
+    const inputRun = runs.find((run) => run.status === 'WAITING_INPUT')!
+    const inputRequests = await taskRunsApi.inputRequests(projectId, inputRun.id)
+    const inputRequest = inputRequests.data[0]!
+    expect(inputRequest.taskRunId).toBe(inputRun.id)
+    expect((await taskRunsApi.logs(projectId, inputRun.id)).data[0]?.id).toContain(inputRun.id)
+    expect((await taskRunsApi.executionContext(projectId, inputRun.id)).workspaceId).toBe(task.workspaceId)
+    expect((await taskRunsApi.replyInputRequest(projectId, inputRun.id, inputRequest.id, { answer: { value: 'main' } })).status).toBe('ANSWERED')
+
+    const failedRun = runs.find((run) => run.status === 'FAILED')!
+    const retriedRun = await taskRunsApi.retry(projectId, failedRun.id)
+    expect(retriedRun.id).not.toBe(failedRun.id)
+    expect(retriedRun.taskId).toBe(task.id)
+    expect(retriedRun.taskStepId).toBe(failedRun.taskStepId)
+    expect((await taskRunsApi.get(projectId, failedRun.id)).status).toBe('FAILED')
+    expect((await taskRunsApi.cancel(projectId, retriedRun.id)).status).toBe('CANCELLING')
+
+    const diffs = await diffsApi.list(projectId, { taskId: task.id })
+    expect(diffs.data.length).toBe(2)
+    expect(diffs.data.every((diff) => diff.taskId === task.id && diff.taskStepId === failedRun.taskStepId && diff.taskRunId === failedRun.id)).toBe(true)
+    const firstDiff = await diffsApi.get(projectId, diffs.data[0]!.id)
+    expect(firstDiff.id).toBe(diffs.data[0]!.id)
+    expect((await diffsApi.accept(projectId, diffs.data[0]!.id)).status).toBe('ACCEPTED')
+    expect((await diffsApi.reject(projectId, diffs.data[1]!.id, { reason: 'Needs another review' })).status).toBe('REJECTED')
+
+    expect((await tasksApi.cancel(projectId, task.id)).status).toBe('CANCELLED')
+    expect((await tasksApi.get(projectId, task.id)).status).toBe('CANCELLED')
   })
 
   it('validates required Task fields and rejects unsupported creation fields', async () => {

@@ -2,6 +2,8 @@ import { http, HttpResponse, type HttpHandler, type PathParams } from 'msw'
 import type {
   DiffComment,
   DiffRejectInput,
+  ExecutionContext,
+  InputRequest,
   Task,
   TaskCreateInput,
   TaskStepCreateInput,
@@ -20,6 +22,7 @@ import {
 import {
   createTaskModelScenario,
   createTaskModelScenarioByName,
+  addDiff,
   taskModelScenarioNames,
   type TaskModelScenario,
 } from './fixtures'
@@ -169,13 +172,44 @@ function createTaskResources(store: TaskModelStore, input: TaskCreateInput, proj
   }
   for (const step of [planner, developer, tester]) store.taskSteps.set(step.id, step)
 
-  const run: TaskRunDetail = {
+  const inputRun: TaskRunDetail = {
     id: `run-${planner.id}`, projectId, taskId: id, taskStepId: planner.id, agentId: planner.agentId ?? 'agent-planner',
-    role: planner.role, status: 'QUEUED', retryOfTaskRunId: null, artifactSummary: { diffs: { count: 0, byStatus: {} } },
-    startedAt: null, finishedAt: null, durationMs: null, createdAt, updatedAt: createdAt,
+    role: planner.role, status: 'WAITING_INPUT', retryOfTaskRunId: null, artifactSummary: { diffs: { count: 0, byStatus: {} } },
+    startedAt: createdAt, finishedAt: null, durationMs: null, createdAt, updatedAt: createdAt,
   }
-  store.taskRuns.set(run.id, run)
-  store.taskRunLogs.set(run.id, [])
+  const failedRun: TaskRunDetail = {
+    id: `run-${developer.id}`, projectId, taskId: id, taskStepId: developer.id, agentId: developer.agentId ?? 'agent-developer',
+    role: developer.role, status: 'FAILED', retryOfTaskRunId: null, artifactSummary: { diffs: { count: 2, byStatus: { PENDING_REVIEW: 2 } } },
+    startedAt: createdAt, finishedAt: new Date(Date.now() + 1).toISOString(), durationMs: 1_000, createdAt, updatedAt: createdAt,
+  }
+  for (const run of [inputRun, failedRun]) {
+    store.taskRuns.set(run.id, run)
+    store.taskRunLogs.set(run.id, [{
+      id: `log-${run.id}-1`, sequence: 1, node: run.role, content: `${run.role} started`, timestamp: createdAt,
+    }])
+    const context: ExecutionContext = {
+      workspaceId: task.workspaceId,
+      sandboxStatus: 'RUNNING',
+      repositoryId,
+      baseRef: input.baseRef,
+      headRef: input.baseRef,
+      startedAt: run.startedAt,
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    }
+    store.executionContexts.set(run.id, context)
+  }
+  const inputRequest: InputRequest = {
+    id: `input-${inputRun.id}`,
+    taskRunId: inputRun.id,
+    kind: 'INPUT',
+    status: 'PENDING',
+    prompt: 'Choose a base branch',
+    options: [{ value: input.baseRef, label: input.baseRef }],
+    createdAt,
+  }
+  store.inputRequests.set(inputRequest.id, inputRequest)
+  addDiff(store, task, developer, 'PENDING_REVIEW', 'created-pending-1', failedRun.id)
+  addDiff(store, task, developer, 'PENDING_REVIEW', 'created-pending-2', failedRun.id)
   return task
 }
 

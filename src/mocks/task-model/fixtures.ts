@@ -153,12 +153,19 @@ function addInputRequest(store: TaskModelStore, run: TaskRunDetail, kind: InputR
   store.inputRequests.set(request.id, request)
 }
 
-function addDiff(store: TaskModelStore, task: Task, step: TaskStep, status: DiffDetail['status'], suffix: string): void {
+export function addDiff(
+  store: TaskModelStore,
+  task: Task,
+  step: TaskStep,
+  status: DiffDetail['status'],
+  suffix: string,
+  taskRunId = `run-${step.id}`,
+): void {
   const diff: DiffDetail = {
     id: `diff-${task.projectId}-${suffix}`,
     projectId: task.projectId,
     taskId: task.id,
-    taskRunId: `run-${step.id}`,
+    taskRunId,
     taskStepId: step.id,
     requirementGroupId: task.requirementGroupId,
     workspaceId: task.workspaceId,

@@ -49,14 +49,17 @@ function getRecentActivities(projects: Project[]) {
 }
 
 function MemberPreview({ member }: { member: TeamMember }) {
+  // 后端成员接口暂未返回 displayName/email，缺失时用 userId 兜底，避免渲染崩溃
+  const displayName = member.displayName || member.userId
+  const email = member.email || '—'
   return (
     <li className="team-detail__member-row">
       <span className="team-detail__member-avatar" aria-hidden>
-        {member.displayName.slice(0, 1)}
+        {displayName.slice(0, 1)}
       </span>
       <div className="team-detail__member-copy">
-        <strong>{member.displayName}</strong>
-        <span>{member.email}</span>
+        <strong>{displayName}</strong>
+        <span>{email}</span>
       </div>
       <span className="team-detail__member-role">{getRoleLabel(member.role)}</span>
     </li>
@@ -75,7 +78,7 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
       <div className="team-detail__project-body">
         <div className="team-detail__project-heading">
           <h3>{project.name}</h3>
-          <span className="team-detail__project-role">{getRoleLabel(project.myRole)}</span>
+          <span className="team-detail__project-role">{getRoleLabel(project.role)}</span>
         </div>
         <p>{project.description || '暂无项目简介'}</p>
         <div className="team-detail__project-meta">
@@ -162,7 +165,7 @@ export function TeamDetailPage() {
             <h2>{team.name}</h2>
             <p>{team.description || '团队项目协作空间'}</p>
           </div>
-          <span className="team-detail__team-role">{getRoleLabel(team.myRole)}</span>
+          <span className="team-detail__team-role">{getRoleLabel(team.role)}</span>
         </div>
 
         <nav className="team-detail__nav">

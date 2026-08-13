@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import type { GithubAuthorizedRepository, GithubInstallation } from '@/types/github'
 import type { Group, GroupMember, Message } from '@/types/group'
-import type { Notification } from '@/types'
+import type { Memory, Notification } from '@/types'
 
 // ══════════════════════════════════════════════
 // Mock 数据
@@ -20,7 +20,7 @@ const MOCK_TEAMS = [
     name: '星河工作室',
     description: '全栈开发团队，专注内部工具与开源项目',
     createdAt: '2026-06-01T08:00:00Z',
-    myRole: 'TEAM_OWNER' as const,
+    role: 'TEAM_OWNER' as const,
     memberCount: 5,
   },
   {
@@ -28,7 +28,7 @@ const MOCK_TEAMS = [
     name: '广工创新团队',
     description: '校园技术团队，AI 与 Web 方向',
     createdAt: '2026-05-15T08:00:00Z',
-    myRole: 'TEAM_MEMBER' as const,
+    role: 'TEAM_MEMBER' as const,
     memberCount: 8,
   },
 ]
@@ -41,14 +41,14 @@ const MOCK_TEAM_MEMBERS = [
   { userId: 'user-005', displayName: '赵架构', email: 'zhao@example.com', role: 'TEAM_MEMBER' as const },
 ]
 
-const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: string; description: string; createdAt: string; myRole: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'; repositoryCount: number }>> = {
+const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: string; description: string; createdAt: string; role: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'; repositoryCount: number }>> = {
   'team-owned-001': [
-    { id: 'proj-001', teamId: 'team-owned-001', name: 'Qgents', description: '团队多人 + 多 Agent 云端协作开发平台', createdAt: '2026-07-01T08:00:00Z', myRole: 'PROJECT_ADMIN', repositoryCount: 3 },
-    { id: 'proj-002', teamId: 'team-owned-001', name: '宠影记', description: '宠物健康管理小程序', createdAt: '2026-07-15T08:00:00Z', myRole: 'PROJECT_ADMIN', repositoryCount: 1 },
+    { id: 'proj-001', teamId: 'team-owned-001', name: 'Qgents', description: '团队多人 + 多 Agent 云端协作开发平台', createdAt: '2026-07-01T08:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 3 },
+    { id: 'proj-002', teamId: 'team-owned-001', name: '宠影记', description: '宠物健康管理小程序', createdAt: '2026-07-15T08:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 1 },
   ],
   'team-joined-001': [
-    { id: 'proj-003', teamId: 'team-joined-001', name: 'AI 决策系统', description: '校园选课推荐与学业规划', createdAt: '2026-06-10T08:00:00Z', myRole: 'PROJECT_MEMBER', repositoryCount: 2 },
-    { id: 'proj-004', teamId: 'team-joined-001', name: '校园助手', description: '课表、成绩、图书馆一站式查询', createdAt: '2026-08-01T08:00:00Z', myRole: 'PROJECT_MEMBER', repositoryCount: 1 },
+    { id: 'proj-003', teamId: 'team-joined-001', name: 'AI 决策系统', description: '校园选课推荐与学业规划', createdAt: '2026-06-10T08:00:00Z', role: 'PROJECT_MEMBER', repositoryCount: 2 },
+    { id: 'proj-004', teamId: 'team-joined-001', name: '校园助手', description: '课表、成绩、图书馆一站式查询', createdAt: '2026-08-01T08:00:00Z', role: 'PROJECT_MEMBER', repositoryCount: 1 },
   ],
 }
 
@@ -82,7 +82,7 @@ const MOCK_GROUPS: Record<string, Group[]> = {
       status: 'ACTIVE',
       latestActivityAt: '2026-08-12T10:03:00Z',
       unreadCount: 2,
-      isPinned: false,
+      isPinned: true,
       isArchived: false,
     },
     {
@@ -96,6 +96,18 @@ const MOCK_GROUPS: Record<string, Group[]> = {
       unreadCount: 0,
       isPinned: false,
       isArchived: false,
+    },
+    {
+      id: 'group-home-proj-001',
+      projectId: 'proj-001',
+      type: 'REQUIREMENT',
+      title: '首页改版',
+      description: '旧版首页重构，已完成并归档',
+      status: 'ARCHIVED',
+      latestActivityAt: '2026-08-01T09:00:00Z',
+      unreadCount: 0,
+      isPinned: false,
+      isArchived: true,
     },
   ],
 }
@@ -226,6 +238,18 @@ function getGroupMembers(projectId: string, groupId: string): GroupMember[] {
   return [...users, ...(MOCK_GROUP_AGENTS[groupId] ?? [])]
 }
 
+// 最新消息摘要（会话列表展示用）：从 MOCK_MESSAGES 取该群最后一条消息，与消息列表保持一致
+function getLatestMessageSummary(groupId: string): Group['latestMessage'] {
+  const msgs = MOCK_MESSAGES[groupId] ?? []
+  const last = msgs[msgs.length - 1]
+  if (!last) return undefined
+  const text =
+    last.type === 'CODE'
+      ? ((last.content as { code?: string }).code ?? '').split('\n')[0]
+      : (last.content as { text?: string }).text ?? ''
+  return { senderName: last.senderName, text }
+}
+
 // ══════════════════════════════════════════════
 // 通知中心 Mock 数据 —— 对齐分工安排「通知中心」（本轮前端 Mock）
 // ══════════════════════════════════════════════
@@ -286,6 +310,112 @@ const MOCK_NOTIFICATIONS: Notification[] = [
     resourceId: 'task-001',
   },
 ]
+
+// ══════════════════════════════════════════════
+// 共享 Memory Mock 数据 —— 对齐接口文档 v1.1.8 §9
+// ══════════════════════════════════════════════
+
+let nextMemoryId = 100
+const MOCK_MEMORIES: Record<string, Memory[]> = {
+  'proj-001': [
+    {
+      id: 'mem-1',
+      projectId: 'proj-001',
+      title: '密码存储约定',
+      content: '密码仅存储 bcrypt 哈希，登录时使用 bcrypt.compare 校验，不得明文存储或日志输出。',
+      category: 'ENGINEERING_DECISION',
+      tags: ['auth', 'security'],
+      status: 'APPROVED',
+      source: 'MESSAGE',
+      sources: [{ groupId: 'group-login-proj-001', messageId: 'msg-login-004' }],
+      creator: { id: 'user-001', displayName: '陈同学' },
+      reviewer: { id: 'user-002', displayName: '张工' },
+      reviewedAt: '2026-08-12T11:00:00Z',
+      createdAt: '2026-08-12T10:30:00Z',
+      updatedAt: '2026-08-12T11:00:00Z',
+    },
+    {
+      id: 'mem-2',
+      projectId: 'proj-001',
+      title: 'API 响应统一信封',
+      content: '所有接口统一返回 { data, requestId }，错误返回 { error, requestId }，前端 client.ts 已按此解包。',
+      category: 'ENGINEERING_DECISION',
+      tags: ['api', 'convention'],
+      status: 'APPROVED',
+      source: 'MANUAL',
+      sources: [],
+      creator: { id: 'user-001', displayName: '陈同学' },
+      reviewer: { id: 'user-002', displayName: '张工' },
+      reviewedAt: '2026-08-11T15:00:00Z',
+      createdAt: '2026-08-11T14:00:00Z',
+      updatedAt: '2026-08-11T15:00:00Z',
+    },
+    {
+      id: 'mem-3',
+      projectId: 'proj-001',
+      title: '支付回调幂等处理',
+      content: '支付回调需带 Idempotency-Key，重复通知返回首次结果，避免重复入账。',
+      category: 'ENGINEERING_DECISION',
+      tags: ['pay', 'idempotency'],
+      status: 'PENDING_REVIEW',
+      source: 'MESSAGE',
+      sources: [{ groupId: 'group-pay-proj-001', messageId: 'msg-pay-001' }],
+      creator: { id: 'user-002', displayName: '张工' },
+      reviewer: null,
+      reviewedAt: null,
+      createdAt: '2026-08-13T00:30:00Z',
+      updatedAt: '2026-08-13T00:30:00Z',
+    },
+    {
+      id: 'mem-4',
+      projectId: 'proj-001',
+      title: '登录错误码约定',
+      content: '登录失败统一返回 401 + INVALID_CREDENTIALS，不区分"用户不存在"和"密码错误"以免泄露账号信息。',
+      category: 'ENGINEERING_DECISION',
+      tags: ['auth'],
+      status: 'DRAFT',
+      source: 'MANUAL',
+      sources: [],
+      creator: { id: 'user-001', displayName: '陈同学' },
+      reviewer: null,
+      reviewedAt: null,
+      createdAt: '2026-08-13T01:00:00Z',
+      updatedAt: '2026-08-13T01:00:00Z',
+    },
+    {
+      id: 'mem-5',
+      projectId: 'proj-001',
+      title: '旧版 token 存储方案',
+      content: '早期曾讨论将 token 存 cookie，后废弃改用 localStorage + Bearer 头。',
+      category: 'DEPRECATED',
+      tags: ['auth'],
+      status: 'REJECTED',
+      source: 'MANUAL',
+      sources: [],
+      creator: { id: 'user-003', displayName: '李设计' },
+      reviewer: { id: 'user-002', displayName: '张工' },
+      reviewedAt: '2026-08-10T10:00:00Z',
+      createdAt: '2026-08-10T09:00:00Z',
+      updatedAt: '2026-08-10T10:00:00Z',
+    },
+    {
+      id: 'mem-6',
+      projectId: 'proj-001',
+      title: '初版部署流程',
+      content: '旧版手工部署流程，已被自动化 CI 取代，归档留存。',
+      category: 'PROCESS',
+      tags: ['deploy'],
+      status: 'ARCHIVED',
+      source: 'MANUAL',
+      sources: [],
+      creator: { id: 'user-001', displayName: '陈同学' },
+      reviewer: { id: 'user-002', displayName: '张工' },
+      reviewedAt: '2026-07-20T12:00:00Z',
+      createdAt: '2026-07-20T11:00:00Z',
+      updatedAt: '2026-08-01T00:00:00Z',
+    },
+  ],
+}
 
 // ══════════════════════════════════════════════
 // GitHub 集成 Mock 数据
@@ -468,7 +598,7 @@ export const handlers = [
       name: body.name || '未命名团队',
       description: body.description || '',
       createdAt: new Date().toISOString(),
-      myRole: 'TEAM_OWNER' as const,
+      role: 'TEAM_OWNER' as const,
       memberCount: 1,
     }
     return HttpResponse.json({ data: newTeam }, { status: 201 })
@@ -570,7 +700,7 @@ export const handlers = [
       name: body.name || '未命名项目',
       description: body.description || '',
       createdAt: new Date().toISOString(),
-      myRole: 'PROJECT_ADMIN' as const,
+      role: 'PROJECT_ADMIN' as const,
       repositoryCount: 0,
     }
     // 写回内存，保证后续 GET /projects/:id 能查到
@@ -623,10 +753,12 @@ export const handlers = [
   // ── Group 与消息 ──
   http.get('/api/projects/:projectId/groups', ({ params }) => {
     const projectId = params.projectId as string
-    // memberCount 由群成员派生（= 项目成员 + 群内 Agent），与 GET .../members 保持一致
+    // memberCount 由群成员派生（= 项目成员 + 群内 Agent），与 GET .../members 保持一致；
+    // latestMessage 由消息列表派生，与 GET .../messages 保持一致
     const groups = (MOCK_GROUPS[projectId] ?? []).map((g) => ({
       ...g,
       memberCount: getGroupMembers(projectId, g.id).length,
+      latestMessage: getLatestMessageSummary(g.id),
     }))
     return HttpResponse.json({ data: groups })
   }),
@@ -718,5 +850,127 @@ export const handlers = [
       n.isRead = true
     })
     return HttpResponse.json({ data: null })
+  }),
+
+  // ── 共享 Memory（对齐接口文档 §9）──
+  http.get('/api/projects/:projectId/memories', ({ params }) => {
+    const list = MOCK_MEMORIES[params.projectId as string] ?? []
+    // 文档：默认仅返回 APPROVED；此处返回全量供前端按状态筛选演示
+    return HttpResponse.json({ data: list })
+  }),
+
+  http.post('/api/projects/:projectId/memories', async ({ params, request }) => {
+    const projectId = params.projectId as string
+    const body = (await request.json()) as {
+      title?: string
+      content?: string
+      category?: string
+      tags?: string[]
+    }
+    const memory: Memory = {
+      id: 'mem-' + nextMemoryId++,
+      projectId,
+      title: body.title || '未命名 Memory',
+      content: body.content || '',
+      category: body.category || 'GENERAL',
+      tags: body.tags ?? [],
+      status: 'DRAFT',
+      source: 'MANUAL',
+      sources: [],
+      creator: { id: 'user-001', displayName: '陈同学' },
+      reviewer: null,
+      reviewedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    ;(MOCK_MEMORIES[projectId] ??= []).push(memory)
+    return HttpResponse.json({ data: memory }, { status: 201 })
+  }),
+
+  http.post('/api/projects/:projectId/memories/drafts', async ({ params, request }) => {
+    const projectId = params.projectId as string
+    const body = (await request.json()) as {
+      sourceMessages?: { groupId: string; messageId: string }[]
+      instruction?: string
+    }
+    const src = body.sourceMessages ?? []
+    const memory: Memory = {
+      id: 'mem-' + nextMemoryId++,
+      projectId,
+      title: '群聊生成草稿' + (body.instruction ? `：${body.instruction}` : ''),
+      content: `根据 ${src.length} 条群消息自动生成的草稿，待人工确认。`,
+      category: 'GENERAL',
+      tags: [],
+      status: 'DRAFT',
+      source: 'MESSAGE',
+      sources: src,
+      creator: { id: 'user-001', displayName: '陈同学' },
+      reviewer: null,
+      reviewedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    ;(MOCK_MEMORIES[projectId] ??= []).push(memory)
+    return HttpResponse.json({ data: memory }, { status: 201 })
+  }),
+
+  http.patch('/api/projects/:projectId/memories/:memoryId', async ({ params, request }) => {
+    const list = MOCK_MEMORIES[params.projectId as string] ?? []
+    const memory = list.find((m) => m.id === params.memoryId)
+    if (!memory) {
+      return HttpResponse.json({ error: { code: 'NOT_FOUND', message: 'Memory 不存在' } }, { status: 404 })
+    }
+    const body = (await request.json()) as Partial<Memory>
+    Object.assign(memory, body, { updatedAt: new Date().toISOString() })
+    return HttpResponse.json({ data: memory })
+  }),
+
+  http.post('/api/projects/:projectId/memories/:memoryId/submit-review', ({ params }) => {
+    const memory = (MOCK_MEMORIES[params.projectId as string] ?? []).find(
+      (m) => m.id === params.memoryId,
+    )
+    if (memory) {
+      memory.status = 'PENDING_REVIEW'
+      memory.updatedAt = new Date().toISOString()
+    }
+    return HttpResponse.json({ data: memory })
+  }),
+
+  http.post('/api/projects/:projectId/memories/:memoryId/approve', ({ params }) => {
+    const memory = (MOCK_MEMORIES[params.projectId as string] ?? []).find(
+      (m) => m.id === params.memoryId,
+    )
+    if (memory) {
+      memory.status = 'APPROVED'
+      memory.reviewer = { id: 'user-002', displayName: '张工' }
+      memory.reviewedAt = new Date().toISOString()
+      memory.updatedAt = new Date().toISOString()
+    }
+    return HttpResponse.json({ data: memory })
+  }),
+
+  http.post('/api/projects/:projectId/memories/:memoryId/reject', async ({ params, request }) => {
+    const memory = (MOCK_MEMORIES[params.projectId as string] ?? []).find(
+      (m) => m.id === params.memoryId,
+    )
+    if (memory) {
+      memory.status = 'REJECTED'
+      memory.reviewer = { id: 'user-002', displayName: '张工' }
+      memory.reviewedAt = new Date().toISOString()
+      memory.updatedAt = new Date().toISOString()
+      await request.json().catch(() => ({}))
+    }
+    return HttpResponse.json({ data: memory })
+  }),
+
+  http.post('/api/projects/:projectId/memories/:memoryId/archive', ({ params }) => {
+    const memory = (MOCK_MEMORIES[params.projectId as string] ?? []).find(
+      (m) => m.id === params.memoryId,
+    )
+    if (memory) {
+      memory.status = 'ARCHIVED'
+      memory.updatedAt = new Date().toISOString()
+    }
+    return HttpResponse.json({ data: memory })
   }),
 ]

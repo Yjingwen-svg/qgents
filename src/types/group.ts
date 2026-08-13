@@ -21,6 +21,12 @@ export interface Page<T> {
   }
 }
 
+/** 最新消息摘要（会话列表展示用，对齐分工安排「会话列表」GroupListItem.latestMessage） */
+export interface MessageSummary {
+  senderName?: string
+  text: string
+}
+
 export interface Group {
   id: string
   projectId: string
@@ -30,6 +36,7 @@ export interface Group {
   status: GroupStatus
   memberCount?: number
   latestActivityAt?: string
+  latestMessage?: MessageSummary
   unreadCount?: number
   isPinned?: boolean
   isArchived?: boolean

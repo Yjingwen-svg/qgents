@@ -15,7 +15,12 @@
 .canvasPane { min-width: 0; background: linear-gradient(#fff, #fbfdff); }
 .flowScroll { overflow-x: auto; padding: 82px 34px 70px; }
 .flowTrack { display: flex; align-items: center; justify-content: center; min-width: 870px; }
+.flowLevels { display: flex; align-items: flex-start; justify-content: center; min-width: 870px; gap: 24px; }
+.flowLevelWrap { display: flex; align-items: center; gap: 24px; }
+.flowLevel { display: flex; flex-direction: column; align-items: center; gap: 16px; }
 .flowItem { display: flex; align-items: center; }
+.nodeGroup { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.nodeSelectedGroup { filter: drop-shadow(0 4px 12px rgba(52, 126, 255, .08)); }
 .nodeButton { display: flex; flex-direction: column; width: 148px; min-height: 176px; padding: 15px 13px; color: #18315f; text-align: left; background: #fff; border: 1px solid #cbd8e8; border-radius: 8px; box-shadow: 0 5px 16px rgba(33, 69, 113, .08); cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
 .nodeButton:hover { border-color: #4b8dff; box-shadow: 0 7px 20px rgba(43, 111, 213, .16); transform: translateY(-2px); }
 .nodeSelected { border: 2px solid #347eff; box-shadow: 0 0 0 3px rgba(52, 126, 255, .12); }
@@ -26,6 +31,9 @@
 .nodeLabel { margin-top: 15px; color: #163369; font-size: 16px; font-weight: 650; }
 .nodeAgent { min-height: 36px; margin-top: 8px; color: #6a80a6; font-size: 12px; line-height: 1.5; }
 .nodeStatus { margin-top: auto; }
+.nodeMeta { margin-top: 5px; color: #8a9db9; font-size: 11px; }
+.runHistory { display: flex; flex-direction: column; align-items: center; max-width: 190px; }
+.runHistory :global(.ant-btn), .historyList :global(.ant-btn) { padding: 0; height: auto; text-align: left; white-space: normal; }
 .statusTag { margin: 0; border: 0; font-size: 12px; }
 .status_NOT_STARTED { color: #7387a7; background: #f0f3f7; }
 .status_PLANNING, .status_QUEUED { color: #586e96; background: #eef3fa; }
@@ -50,6 +58,7 @@
 .agentValue { display: inline-flex; align-items: center; gap: 7px; }
 .emptyValue { color: #9aabc2; }
 .detailAlert { margin-top: 12px; }
+.historyList { display: flex; flex-direction: column; gap: 7px; margin-top: 18px; }
 .executionLink { display: flex; align-items: center; gap: 7px; margin-top: 20px; padding: 0; color: #176bd6; background: transparent; border: 0; cursor: pointer; }
 
 @media (max-width: 1199px) {
@@ -64,7 +73,8 @@
   .runHint { margin-left: 0; }
   .workflowLayout { min-height: 0; }
   .flowScroll { overflow-x: visible; padding: 30px 18px; }
-  .flowTrack { min-width: 0; flex-direction: column; }
+  .flowTrack, .flowLevels { min-width: 0; flex-direction: column; }
+  .flowLevelWrap { flex-direction: column; }
   .flowItem { flex-direction: column; width: 100%; }
   .nodeButton { width: min(100%, 320px); min-height: 145px; }
   .connector { width: auto; height: 34px; transform: rotate(90deg); }

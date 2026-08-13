@@ -103,14 +103,3 @@ export { canCancelTaskRun, canRetryTaskRun } from './taskRunCapabilities'
 export { canCancelOrchestrationRun } from './orchestrationRunCapabilities'
 export { canWorkPackageAction } from './workPackageCapabilities'
 export type { WorkPackageAction } from './workPackageCapabilities'
-export type {
-  WorkflowDefinition,
-  WorkflowDefinitionEdge,
-  WorkflowDefinitionNode,
-  WorkflowDisplayStatus,
-  WorkflowNodeKind,
-  WorkflowNodeRuntime,
-  WorkflowRuntimeData,
-  WorkflowStatusSource,
-  WorkflowTaskRun,
-} from './workflow'

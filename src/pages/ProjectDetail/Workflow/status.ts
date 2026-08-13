@@ -1,9 +1,16 @@
-import type {
-  OrchestrationRunStatus,
-  TaskRunStatus,
-  WorkflowDisplayStatus,
-  WorkflowStatusSource,
-} from '@/types'
+import type { TaskRunStatus, TaskStepStatus } from '@/types/task-model'
+
+export type WorkflowDisplayStatus =
+  | 'NOT_STARTED'
+  | 'PLANNING'
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'WAITING_INPUT'
+  | 'WAITING_APPROVAL'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'SKIPPED'
 
 export const workflowStatusLabels: Record<WorkflowDisplayStatus, string> = {
   NOT_STARTED: '未开始',
@@ -18,12 +25,20 @@ export const workflowStatusLabels: Record<WorkflowDisplayStatus, string> = {
   SKIPPED: '已跳过',
 }
 
-export function mapWorkflowStatus(status: WorkflowStatusSource | null | undefined): WorkflowDisplayStatus {
+export function mapTaskStepStatus(status: TaskStepStatus | null | undefined): WorkflowDisplayStatus {
   switch (status) {
-    case 'PLANNING': return 'PLANNING'
-    case 'QUEUED':
-    case 'READY':
-    case 'PENDING': return 'QUEUED'
+    case 'PENDING': return 'NOT_STARTED'
+    case 'RUNNING': return 'RUNNING'
+    case 'SUCCEEDED': return 'COMPLETED'
+    case 'FAILED': return 'FAILED'
+    case 'SKIPPED': return 'SKIPPED'
+    default: return 'NOT_STARTED'
+  }
+}
+
+export function mapTaskRunStatus(status: TaskRunStatus | null | undefined): WorkflowDisplayStatus {
+  switch (status) {
+    case 'QUEUED': return 'QUEUED'
     case 'RUNNING': return 'RUNNING'
     case 'WAITING_INPUT': return 'WAITING_INPUT'
     case 'WAITING_APPROVAL': return 'WAITING_APPROVAL'
@@ -32,16 +47,6 @@ export function mapWorkflowStatus(status: WorkflowStatusSource | null | undefine
     case 'BLOCKED': return 'FAILED'
     case 'CANCELLING':
     case 'CANCELLED': return 'CANCELLED'
-    case 'SKIPPED': return 'SKIPPED'
-    case 'PAUSED': return 'WAITING_INPUT'
     default: return 'NOT_STARTED'
   }
-}
-
-export function mapRunStatus(status: OrchestrationRunStatus | null | undefined): WorkflowDisplayStatus {
-  return mapWorkflowStatus(status)
-}
-
-export function mapTaskRunStatus(status: TaskRunStatus | null | undefined): WorkflowDisplayStatus {
-  return mapWorkflowStatus(status)
 }

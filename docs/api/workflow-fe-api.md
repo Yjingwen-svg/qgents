@@ -1,19 +1,29 @@
-# Workflow Viewer FE-API 待确认
+# Workflow Viewer FE-API
 
-本页只读消费 `system-default-code-delivery`。流程定义是前端集中维护的系统配置，不代表后端运行实例：
+WorkflowViewer 是只读页面，展示指定 Task 的实际执行计划，不读取 workflow template。
 
-- 运行实例：`GET /projects/{projectId}/orchestration-runs` 与 `GET /projects/{projectId}/orchestration-runs/{runId}`。
-- WorkPackage：由运行的 `workPackageIds` 读取 `GET /projects/{projectId}/work-packages/{workPackageId}`。
-- TaskRun：按 WorkPackage 读取 `GET /projects/{projectId}/work-packages/{workPackageId}/task-runs`。
-- Agent：按项目上下文取得 `teamId` 后读取现有 Agent Query；工作流页面不直接读取 fixture 或 Mock Store。
+## 数据链
 
-## 临时展示字段
+页面只消费以下正式资源：
 
-当前正式接口尚未明确节点与 Agent、Skill、Testset 的完整关联 DTO。Mock/API 响应暂时在 TaskRun 上提供 `agentId`、`skillNames`、`testsetNames`、`currentStep`、`waitingMessage`，并保留现有 `agentNode`、`agentRole`、`startedAt`、`finishedAt`、`errorSummary`。这些字段仅用于只读展示，待后端提供正式字段后收敛。
+- `GET /projects/{projectId}/tasks`
+- `GET /projects/{projectId}/tasks/{taskId}`
+- `GET /projects/{projectId}/tasks/{taskId}/steps`
+- `GET /projects/{projectId}/tasks/{taskId}/task-runs`
+- Agent 摘要使用现有 Agent Query；Agent 详情中的 `skillBindings` 用于展示 Skill。
 
-待确认：
+URL 使用 `/app/projects/{projectId}/workflow?taskId={taskId}`。TaskStep 节点 ID 使用 `TaskStep.id`，TaskRun 通过 `taskStepId` 关联；页面不读取 `runId`、`orchestrationRunId`、`workPackageId` 或 `subtaskId`。
 
-1. workflow template 的节点定义、节点顺序和连线是否由服务端提供。
-2. TaskRun 与 Agent、Skill、Testset 的正式关联字段及权限裁剪规则。
-3. 门禁汇总节点的正式状态、错误与执行摘要字段。
-4. OrchestrationRun、WorkPackage、TaskRun 的状态优先级及跳过节点表达方式。
+## 节点组合规则
+
+- 节点完全来自 TaskStep；不补充 Planner、Reviewer、门禁或其他模板节点。
+- `dependencies` 用于构造依赖顺序和并行关系。
+- 缺失依赖和循环依赖只标记异常节点，不阻断其余节点展示。
+- TaskRun 按 `taskStepId` 分组，按更新时间展示最新运行和历史运行。
+- Testset 当前展示 `testsetIds`；若后端提供正式名称查询，后续再接入。
+
+## 状态
+
+TaskStep 使用 `PENDING`、`RUNNING`、`SUCCEEDED`、`FAILED`、`SKIPPED`；TaskRun 使用 `QUEUED`、`RUNNING`、`SUCCEEDED`、`FAILED`、`WAITING_INPUT`、`WAITING_APPROVAL`、`BLOCKED`、`CANCELLING`、`CANCELLED`。状态映射集中在 `src/pages/ProjectDetail/Workflow/status.ts`。
+
+页面不建立 SSE 连接，实时更新由项目级 SSE 失效 Query 后重新获取正式资源。

@@ -96,4 +96,9 @@ export const teamApi = {
       method: 'DELETE',
     })
   },
+
+  /** DELETE /teams/{teamId} —— 解散团队（仅 TEAM_OWNER） */
+  disband(teamId: string) {
+    return request<void>(`/teams/${teamId}`, { method: 'DELETE' })
+  },
 }

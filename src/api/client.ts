@@ -28,12 +28,20 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
   unwrapData?: boolean
 }
 
+
 export function getApiBaseUrl(): string {
   return BASE_URL
 }
 
+
+
 export function getStoredToken(): string | null {
   return localStorage.getItem(ACCESS_TOKEN_KEY)
+}
+
+/** 返回 API 基础地址（B 的 projectEvents 等模块需要，用于拼接 SSE 等完整 URL） */
+export function getApiBaseUrl(): string {
+  return BASE_URL
 }
 
 function getStoredRefreshToken(): string | null {

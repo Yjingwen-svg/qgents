@@ -51,11 +51,17 @@ describe('Agent team MSW API', () => {
     expect((await fetch(`${baseUrl}/teams/team-errors/agents?scenario=FORBIDDEN`)).status).toBe(403)
   })
 
-  it('binds only available project Skills and rejects invalid binding input', async () => {
-    const response = await fetch(`${baseUrl}/projects/project-skill/agent-skill-bindings/agent-private-backend`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'bind-skill' }, body: JSON.stringify({ skillIds: ['skill-api', 'skill-private'] }) })
-    const result = await json<{ data: { skillBindings: Array<{ skillId: string }> } }>(response)
-    expect(result.data.skillBindings.map((skill) => skill.skillId)).toEqual(['skill-api'])
-    const invalid = await fetch(`${baseUrl}/projects/project-skill/agent-skill-bindings/agent-private-backend`, { method: 'PUT', body: JSON.stringify({ skillIds: 'not-an-array' }) })
-    expect(invalid.status).toBe(422)
+  it('supports the confirmed Skill binding GET/PUT contract without an idempotency key', async () => {
+    const before = await json<{ data: { agentId: string; skillIds: string[] } }>(await fetch(`${baseUrl}/projects/project-skill/agent-skill-bindings/agent-private-backend`))
+    expect(before.data.agentId).toBe('agent-private-backend')
+    const response = await fetch(`${baseUrl}/projects/project-skill/agent-skill-bindings/agent-private-backend`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ skillIds: ['skill-api'] }) })
+    const result = await json<{ data: { agentId: string; skillIds: string[]; skills: Array<{ id: string }>; updatedAt: string } }>(response)
+    expect(result.data).toMatchObject({ agentId: 'agent-private-backend', skillIds: ['skill-api'] })
+    expect(result.data.skills[0]?.id).toBe('skill-api')
+    expect(result.data.updatedAt).toBeTruthy()
+    const empty = await fetch(`${baseUrl}/projects/project-skill/agent-skill-bindings/agent-private-backend`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ skillIds: [] }) })
+    expect((await json<{ data: { skillIds: string[] } }>(empty)).data.skillIds).toEqual([])
+    const duplicate = await fetch(`${baseUrl}/projects/project-skill/agent-skill-bindings/agent-private-backend`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ skillIds: ['skill-api', 'skill-api'] }) })
+    expect(duplicate.status).toBe(409)
   })
 })

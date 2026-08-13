@@ -1,10 +1,3 @@
-import type {
-  OrchestrationRunFilters,
-  CursorPageFilters,
-  TaskRunFilters,
-  WorkPackageFilters,
-} from '@/types'
-
 export const queryKeys = {
   all: ['qgents'] as const,
   projects: (projectId: string) => ['qgents', 'projects', projectId] as const,
@@ -24,48 +17,5 @@ export const queryKeys = {
   teamProjects: (teamId: string) => ['qgents', 'teams', teamId, 'projects'] as const,
   projectRepositories: (projectId: string) =>
     ['qgents', 'projects', projectId, 'repositories'] as const,
-  orchestrationRuns: {
-    all: (projectId: string) => ['qgents', 'projects', projectId, 'orchestration-runs'] as const,
-    list: (projectId: string, filters: OrchestrationRunFilters = {}) =>
-      ['qgents', 'projects', projectId, 'orchestration-runs', 'list', filters] as const,
-    infinite: (projectId: string, filters: Omit<OrchestrationRunFilters, 'cursor'> = {}) =>
-      ['qgents', 'projects', projectId, 'orchestration-runs', 'infinite', filters] as const,
-    detail: (projectId: string, runId: string) =>
-      ['qgents', 'projects', projectId, 'orchestration-runs', runId] as const,
-  },
-  workPackages: {
-    all: (projectId: string) => ['qgents', 'projects', projectId, 'work-packages'] as const,
-    list: (projectId: string, filters: WorkPackageFilters = {}) =>
-      ['qgents', 'projects', projectId, 'work-packages', 'list', filters] as const,
-    detail: (projectId: string, workPackageId: string) =>
-      ['qgents', 'projects', projectId, 'work-packages', workPackageId] as const,
-  },
-  taskRuns: {
-    all: (projectId: string) => ['qgents', 'projects', projectId, 'task-runs'] as const,
-    list: (projectId: string, workPackageId: string, filters: TaskRunFilters = {}) =>
-      ['qgents', 'projects', projectId, 'task-runs', 'work-packages', workPackageId, 'list', filters] as const,
-    infinite: (projectId: string, workPackageId: string, filters: Omit<TaskRunFilters, 'cursor'> = {}) =>
-      ['qgents', 'projects', projectId, 'task-runs', 'work-packages', workPackageId, 'infinite', filters] as const,
-    detail: (projectId: string, taskRunId: string) =>
-      ['qgents', 'projects', projectId, 'task-runs', taskRunId] as const,
-    steps: (projectId: string, taskRunId: string, filters: CursorPageFilters = {}) =>
-      ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'steps', filters] as const,
-    stepsAll: (projectId: string, taskRunId: string) =>
-      ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'steps'] as const,
-    stepsInfinite: (projectId: string, taskRunId: string, filters: Omit<CursorPageFilters, 'cursor'> = {}) =>
-      ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'steps', 'infinite', filters] as const,
-    logs: (projectId: string, taskRunId: string, cursor?: string, limit?: number) =>
-      ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'logs', { cursor, limit }] as const,
-    logsInfinite: (projectId: string, taskRunId: string, filters: Omit<CursorPageFilters, 'cursor'> = {}) =>
-      ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'logs', 'infinite', filters] as const,
-    executionContext: (projectId: string, taskRunId: string) =>
-      ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'execution-context'] as const,
-    inputRequests: {
-      all: (projectId: string, taskRunId: string) =>
-        ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'input-requests'] as const,
-      list: (projectId: string, taskRunId: string, filters: CursorPageFilters = {}) =>
-        ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'input-requests', 'list', filters] as const,
-    },
-  },
 } as const
 // queryKey 是一层一层的数组路径，就像电脑文件夹路径！React Query 靠这串路径区分缓存，还能按「父文件夹」批量刷新缓存

@@ -3,12 +3,11 @@
  * 各业务同学按领域扩展：chatApi / taskApi / sandboxApi / agentApi ...
  */
 export { request, ApiError } from './client'
+export { requestData, requestPage, withQuery, writeHeaders } from './requestHelpers'
 export { authApi } from './auth'
 export { teamApi } from './team'
 export { projectApi } from './project'
 export { githubApi } from './github'
 export { agentApi } from './agent'
-export { orchestrationApi } from './orchestration'
-export { taskRunsApi } from './taskRuns'
-export { workPackagesApi } from './workPackages'
+export { tasksApi, taskRunsApi, diffsApi } from './taskModel'
 export { connectProjectEvents, projectEventsUrl } from './projectEvents'

@@ -30,7 +30,6 @@ describe('project SSE event parsing', () => {
     'work-package.updated',
     'task-run.input-required',
     'task-run.approval-required',
-    'deliverable.created',
     'message.created',
     'group.updated',
     'test-run.updated',

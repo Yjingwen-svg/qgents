@@ -70,6 +70,13 @@ export interface AgentSkillBinding {
   scope: 'PROJECT' | 'TEAM' | 'PRIVATE'
 }
 
+export interface AgentSkillBindingResponse {
+  agentId: string
+  skillIds: string[]
+  skills: Array<{ id: string; name: string; visibility: string; status: string }>
+  updatedAt: string
+}
+
 /** FE-API-AGENT-002：当前项目可绑定 Skill 的最小展示 DTO。 */
 export interface ProjectSkillOption {
   id: string

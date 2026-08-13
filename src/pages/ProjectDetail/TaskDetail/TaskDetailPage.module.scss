@@ -106,7 +106,6 @@
 .flowGrid,
 .contextGrid,
 .developmentGrid,
-.deliverableGrid,
 .checklist {
   display: grid;
   gap: 12px;
@@ -126,7 +125,6 @@
 
 .infoCard,
 .flowCard,
-.deliverableCard,
 .checklistItem {
   min-width: 0;
   padding: 14px;
@@ -296,11 +294,6 @@
   color: #12213d;
 }
 
-.flowSubtasks {
-  color: #6d7d95;
-  font-size: 12px;
-}
-
 .contextGrid,
 .developmentGrid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -359,19 +352,6 @@
   padding: 18px 0;
   color: #6d7d95;
   text-align: center;
-}
-
-.deliverableGrid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.deliverableCard {
-  display: grid;
-  gap: 8px;
-}
-
-.deliverableCard > :global(.ant-typography) {
-  color: #12213d;
 }
 
 .sideContent {
@@ -461,16 +441,6 @@
 
 .executionSelect {
   width: 100%;
-}
-
-.workPackageSummary {
-  display: grid;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 10px;
-  border: 1px solid #e4eaf2;
-  border-radius: 8px;
-  background: #f9fbfd;
 }
 
 .executionAlert {
@@ -624,8 +594,7 @@
   }
 
   .contextGrid,
-  .developmentGrid,
-  .deliverableGrid {
+  .developmentGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -633,8 +602,7 @@
 @media (max-width: 767px) {
   .summaryMeta,
   .contextGrid,
-  .developmentGrid,
-  .deliverableGrid {
+  .developmentGrid {
     grid-template-columns: minmax(0, 1fr);
   }
 

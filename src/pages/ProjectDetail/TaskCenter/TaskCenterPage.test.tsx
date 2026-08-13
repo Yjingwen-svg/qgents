@@ -36,7 +36,7 @@ describe('TaskCenterPage', () => {
 
   it('restores the new Task detail entry without navigating to old detail', async () => {
     const user = userEvent.setup(); renderPage()
-    expect(screen.queryByText(/WorkPackage|OrchestrationRun|executionPreview/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/executionPreview/)).not.toBeInTheDocument()
     const detailButton = screen.getAllByText('查看完整任务详情')[0]
     await user.click(detailButton)
     expect(screen.getByTestId('location')).toHaveTextContent('/app/projects/project-test/tasks/task-1')

@@ -47,7 +47,7 @@ describe('TaskTriggerModal', () => {
 
   it('does not render legacy start mode controls', () => {
     renderModal()
-    expect(screen.queryByText(/AUTO|MANUAL|WorkPackage|workflowId|testsetIds/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/AUTO|MANUAL/)).not.toBeInTheDocument()
   })
 
   it('disables submission when the project has no repositories', async () => {

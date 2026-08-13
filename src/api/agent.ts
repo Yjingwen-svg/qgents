@@ -1,7 +1,8 @@
-import { requestData, requestPage, withQuery, writeHeaders } from './taskDomain'
+import { requestData, requestPage, withQuery, writeHeaders } from './requestHelpers'
 import type {
   AgentDetail,
   AgentSummary,
+  AgentSkillBindingResponse,
   CreateAgentPayload,
   ProjectSkillOption,
   UpdateAgentPayload,
@@ -60,9 +61,8 @@ export const agentApi = {
   },
 
   bindSkills(projectId: string, agentId: string, skillIds: string[]) {
-    return requestData<AgentDetail>(`/projects/${projectId}/agent-skill-bindings/${agentId}`, {
+    return requestData<AgentSkillBindingResponse>(`/projects/${projectId}/agent-skill-bindings/${agentId}`, {
       method: 'PUT',
-      headers: writeHeaders(),
       body: { skillIds },
     })
   },

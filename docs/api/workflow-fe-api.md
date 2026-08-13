@@ -12,7 +12,7 @@ WorkflowViewer 是只读页面，展示指定 Task 的实际执行计划，不�
 - `GET /projects/{projectId}/tasks/{taskId}/task-runs`
 - Agent 摘要使用现有 Agent Query；Agent 详情中的 `skillBindings` 用于展示 Skill。
 
-URL 使用 `/app/projects/{projectId}/workflow?taskId={taskId}`。TaskStep 节点 ID 使用 `TaskStep.id`，TaskRun 通过 `taskStepId` 关联；页面不读取 `runId`、`orchestrationRunId`、`workPackageId` 或 `subtaskId`。
+URL 使用 `/app/projects/{projectId}/workflow?taskId={taskId}`。TaskStep 节点 ID 使用 `TaskStep.id`，TaskRun 通过 `taskStepId` 关联；页面只消费 Task、TaskStep、TaskRun 和 Agent Query。
 
 ## 节点组合规则
 

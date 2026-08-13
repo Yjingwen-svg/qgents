@@ -3,6 +3,7 @@ import { agentApi } from '@/api'
 import { queryClient, queryKeys } from '@/query'
 import type {
   AgentDetail,
+  AgentSkillBindingResponse,
   AgentSummary,
   CreateAgentPayload,
   ProjectSkillOption,
@@ -85,12 +86,11 @@ export function useArchiveAgent(teamId: string): UseMutationResult<AgentDetail, 
   return useAgentAction(teamId, (agentId) => agentApi.archive(teamId, agentId))
 }
 
-export function useBindAgentSkills(projectId: string, teamId: string): UseMutationResult<AgentDetail, Error, AgentMutationVariables & { skillIds: string[] }> {
+export function useBindAgentSkills(projectId: string, teamId: string): UseMutationResult<AgentSkillBindingResponse, Error, AgentMutationVariables & { skillIds: string[] }> {
   return useMutation({
     mutationFn: ({ agentId, skillIds }) => agentApi.bindSkills(projectId, agentId, skillIds),
-    onSuccess: (agent) => {
-      queryClient.setQueryData(queryKeys.agents.detail(teamId, agent.id), agent)
-      invalidateAgents(teamId, agent.id)
+    onSuccess: (binding) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(teamId, binding.agentId) })
     },
   })
 }

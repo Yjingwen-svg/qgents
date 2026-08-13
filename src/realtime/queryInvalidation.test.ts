@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { queryClient } from '@/query'
-import { invalidateProjectTaskModel, queryKeysForProjectTaskEvent, TASK_MODEL_QUERY_ROOTS } from './queryInvalidation'
+import { invalidateProjectTaskModel, queryKeysForProjectTaskEvent } from './queryInvalidation'
 import type { ProjectTaskEvent } from './eventParser'
 
 const projectId = 'project-1'
@@ -91,8 +91,5 @@ describe('project SSE Task model query invalidation mapping', () => {
       JSON.stringify(['qgents', 'projects', projectId, 'task-runs']),
       JSON.stringify(['qgents', 'projects', projectId, 'diffs']),
     ])
-    expect(TASK_MODEL_QUERY_ROOTS(projectId)).not.toContainEqual(['qgents', 'projects', projectId, 'orchestration-runs'])
-    expect(TASK_MODEL_QUERY_ROOTS(projectId)).not.toContainEqual(['qgents', 'projects', projectId, 'work-packages'])
-    expect(TASK_MODEL_QUERY_ROOTS(projectId)).not.toContainEqual(['qgents', 'projects', projectId, 'deliverables'])
   })
 })

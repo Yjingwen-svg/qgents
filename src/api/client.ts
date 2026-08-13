@@ -1,6 +1,7 @@
 import type { Page } from '@/types'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
+const CONFIGURED_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
+const BASE_URL = import.meta.env.VITE_USE_MOCK === 'true' ? '/api' : CONFIGURED_BASE_URL
 
 const ACCESS_TOKEN_KEY = 'qgents_access_token'
 const REFRESH_TOKEN_KEY = 'qgents_refresh_token'
@@ -23,6 +24,8 @@ export class ApiError extends Error {
 export interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown
   skipAuth?: boolean
+  /** 保留统一响应 envelope，用于同时包含 data/page/requestId 的分页响应 */
+  unwrapData?: boolean
 }
 
 function getStoredToken(): string | null {
@@ -131,6 +134,9 @@ async function doFetch(
   try {
     json = JSON.parse(raw)
   } catch {
+    if (res.ok) {
+      throw new ApiError('Expected a JSON API response', res.status, raw)
+    }
     json = raw
   }
 
@@ -178,6 +184,10 @@ async function rawRequest(path: string, options: RequestOptions = {}): Promise<u
 /** 普通请求：解出 `data` 层返回 */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const json = await rawRequest(path, options)
+
+  if (options.unwrapData === false) {
+    return json as T
+  }
 
   if (json && typeof json === 'object' && 'data' in json) {
     return (json as Record<string, unknown>).data as T

@@ -1,0 +1,211 @@
+import { setupServer } from 'msw/node'
+import { beforeAll, beforeEach, afterAll, describe, expect, it } from 'vitest'
+import { diffsApi, taskRunsApi, tasksApi } from '@/api/taskModel'
+import type { TaskRunDetail } from '@/types/task-model'
+import { resetTaskModelStore, taskModelHandlers } from './handlers'
+
+const server = setupServer(...taskModelHandlers)
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+afterAll(() => server.close())
+beforeEach(() => {
+  server.resetHandlers()
+  resetTaskModelStore()
+})
+
+describe('independent Task model mock chain', () => {
+  it('serves a project repository through the same /api MSW chain used by TaskTriggerModal', async () => {
+    const response = await fetch('/api/projects/project-repositories/repositories')
+    expect(response.status).toBe(200)
+    const payload = await response.json() as { data: Array<{ boundProjectId: string; repositoryId: string }> }
+    expect(payload.data[0]?.boundProjectId).toBe('project-repositories')
+    expect(payload.data[0]?.repositoryId).toBe('repository-project-repositories')
+  })
+
+  it('creates a Task with queryable TaskSteps and a subsequent TaskRun', async () => {
+    const task = await tasksApi.create('project-create', {
+      requirementGroupId: 'group-create',
+      title: 'Create task',
+      requirement: 'Create a complete resource chain',
+      repositoryIds: ['repository-create'],
+      baseRef: 'main',
+    })
+    expect((await tasksApi.get('project-create', task.id)).id).toBe(task.id)
+    const steps = await tasksApi.listSteps('project-create', task.id)
+    expect(steps.data).toHaveLength(3)
+    expect(steps.data[1]?.dependencies).toEqual([steps.data[0]?.id])
+    const runs = await taskRunsApi.list('project-create', task.id)
+    expect(runs.data.length).toBeGreaterThanOrEqual(2)
+    expect(runs.data.every((run) => run.taskId === task.id)).toBe(true)
+    expect(runs.data[0]).not.toHaveProperty('artifactSummary')
+  })
+
+  it('walks one newly-created resource chain through input, retry, Diff review, and Task cancel', async () => {
+    const projectId = 'project-e2e'
+    const task = await tasksApi.create(projectId, {
+      requirementGroupId: 'group-e2e',
+      title: 'End-to-end Task',
+      requirement: 'Verify the complete Task model chain',
+      repositoryIds: ['repository-e2e'],
+      baseRef: 'main',
+    })
+    const fetchedTask = await tasksApi.get(projectId, task.id)
+    const steps = (await tasksApi.listSteps(projectId, task.id)).data
+    const runs = (await taskRunsApi.list(projectId, task.id)).data
+    expect(fetchedTask.id).toBe(task.id)
+    expect(steps.length).toBeGreaterThanOrEqual(3)
+    expect(runs.every((run) => run.taskId === task.id && steps.some((step) => step.id === run.taskStepId))).toBe(true)
+
+    const inputRun = runs.find((run) => run.status === 'WAITING_INPUT')!
+    const inputRequests = await taskRunsApi.inputRequests(projectId, inputRun.id)
+    const inputRequest = inputRequests.data[0]!
+    expect(inputRequest.taskRunId).toBe(inputRun.id)
+    expect((await taskRunsApi.logs(projectId, inputRun.id)).data[0]?.id).toContain(inputRun.id)
+    expect((await taskRunsApi.executionContext(projectId, inputRun.id)).workspaceId).toBe(task.workspaceId)
+    expect((await taskRunsApi.replyInputRequest(projectId, inputRun.id, inputRequest.id, { answer: { value: 'main' } })).status).toBe('ANSWERED')
+
+    const failedRun = runs.find((run) => run.status === 'FAILED')!
+    const retriedRun = await taskRunsApi.retry(projectId, failedRun.id)
+    expect(retriedRun.id).not.toBe(failedRun.id)
+    expect(retriedRun.taskId).toBe(task.id)
+    expect(retriedRun.taskStepId).toBe(failedRun.taskStepId)
+    expect((await taskRunsApi.get(projectId, failedRun.id)).status).toBe('FAILED')
+    expect((await taskRunsApi.cancel(projectId, retriedRun.id)).status).toBe('CANCELLING')
+
+    const diffs = await diffsApi.list(projectId, { taskId: task.id })
+    expect(diffs.data.length).toBe(2)
+    expect(diffs.data.every((diff) => diff.taskId === task.id && diff.taskStepId === failedRun.taskStepId && diff.taskRunId === failedRun.id)).toBe(true)
+    const firstDiff = await diffsApi.get(projectId, diffs.data[0]!.id)
+    expect(firstDiff.id).toBe(diffs.data[0]!.id)
+    expect((await diffsApi.accept(projectId, diffs.data[0]!.id)).status).toBe('ACCEPTED')
+    expect((await diffsApi.reject(projectId, diffs.data[1]!.id, { reason: 'Needs another review' })).status).toBe('REJECTED')
+
+    expect((await tasksApi.cancel(projectId, task.id)).status).toBe('CANCELLED')
+    expect((await tasksApi.get(projectId, task.id)).status).toBe('CANCELLED')
+  })
+
+  it('validates required Task fields and rejects unsupported creation fields', async () => {
+    await expect(tasksApi.create('project-validation', {
+      requirementGroupId: '',
+      title: 'Invalid task',
+      requirement: 'Missing group',
+      repositoryIds: ['repository-validation'],
+      baseRef: 'main',
+    })).rejects.toMatchObject({ status: 422 })
+    const unsupportedInput = {
+      requirementGroupId: 'group-validation',
+      title: 'Invalid task',
+      requirement: 'Retired workflow fields are forbidden',
+      repositoryIds: ['repository-validation'],
+      baseRef: 'main',
+      unsupportedField: 'unsupported',
+    } as Parameters<typeof tasksApi.create>[1]
+    await expect(tasksApi.create('project-validation', unsupportedInput)).rejects.toMatchObject({ status: 422 })
+  })
+
+  it('supports Task filters and cursor pagination', async () => {
+    const first = await tasksApi.list('project-list', { status: 'PLANNING', limit: 1 })
+    expect(first.data).toHaveLength(1)
+    expect(first.page.hasMore).toBe(false)
+    const filtered = await tasksApi.list('project-list', { groupId: 'group-project-list-requirements', createdBy: 'user-1' })
+    expect(filtered.data.every((task) => task.requirementGroupId === 'group-project-list-requirements' && task.createdBy === 'user-1')).toBe(true)
+
+    const paged = await tasksApi.list('project-list', { limit: 2 })
+    expect(paged.data).toHaveLength(2)
+    expect(paged.page.nextCursor).toBe('2')
+    const next = await tasksApi.list('project-list', { cursor: paged.page.nextCursor ?? undefined, limit: 2 })
+    expect(next.data[0]?.id).not.toBe(paged.data[0]?.id)
+  })
+
+  it('applies the Task cancel state matrix', async () => {
+    const planning = await tasksApi.get('project-cancel', 'task-project-cancel-planning')
+    expect((await tasksApi.cancel('project-cancel', planning.id)).status).toBe('CANCELLED')
+    const running = await tasksApi.get('project-cancel', 'task-project-cancel-running')
+    expect((await tasksApi.cancel('project-cancel', running.id)).status).toBe('CANCELLING')
+    await expect(tasksApi.cancel('project-cancel', 'task-project-cancel-succeeded')).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('keeps TaskRun list summaries separate from optional detail steps', async () => {
+    const list = await taskRunsApi.list('project-runs', 'task-project-runs-pending')
+    expect(list.data[0]).toMatchObject({ taskId: 'task-project-runs-pending', status: 'QUEUED' })
+    expect(list.data[0]).not.toHaveProperty('startedAt')
+    const detail = await taskRunsApi.get('project-runs', 'run-project-runs-queued')
+    expect(detail).not.toHaveProperty('steps')
+    const detailed = await taskRunsApi.get('project-runs', 'run-project-runs-running')
+    expect((detailed as TaskRunDetail).steps).toBeDefined()
+    expect(detailed.durationMs).toEqual(null)
+  })
+
+  it('creates a new retry run without mutating the failed original', async () => {
+    const original = await taskRunsApi.get('project-retry', 'run-project-retry-failed')
+    const retry = await taskRunsApi.retry('project-retry', original.id)
+    expect(retry.id).not.toBe(original.id)
+    expect(retry.retryOfTaskRunId).toBe(original.id)
+    expect(retry.status).toBe('QUEUED')
+    expect((await taskRunsApi.get('project-retry', original.id)).status).toBe('FAILED')
+    await expect(taskRunsApi.retry('project-retry', 'run-project-retry-running')).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('uses the TaskRun cancel transition and rejects terminal runs', async () => {
+    const queued = await taskRunsApi.cancel('project-run-cancel', 'run-project-run-cancel-queued')
+    expect(queued.status).toBe('CANCELLING')
+    await expect(taskRunsApi.cancel('project-run-cancel', 'run-project-run-cancel-succeeded')).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('handles InputRequest reply, approval, and rejection', async () => {
+    const input = await taskRunsApi.inputRequests('project-input', 'run-project-input-waiting_input')
+    const answered = await taskRunsApi.replyInputRequest('project-input', 'run-project-input-waiting_input', input.data[0]!.id, { answer: { value: 'main' } })
+    expect(answered.status).toBe('ANSWERED')
+    const approval = await taskRunsApi.inputRequests('project-input', 'run-project-input-waiting_approval')
+    const approved = await taskRunsApi.approveInputRequest('project-input', 'run-project-input-waiting_approval', approval.data[0]!.id, { reason: 'Approved' })
+    expect(approved.status).toBe('APPROVED')
+    resetTaskModelStore()
+    const rejectionInput = await taskRunsApi.inputRequests('project-input', 'run-project-input-waiting_approval')
+    const rejected = await taskRunsApi.rejectInputRequest('project-input', 'run-project-input-waiting_approval', rejectionInput.data[0]!.id, { reason: 'Rejected for test coverage' })
+    expect(rejected.status).toBe('REJECTED')
+    await expect(taskRunsApi.rejectInputRequest('project-input', 'run-project-input-waiting_approval', rejectionInput.data[0]!.id, { reason: 'Duplicate' })).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('queries and transitions Diff resources', async () => {
+    const list = await diffsApi.list('project-diff', { taskId: 'task-project-diff-main' })
+    expect(list.data).toHaveLength(3)
+    const pending = list.data.find((diff) => diff.status === 'PENDING_REVIEW')!
+    const accepted = await diffsApi.accept('project-diff', pending.id)
+    expect(accepted.status).toBe('ACCEPTED')
+    await expect(diffsApi.accept('project-diff', pending.id)).rejects.toMatchObject({ status: 409 })
+    const rejected = list.data.find((diff) => diff.status === 'REJECTED')!
+    await expect(diffsApi.reject('project-diff', rejected.id, { reason: 'Again' })).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('isolates resources by project and supports an empty scenario', async () => {
+    const projectA = await tasksApi.list('project-a')
+    const projectB = await tasksApi.list('project-b')
+    expect(projectA.data.every((task) => task.projectId === 'project-a')).toBe(true)
+    expect(projectB.data.every((task) => task.projectId === 'project-b')).toBe(true)
+    await expect(tasksApi.get('project-b', projectA.data[0]!.id)).rejects.toMatchObject({ status: 404 })
+
+    const emptyResponse = await fetch('/api/projects/project-empty/tasks?scenario=EMPTY')
+    const emptyBody = await emptyResponse.json() as { data: unknown[] }
+    expect(emptyBody.data).toEqual([])
+  })
+
+  it('returns the documented 403, 404, 409, and 422 classes', async () => {
+    await expect(tasksApi.list('forbidden')).rejects.toMatchObject({ status: 403 })
+    await expect(tasksApi.get('project-errors', 'missing-task')).rejects.toMatchObject({ status: 404 })
+    await expect(diffsApi.reject('project-errors', 'diff-project-errors-pending', { reason: '' })).rejects.toMatchObject({ status: 422 })
+    await expect(tasksApi.cancel('project-errors', 'task-project-errors-succeeded')).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('resets all Task model resources between tests', async () => {
+    await tasksApi.create('project-reset', {
+      requirementGroupId: 'group-reset',
+      title: 'Reset me',
+      requirement: 'Temporary data',
+      repositoryIds: ['repository-reset'],
+      baseRef: 'main',
+    })
+    resetTaskModelStore()
+    const tasks = await tasksApi.list('project-reset', { groupId: 'group-reset' })
+    expect(tasks.data).toEqual([])
+  })
+})

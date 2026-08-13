@@ -23,6 +23,7 @@ export function MainLayout() {
         style={{
           flex: 1,
           overflow: 'auto',
+          minWidth: 0,
           padding: isChat || isProject ? 0 : 24,
         }}
       >

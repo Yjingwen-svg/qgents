@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Modal, Form, Input } from 'antd'
 import { SearchOutlined, PushpinOutlined } from '@ant-design/icons'
 import { PATHS, PROJECT_NAV } from '@/routes/paths'
-import { groupApi, projectApi } from '@/api'
+import { ApiError, groupApi, projectApi } from '@/api'
 import { useAppUiStore } from '@/store/appUiStore'
 import type { CreateGroupPayload, Group } from '@/types'
 import './ProjectDetailLayout.scss'
@@ -61,6 +61,10 @@ export function ProjectDetailLayout() {
     queryKey: ['projects', projectId],
     queryFn: () => projectApi.getById(projectId),
     enabled: !!projectId,
+    retry: (failureCount, error) => {
+      if (error instanceof ApiError && (error.status === 403 || error.status === 404)) return false
+      return failureCount < 3
+    },
   })
   const projectName = project?.name ?? projectId
 

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
+    "@microsoft/fetch-event-source": "^2.0.1",
     "@tanstack/react-query": "^5.101.4",
     "antd": "^6.6.0",
     "jsencrypt": "^3.5.4",

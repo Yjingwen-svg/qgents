@@ -48,8 +48,8 @@ export function PersonalCenter() {
   const email = user?.email ?? '—'
   const avatarChar = user?.avatarChar ?? name.slice(0, 1)
 
-  function handleLogout() {
-    logout()
+  async function handleLogout() {
+    await logout()
     closePersonalCenter()
     navigate(PATHS.LOGIN, { replace: true })
   }

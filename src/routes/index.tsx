@@ -15,11 +15,14 @@ import { ProjectDetailLayout } from '@/pages/ProjectDetail/ProjectDetailLayout'
 import { RequirementChatPage } from '@/pages/ProjectDetail/RequirementChatPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { ForbiddenPage } from '@/pages/ForbiddenPage'
+import { TaskDetailPage } from '../pages/ProjectDetail/TaskDetail/TaskDetailPage'
+import { TaskRunDetailPage } from '../pages/ProjectDetail/TaskRunDetail/TaskRunDetailPage'
+import { TaskCenterPage } from '../pages/ProjectDetail/TaskCenter/TaskCenterPage'
+import { DiffCenterPage } from '../pages/ProjectDetail/DiffCenter/DiffCenterPage'
+import { WorkflowViewerPage } from '../pages/ProjectDetail/Workflow/WorkflowViewerPage'
+import { AgentTeamPage } from '../pages/ProjectDetail/AgentTeam/AgentTeamPage'
 import {
   OverviewPage,
-  TasksPage,
-  WorkflowPage,
-  AgentsPage,
   SkillsPage,
   MemoryPage,
   CodePage,
@@ -68,9 +71,16 @@ export function AppRouter() {
                 <Route path="req-chat/:groupId" element={<RequirementChatPage />} />
                 <Route path="req-chat" element={<RequirementChatPage />} />
 
-                <Route path="tasks" element={<TasksPage />} />
-                <Route path="workflow" element={<WorkflowPage />} />
-                <Route path="agents" element={<AgentsPage />} />
+                {/* B 的任务模块 */}
+                <Route path="tasks" element={<TaskCenterPage />} />
+                <Route path="tasks/:taskId/executions/:taskRunId" element={<TaskRunDetailPage />} />
+                <Route path="tasks/:taskId" element={<TaskDetailPage />} />
+                <Route path="diffs" element={<DiffCenterPage />} />
+                <Route path="diffs/:diffId" element={<DiffCenterPage />} />
+                <Route path="workflow" element={<WorkflowViewerPage />} />
+                <Route path="agents" element={<AgentTeamPage />} />
+
+                {/* 其他子页 */}
                 <Route path="skills" element={<SkillsPage />} />
                 <Route path="memory" element={<MemoryPage />} />
                 <Route path="code" element={<CodePage />} />

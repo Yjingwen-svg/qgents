@@ -1,16 +1,15 @@
 import { request } from './client'
 import type {
-  AcceptInvitationResponse,
-  CreateInvitationPayload,
   CreateTeamPayload,
+  CreateInvitationPayload,
   Team,
-  TeamInvitation,
   TeamMember,
+  TeamInvitation,
+  AcceptInvitationResponse,
 } from '@/types'
 
 /**
- * 团队管理 API
- * P0：创建团队、邀请/移除成员、角色权限（owner / member）
+ * 团队管理 API —— 对齐接口文档 v1.1.4 §5.1
  */
 export const teamApi = {
   /** GET /teams — 当前用户加入的团队列表 */
@@ -18,16 +17,22 @@ export const teamApi = {
     return request<Team[]>('/teams')
   },
 
-  /** GET /teams/:id */
-  getById(teamId: string) {
-    return request<Team>(`/teams/${teamId}`)
-  },
-
-  /** POST /teams */
+  /** POST /teams — 创建团队，创建者成为 TEAM_OWNER */
   create(payload: CreateTeamPayload) {
     return request<Team>('/teams', { method: 'POST', body: payload })
   },
 
+  /** GET /teams/{teamId} — 获取团队资料 */
+  getById(teamId: string) {
+    return request<Team>(`/teams/${teamId}`)
+  },
+
+  /** PATCH /teams/{teamId} — 修改团队资料（仅 Team Owner） */
+  update(teamId: string, payload: Partial<CreateTeamPayload>) {
+    return request<Team>(`/teams/${teamId}`, { method: 'PATCH', body: payload })
+  },
+
+  /** GET /teams/{teamId}/members — 团队成员列表 */
   /** GET /teams/:id/members */
   listMembers(teamId: string) {
     return request<TeamMember[]>(`/teams/${teamId}/members`)
@@ -53,9 +58,28 @@ export const teamApi = {
     })
   },
 
-  /** DELETE /teams/:id/members/:userId */
+
+  /** DELETE /teams/{teamId}/invitations/{invitationId} — 撤销邀请 */
+  revokeInvitation(teamId: string, invitationId: string) {
+    return request<void>(`/teams/${teamId}/invitations/${invitationId}`, {
+      method: 'DELETE',
+    })
+  },
+
+
+  /** PATCH /teams/{teamId}/members/{userId} — 调整团队角色（仅 Team Owner） */
+  updateMemberRole(teamId: string, userId: string, role: string) {
+    return request<void>(`/teams/${teamId}/members/${userId}`, {
+      method: 'PATCH',
+      body: { role },
+    })
+  },
+
+  /** DELETE /teams/{teamId}/members/{userId} — 移除团队成员（仅 Team Owner） */
   removeMember(teamId: string, userId: string) {
-    return request<void>(`/teams/${teamId}/members/${userId}`, { method: 'DELETE' })
+    return request<void>(`/teams/${teamId}/members/${userId}`, {
+      method: 'DELETE',
+    })
   },
 
   /** DELETE /teams/{teamId} —— 解散团队（仅 TEAM_OWNER） */

@@ -1,8 +1,13 @@
 export const queryKeys = {
   all: ['qgents'] as const,
   projects: (projectId: string) => ['qgents', 'projects', projectId] as const,
-  projectTasks: (projectId: string) => ['qgents', 'projects', projectId, 'tasks'] as const,
-  projectAgents: (projectId: string) => ['qgents', 'projects', projectId, 'agents'] as const,
+  agents: {
+    all: (teamId: string) => ['qgents', 'teams', teamId, 'agents'] as const,
+    list: (teamId: string, scenario?: string) =>
+      ['qgents', 'teams', teamId, 'agents', 'list', scenario ?? null] as const,
+    detail: (teamId: string, agentId: string) =>
+      ['qgents', 'teams', teamId, 'agents', agentId] as const,
+  },
   projectSkills: (projectId: string) => ['qgents', 'projects', projectId, 'skills'] as const,
   // 标记「这个团队的 GitHub App 安装列表」这份接口数据的缓存地址
   githubInstallations: (teamId: string) =>

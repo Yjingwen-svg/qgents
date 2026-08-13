@@ -1,0 +1,56 @@
+.page {
+  min-height: 100vh;
+  padding: 22px 28px 48px;
+  background: #ffffff;
+  color: #12213d;
+}
+
+.toolbar {
+  margin-top: 16px;
+  border-bottom: 1px solid #edf1f5;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 0 16px;
+}
+
+.header h2 {
+  margin: 4px 0 0;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.actions :global(.ant-alert) {
+  max-width: 360px;
+  text-align: left;
+}
+
+.summary {
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid #e4eaf2;
+  border-radius: 8px;
+  background: #f9fbfd;
+}
+
+.state {
+  display: grid;
+  min-height: 420px;
+  place-items: center;
+  padding: 48px 24px;
+}
+
+@media (max-width: 767px) {
+  .page {
+    padding: 16px 14px 36px;
+  }
+}

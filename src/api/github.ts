@@ -16,15 +16,18 @@ interface ApiEnvelope<T> {
   data: T
   requestId?: string
 }
-
+//A is B 是 TS 独有的【类型守卫语法】，它的意思：
+//如果这个函数返回 true，我向 TS 保证：value 就是 Record<string, unknown> 类型
+//类型守卫进行TS类型的收窄
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
-}
+}//保证传入的是一个对象
+// 收窄成对象那种Record<string, unknown>（{ [key:string]: unknown }）
 
 function readString(raw: Record<string, unknown>, key: string): string {
   const value = raw[key]
   return typeof value === 'string' ? value : ''
-}
+}//保证把传入对象的值取出来并返回一个字符串
 
 function readNumber(raw: Record<string, unknown>, key: string): number {
   const value = raw[key]
@@ -88,9 +91,9 @@ function mapAuthorizedRepository(raw: unknown): GithubAuthorizedRepository {
     metadataSyncedAt: readString(row, 'metadataSyncedAt'),
   }
 }
-
+// 后端接口返回原始 JSON → 前端 TS 类型对象的转换 / 安全映射函数。
 function mapProjectBoundRepository(raw: unknown): ProjectBoundRepository {
-  const row = isRecord(raw) ? raw : {}
+  const row = isRecord(raw) ? raw : {}//如果返回的是true 那他就是一个对象,那我就直接返回那个raw
   return {
     id: readString(row, 'id'),
     repositoryId: readString(row, 'repositoryId'),
@@ -111,7 +114,7 @@ function asList(data: unknown): unknown[] {
 }
 
 function idempotencyHeaders(): Record<string, string> {
-  return { 'Idempotency-Key': crypto.randomUUID() }
+  return { 'Idempotency-Key': crypto.randomUUID() }//返回一个请求头
 }
 
 /**
@@ -169,12 +172,13 @@ export const githubApi = {
    */
   createInstallation(teamId: string) {
     // 每次点击生成新的幂等键，避免用户连点被当成「相同写操作」
-    const idempotencyKey = crypto.randomUUID()
+    const idempotencyKey = crypto.randomUUID()//浏览器原生 API，生成一个唯一 UUID
 
     return request<ApiEnvelope<GithubInstallationRedirect>>(
       `/teams/${teamId}/integrations/github/installations`,
       {
         method: 'POST',
+        unwrapData: false,
         // 文档：写操作必须支持 Idempotency-Key
         headers: {
           'Idempotency-Key': idempotencyKey,
@@ -198,8 +202,9 @@ export const githubApi = {
   listInstallations(teamId: string) {
     return request<ApiEnvelope<unknown>>(//TS泛型用来约束返回数据类型：
       `/teams/${teamId}/integrations/github/installations`,
+      { unwrapData: false },
     ).then((res) => asList(res.data).map(mapInstallation))
-  },
+  },//数组的 map：遍历数组里每一项，把每一项传给函数 fn，用返回值拼成新数组
 
   /** DELETE /teams/{teamId}/integrations/github/installations/{installationId} */
   deleteInstallation(teamId: string, installationId: string) {
@@ -218,6 +223,7 @@ export const githubApi = {
       `/teams/${teamId}/integrations/github/installations/${installationId}/sync`,
       {
         method: 'POST',
+        unwrapData: false,
         headers: idempotencyHeaders(),
       },
     ).then((res) => mapInstallation(res.data))
@@ -227,6 +233,7 @@ export const githubApi = {
   listTeamRepositories(teamId: string) {
     return request<ApiEnvelope<unknown>>(
       `/teams/${teamId}/integrations/github/repositories`,
+      { unwrapData: false },
     ).then((res) => asList(res.data).map(mapAuthorizedRepository))
   }, //只要请求回来的仓库数组
 
@@ -234,12 +241,8 @@ export const githubApi = {
   listProjectRepositories(projectId: string) {
     return request<ApiEnvelope<unknown>>(
       `/projects/${projectId}/repositories`,
-<<<<<<< .merge_file_USzUmA
       { unwrapData: false },
-    ).then((res) => res.data)
-=======
-    ).then((res) => asList(res.data).map(mapProjectBoundRepository))
->>>>>>> .merge_file_BtD91B
+    ).then((res) => asList(res.data) as ProjectBoundRepository[])
   },
 
   /**
@@ -255,6 +258,7 @@ export const githubApi = {
 
     return request<ApiEnvelope<unknown>>(`/projects/${projectId}/repositories`, {
       method: 'POST',
+      unwrapData: false,
       body,
       headers: idempotencyHeaders(),
     }).then((res) => mapProjectBoundRepository(res.data))
@@ -273,6 +277,7 @@ export const githubApi = {
       `/projects/${projectId}/repositories/${projectRepositoryId}`,
       {
         method: 'PATCH',
+        unwrapData: false,
         body: payload,
         headers: idempotencyHeaders(),
       },

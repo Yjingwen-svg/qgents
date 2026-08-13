@@ -4,25 +4,22 @@ import type {
   CreateInvitationPayload,
   Team,
   TeamMember,
-<<<<<<< .merge_file_BCATV2
   TeamInvitation,
   AcceptInvitationResponse,
-=======
   TeamRole,
->>>>>>> .merge_file_CDQk2P
 } from '@/types'
 
 function isTeamRole(value: unknown): value is TeamRole {
   return value === 'TEAM_OWNER' || value === 'TEAM_MEMBER'
 }
 
-/** 公网详情接口可能返回 role 而不是 myRole */
+/** 兼容后端返回 role，或旧字段 myRole */
 function normalizeTeam(team: Team): Team {
-  if (team.myRole) return team
-  const extra = team as Team & { role?: unknown }
+  if (isTeamRole(team.role)) return team
+  const extra = team as Team & { myRole?: unknown }
   return {
     ...team,
-    myRole: isTeamRole(extra.role) ? extra.role : team.myRole,
+    role: isTeamRole(extra.myRole) ? extra.myRole : team.role,
   }
 }
 

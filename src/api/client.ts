@@ -28,7 +28,11 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
   unwrapData?: boolean
 }
 
-function getStoredToken(): string | null {
+export function getApiBaseUrl(): string {
+  return BASE_URL
+}
+
+export function getStoredToken(): string | null {
   return localStorage.getItem(ACCESS_TOKEN_KEY)
 }
 
@@ -99,7 +103,7 @@ async function doFetch(
   options: RequestOptions,
   idempotencyKey: string | null,
 ): Promise<{ res: Response; json: unknown }> {
-  const { body, skipAuth, headers, ...rest } = options
+  const { body, skipAuth, headers, unwrapData: _unwrapData, ...rest } = options
   const finalHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
 
   if (!skipAuth) {

@@ -639,7 +639,35 @@ export const handlers = [
     })
   }),
 
-  http.get('/api/me', () => HttpResponse.json({ data: MOCK_USER })),
+  http.post('/api/auth/refresh', async ({ request }) => {
+    const body = (await request.json()) as { refreshToken?: string }
+    if (!body.refreshToken) {
+      return HttpResponse.json(
+        { error: { code: 'INVALID_REFRESH_TOKEN', message: '刷新令牌无效' } },
+        { status: 401 },
+      )
+    }
+    return HttpResponse.json({
+      data: {
+        accessToken: 'mock-access-token-' + Date.now(),
+        accessTokenExpiresIn: 900,
+        refreshToken: 'mock-refresh-token-' + Date.now(),
+        refreshTokenExpiresIn: 2592000,
+      },
+    })
+  }),
+
+  http.get('/api/me', () =>
+    HttpResponse.json({
+      data: {
+        user: MOCK_USER,
+        teams: MOCK_TEAMS.map((t) => ({ id: t.id, name: t.name, role: t.role ?? 'TEAM_MEMBER' })),
+        projects: Object.values(MOCK_PROJECTS)
+          .flat()
+          .map((p) => ({ id: p.id, teamId: p.teamId, name: p.name, role: p.role })),
+      },
+    }),
+  ),
 
   http.post('/api/auth/logout', () => HttpResponse.json({ data: null })),
 

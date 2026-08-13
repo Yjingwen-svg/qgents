@@ -60,7 +60,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const me = await authApi.me()
         if (cancelled) return
-        setUser(me.user)
+        const user = me.user
+        if (!user?.id) throw new Error('GET /me 未返回用户')
+        setUser(user)
         // /me 已返回 teams 聚合，直接取用；为空时兜底再查一次
         if (me.teams && me.teams.length > 0) {
           setHasTeam(true)
@@ -108,6 +110,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password: encryptedPassword,
       passwordKeyId: RSA_KEY_ID,
     })
+
+    if (!result.accessToken || !result.refreshToken || !result.user) {
+      throw new Error('登录响应缺少 token 或用户信息')
+    }
 
     localStorage.setItem(ACCESS_TOKEN_KEY, result.accessToken)
     localStorage.setItem(REFRESH_TOKEN_KEY, result.refreshToken)

@@ -59,6 +59,21 @@ export type {
 } from './task'
 export type { Notification, NotificationKind } from './notification'
 export type {
+  BranchHealthStatus,
+  BranchTestStatus,
+  BranchRelatedTask,
+  ProjectBranchRow,
+} from './codeBranch'
+export type {
+  DiffReviewStatus,
+  DiffFileStatus,
+  DiffLineKind,
+  DiffCommentSide,
+  DiffLine,
+  DiffHunk,
+  DiffReviewView,
+} from './diff'
+export type {
   Memory,
   MemoryStatus,
   MemorySourceType,

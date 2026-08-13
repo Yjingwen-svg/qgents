@@ -6,7 +6,27 @@ import type {
   TeamMember,
   TeamInvitation,
   AcceptInvitationResponse,
+  TeamRole,
 } from '@/types'
+
+function isTeamRole(value: unknown): value is TeamRole {
+  return value === 'TEAM_OWNER' || value === 'TEAM_MEMBER'
+}
+
+/** 兼容后端返回 role，或旧字段 myRole；两个字段都补齐，页面读哪个都能工作 */
+function normalizeTeam(team: Team): Team {
+  const extra = team as Team & { myRole?: unknown }
+  const resolved = isTeamRole(team.role)
+    ? team.role
+    : isTeamRole(extra.myRole)
+      ? extra.myRole
+      : team.role
+  return {
+    ...team,
+    role: resolved,
+    myRole: isTeamRole(extra.myRole) ? extra.myRole : resolved,
+  }
+}
 
 /**
  * 团队管理 API —— 对齐接口文档 v1.1.4 §5.1
@@ -14,7 +34,7 @@ import type {
 export const teamApi = {
   /** GET /teams — 当前用户加入的团队列表 */
   listMine() {
-    return request<Team[]>('/teams')
+    return request<Team[]>('/teams').then((teams) => teams.map(normalizeTeam))
   },
 
   /** POST /teams — 创建团队，创建者成为 TEAM_OWNER */
@@ -24,7 +44,7 @@ export const teamApi = {
 
   /** GET /teams/{teamId} — 获取团队资料 */
   getById(teamId: string) {
-    return request<Team>(`/teams/${teamId}`)
+    return request<Team>(`/teams/${teamId}`).then(normalizeTeam)
   },
 
   /** PATCH /teams/{teamId} — 修改团队资料（仅 Team Owner） */

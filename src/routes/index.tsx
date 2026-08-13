@@ -9,10 +9,15 @@ import { CreateTeamPage } from '@/pages/CreateTeam/CreateTeamPage'
 import { JoinTeamPage } from '@/pages/JoinTeam/JoinTeamPage'
 import { MyTeamsPage } from '@/pages/MyTeams/MyTeamsPage'
 import { ChatWorkspacePage } from '@/pages/ChatWorkspace/ChatWorkspacePage'
+import { GitHubIntegrationPage } from '@/pages/GitHubIntegration/GitHubIntegrationPage'
+import { GithubInstallationReposPage } from '@/pages/GitHubIntegration/GithubInstallationReposPage'
+import { BindRepoToProjectPage } from '@/pages/GitHubIntegration/BindRepoToProjectPage'
 import { TeamDetailPage } from '@/pages/TeamDetail/TeamDetailPage'
 import { CreateProjectPage } from '@/pages/CreateProject/CreateProjectPage'
+import { TeamAuthorizedReposPage } from '@/pages/GitHubIntegration/TeamAuthorizedReposPage'
 import { ProjectDetailLayout } from '@/pages/ProjectDetail/ProjectDetailLayout'
 import { RequirementChatPage } from '@/pages/ProjectDetail/RequirementChatPage'
+import { DiffReviewPage } from '@/pages/ProjectDetail/DiffReviewPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { ForbiddenPage } from '@/pages/ForbiddenPage'
 import { TaskDetailPage } from '../pages/ProjectDetail/TaskDetail/TaskDetailPage'
@@ -57,7 +62,17 @@ export function AppRouter() {
               <Route path="teams/join" element={<JoinTeamPage />} />
               <Route path="teams/:teamId" element={<TeamDetailPage />} />
               <Route path="teams/:teamId/projects/create" element={<CreateProjectPage />} />
+              <Route
+                path="teams/:teamId/github/authorized-repos"
+                element={<TeamAuthorizedReposPage />}
+              />
               <Route path="chat" element={<ChatWorkspacePage />} />
+              <Route path="integrations/github" element={<GitHubIntegrationPage />} />
+              <Route
+                path="integrations/github/installations/:installationId/repositories"
+                element={<GithubInstallationReposPage />}
+              />
+              <Route path="integrations/github/bind-repo" element={<BindRepoToProjectPage />} />
 
               <Route path="projects/:projectId" element={<ProjectDetailLayout />}>
                 {/* 默认进入项目总群（由 ProjectDetailLayout 根据群列表跳转） */}
@@ -83,6 +98,7 @@ export function AppRouter() {
                 {/* 其他子页 */}
                 <Route path="skills" element={<SkillsPage />} />
                 <Route path="memory" element={<MemoryPage />} />
+                <Route path="code/diff/:branchId" element={<DiffReviewPage />} />
                 <Route path="code" element={<CodePage />} />
                 <Route path="testset" element={<TestsetPage />} />
                 <Route path="members" element={<MembersPage />} />

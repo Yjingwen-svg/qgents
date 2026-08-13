@@ -24,6 +24,11 @@ body,
   margin: 0;
 }
 
+/* 接上远端 html/body/#root 的 100% 高度链，避免登录页下方露出 body 的 navy 底 */
+#root > .ant-app {
+  height: 100%;
+}
+
 body {
   font-family: var(--qg-font);
   font-size: 14px;

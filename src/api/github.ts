@@ -1,9 +1,13 @@
 import { request } from './client'
 import type {
   BindProjectRepositoryPayload,
+  GithubAccountType,
+  GithubAuthorizationStatus,
   GithubInstallation,
   GithubInstallationRedirect,
+  GithubInstallationStatus,
   GithubAuthorizedRepository,
+  GithubRepoVisibility,
   ProjectBoundRepository,
 } from '@/types/github'
 
@@ -11,6 +15,106 @@ import type {
 interface ApiEnvelope<T> {
   data: T
   requestId?: string
+}
+//A is B 是 TS 独有的【类型守卫语法】，它的意思：
+//如果这个函数返回 true，我向 TS 保证：value 就是 Record<string, unknown> 类型
+//类型守卫进行TS类型的收窄
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}//保证传入的是一个对象
+// 收窄成对象那种Record<string, unknown>（{ [key:string]: unknown }）
+
+function readString(raw: Record<string, unknown>, key: string): string {
+  const value = raw[key]
+  return typeof value === 'string' ? value : ''
+}//保证把传入对象的值取出来并返回一个字符串
+
+function readNumber(raw: Record<string, unknown>, key: string): number {
+  const value = raw[key]
+  return typeof value === 'number' ? value : Number(value) || 0
+}
+
+function readBool(raw: Record<string, unknown>, key: string): boolean {
+  return raw[key] === true
+}
+
+function mapAccountType(value: unknown): GithubAccountType {
+  const normalized = String(value).toUpperCase()
+  return normalized === 'ORGANIZATION' ? 'ORGANIZATION' : 'USER'
+}
+
+function mapInstallationStatus(value: unknown): GithubInstallationStatus {
+  if (value === 'ACTIVE' || value === 'SUSPENDED' || value === 'DELETED') return value
+  // 已冻结见 docs：不含 EXPIRED；未知值不当成 ACTIVE，避免误开绑定
+  return 'SUSPENDED'
+}
+
+function mapVisibility(value: unknown): GithubRepoVisibility {
+  if (value === 'PUBLIC' || value === 'PRIVATE' || value === 'INTERNAL') return value
+  return 'PRIVATE'
+}
+
+function mapAuthorizationStatus(value: unknown): GithubAuthorizationStatus {
+  return value === 'REVOKED' ? 'REVOKED' : 'AUTHORIZED'
+}
+
+function mapInstallation(raw: unknown): GithubInstallation {
+  const row = isRecord(raw) ? raw : {}
+  return {
+    id: readString(row, 'id'),
+    providerInstallationId: readNumber(row, 'providerInstallationId'),
+    accountLogin: readString(row, 'accountLogin'),
+    accountType: mapAccountType(row.accountType),
+    installedAt: readString(row, 'installedAt'),
+    status: mapInstallationStatus(row.status),
+    metadataSyncedAt: readString(row, 'metadataSyncedAt'),
+  }
+}
+
+function mapAuthorizedRepository(raw: unknown): GithubAuthorizedRepository {
+  const row = isRecord(raw) ? raw : {}
+  const defaultBranchRaw = row.defaultBranch
+  const defaultBranch =
+    typeof defaultBranchRaw === 'string' && defaultBranchRaw.trim()
+      ? defaultBranchRaw
+      : null
+  return {
+    id: readString(row, 'id'),
+    installationId: readString(row, 'installationId'),
+    providerRepositoryId: readNumber(row, 'providerRepositoryId'),
+    fullName: readString(row, 'fullName'),
+    githubUrl: readString(row, 'githubUrl'),
+    defaultBranch,
+    visibility: mapVisibility(row.visibility),
+    archived: readBool(row, 'archived'),
+    authorizationStatus: mapAuthorizationStatus(row.authorizationStatus),
+    metadataSyncedAt: readString(row, 'metadataSyncedAt'),
+  }
+}
+// 后端接口返回原始 JSON → 前端 TS 类型对象的转换 / 安全映射函数。
+function mapProjectBoundRepository(raw: unknown): ProjectBoundRepository {
+  const row = isRecord(raw) ? raw : {}//如果返回的是true 那他就是一个对象,那我就直接返回那个raw
+  return {
+    id: readString(row, 'id'),
+    repositoryId: readString(row, 'repositoryId'),
+    installationId: readString(row, 'installationId'),
+    providerRepositoryId: readNumber(row, 'providerRepositoryId'),
+    fullName: readString(row, 'fullName'),
+    githubUrl: readString(row, 'githubUrl'),
+    displayName: readString(row, 'displayName') || undefined,
+    defaultBranch: readString(row, 'defaultBranch'),
+    authorizationStatus: mapAuthorizationStatus(row.authorizationStatus),
+    metadataSyncedAt: readString(row, 'metadataSyncedAt'),
+    boundAt: readString(row, 'boundAt'),
+  }
+}
+
+function asList(data: unknown): unknown[] {
+  return Array.isArray(data) ? data : []
+}
+
+function idempotencyHeaders(): Record<string, string> {
+  return { 'Idempotency-Key': crypto.randomUUID() }//返回一个请求头
 }
 
 /**
@@ -64,15 +168,17 @@ export const githubApi = {
    * - 404 团队不存在
    * - 409 Idempotency-Key 复用但 body 不同
    * - 429 / 500 限流或服务异常
+   * 已冻结见 docs：写接口必须带 Idempotency-Key；错误码见 github-backend-fields-needed.md §8。
    */
   createInstallation(teamId: string) {
     // 每次点击生成新的幂等键，避免用户连点被当成「相同写操作」
-    const idempotencyKey = crypto.randomUUID()
+    const idempotencyKey = crypto.randomUUID()//浏览器原生 API，生成一个唯一 UUID
 
     return request<ApiEnvelope<GithubInstallationRedirect>>(
       `/teams/${teamId}/integrations/github/installations`,
       {
         method: 'POST',
+        unwrapData: false,
         // 文档：写操作必须支持 Idempotency-Key
         headers: {
           'Idempotency-Key': idempotencyKey,
@@ -94,63 +200,98 @@ export const githubApi = {
    * （当前 UI 已去掉授权状态卡片，此方法仍供联调 / 后续扩展）
    */
   listInstallations(teamId: string) {
-    return request<ApiEnvelope<GithubInstallation[]>>(//TS泛型用来约束返回数据类型：
+    return request<ApiEnvelope<unknown>>(//TS泛型用来约束返回数据类型：
       `/teams/${teamId}/integrations/github/installations`,
-    ).then((res) => res.data)
-  },
+      { unwrapData: false },
+    ).then((res) => asList(res.data).map(mapInstallation))
+  },//数组的 map：遍历数组里每一项，把每一项传给函数 fn，用返回值拼成新数组
 
   /** DELETE /teams/{teamId}/integrations/github/installations/{installationId} */
   deleteInstallation(teamId: string, installationId: string) {
     return request<void>(`/teams/${teamId}/integrations/github/installations/${installationId}`, {
       method: 'DELETE',
+      headers: idempotencyHeaders(),
     })
+  },
+
+  /**
+   * POST /teams/{teamId}/integrations/github/installations/{installationId}/sync
+   * 已冻结见 docs：{installationId} 为本地 UUID；只刷新元数据，成功后重新 GET 列表。
+   */
+  syncInstallation(teamId: string, installationId: string) {
+    return request<ApiEnvelope<unknown>>(
+      `/teams/${teamId}/integrations/github/installations/${installationId}/sync`,
+      {
+        method: 'POST',
+        unwrapData: false,
+        headers: idempotencyHeaders(),
+      },
+    ).then((res) => mapInstallation(res.data))
   },
 
   /** GET /teams/{teamId}/integrations/github/repositories */
   listTeamRepositories(teamId: string) {
-    return request<ApiEnvelope<GithubAuthorizedRepository[]>>(
+    return request<ApiEnvelope<unknown>>(
       `/teams/${teamId}/integrations/github/repositories`,
-    ).then((res) => res.data)
-  },//只要请求回来的仓库数组
+      { unwrapData: false },
+    ).then((res) => asList(res.data).map(mapAuthorizedRepository))
+  }, //只要请求回来的仓库数组
 
   /** GET /projects/{projectId}/repositories */
   listProjectRepositories(projectId: string) {
-    return request<ApiEnvelope<ProjectBoundRepository[]>>(
+    return request<ApiEnvelope<unknown>>(
       `/projects/${projectId}/repositories`,
       { unwrapData: false },
-    ).then((res) => res.data)
+    ).then((res) => asList(res.data) as ProjectBoundRepository[])
   },
 
-  /** POST /projects/{projectId}/repositories */
+  /**
+   * POST /projects/{projectId}/repositories
+   * 已冻结见 docs：body 只传本地 installationId / repositoryId；不传 provider 数字 ID，不传 defaultBranch。
+   */
   bindRepository(projectId: string, payload: BindProjectRepositoryPayload) {
-    return request<ApiEnvelope<ProjectBoundRepository>>(`/projects/${projectId}/repositories`, {
+    const body: BindProjectRepositoryPayload = {
+      installationId: payload.installationId,
+      repositoryId: payload.repositoryId,
+    }
+    if (payload.displayName) body.displayName = payload.displayName
+
+    return request<ApiEnvelope<unknown>>(`/projects/${projectId}/repositories`, {
       method: 'POST',
-      body: payload,
-      headers: {
-        'Idempotency-Key': crypto.randomUUID(),
-      },
-    }).then((res) => res.data)
+      unwrapData: false,
+      body,
+      headers: idempotencyHeaders(),
+    }).then((res) => mapProjectBoundRepository(res.data))
   },
 
-  /** PATCH /projects/{projectId}/repositories/{repositoryId} */
+  /**
+   * PATCH /projects/{projectId}/repositories/{projectRepositoryId}
+   * 已冻结见 docs：路径 ID 为绑定记录 id；第一版前端不调用修改默认分支。
+   */
   updateProjectRepository(
     projectId: string,
-    repositoryId: string,
-    payload: Pick<BindProjectRepositoryPayload, 'defaultBranch' | 'displayName'>,
+    projectRepositoryId: string,
+    payload: { displayName?: string },
   ) {
-    return request<ApiEnvelope<ProjectBoundRepository>>(
-      `/projects/${projectId}/repositories/${repositoryId}`,
+    return request<ApiEnvelope<unknown>>(
+      `/projects/${projectId}/repositories/${projectRepositoryId}`,
       {
         method: 'PATCH',
+        unwrapData: false,
         body: payload,
+        headers: idempotencyHeaders(),
       },
-    ).then((res) => res.data)
+    ).then((res) => mapProjectBoundRepository(res.data))
   },
 
-  /** DELETE /projects/{projectId}/repositories/{repositoryId} */
-  unbindRepository(projectId: string, repositoryId: string) {
-    return request<void>(`/projects/${projectId}/repositories/${repositoryId}`, {
+  /**
+   * DELETE /projects/{projectId}/repositories/{projectRepositoryId}
+   * 已冻结见 docs：路径 ID 为绑定记录 id；成功 204，随后重新 GET。
+   */
+  unbindRepository(projectId: string, projectRepositoryId: string) {
+    return request<void>(`/projects/${projectId}/repositories/${projectRepositoryId}`, {
       method: 'DELETE',
+      headers: idempotencyHeaders(),
     })
   },
 }

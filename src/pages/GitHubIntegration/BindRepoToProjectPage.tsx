@@ -22,7 +22,7 @@ import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
 import type { Project } from '@/types'
-import type { ProjectBoundRepository } from '@/types/github'
+import { isGithubRepoBindable, type ProjectBoundRepository } from '@/types/github'
 
 const { Title, Paragraph, Text } = Typography
 
@@ -73,9 +73,34 @@ export function BindRepoToProjectPage() {
 
   const projects = projectsQuery.data ?? []
 
+  const installationsQuery = useQuery({
+    queryKey: queryKeys.githubInstallations(teamId),
+    queryFn: () => githubApi.listInstallations(teamId),
+    enabled: Boolean(teamId),
+  })
+
+  const teamReposQuery = useQuery({
+    queryKey: queryKeys.githubTeamRepositories(teamId),
+    queryFn: () => githubApi.listTeamRepositories(teamId),
+    enabled: Boolean(teamId),
+  })
+
+  const authorizedRepo = useMemo(
+    () => teamReposQuery.data?.find((r) => r.id === repositoryId),
+    [teamReposQuery.data, repositoryId],
+  )
+  const installation = useMemo(
+    () => installationsQuery.data?.find((i) => i.id === installationId),
+    [installationsQuery.data, installationId],
+  )
+  const bindable = Boolean(
+    authorizedRepo && isGithubRepoBindable(authorizedRepo, installation),
+  )
+
   /**
    * 为每个项目拉取已绑定仓库列表，用于判断当前 github repositoryId 是否已绑定
    * TODO[后端联调] 若后端提供「按 repositoryId 反查已绑定项目」批量接口，可替换此 N 次请求
+   * 已冻结见 docs：第一版不提供批量反查；继续按「团队总览 + 选择项目」对单项目 GET 绑定列表。
    */
   const bindingQueries = useQueries({
     queries: projects.map((p) => ({
@@ -109,11 +134,6 @@ export function BindRepoToProjectPage() {
     )
   }, [projects, keyword])
 
-  /** 当前列表（含搜索结果）是否全部已绑定 → 顶部按钮切换为「一键解除」 */
-  const allFilteredBound =
-    filteredProjects.length > 0 &&
-    filteredProjects.every((p) => bindingByProjectId.has(p.id))
-
   const exitMultiSelect = useCallback(() => {
     setMultiSelectMode(false)
     setSelectedIds([])
@@ -132,7 +152,6 @@ export function BindRepoToProjectPage() {
       await githubApi.bindRepository(projectId, {
         installationId,
         repositoryId,
-        defaultBranch: 'main',
         displayName: fullName.includes('/') ? fullName : fullName.split('/').pop(),
       })
     },
@@ -223,45 +242,6 @@ export function BindRepoToProjectPage() {
     confirmBindToProjects(selectedIds, selectedIds.length)
   }
 
-  function handleBindAll() {
-    const allIds = filteredProjects.map((p) => p.id)
-    confirmBindToProjects(allIds, allIds.length)
-  }
-
-  /** 一键解除：对当前列表中所有已绑定项目批量 DELETE */
-  function handleUnbindAll() {
-    const targets = filteredProjects
-      .map((p) => {
-        const binding = bindingByProjectId.get(p.id)
-        return binding ? { projectId: p.id, bindingId: binding.id } : null
-      })
-      .filter(Boolean) as { projectId: string; bindingId: string }[]
-
-    if (targets.length === 0) return
-
-    modal.confirm({
-      title: '确认解除绑定',
-      content: `确定解除 ${fullName || '该仓库'} 与这 ${targets.length} 个项目的绑定？`,
-      okText: '解除绑定',
-      okButtonProps: { danger: true },
-      cancelText: '取消',
-      onOk: async () => {
-        const results = await Promise.allSettled(
-          targets.map((t) =>
-            githubApi.unbindRepository(t.projectId, t.bindingId),
-          ),
-        )
-        const failed = results.filter((r) => r.status === 'rejected')
-        if (failed.length > 0) {
-          message.error(`${failed.length} 个项目解除失败`)
-        } else {
-          message.success(`已解除与 ${targets.length} 个项目的绑定`)
-        }
-        await invalidateBindings()
-      },
-    })
-  }
-
   function handleBindSingle(project: Project) {
     bindMutation.mutate([project.id])
   }
@@ -306,6 +286,16 @@ export function BindRepoToProjectPage() {
         平时可直接「绑定到此项目」/「解除绑定」（成功仅提示，不跳转）。
       </Paragraph>
 
+      {!bindable && installationId && repositoryId && !teamReposQuery.isLoading && !installationsQuery.isLoading ? (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="当前仓库不可绑定"
+          description="需 authorizationStatus=AUTHORIZED、未归档、默认分支非空，且对应 Installation 为 ACTIVE。请返回仓库页刷新授权仓库信息。已绑定项目仍可解除绑定。"
+        />
+      ) : null}
+
       {/* 卡片上方：项目搜索 */}
       <Input
         allowClear
@@ -322,27 +312,12 @@ export function BindRepoToProjectPage() {
             {/* 仅多选模式才显示「绑定到选中项目」计数按钮 */}
             {multiSelectMode ? (
               <Button
-                disabled={selectedIds.length === 0 || bindMutation.isPending}
+                disabled={selectedIds.length === 0 || bindMutation.isPending || !bindable}
                 onClick={handleBindSelected}
               >
                 绑定到选中项目（{selectedIds.length}）
               </Button>
-            ) : (
-              <Button
-                type={allFilteredBound ? 'default' : 'primary'}
-                danger={allFilteredBound}
-                disabled={
-                  filteredProjects.length === 0 ||
-                  bindMutation.isPending ||
-                  unbindMutation.isPending ||
-                  bindingsLoading
-                }
-                loading={bindMutation.isPending || unbindMutation.isPending}
-                onClick={allFilteredBound ? handleUnbindAll : handleBindAll}
-              >
-                {allFilteredBound ? '一键解除所有绑定' : '一键绑定到所有项目'}
-              </Button>
-            )}
+            ) : null}
             {multiSelectMode ? (
               <Button type="link" onClick={exitMultiSelect}>
                 退出多选
@@ -415,7 +390,7 @@ export function BindRepoToProjectPage() {
                               type="primary"
                               size="small"
                               loading={bindMutation.isPending}
-                              disabled={bindingsLoading || unbindMutation.isPending}
+                              disabled={bindingsLoading || unbindMutation.isPending || !bindable}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 handleBindSingle(project)

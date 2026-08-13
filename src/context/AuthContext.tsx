@@ -95,18 +95,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     localStorage.setItem(ACCESS_TOKEN_KEY, result.accessToken)
     localStorage.setItem(REFRESH_TOKEN_KEY, result.refreshToken)
-    setUser(result.user)
 
-    // 登录后检查用户是否有团队
+    // 先查清团队归属，再一次性 setUser + setHasTeam。
+    // 若先 setUser 再异步查 teams，中间会出现「isAuthenticated=true 但 hasTeam 仍是旧值」的
+    // 渲染帧，包裹 /login 的 RedirectIfAuthed 会误判并把用户抢跳 /welcome，造成闪一下欢迎页。
+    let haveTeam = false
     try {
       const teams = await teamApi.listMine()
-      const haveTeam = teams.length > 0
-      setHasTeam(haveTeam)
-      return haveTeam
+      haveTeam = teams.length > 0
     } catch {
-      setHasTeam(false)
-      return false
+      haveTeam = false
     }
+
+    // 两个 setState 在同一同步块内更新，React 批处理成一次渲染，避免不一致的中间帧。
+    setUser(result.user)
+    setHasTeam(haveTeam)
+    return haveTeam
   }, [])
 
   // ──── 注册（新用户没有团队，返回 false）────

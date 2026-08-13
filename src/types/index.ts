@@ -33,7 +33,18 @@ export type {
   Page,
 } from './group'
 export type { Agent, AgentRoleTag } from './agent'
-export type { Task, TaskStatus } from './task'
+export type {
+  Task,
+  TaskStatus,
+  TaskStep,
+  TaskStepStatus,
+  TaskRun,
+  TaskRunStatus,
+  TaskRepository,
+  WorkflowRole,
+  CreateTaskPayload,
+} from './task'
+export type { Notification, NotificationKind } from './notification'
 export type {
   GithubInstallation,
   GithubInstallationRedirect,

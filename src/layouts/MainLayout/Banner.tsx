@@ -1,9 +1,10 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Layout, Menu, Button, Badge, Avatar, Space, Typography } from 'antd'
-import { HomeOutlined, MessageOutlined, BellOutlined } from '@ant-design/icons'
+import { Layout, Menu, Button, Avatar, Space, Typography } from 'antd'
+import { HomeOutlined, MessageOutlined } from '@ant-design/icons'
 import { useAuth } from '@/context/AuthContext'
 import { usePersonalCenter } from '@/context/PersonalCenterContext'
 import { useCurrentTeamId } from '@/store/appUiStore'
+import { NotificationCenter } from './NotificationCenter'
 import { PATHS } from '@/routes/paths'
 
 const { Header } = Layout
@@ -92,14 +93,7 @@ export function Banner() {
       </Space>
 
       <Space size={4} align="center">
-        <Badge dot>
-          <Button
-            type="text"
-            icon={<BellOutlined />}
-            aria-label="通知"
-            style={{ color: LIGHT }}
-          />
-        </Badge>
+        <NotificationCenter />
 
         <Button
           type="text"

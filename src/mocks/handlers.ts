@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import type { GithubAuthorizedRepository, GithubInstallation } from '@/types/github'
-import type { Group, Message } from '@/types/group'
+import type { Group, GroupMember, Message } from '@/types/group'
+import type { Notification } from '@/types'
 
 // ══════════════════════════════════════════════
 // Mock 数据
@@ -67,7 +68,6 @@ const MOCK_GROUPS: Record<string, Group[]> = {
       title: '项目总群',
       description: '项目级讨论与结构化动态',
       status: 'ACTIVE',
-      memberCount: 5,
       latestActivityAt: '2026-08-12T10:05:00Z',
       unreadCount: 0,
       isPinned: true,
@@ -80,7 +80,6 @@ const MOCK_GROUPS: Record<string, Group[]> = {
       title: '登录功能',
       description: '账号与登录体验',
       status: 'ACTIVE',
-      memberCount: 3,
       latestActivityAt: '2026-08-12T10:03:00Z',
       unreadCount: 2,
       isPinned: false,
@@ -93,7 +92,6 @@ const MOCK_GROUPS: Record<string, Group[]> = {
       title: '支付回调',
       description: '支付回调与对账',
       status: 'ACTIVE',
-      memberCount: 3,
       latestActivityAt: '2026-08-11T18:00:00Z',
       unreadCount: 0,
       isPinned: false,
@@ -182,13 +180,111 @@ const MOCK_MESSAGES: Record<string, Message[]> = {
   ],
 }
 
-// 群成员 = 项目成员 + 群内 Agent（memberType: USER/AGENT）
-const MOCK_GROUP_MEMBERS = [
-  { id: 'user-001', displayName: '陈同学', memberType: 'USER' as const },
-  { id: 'user-002', displayName: '张工', memberType: 'USER' as const },
-  { id: 'user-003', displayName: '李设计', memberType: 'USER' as const },
-  { id: 'agent-orchestrator', displayName: 'AgentOrchestrator', memberType: 'AGENT' as const },
-  { id: 'agent-developer', displayName: 'Developer', memberType: 'AGENT' as const },
+// ══════════════════════════════════════════════
+// 群成员数据 —— 对齐接口文档 v1.1.8 §7「群成员 = 项目成员 + 群内 Agent」
+// ══════════════════════════════════════════════
+
+interface MockProjectMember {
+  userId: string
+  displayName: string
+  email: string
+  role: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'
+}
+
+// 项目成员（按项目隔离，作为群 USER 成员来源；同时供 GET /projects/:id/members 复用）
+const MOCK_PROJECT_MEMBERS: Record<string, MockProjectMember[]> = {
+  'proj-001': [
+    { userId: 'user-001', displayName: '陈同学', email: 'demo@qgents.dev', role: 'PROJECT_ADMIN' },
+    { userId: 'user-002', displayName: '张工', email: 'zhang@example.com', role: 'PROJECT_MEMBER' },
+    { userId: 'user-003', displayName: '李设计', email: 'li@example.com', role: 'PROJECT_MEMBER' },
+  ],
+}
+
+// 每个群参与的 Agent（按群隔离：不同需求触发不同 Agent 回群）
+const MOCK_GROUP_AGENTS: Record<string, GroupMember[]> = {
+  'group-main-proj-001': [
+    { id: 'agent-orchestrator', displayName: 'AgentOrchestrator', memberType: 'AGENT' },
+  ],
+  'group-login-proj-001': [
+    { id: 'agent-orchestrator', displayName: 'AgentOrchestrator', memberType: 'AGENT' },
+    { id: 'agent-planner', displayName: 'Planner', memberType: 'AGENT' },
+    { id: 'agent-developer', displayName: 'Developer', memberType: 'AGENT' },
+    { id: 'agent-tester', displayName: 'Tester', memberType: 'AGENT' },
+    { id: 'agent-reviewer', displayName: 'Reviewer', memberType: 'AGENT' },
+  ],
+  'group-pay-proj-001': [
+    { id: 'agent-orchestrator', displayName: 'AgentOrchestrator', memberType: 'AGENT' },
+    { id: 'agent-developer', displayName: 'Developer', memberType: 'AGENT' },
+  ],
+}
+
+// 群成员 = 项目成员（USER）+ 该群参与的 Agent；memberCount 与此函数保持一致
+function getGroupMembers(projectId: string, groupId: string): GroupMember[] {
+  const users: GroupMember[] = (MOCK_PROJECT_MEMBERS[projectId] ?? []).map(
+    (m): GroupMember => ({ id: m.userId, displayName: m.displayName, memberType: 'USER' }),
+  )
+  return [...users, ...(MOCK_GROUP_AGENTS[groupId] ?? [])]
+}
+
+// ══════════════════════════════════════════════
+// 通知中心 Mock 数据 —— 对齐分工安排「通知中心」（本轮前端 Mock）
+// ══════════════════════════════════════════════
+
+const MOCK_NOTIFICATIONS: Notification[] = [
+  {
+    id: 'notif-1',
+    kind: 'TASK_COMPLETED',
+    title: '登录功能任务已完成',
+    description: 'Agent 已完成「实现邮箱登录」，Diff 待你验收',
+    isRead: false,
+    createdAt: '2026-08-13T01:00:00Z',
+    projectId: 'proj-001',
+    groupId: 'group-login-proj-001',
+    resourceId: 'task-001',
+  },
+  {
+    id: 'notif-2',
+    kind: 'AGENT_INPUT_REQUIRED',
+    title: 'Agent 需要你补充信息',
+    description: 'Developer 在「支付回调」任务中请求补充验收说明',
+    isRead: false,
+    createdAt: '2026-08-13T00:40:00Z',
+    projectId: 'proj-001',
+    groupId: 'group-pay-proj-001',
+    resourceId: 'task-002',
+  },
+  {
+    id: 'notif-3',
+    kind: 'MR_PENDING',
+    title: 'MR 待处理',
+    description: 'feature/login-api 已提交，等待质量门禁与合并',
+    isRead: false,
+    createdAt: '2026-08-12T23:30:00Z',
+    projectId: 'proj-001',
+    resourceId: 'mr-001',
+  },
+  {
+    id: 'notif-4',
+    kind: 'TASK_FAILED',
+    title: '测试任务失败',
+    description: 'Tester 在「登录功能」中报告测试未通过',
+    isRead: true,
+    createdAt: '2026-08-12T22:10:00Z',
+    projectId: 'proj-001',
+    groupId: 'group-login-proj-001',
+    resourceId: 'task-003',
+  },
+  {
+    id: 'notif-5',
+    kind: 'DELIVERABLE_PENDING',
+    title: '交付物待验收',
+    description: '「登录功能」产出代码交付物，请验收',
+    isRead: true,
+    createdAt: '2026-08-12T21:00:00Z',
+    projectId: 'proj-001',
+    groupId: 'group-login-proj-001',
+    resourceId: 'task-001',
+  },
 ]
 
 // ══════════════════════════════════════════════
@@ -467,15 +563,42 @@ export const handlers = [
 
   http.post('/api/teams/:teamId/projects', async ({ params, request }) => {
     const body = (await request.json()) as { name?: string; description?: string }
+    const teamId = params.teamId as string
     const newProject = {
       id: 'proj-new-' + nextProjectId++,
-      teamId: params.teamId as string,
+      teamId,
       name: body.name || '未命名项目',
       description: body.description || '',
       createdAt: new Date().toISOString(),
       myRole: 'PROJECT_ADMIN' as const,
       repositoryCount: 0,
     }
+    // 写回内存，保证后续 GET /projects/:id 能查到
+    if (!MOCK_PROJECTS[teamId]) MOCK_PROJECTS[teamId] = []
+    MOCK_PROJECTS[teamId].push(newProject)
+
+    // 新建项目的成员只有创建者本人
+    MOCK_PROJECT_MEMBERS[newProject.id] = [
+      { userId: 'user-001', displayName: '陈同学', email: 'demo@qgents.dev', role: 'PROJECT_ADMIN' },
+    ]
+
+    // 对齐接口文档 §7：创建项目时服务端自动创建唯一的 PROJECT_MAIN 总群
+    const mainGroupId = 'group-main-' + newProject.id
+    if (!MOCK_GROUPS[newProject.id]) MOCK_GROUPS[newProject.id] = []
+    MOCK_GROUPS[newProject.id].push({
+      id: mainGroupId,
+      projectId: newProject.id,
+      type: 'PROJECT_MAIN',
+      title: '项目总群',
+      description: '项目级讨论与结构化动态',
+      status: 'ACTIVE',
+      memberCount: getGroupMembers(newProject.id, mainGroupId).length,
+      latestActivityAt: new Date().toISOString(),
+      unreadCount: 0,
+      isPinned: true,
+      isArchived: false,
+    })
+
     return HttpResponse.json({ data: newProject }, { status: 201 })
   }),
 
@@ -487,13 +610,8 @@ export const handlers = [
     return HttpResponse.json({ error: { code: 'NOT_FOUND', message: '项目不存在' } }, { status: 404 })
   }),
 
-  http.get('/api/projects/:projectId/members', () =>
-    HttpResponse.json({
-      data: [
-        { userId: 'user-001', displayName: '陈同学', email: 'demo@qgents.dev', role: 'PROJECT_ADMIN' },
-        { userId: 'user-002', displayName: '张工', email: 'zhang@example.com', role: 'PROJECT_MEMBER' },
-      ],
-    }),
+  http.get('/api/projects/:projectId/members', ({ params }) =>
+    HttpResponse.json({ data: MOCK_PROJECT_MEMBERS[params.projectId as string] ?? [] }),
   ),
 
   http.post('/api/projects/:projectId/members', () => HttpResponse.json({ data: null }, { status: 201 })),
@@ -504,8 +622,12 @@ export const handlers = [
 
   // ── Group 与消息 ──
   http.get('/api/projects/:projectId/groups', ({ params }) => {
-    const groups = MOCK_GROUPS[params.projectId as string] ?? []
-    // 按最近活跃排序（项目总群固定靠前由前端处理，这里直接返回）
+    const projectId = params.projectId as string
+    // memberCount 由群成员派生（= 项目成员 + 群内 Agent），与 GET .../members 保持一致
+    const groups = (MOCK_GROUPS[projectId] ?? []).map((g) => ({
+      ...g,
+      memberCount: getGroupMembers(projectId, g.id).length,
+    }))
     return HttpResponse.json({ data: groups })
   }),
 
@@ -519,14 +641,16 @@ export const handlers = [
         { status: 422 },
       )
     }
+    const groupId = 'group-' + Date.now()
     const group: Group = {
-      id: 'group-' + Date.now(),
+      id: groupId,
       projectId,
       type: 'REQUIREMENT',
       title: body.title || '未命名需求群',
       description: body.description || '',
       status: 'ACTIVE',
-      memberCount: 1,
+      // 新需求群默认只有项目成员，无 Agent 参与
+      memberCount: getGroupMembers(projectId, groupId).length,
       latestActivityAt: new Date().toISOString(),
       unreadCount: 0,
       isPinned: false,
@@ -537,9 +661,11 @@ export const handlers = [
     return HttpResponse.json({ data: group }, { status: 201 })
   }),
 
-  http.get('/api/projects/:projectId/groups/:groupId/members', () => {
+  http.get('/api/projects/:projectId/groups/:groupId/members', ({ params }) => {
     // 群成员 = 项目成员 + 群内 Agent，群内成员平等、无角色区分
-    return HttpResponse.json({ data: MOCK_GROUP_MEMBERS })
+    return HttpResponse.json({
+      data: getGroupMembers(params.projectId as string, params.groupId as string),
+    })
   }),
 
   http.get('/api/projects/:projectId/groups/:groupId/messages', ({ params }) => {
@@ -577,4 +703,20 @@ export const handlers = [
 
   // ── 项目仓库绑定（GitHub）──
   ...createRepoBindingHandlers(),
+
+  // ── 通知中心（本轮前端 Mock）──
+  http.get('/api/notifications', () => HttpResponse.json({ data: MOCK_NOTIFICATIONS })),
+
+  http.post('/api/notifications/:id/read', ({ params }) => {
+    const n = MOCK_NOTIFICATIONS.find((x) => x.id === params.id)
+    if (n) n.isRead = true
+    return HttpResponse.json({ data: null })
+  }),
+
+  http.post('/api/notifications/read-all', () => {
+    MOCK_NOTIFICATIONS.forEach((n) => {
+      n.isRead = true
+    })
+    return HttpResponse.json({ data: null })
+  }),
 ]

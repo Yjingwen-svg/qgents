@@ -1,0 +1,173 @@
+import { useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Drawer, Badge, Button, Typography, Space, Empty, theme } from 'antd'
+import {
+  BellOutlined,
+  CheckOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  QuestionCircleOutlined,
+  InboxOutlined,
+  BranchesOutlined,
+} from '@ant-design/icons'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { notificationApi } from '@/api'
+import { PATHS } from '@/routes/paths'
+import type { Notification, NotificationKind } from '@/types'
+
+const { Text } = Typography
+
+/** 每种通知类型的图标与配色 */
+const KIND_META: Record<NotificationKind, { icon: ReactNode; color: string }> = {
+  TASK_COMPLETED: { icon: <CheckCircleOutlined />, color: '#22c55e' },
+  TASK_FAILED: { icon: <CloseCircleOutlined />, color: '#ef4444' },
+  AGENT_INPUT_REQUIRED: { icon: <QuestionCircleOutlined />, color: '#f59e0b' },
+  DELIVERABLE_PENDING: { icon: <InboxOutlined />, color: '#3b82f6' },
+  MR_PENDING: { icon: <BranchesOutlined />, color: '#a855f7' },
+}
+
+/** 通知 → 跳转目标路由（交付中心等 B/C 页面未实现时兜底到项目详情） */
+function notificationTargetPath(n: Notification): string | null {
+  const projectId = n.projectId
+  if (!projectId) return null
+  switch (n.kind) {
+    case 'TASK_COMPLETED':
+    case 'TASK_FAILED':
+    case 'AGENT_INPUT_REQUIRED':
+      return PATHS.projectTasks(projectId)
+    case 'MR_PENDING':
+      return PATHS.projectCode(projectId)
+    case 'DELIVERABLE_PENDING':
+      return PATHS.projectDetail(projectId)
+    default:
+      return PATHS.projectDetail(projectId)
+  }
+}
+
+/** 相对时间（演示用） */
+function formatRelativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const min = Math.floor(diff / 60000)
+  if (min < 1) return '刚刚'
+  if (min < 60) return `${min} 分钟前`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr} 小时前`
+  return `${Math.floor(hr / 24)} 天前`
+}
+
+/**
+ * 通知中心 —— 顶部铃铛 + 右侧抽屉
+ * 本轮由前端 Mock 实现（接口文档 §1：持久通知中心不在本轮范围）
+ */
+export function NotificationCenter() {
+  const navigate = useNavigate()
+  const { token } = theme.useToken()
+  const queryClient = useQueryClient()
+  const [open, setOpen] = useState(false)
+
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => notificationApi.list(),
+  })
+  const unreadCount = notifications.filter((n) => !n.isRead).length
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ['notifications'] })
+
+  const markRead = useMutation({
+    mutationFn: (id: string) => notificationApi.markRead(id),
+    onSuccess: invalidate,
+  })
+  const markAllRead = useMutation({
+    mutationFn: () => notificationApi.markAllRead(),
+    onSuccess: invalidate,
+  })
+
+  function handleItemClick(n: Notification) {
+    if (!n.isRead) markRead.mutate(n.id)
+    setOpen(false)
+    const to = notificationTargetPath(n)
+    if (to) navigate(to)
+  }
+
+  return (
+    <>
+      <Badge count={unreadCount} size="small">
+        <Button
+          type="text"
+          icon={<BellOutlined />}
+          aria-label="通知"
+          onClick={() => setOpen(true)}
+          style={{ color: 'var(--qg-text-on-dark)' }}
+        />
+      </Badge>
+
+      <Drawer
+        title="通知中心"
+        placement="right"
+        size={380}
+        open={open}
+        onClose={() => setOpen(false)}
+        extra={
+          notifications.length > 0 && (
+            <Button
+              type="text"
+              size="small"
+              icon={<CheckOutlined />}
+              disabled={unreadCount === 0}
+              loading={markAllRead.isPending}
+              onClick={() => markAllRead.mutate()}
+            >
+              全部已读
+            </Button>
+          )
+        }
+        styles={{ body: { padding: 0 } }}
+      >
+        {notifications.length === 0 ? (
+          <Empty description="暂无通知" style={{ marginTop: 64 }} />
+        ) : (
+          notifications.map((n) => {
+            const meta = KIND_META[n.kind]
+            return (
+              <div
+                key={n.id}
+                onClick={() => handleItemClick(n)}
+                style={{
+                  display: 'flex',
+                  gap: 12,
+                  padding: '12px 16px',
+                  cursor: 'pointer',
+                  background: n.isRead ? 'transparent' : token.colorPrimaryBg,
+                  borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                }}
+              >
+                <span style={{ color: meta.color, fontSize: 22, lineHeight: 1, flexShrink: 0 }}>
+                  {meta.icon}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Space size={6} align="center">
+                    {!n.isRead && <Badge status="processing" />}
+                    <Text strong={!n.isRead}>{n.title}</Text>
+                  </Space>
+                  {n.description && (
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 13 }}>
+                        {n.description}
+                      </Text>
+                    </div>
+                  )}
+                  <div>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {formatRelativeTime(n.createdAt)}
+                    </Text>
+                  </div>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </Drawer>
+    </>
+  )
+}

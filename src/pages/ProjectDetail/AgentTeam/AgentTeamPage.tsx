@@ -69,8 +69,11 @@ export function AgentTeamPage() {
   const selectAgent = (id: string) => navigate(`?agentId=${encodeURIComponent(id)}`)
   const closeDetail = () => navigate({ pathname: location.pathname, search: '' })
 
-  if (!projectId || projectQuery.isPending || agentsQuery.isPending) return <div className={styles.page}><Spin /></div>
+  if (!projectId) return <div className={styles.page}><div className={styles.error}>缺少项目上下文，无法加载 Agent 团队。</div></div>
+  if (projectQuery.isLoading) return <div className={styles.page}><Spin tip="团队信息加载中" /></div>
   if (projectQuery.isError) return <div className={styles.page}><div className={styles.error}>项目上下文加载失败：{message(projectQuery.error)}</div></div>
+  if (!teamId) return <div className={styles.page}><div className={styles.error}>项目未提供团队信息，无法加载 Agent 团队。</div></div>
+  if (agentsQuery.isLoading) return <div className={styles.page}><Spin tip="正在加载 Agent 列表" /></div>
   if (agentsQuery.isError) return <div className={styles.page}><div className={styles.error}>Agent 列表加载失败：{message(agentsQuery.error)}</div></div>
   const invalidId = Boolean(agentId && agentsQuery.isSuccess && !selectedSummary)
 

@@ -42,6 +42,7 @@ const MOCK_TEAM_MEMBERS = [
 
 const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: string; description: string; createdAt: string; myRole: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'; repositoryCount: number }>> = {
   'team-owned-001': [
+    { id: 'demo-project', teamId: 'team-owned-001', name: 'Demo Project', description: 'Demo project for Mock acceptance', createdAt: '2026-08-13T00:00:00Z', myRole: 'PROJECT_ADMIN', repositoryCount: 1 },
     { id: 'proj-001', teamId: 'team-owned-001', name: 'Qgents', description: 'Agent collaboration project', createdAt: '2026-07-01T08:00:00Z', myRole: 'PROJECT_ADMIN', repositoryCount: 3 },
     { id: 'proj-002', teamId: 'team-owned-001', name: 'Pet Health', description: 'Pet health management', createdAt: '2026-07-15T08:00:00Z', myRole: 'PROJECT_ADMIN', repositoryCount: 1 },
   ],
@@ -189,6 +190,9 @@ const handlers: ReturnType<typeof http.get>[] = [
     }
     return HttpResponse.json({ error: { code: 'NOT_FOUND', message: 'Project not found' } }, { status: 404 })
   }),
+
+  /** GET /api/projects/:projectId/groups: project shell needs this list for its navigation */
+  http.get('/api/projects/:projectId/groups', () => HttpResponse.json({ data: [] })),
 
   /** GET /api/projects/:projectId/members */
   http.get('/api/projects/:projectId/members', () =>

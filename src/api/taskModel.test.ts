@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { githubApi } from './github'
 import { diffsApi, taskRunsApi, tasksApi } from './taskModel'
 
 function jsonResponse(body: unknown): Response {
@@ -13,6 +14,21 @@ describe('new task model API', () => {
     vi.restoreAllMocks()
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse({ data: {}, requestId: 'req' }))
     vi.stubGlobal('crypto', { randomUUID: () => 'idempotency-key' })
+  })
+
+  it('preserves the envelope when loading repositories for Task creation', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      data: [{ repositoryId: 'repository-1' }],
+      requestId: 'req-repositories',
+    }))
+
+    await expect(githubApi.listProjectRepositories('project-1')).resolves.toEqual([
+      { repositoryId: 'repository-1' },
+    ])
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      '/api/projects/project-1/repositories',
+      expect.objectContaining({ body: undefined }),
+    )
   })
 
   it('uses the Task create path and request body without legacy fields', async () => {

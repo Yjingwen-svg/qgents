@@ -14,6 +14,14 @@ beforeEach(() => {
 })
 
 describe('independent Task model mock chain', () => {
+  it('serves a project repository through the same /api MSW chain used by TaskTriggerModal', async () => {
+    const response = await fetch('/api/projects/project-repositories/repositories')
+    expect(response.status).toBe(200)
+    const payload = await response.json() as { data: Array<{ boundProjectId: string; repositoryId: string }> }
+    expect(payload.data[0]?.boundProjectId).toBe('project-repositories')
+    expect(payload.data[0]?.repositoryId).toBe('repository-project-repositories')
+  })
+
   it('creates a Task with queryable TaskSteps and a subsequent TaskRun', async () => {
     const task = await tasksApi.create('project-create', {
       requirementGroupId: 'group-create',

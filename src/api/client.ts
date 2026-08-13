@@ -1,6 +1,7 @@
 import type { Page } from '@/types'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
+const CONFIGURED_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
+const BASE_URL = import.meta.env.VITE_USE_MOCK === 'true' ? '/api' : CONFIGURED_BASE_URL
 
 export class ApiError extends Error {
   status: number
@@ -21,8 +22,12 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
   unwrapData?: boolean
 }
 
-function getStoredToken(): string | null {
+export function getStoredToken(): string | null {
   return localStorage.getItem('qgents_access_token')
+}
+
+export function getApiBaseUrl(): string {
+  return BASE_URL
 }
 
 /** 底层请求：返回后端统一响应的原始 JSON（含 data / page / error） */
@@ -58,6 +63,9 @@ async function rawRequest(path: string, options: RequestOptions = {}): Promise<u
   try {
     json = JSON.parse(raw)
   } catch {
+    if (res.ok) {
+      throw new ApiError('Expected a JSON API response', res.status, raw)
+    }
     json = raw
   }
 
@@ -71,6 +79,10 @@ async function rawRequest(path: string, options: RequestOptions = {}): Promise<u
 /** 普通请求：解出 `data` 层返回 */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const json = await rawRequest(path, options)
+
+  if (options.unwrapData === false) {
+    return json as T
+  }
 
   if (json && typeof json === 'object' && 'data' in json) {
     return (json as Record<string, unknown>).data as T

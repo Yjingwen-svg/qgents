@@ -11,6 +11,7 @@ import type {
   TaskRunSummary,
   TaskStep,
 } from '@/types/task-model'
+import type { ProjectBoundRepository } from '@/types/github'
 import {
   InvalidTaskModelTransitionError,
   transitionDiff,
@@ -594,7 +595,28 @@ export const taskModelDiffHandlers: HttpHandler[] = [
   }),
 ]
 
+const taskModelRepositoryHandlers: HttpHandler[] = [
+  http.get('*/api/projects/:projectId/repositories', ({ params }) => {
+    const projectId = pathParam(params, 'projectId')
+    const repository: ProjectBoundRepository = {
+      id: `bound-${projectId}-repository-1`,
+      installationId: 'mock-installation-1',
+      repositoryId: `repository-${projectId}`,
+      fullName: `mock/${projectId}`,
+      githubUrl: `https://github.com/mock/${projectId}`,
+      displayName: projectId,
+      defaultBranch: 'main',
+      boundProjectId: projectId,
+      boundProjectName: projectId,
+      syncStatus: 'SYNCED',
+      lastSyncedAt: '2026-08-10T12:00:00Z',
+    }
+    return response([repository])
+  }),
+]
+
 export const taskModelHandlers: HttpHandler[] = [
+  ...taskModelRepositoryHandlers,
   ...taskModelTaskHandlers,
   ...taskModelTaskRunHandlers,
   ...taskModelDiffHandlers,

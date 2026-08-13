@@ -42,6 +42,26 @@ beforeEach(() => {
 })
 
 describe('AgentTeamPage', () => {
+  it('shows a team-context loading state before the project teamId is available', () => {
+    projectGetMock.mockImplementation(() => new Promise(() => undefined))
+    useAgentsMock.mockReturnValue({ data: undefined, isPending: true, isLoading: false, isError: false, fetchStatus: 'idle' })
+
+    renderPage()
+
+    expect(screen.getByText('团队信息加载中')).toBeInTheDocument()
+    expect(useAgentsMock).toHaveBeenCalledWith('')
+  })
+
+  it('does not treat a disabled Agent Query as an active list request', async () => {
+    projectGetMock.mockResolvedValue({ id: 'project-one', teamId: '', name: 'Project One' })
+    useAgentsMock.mockReturnValue({ data: undefined, isPending: true, isLoading: false, isError: false, fetchStatus: 'idle' })
+
+    renderPage()
+
+    expect(await screen.findByText('项目未提供团队信息，无法加载 Agent 团队。')).toBeInTheDocument()
+    expect(screen.queryByText('正在加载 Agent 列表')).not.toBeInTheDocument()
+  })
+
   it('renders Query data and restores selected Agent from URL', async () => {
     renderPage('/app/projects/project-one/agents?agentId=agent-one')
     expect((await screen.findAllByText('Agent One')).length).toBeGreaterThan(0)

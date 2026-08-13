@@ -31,7 +31,7 @@ const DEMO_TEAM_TREE = [
     id: 'team-xinghe',
     name: '星河工作室',
     projects: [
-      { id: 'proj-qgents', name: 'Qgents', role: 'Maintainer' },
+      { id: 'demo-project', name: 'Demo Project', role: 'Maintainer' },
       { id: 'proj-pet', name: '宠影记', role: 'Developer' },
     ],
   },

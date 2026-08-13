@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -76,6 +77,26 @@ describe('WorkflowViewerPage', () => {
     useTaskMock.mockReturnValue({ data: undefined, isPending: false, isError: true, error: new Error('404') })
     renderPage('/app/projects/project-1/workflow?taskId=missing')
     await waitFor(() => expect(screen.getByText('任务不存在或当前用户无权访问。')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: '清除选择' })).toBeInTheDocument()
+  })
+
+  it('clears an invalid taskId without leaving the workflow page', async () => {
+    const user = userEvent.setup()
+    useTaskMock.mockReturnValue({ data: undefined, isPending: false, isLoading: false, isError: true, error: new Error('404') })
+    renderPage('/app/projects/project-1/workflow?taskId=missing')
+
+    await user.click(await screen.findByRole('button', { name: '清除选择' }))
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/app/projects/project-1/workflow')
+    expect(screen.getByText('请选择一个任务查看实际执行计划')).toBeInTheDocument()
+  })
+
+  it('does not report a missing task while the Task list is loading', () => {
+    useInfiniteTasksMock.mockReturnValue({ data: undefined, isPending: true, isLoading: true, isError: false, error: null, fetchStatus: 'fetching' })
+    useTaskMock.mockReturnValue({ data: undefined, isPending: true, isLoading: true, isError: false, error: null })
+    renderPage('/app/projects/project-1/workflow?taskId=missing')
+
+    expect(screen.queryByText('任务不存在或当前用户无权访问。')).not.toBeInTheDocument()
   })
 
   it('keeps task content when agent query fails', async () => {

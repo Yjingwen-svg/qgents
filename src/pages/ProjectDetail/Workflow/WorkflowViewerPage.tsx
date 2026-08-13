@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { Alert, Avatar, Button, Card, Empty, Select, Spin, Tag, Typography } from 'antd'
 import {
@@ -163,7 +163,14 @@ export function WorkflowViewerPage() {
   const runs = runsQuery.data?.data ?? EMPTY_TASK_RUNS
   const graph = useMemo(() => buildWorkflowGraph(steps, runs), [steps, runs])
   const [selectedStepId, setSelectedStepId] = useState('')
+  const previousProjectId = useRef(projectId)
+  const taskListLoading = tasksQuery.isLoading || (tasksQuery.fetchStatus === 'fetching' && !tasksQuery.data)
   useEffect(() => { setSelectedStepId(graph.nodes[0]?.step.id ?? '') }, [taskId, graph.nodes])
+  useEffect(() => {
+    if (previousProjectId.current === projectId) return
+    previousProjectId.current = projectId
+    if (taskId) navigate({ pathname: location.pathname, search: '' }, { replace: true })
+  }, [location.pathname, navigate, projectId, taskId])
   const selectedNode = graph.nodes.find((node) => node.step.id === selectedStepId) ?? graph.nodes[0]
   const graphLevels = useMemo(() => {
     const levels = new Map<number, WorkflowGraphNode[]>()
@@ -186,14 +193,14 @@ export function WorkflowViewerPage() {
   }
 
   if (!projectId) return <div className={styles.page}><Alert type="error" showIcon message="缺少项目上下文，无法加载工作流。" /></div>
-  if (projectQuery.isPending || tasksQuery.isPending) return <div className={styles.loading}><Spin /></div>
+  if (projectQuery.isLoading || taskListLoading) return <div className={styles.loading}><Spin /></div>
   if (projectQuery.isError) return <div className={styles.page}><Alert type="error" showIcon message={`项目上下文加载失败：${messageOf(projectQuery.error)}`} /></div>
 
   return <main className={styles.page}>
     <header className={styles.header}><div><div className={styles.titleLine}><ApartmentOutlined /><Title level={2} className={styles.title}>工作流查看</Title><Tag color="blue">只读</Tag></div><Paragraph className={styles.subtitle}>{selectedTask?.title ?? '选择一个任务查看实际执行计划'}</Paragraph></div></header>
     <Card className={styles.runBar} variant="borderless"><div className={styles.runLabel}><CodeOutlined /><span>任务</span></div><Select className={styles.runSelect} placeholder="选择任务" allowClear value={taskId || undefined} onChange={selectTask} options={tasks.map((task) => ({ value: task.id, label: `${task.title} · ${task.id}` }))} /><span className={styles.runHint}>{selectedTask ? <StatusTag status={taskStatus(selectedTask)} /> : '未选择任务'}</span></Card>
     {tasksQuery.isError ? <Alert className={styles.alert} type="error" showIcon message={`任务列表加载失败：${messageOf(tasksQuery.error)}`} /> : null}
-    {taskId && taskQuery.isError ? <Alert className={styles.alert} type="warning" showIcon message="任务不存在或当前用户无权访问。" /> : null}
+    {taskId && taskQuery.isError && !taskListLoading ? <Alert className={styles.alert} type="warning" showIcon message="任务不存在或当前用户无权访问。" action={<Button size="small" onClick={() => selectTask(undefined)}>清除选择</Button>} /> : null}
     {taskId && taskQuery.isPending ? <div className={styles.inlineLoading}><Spin size="small" /> 正在加载任务…</div> : null}
     {!taskId ? <div className={styles.emptyRun}><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请选择一个任务查看实际执行计划" /></div> : null}
     {taskId && taskQuery.data ? <>

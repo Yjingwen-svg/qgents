@@ -1,0 +1,346 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/pages/CreateTeam/CreateTeamPage.tsx");const useState = __vite__cjsImport0_react["useState"];const _jsxDEV = __vite__cjsImport6_react_jsxDevRuntime["jsxDEV"];import __vite__cjsImport0_react from "/node_modules/.vite/deps/react.js?v=99d0c0e1";
+import { Link, useNavigate } from "/node_modules/.vite/deps/react-router-dom.js?v=99d0c0e1";
+import { PATHS } from "/src/routes/paths.ts";
+import { useAuth } from "/src/context/AuthContext.tsx?t=1786607422498";
+import { teamApi } from "/src/api/index.ts?t=1786607422498";
+import "/src/pages/CreateTeam/CreateTeamPage.css";
+var _jsxFileName = "D:/qgents/src/pages/CreateTeam/CreateTeamPage.tsx";
+import __vite__cjsImport6_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=99d0c0e1";
+var _s = $RefreshSig$();
+/**
+* 创建新团队 —— 对齐接口文档 v1.1.4 §5.1
+*
+* POST /teams 创建团队
+* 创建者自动成为 TEAM_OWNER
+* 邀请成员是后续操作（POST /teams/{teamId}/invitations），创建后跳团队详情再操作
+*/
+export function CreateTeamPage() {
+	_s();
+	const navigate = useNavigate();
+	const { setHasTeam } = useAuth();
+	const [name, setName] = useState("");
+	const [description, setDescription] = useState("");
+	const [submitting, setSubmitting] = useState(false);
+	const [error, setError] = useState(null);
+	async function handleSubmit(e) {
+		e.preventDefault();
+		if (!name.trim()) return;
+		setError(null);
+		setSubmitting(true);
+		try {
+			const team = await teamApi.create({
+				name: name.trim(),
+				description: description.trim() || undefined
+			});
+			setHasTeam(true);
+			navigate(PATHS.teamDetail(team.id), { replace: true });
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "创建失败，请重试");
+		} finally {
+			setSubmitting(false);
+		}
+	}
+	return /* @__PURE__ */ _jsxDEV("div", {
+		className: "create-team",
+		children: [
+			/* @__PURE__ */ _jsxDEV("div", {
+				className: "create-team__top",
+				children: /* @__PURE__ */ _jsxDEV(Link, {
+					to: PATHS.MY_TEAMS,
+					className: "create-team__back",
+					children: [/* @__PURE__ */ _jsxDEV(BackIcon, {}, void 0, false, {
+						fileName: _jsxFileName,
+						lineNumber: 47,
+						columnNumber: 11
+					}, this), "返回我的团队"]
+				}, void 0, true, {
+					fileName: _jsxFileName,
+					lineNumber: 46,
+					columnNumber: 9
+				}, this)
+			}, void 0, false, {
+				fileName: _jsxFileName,
+				lineNumber: 45,
+				columnNumber: 7
+			}, this),
+			/* @__PURE__ */ _jsxDEV("h1", {
+				className: "create-team__title",
+				children: "创建新团队"
+			}, void 0, false, {
+				fileName: _jsxFileName,
+				lineNumber: 52,
+				columnNumber: 7
+			}, this),
+			/* @__PURE__ */ _jsxDEV("form", {
+				className: "create-team__card",
+				onSubmit: handleSubmit,
+				children: [
+					/* @__PURE__ */ _jsxDEV("div", {
+						className: "create-team__avatar-row",
+						children: [/* @__PURE__ */ _jsxDEV("button", {
+							type: "button",
+							className: "create-team__avatar-btn",
+							disabled: true,
+							"aria-label": "上传头像（暂未开放）",
+							children: [/* @__PURE__ */ _jsxDEV(CameraIcon, {}, void 0, false, {
+								fileName: _jsxFileName,
+								lineNumber: 58,
+								columnNumber: 13
+							}, this), /* @__PURE__ */ _jsxDEV("span", { children: "上传头像" }, void 0, false, {
+								fileName: _jsxFileName,
+								lineNumber: 59,
+								columnNumber: 13
+							}, this)]
+						}, void 0, true, {
+							fileName: _jsxFileName,
+							lineNumber: 57,
+							columnNumber: 11
+						}, this), /* @__PURE__ */ _jsxDEV("p", {
+							className: "create-team__hint",
+							children: "支持 JPG / PNG，建议 200×200 方形图片（暂未开放）"
+						}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 61,
+							columnNumber: 11
+						}, this)]
+					}, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 56,
+						columnNumber: 9
+					}, this),
+					error && /* @__PURE__ */ _jsxDEV("div", {
+						className: "create-team__error",
+						role: "alert",
+						children: error
+					}, void 0, false, {
+						fileName: _jsxFileName,
+						lineNumber: 66,
+						columnNumber: 11
+					}, this),
+					/* @__PURE__ */ _jsxDEV("label", {
+						className: "create-team__field",
+						children: [/* @__PURE__ */ _jsxDEV("span", {
+							className: "create-team__label",
+							children: ["团队名称 ", /* @__PURE__ */ _jsxDEV("em", { children: "*" }, void 0, false, {
+								fileName: _jsxFileName,
+								lineNumber: 73,
+								columnNumber: 18
+							}, this)]
+						}, void 0, true, {
+							fileName: _jsxFileName,
+							lineNumber: 72,
+							columnNumber: 11
+						}, this), /* @__PURE__ */ _jsxDEV("input", {
+							value: name,
+							onChange: (e) => setName(e.target.value),
+							placeholder: "例如：前端攻坚小组",
+							required: true
+						}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 75,
+							columnNumber: 11
+						}, this)]
+					}, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 71,
+						columnNumber: 9
+					}, this),
+					/* @__PURE__ */ _jsxDEV("label", {
+						className: "create-team__field",
+						children: [/* @__PURE__ */ _jsxDEV("span", {
+							className: "create-team__label",
+							children: "团队简介"
+						}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 84,
+							columnNumber: 11
+						}, this), /* @__PURE__ */ _jsxDEV("textarea", {
+							value: description,
+							onChange: (e) => setDescription(e.target.value),
+							placeholder: "描述团队用途、协作方向",
+							rows: 3
+						}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 85,
+							columnNumber: 11
+						}, this)]
+					}, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 83,
+						columnNumber: 9
+					}, this),
+					/* @__PURE__ */ _jsxDEV("label", {
+						className: "create-team__field",
+						children: [/* @__PURE__ */ _jsxDEV("span", {
+							className: "create-team__label",
+							children: "团队成立时间"
+						}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 94,
+							columnNumber: 11
+						}, this), /* @__PURE__ */ _jsxDEV("input", {
+							value: "创建后自动生成",
+							disabled: true,
+							readOnly: true
+						}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 95,
+							columnNumber: 11
+						}, this)]
+					}, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 93,
+						columnNumber: 9
+					}, this),
+					/* @__PURE__ */ _jsxDEV("div", {
+						className: "create-team__field",
+						children: [/* @__PURE__ */ _jsxDEV("span", {
+							className: "create-team__label",
+							children: "邀请成员"
+						}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 104,
+							columnNumber: 11
+						}, this), /* @__PURE__ */ _jsxDEV("p", {
+							className: "create-team__hint",
+							style: { margin: 0 },
+							children: "团队创建后，可在团队详情页通过邮箱邀请成员加入"
+						}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 105,
+							columnNumber: 11
+						}, this)]
+					}, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 103,
+						columnNumber: 9
+					}, this),
+					/* @__PURE__ */ _jsxDEV("div", {
+						className: "create-team__actions",
+						children: [/* @__PURE__ */ _jsxDEV("button", {
+							type: "button",
+							className: "create-team__btn create-team__btn--ghost",
+							onClick: () => navigate(PATHS.MY_TEAMS),
+							children: "取消"
+						}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 111,
+							columnNumber: 11
+						}, this), /* @__PURE__ */ _jsxDEV("button", {
+							type: "submit",
+							className: "create-team__btn create-team__btn--primary",
+							disabled: submitting || !name.trim(),
+							children: submitting ? "创建中…" : "创建团队"
+						}, void 0, false, {
+							fileName: _jsxFileName,
+							lineNumber: 118,
+							columnNumber: 11
+						}, this)]
+					}, void 0, true, {
+						fileName: _jsxFileName,
+						lineNumber: 110,
+						columnNumber: 9
+					}, this)
+				]
+			}, void 0, true, {
+				fileName: _jsxFileName,
+				lineNumber: 54,
+				columnNumber: 7
+			}, this)
+		]
+	}, void 0, true, {
+		fileName: _jsxFileName,
+		lineNumber: 44,
+		columnNumber: 5
+	}, this);
+}
+_s(CreateTeamPage, "vQGj3fCsGJny3MH4baspIqZtmW0=", false, function() {
+	return [useNavigate, useAuth];
+});
+_c = CreateTeamPage;
+function BackIcon() {
+	return /* @__PURE__ */ _jsxDEV("svg", {
+		width: "16",
+		height: "16",
+		viewBox: "0 0 24 24",
+		fill: "none",
+		"aria-hidden": true,
+		children: /* @__PURE__ */ _jsxDEV("path", {
+			d: "M15 6l-6 6 6 6",
+			stroke: "currentColor",
+			strokeWidth: "1.8",
+			strokeLinecap: "round",
+			strokeLinejoin: "round"
+		}, void 0, false, {
+			fileName: _jsxFileName,
+			lineNumber: 134,
+			columnNumber: 7
+		}, this)
+	}, void 0, false, {
+		fileName: _jsxFileName,
+		lineNumber: 133,
+		columnNumber: 5
+	}, this);
+}
+_c2 = BackIcon;
+function CameraIcon() {
+	return /* @__PURE__ */ _jsxDEV("svg", {
+		width: "22",
+		height: "22",
+		viewBox: "0 0 24 24",
+		fill: "none",
+		"aria-hidden": true,
+		children: [/* @__PURE__ */ _jsxDEV("path", {
+			d: "M4 8.5A2.5 2.5 0 0 1 6.5 6h2l1.2-1.8A1 1 0 0 1 10.5 4h3a1 1 0 0 1 .8.4L15.5 6h2A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-9z",
+			stroke: "currentColor",
+			strokeWidth: "1.5"
+		}, void 0, false, {
+			fileName: _jsxFileName,
+			lineNumber: 142,
+			columnNumber: 7
+		}, this), /* @__PURE__ */ _jsxDEV("circle", {
+			cx: "12",
+			cy: "13",
+			r: "3.2",
+			stroke: "currentColor",
+			strokeWidth: "1.5"
+		}, void 0, false, {
+			fileName: _jsxFileName,
+			lineNumber: 147,
+			columnNumber: 7
+		}, this)]
+	}, void 0, true, {
+		fileName: _jsxFileName,
+		lineNumber: 141,
+		columnNumber: 5
+	}, this);
+}
+_c3 = CameraIcon;
+var _c, _c2, _c3;
+$RefreshReg$(_c, "CreateTeamPage");
+$RefreshReg$(_c2, "BackIcon");
+$RefreshReg$(_c3, "CameraIcon");
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
+import * as __vite_react_currentExports from "/src/pages/CreateTeam/CreateTeamPage.tsx?t=1786607422498";
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+
+  const currentExports = __vite_react_currentExports;
+  queueMicrotask(() => {
+    RefreshRuntime.registerExportsForReactRefresh("D:/qgents/src/pages/CreateTeam/CreateTeamPage.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("D:/qgents/src/pages/CreateTeam/CreateTeamPage.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+function $RefreshReg$(type, id) { return RefreshRuntime.register(type, "D:/qgents/src/pages/CreateTeam/CreateTeamPage.tsx" + ' ' + id); }
+function $RefreshSig$() { return RefreshRuntime.createSignatureFunctionForTransform(); }
+
+//# sourceMappingURL=data:application/json;base64,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QUFDLEtBQUQ7T0FBRyxXQUFVO09BQW9CLE9BQU8sRUFBRSxRQUFRLEVBQUU7aUJBQUc7TUFFcEQ7Ozs7Y0FDQTs7Ozs7O0tBRUwsd0JBQUMsT0FBRDtNQUFLLFdBQVU7Z0JBQWYsQ0FDRSx3QkFBQyxVQUFEO09BQ0UsTUFBSztPQUNMLFdBQVU7T0FDVixlQUFlLFNBQVMsTUFBTSxRQUFRO2lCQUN2QztNQUVPOzs7O2dCQUNSLHdCQUFDLFVBQUQ7T0FDRSxNQUFLO09BQ0wsV0FBVTtPQUNWLFVBQVUsY0FBYyxDQUFDLEtBQUssS0FBSztpQkFFbEMsYUFBYSxTQUFTO01BQ2pCOzs7O2NBQ0w7Ozs7OztJQUNEOzs7Ozs7RUFDSDs7Ozs7O0FBRVQ7Ozs7O0FBRUEsU0FBUyxXQUFXO0NBQ2xCLE9BQ0Usd0JBQUMsT0FBRDtFQUFLLE9BQU07RUFBSyxRQUFPO0VBQUssU0FBUTtFQUFZLE1BQUs7RUFBTztZQUMxRCx3QkFBQyxRQUFEO0dBQU0sR0FBRTtHQUFpQixRQUFPO0dBQWUsYUFBWTtHQUFNLGVBQWM7R0FBUSxnQkFBZTtFQUFTOzs7OztDQUM1Rzs7Ozs7QUFFVDs7QUFFQSxTQUFTLGFBQWE7Q0FDcEIsT0FDRSx3QkFBQyxPQUFEO0VBQUssT0FBTTtFQUFLLFFBQU87RUFBSyxTQUFRO0VBQVksTUFBSztFQUFPO1lBQTVELENBQ0Usd0JBQUMsUUFBRDtHQUNFLEdBQUU7R0FDRixRQUFPO0dBQ1AsYUFBWTtFQUNiOzs7O1lBQ0Qsd0JBQUMsVUFBRDtHQUFRLElBQUc7R0FBSyxJQUFHO0dBQUssR0FBRTtHQUFNLFFBQU87R0FBZSxhQUFZO0VBQU87Ozs7VUFDdEU7Ozs7OztBQUVUIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIkNyZWF0ZVRlYW1QYWdlLnRzeCJdLCJ2ZXJzaW9uIjozLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyB1c2VTdGF0ZSwgdHlwZSBGb3JtRXZlbnQgfSBmcm9tICdyZWFjdCdcclxuaW1wb3J0IHsgTGluaywgdXNlTmF2aWdhdGUgfSBmcm9tICdyZWFjdC1yb3V0ZXItZG9tJ1xyXG5pbXBvcnQgeyBQQVRIUyB9IGZyb20gJ0Avcm91dGVzL3BhdGhzJ1xyXG5pbXBvcnQgeyB1c2VBdXRoIH0gZnJvbSAnQC9jb250ZXh0L0F1dGhDb250ZXh0J1xyXG5pbXBvcnQgeyB0ZWFtQXBpIH0gZnJvbSAnQC9hcGknXHJcbmltcG9ydCAnLi9DcmVhdGVUZWFtUGFnZS5jc3MnXHJcblxyXG4vKipcclxuICog5Yib5bu65paw5Zui6ZifIOKAlOKAlCDlr7npvZDmjqXlj6PmlofmoaMgdjEuMS40IMKnNS4xXHJcbiAqXHJcbiAqIFBPU1QgL3RlYW1zIOWIm+W7uuWboumYn1xyXG4gKiDliJvlu7rogIXoh6rliqjmiJDkuLogVEVBTV9PV05FUlxyXG4gKiDpgoDor7fmiJDlkZjmmK/lkI7nu63mk43kvZzvvIhQT1NUIC90ZWFtcy97dGVhbUlkfS9pbnZpdGF0aW9uc++8ie+8jOWIm+W7uuWQjui3s+WboumYn+ivpuaDheWGjeaTjeS9nFxyXG4gKi9cclxuZXhwb3J0IGZ1bmN0aW9uIENyZWF0ZVRlYW1QYWdlKCkge1xyXG4gIGNvbnN0IG5hdmlnYXRlID0gdXNlTmF2aWdhdGUoKVxyXG4gIGNvbnN0IHsgc2V0SGFzVGVhbSB9ID0gdXNlQXV0aCgpXHJcbiAgY29uc3QgW25hbWUsIHNldE5hbWVdID0gdXNlU3RhdGUoJycpXHJcbiAgY29uc3QgW2Rlc2NyaXB0aW9uLCBzZXREZXNjcmlwdGlvbl0gPSB1c2VTdGF0ZSgnJylcclxuICBjb25zdCBbc3VibWl0dGluZywgc2V0U3VibWl0dGluZ10gPSB1c2VTdGF0ZShmYWxzZSlcclxuICBjb25zdCBbZXJyb3IsIHNldEVycm9yXSA9IHVzZVN0YXRlPHN0cmluZyB8IG51bGw+KG51bGwpXHJcblxyXG4gIGFzeW5jIGZ1bmN0aW9uIGhhbmRsZVN1Ym1pdChlOiBGb3JtRXZlbnQpIHtcclxuICAgIGUucHJldmVudERlZmF1bHQoKVxyXG4gICAgaWYgKCFuYW1lLnRyaW0oKSkgcmV0dXJuXHJcbiAgICBzZXRFcnJvcihudWxsKVxyXG4gICAgc2V0U3VibWl0dGluZyh0cnVlKVxyXG5cclxuICAgIHRyeSB7XHJcbiAgICAgIGNvbnN0IHRlYW0gPSBhd2FpdCB0ZWFtQXBpLmNyZWF0ZSh7XHJcbiAgICAgICAgbmFtZTogbmFtZS50cmltKCksXHJcbiAgICAgICAgZGVzY3JpcHRpb246IGRlc2NyaXB0aW9uLnRyaW0oKSB8fCB1bmRlZmluZWQsXHJcbiAgICAgIH0pXHJcbiAgICAgIHNldEhhc1RlYW0odHJ1ZSlcclxuICAgICAgbmF2aWdhdGUoUEFUSFMudGVhbURldGFpbCh0ZWFtLmlkKSwgeyByZXBsYWNlOiB0cnVlIH0pXHJcbiAgICB9IGNhdGNoIChlcnIpIHtcclxuICAgICAgc2V0RXJyb3IoZXJyIGluc3RhbmNlb2YgRXJyb3IgPyBlcnIubWVzc2FnZSA6ICfliJvlu7rlpLHotKXvvIzor7fph43or5UnKVxyXG4gICAgfSBmaW5hbGx5IHtcclxuICAgICAgc2V0U3VibWl0dGluZyhmYWxzZSlcclxuICAgIH1cclxuICB9XHJcblxyXG4gIHJldHVybiAoXHJcbiAgICA8ZGl2IGNsYXNzTmFtZT1cImNyZWF0ZS10ZWFtXCI+XHJcbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwiY3JlYXRlLXRlYW1fX3RvcFwiPlxyXG4gICAgICAgIDxMaW5rIHRvPXtQQVRIUy5NWV9URUFNU30gY2xhc3NOYW1lPVwiY3JlYXRlLXRlYW1fX2JhY2tcIj5cclxuICAgICAgICAgIDxCYWNrSWNvbiAvPlxyXG4gICAgICAgICAg6L+U5Zue5oiR55qE5Zui6ZifXHJcbiAgICAgICAgPC9MaW5rPlxyXG4gICAgICA8L2Rpdj5cclxuXHJcbiAgICAgIDxoMSBjbGFzc05hbWU9XCJjcmVhdGUtdGVhbV9fdGl0bGVcIj7liJvlu7rmlrDlm6LpmJ88L2gxPlxyXG5cclxuICAgICAgPGZvcm0gY2xhc3NOYW1lPVwiY3JlYXRlLXRlYW1fX2NhcmRcIiBvblN1Ym1pdD17aGFuZGxlU3VibWl0fT5cclxuICAgICAgICB7Lyog5aS05YOPIOKAlOKAlCDmmoLkuLrljaDkvY3vvIzmnKzmnJ/kuI3lrp7njrDkuIrkvKAgKi99XHJcbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJjcmVhdGUtdGVhbV9fYXZhdGFyLXJvd1wiPlxyXG4gICAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgY2xhc3NOYW1lPVwiY3JlYXRlLXRlYW1fX2F2YXRhci1idG5cIiBkaXNhYmxlZCBhcmlhLWxhYmVsPVwi5LiK5Lyg5aS05YOP77yI5pqC5pyq5byA5pS+77yJXCI+XHJcbiAgICAgICAgICAgIDxDYW1lcmFJY29uIC8+XHJcbiAgICAgICAgICAgIDxzcGFuPuS4iuS8oOWktOWDjzwvc3Bhbj5cclxuICAgICAgICAgIDwvYnV0dG9uPlxyXG4gICAgICAgICAgPHAgY2xhc3NOYW1lPVwiY3JlYXRlLXRlYW1fX2hpbnRcIj7mlK/mjIEgSlBHIC8gUE5H77yM5bu66K6uIDIwMMOXMjAwIOaWueW9ouWbvueJh++8iOaaguacquW8gOaUvu+8iTwvcD5cclxuICAgICAgICA8L2Rpdj5cclxuXHJcbiAgICAgICAgey8qIOKAlOKAlCDplJnor6/mj5DnpLog4oCU4oCUICovfVxyXG4gICAgICAgIHtlcnJvciAmJiAoXHJcbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImNyZWF0ZS10ZWFtX19lcnJvclwiIHJvbGU9XCJhbGVydFwiPlxyXG4gICAgICAgICAgICB7ZXJyb3J9XHJcbiAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICApfVxyXG5cclxuICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPVwiY3JlYXRlLXRlYW1fX2ZpZWxkXCI+XHJcbiAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJjcmVhdGUtdGVhbV9fbGFiZWxcIj5cclxuICAgICAgICAgICAg5Zui6Zif5ZCN56ewIDxlbT4qPC9lbT5cclxuICAgICAgICAgIDwvc3Bhbj5cclxuICAgICAgICAgIDxpbnB1dFxyXG4gICAgICAgICAgICB2YWx1ZT17bmFtZX1cclxuICAgICAgICAgICAgb25DaGFuZ2U9eyhlKSA9PiBzZXROYW1lKGUudGFyZ2V0LnZhbHVlKX1cclxuICAgICAgICAgICAgcGxhY2Vob2xkZXI9XCLkvovlpoLvvJrliY3nq6/mlLvlnZrlsI/nu4RcIlxyXG4gICAgICAgICAgICByZXF1aXJlZFxyXG4gICAgICAgICAgLz5cclxuICAgICAgICA8L2xhYmVsPlxyXG5cclxuICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPVwiY3JlYXRlLXRlYW1fX2ZpZWxkXCI+XHJcbiAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJjcmVhdGUtdGVhbV9fbGFiZWxcIj7lm6LpmJ/nroDku4s8L3NwYW4+XHJcbiAgICAgICAgICA8dGV4dGFyZWFcclxuICAgICAgICAgICAgdmFsdWU9e2Rlc2NyaXB0aW9ufVxyXG4gICAgICAgICAgICBvbkNoYW5nZT17KGUpID0+IHNldERlc2NyaXB0aW9uKGUudGFyZ2V0LnZhbHVlKX1cclxuICAgICAgICAgICAgcGxhY2Vob2xkZXI9XCLmj4/ov7Dlm6LpmJ/nlKjpgJTjgIHljY/kvZzmlrnlkJFcIlxyXG4gICAgICAgICAgICByb3dzPXszfVxyXG4gICAgICAgICAgLz5cclxuICAgICAgICA8L2xhYmVsPlxyXG5cclxuICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPVwiY3JlYXRlLXRlYW1fX2ZpZWxkXCI+XHJcbiAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJjcmVhdGUtdGVhbV9fbGFiZWxcIj7lm6LpmJ/miJDnq4vml7bpl7Q8L3NwYW4+XHJcbiAgICAgICAgICA8aW5wdXRcclxuICAgICAgICAgICAgdmFsdWU9XCLliJvlu7rlkI7oh6rliqjnlJ/miJBcIlxyXG4gICAgICAgICAgICBkaXNhYmxlZFxyXG4gICAgICAgICAgICByZWFkT25seVxyXG4gICAgICAgICAgLz5cclxuICAgICAgICA8L2xhYmVsPlxyXG5cclxuICAgICAgICB7Lyog6YKA6K+35oiQ5ZGYIOKAlOKAlCDliJvlu7rlrozmiJDlkI7lnKjlm6LpmJ/or6bmg4XpobXmk43kvZzvvIzmraTlpITku4Xmj5DnpLogKi99XHJcbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJjcmVhdGUtdGVhbV9fZmllbGRcIj5cclxuICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cImNyZWF0ZS10ZWFtX19sYWJlbFwiPumCgOivt+aIkOWRmDwvc3Bhbj5cclxuICAgICAgICAgIDxwIGNsYXNzTmFtZT1cImNyZWF0ZS10ZWFtX19oaW50XCIgc3R5bGU9e3sgbWFyZ2luOiAwIH19PlxyXG4gICAgICAgICAgICDlm6LpmJ/liJvlu7rlkI7vvIzlj6/lnKjlm6LpmJ/or6bmg4XpobXpgJrov4fpgq7nrrHpgoDor7fmiJDlkZjliqDlhaVcclxuICAgICAgICAgIDwvcD5cclxuICAgICAgICA8L2Rpdj5cclxuXHJcbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJjcmVhdGUtdGVhbV9fYWN0aW9uc1wiPlxyXG4gICAgICAgICAgPGJ1dHRvblxyXG4gICAgICAgICAgICB0eXBlPVwiYnV0dG9uXCJcclxuICAgICAgICAgICAgY2xhc3NOYW1lPVwiY3JlYXRlLXRlYW1fX2J0biBjcmVhdGUtdGVhbV9fYnRuLS1naG9zdFwiXHJcbiAgICAgICAgICAgIG9uQ2xpY2s9eygpID0+IG5hdmlnYXRlKFBBVEhTLk1ZX1RFQU1TKX1cclxuICAgICAgICAgID5cclxuICAgICAgICAgICAg5Y+W5raIXHJcbiAgICAgICAgICA8L2J1dHRvbj5cclxuICAgICAgICAgIDxidXR0b25cclxuICAgICAgICAgICAgdHlwZT1cInN1Ym1pdFwiXHJcbiAgICAgICAgICAgIGNsYXNzTmFtZT1cImNyZWF0ZS10ZWFtX19idG4gY3JlYXRlLXRlYW1fX2J0bi0tcHJpbWFyeVwiXHJcbiAgICAgICAgICAgIGRpc2FibGVkPXtzdWJtaXR0aW5nIHx8ICFuYW1lLnRyaW0oKX1cclxuICAgICAgICAgID5cclxuICAgICAgICAgICAge3N1Ym1pdHRpbmcgPyAn5Yib5bu65Lit4oCmJyA6ICfliJvlu7rlm6LpmJ8nfVxyXG4gICAgICAgICAgPC9idXR0b24+XHJcbiAgICAgICAgPC9kaXY+XHJcbiAgICAgIDwvZm9ybT5cclxuICAgIDwvZGl2PlxyXG4gIClcclxufVxyXG5cclxuZnVuY3Rpb24gQmFja0ljb24oKSB7XHJcbiAgcmV0dXJuIChcclxuICAgIDxzdmcgd2lkdGg9XCIxNlwiIGhlaWdodD1cIjE2XCIgdmlld0JveD1cIjAgMCAyNCAyNFwiIGZpbGw9XCJub25lXCIgYXJpYS1oaWRkZW4+XHJcbiAgICAgIDxwYXRoIGQ9XCJNMTUgNmwtNiA2IDYgNlwiIHN0cm9rZT1cImN1cnJlbnRDb2xvclwiIHN0cm9rZVdpZHRoPVwiMS44XCIgc3Ryb2tlTGluZWNhcD1cInJvdW5kXCIgc3Ryb2tlTGluZWpvaW49XCJyb3VuZFwiIC8+XHJcbiAgICA8L3N2Zz5cclxuICApXHJcbn1cclxuXHJcbmZ1bmN0aW9uIENhbWVyYUljb24oKSB7XHJcbiAgcmV0dXJuIChcclxuICAgIDxzdmcgd2lkdGg9XCIyMlwiIGhlaWdodD1cIjIyXCIgdmlld0JveD1cIjAgMCAyNCAyNFwiIGZpbGw9XCJub25lXCIgYXJpYS1oaWRkZW4+XHJcbiAgICAgIDxwYXRoXHJcbiAgICAgICAgZD1cIk00IDguNUEyLjUgMi41IDAgMCAxIDYuNSA2aDJsMS4yLTEuOEExIDEgMCAwIDEgMTAuNSA0aDNhMSAxIDAgMCAxIC44LjRMMTUuNSA2aDJBMi41IDIuNSAwIDAgMSAyMCA4LjV2OUEyLjUgMi41IDAgMCAxIDE3LjUgMjBoLTExQTIuNSAyLjUgMCAwIDEgNCAxNy41di05elwiXHJcbiAgICAgICAgc3Ryb2tlPVwiY3VycmVudENvbG9yXCJcclxuICAgICAgICBzdHJva2VXaWR0aD1cIjEuNVwiXHJcbiAgICAgIC8+XHJcbiAgICAgIDxjaXJjbGUgY3g9XCIxMlwiIGN5PVwiMTNcIiByPVwiMy4yXCIgc3Ryb2tlPVwiY3VycmVudENvbG9yXCIgc3Ryb2tlV2lkdGg9XCIxLjVcIiAvPlxyXG4gICAgPC9zdmc+XHJcbiAgKVxyXG59XHJcbiJdfQ==

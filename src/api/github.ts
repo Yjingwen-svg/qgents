@@ -117,6 +117,7 @@ export const githubApi = {
   listProjectRepositories(projectId: string) {
     return request<ApiEnvelope<ProjectBoundRepository[]>>(
       `/projects/${projectId}/repositories`,
+      { unwrapData: false },
     ).then((res) => res.data)
   },
 

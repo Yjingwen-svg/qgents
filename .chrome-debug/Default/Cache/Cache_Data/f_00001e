@@ -1,0 +1,149 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/pages/ProjectDetail/TaskDetail/TaskDetailPage.module.scss");import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "D:/qgents/src/pages/ProjectDetail/TaskDetail/TaskDetailPage.module.scss"
+const __vite__css = "._page_18vic_1 {\n  min-height: 100vh;\n  padding: 0 18px 32px;\n  background: #ffffff;\n  color: #12213d;\n}\n\n._topBar_18vic_8,\n._summaryHeader_18vic_9,\n._sectionHeading_18vic_10,\n._executionHeader_18vic_11,\n._executionSectionHeading_18vic_12,\n._taskRunItemHeader_18vic_13,\n._stepItemHeader_18vic_14,\n._sideHeader_18vic_15 {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n}\n\n._topBar_18vic_8 {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 16px;\n  min-height: 58px;\n  margin-bottom: 0;\n  border-bottom: 1px solid #edf1f5;\n}\n\n._detailToolbar_18vic_32 {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  min-height: 42px;\n  border-bottom: 1px solid #edf1f5;\n}\n\n._breadcrumb_18vic_41 {\n  color: #52627b;\n}\n\n._topBarActions_18vic_45 {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 8px;\n}\n\n._detailToolbar_18vic_32 button {\n  color: #12213d;\n}\n\n._detailToolbar_18vic_32 ._topBarActions_18vic_45 button {\n  border-color: #d7e0eb;\n  background: #ffffff;\n  color: #12213d;\n}\n\n._detailToolbar_18vic_32 ._topBarActions_18vic_45 button._ant-btn-primary_18vic_61 {\n  border-color: #1269c7;\n  background: #1269c7;\n  color: #ffffff;\n}\n\n._taskHeader_18vic_67 {\n  padding: 16px 8px 18px;\n  border-bottom: 1px solid #edf1f5;\n}\n\n._detailTitleRow_18vic_72 {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n  margin-bottom: 16px;\n}\n\n._summaryHeader_18vic_9 {\n  align-items: flex-start;\n  margin-bottom: 18px;\n}\n\n._title_18vic_84 {\n  margin: 0;\n  color: #12213d;\n  font-weight: 700;\n}\n\n._title_18vic_84.ant-typography {\n  color: #12213d;\n}\n\n._title_18vic_84 .ant-typography {\n  color: #6d7d95;\n}\n\n._summaryId_18vic_98 {\n  color: #6d7d95;\n  font-family: \"Cascadia Mono\", Consolas, monospace;\n  font-size: 12px;\n}\n\n._summaryMeta_18vic_104,\n._summaryGrid_18vic_105,\n._flowGrid_18vic_106,\n._contextGrid_18vic_107,\n._developmentGrid_18vic_108,\n._checklist_18vic_109 {\n  display: grid;\n  gap: 12px;\n}\n\n._summaryMeta_18vic_104 {\n  grid-template-columns: repeat(7, minmax(0, 1fr));\n  gap: 18px;\n  margin-bottom: 0;\n}\n\n._summaryMetaItem_18vic_120 {\n  display: grid;\n  gap: 5px;\n  min-width: 0;\n}\n\n._infoCard_18vic_126,\n._flowCard_18vic_127,\n._checklistItem_18vic_128 {\n  min-width: 0;\n  padding: 14px;\n  border: 1px solid #e4eaf2;\n  border-radius: 8px;\n  background: #ffffff;\n}\n\n._label_18vic_136 {\n  color: #6d7d95;\n  font-size: 12px;\n}\n\n._value_18vic_141 {\n  color: #243855;\n  font-weight: 600;\n  overflow-wrap: anywhere;\n}\n\n._contentGrid_18vic_147 {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) 240px;\n  gap: 22px;\n  align-items: start;\n  padding-top: 12px;\n}\n\n._mainContent_18vic_155,\n._sideContent_18vic_156 {\n  min-width: 0;\n}\n\n._section_18vic_10 {\n  margin-bottom: 16px;\n  padding: 14px;\n  border: 1px solid #e4eaf2;\n  border-radius: 7px;\n  background: #ffffff;\n}\n\n._compactSection_18vic_168 {\n  margin-bottom: 10px;\n  padding: 0 14px;\n  border: 0;\n  border-radius: 0;\n}\n\n._compactSection_18vic_168 ._sectionHeading_18vic_10 {\n  margin-bottom: 8px;\n}\n\n._sectionHeading_18vic_10 {\n  margin-bottom: 14px;\n}\n\n._sectionHeading_18vic_10 h4,\n._sectionHeading_18vic_10 h5,\n._executionHeader_18vic_11 h5,\n._executionSectionHeading_18vic_12 h5,\n._sideHeader_18vic_15 h5 {\n  margin: 0;\n  color: #12213d;\n}\n\n._flowGrid_18vic_106 {\n  grid-template-columns: repeat(4, minmax(0, 1fr));\n  gap: 26px;\n}\n\n._flowGrid_18vic_106 > ._flowCard_18vic_127:not(:last-child)::after {\n  position: absolute;\n  top: 50%;\n  right: -20px;\n  width: 16px;\n  height: 16px;\n  border-top: 1px solid #7890ad;\n  border-right: 1px solid #7890ad;\n  background: #ffffff;\n  transform: translateY(-50%) rotate(45deg);\n  content: \"\";\n}\n\n._flowCard_18vic_127 {\n  position: relative;\n  display: grid;\n  min-height: 214px;\n  gap: 10px;\n  align-content: space-between;\n}\n\n._flowCardButton_18vic_218 {\n  width: 100%;\n  border: 1px solid #e4eaf2;\n  color: inherit;\n  text-align: left;\n  cursor: pointer;\n}\n\n._flowCardButton_18vic_218:hover {\n  border-color: #0d9b9b;\n}\n\n._flowCardHeading_18vic_230 {\n  display: flex;\n  align-items: flex-start;\n  gap: 9px;\n}\n\n._flowIcon_18vic_236 {\n  flex: 0 0 auto;\n  color: #12213d;\n  font-size: 11px;\n  font-weight: 700;\n  line-height: 24px;\n}\n\n._flowStepList_18vic_244 {\n  display: grid;\n  gap: 7px;\n}\n\n._flowStep_18vic_244 {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n  color: #52627b;\n  font-size: 12px;\n}\n\n._flowStep_18vic_244 > .ant-typography {\n  color: #52627b;\n}\n\n._flowStepStatus_18vic_262 {\n  color: #0d8d91;\n  font-size: 11px;\n  white-space: nowrap;\n}\n\n._flowFooter_18vic_268 {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n  padding-top: 9px;\n  border-top: 1px solid #edf1f5;\n}\n\n._flowFooter_18vic_268 > .ant-typography {\n  color: #6d7d95;\n  font-size: 11px;\n}\n\n._flowCardCurrent_18vic_282 {\n  border-color: #1269c7;\n  box-shadow: 0 0 0 2px rgba(18, 105, 199, 0.1);\n}\n\n._flowTitle_18vic_287 {\n  color: #12213d;\n  font-weight: 700;\n  overflow-wrap: anywhere;\n}\n\n._flowTitle_18vic_287.ant-typography {\n  color: #12213d;\n}\n\n._contextGrid_18vic_107,\n._developmentGrid_18vic_108 {\n  grid-template-columns: repeat(4, minmax(0, 1fr));\n}\n\n._developmentGrid_18vic_108 {\n  grid-template-columns: repeat(5, minmax(0, 1fr));\n}\n\n._infoCard_18vic_126 {\n  display: grid;\n  gap: 6px;\n  min-height: 92px;\n}\n\n._contextGrid_18vic_107 ._infoCard_18vic_126 {\n  position: relative;\n  height: 92px;\n  min-height: 92px;\n  padding: 11px 12px;\n  gap: 4px;\n}\n\n._contextGrid_18vic_107 ._infoCard_18vic_126 ._value_18vic_141 {\n  padding-right: 28px;\n  font-size: 12px;\n  line-height: 1.45;\n}\n\n._contextGrid_18vic_107 ._infoAction_18vic_326 {\n  position: absolute;\n  right: 12px;\n  bottom: 10px;\n}\n\n._developmentGrid_18vic_108 ._infoCard_18vic_126 {\n  height: 74px;\n  min-height: 74px;\n  padding: 10px 12px;\n  gap: 3px;\n}\n\n._infoIcon_18vic_339 {\n  color: #1269c7;\n  font-size: 20px;\n  line-height: 1;\n}\n\n._infoAction_18vic_326 {\n  color: #1269c7;\n  font-size: 12px;\n  text-align: right;\n}\n\n._emptyCard_18vic_351 {\n  padding: 18px 0;\n  color: #6d7d95;\n  text-align: center;\n}\n\n._sideContent_18vic_156 {\n  position: sticky;\n  top: 12px;\n}\n\n._sideCard_18vic_362 {\n  margin-bottom: 16px;\n  padding: 14px;\n  border: 1px solid #e4eaf2;\n  border-radius: 10px;\n  background: #ffffff;\n}\n\n._noteCard_18vic_370 {\n  margin-bottom: 16px;\n  padding: 14px;\n  border-radius: 8px;\n  background: #f8fafc;\n}\n\n._noteCard_18vic_370 .ant-typography {\n  color: #52627b;\n}\n\n._noteCard_18vic_370 h5 {\n  margin: 0 0 10px;\n  color: #12213d;\n}\n\n._sideTaskId_18vic_386 {\n  padding: 6px 2px;\n  color: #52627b;\n  font-family: \"Cascadia Mono\", Consolas, monospace;\n  font-size: 11px;\n  text-align: right;\n}\n\n._sideHeader_18vic_15 {\n  margin-bottom: 14px;\n}\n\n._sideDescription_18vic_398 {\n  color: #52627b;\n  line-height: 1.65;\n}\n\n._checklistItem_18vic_128 {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n  padding: 10px;\n}\n\n._checklistLabel_18vic_411 {\n  min-width: 0;\n  color: #243855;\n  overflow-wrap: anywhere;\n}\n\n._executionPanel_18vic_417 {\n  min-width: 0;\n}\n\n._executionHeader_18vic_11 {\n  align-items: flex-start;\n  margin-bottom: 18px;\n}\n\n._executionHeader_18vic_11 > div {\n  display: grid;\n  gap: 4px;\n  min-width: 0;\n}\n\n._executionSection_18vic_12 {\n  margin-bottom: 18px;\n  padding-top: 16px;\n  border-top: 1px solid #edf1f5;\n}\n\n._executionSectionHeading_18vic_12 {\n  margin-bottom: 10px;\n}\n\n._executionSelect_18vic_442 {\n  width: 100%;\n}\n\n._executionAlert_18vic_446 {\n  margin-top: 10px;\n}\n\n._taskRunList_18vic_450,\n._stepList_18vic_451 {\n  display: grid;\n  gap: 8px;\n}\n\n._taskRunItem_18vic_13 {\n  display: grid;\n  width: 100%;\n  gap: 5px;\n  padding: 10px;\n  border: 1px solid #e4eaf2;\n  border-radius: 8px;\n  color: #243855;\n  background: #ffffff;\n  text-align: left;\n  cursor: pointer;\n}\n\n._taskRunItem_18vic_13:hover,\n._taskRunItemSelected_18vic_470 {\n  border-color: #0d9b9b;\n  background: #f1fbfa;\n}\n\n._taskRunItemHeader_18vic_13 {\n  min-width: 0;\n}\n\n._taskRunItemHeader_18vic_13 > span:first-child {\n  min-width: 0;\n}\n\n._taskRunItemMeta_18vic_483,\n._retryLine_18vic_484 {\n  overflow-wrap: anywhere;\n  color: #6d7d95;\n  font-size: 12px;\n  line-height: 1.5;\n}\n\n._retryLine_18vic_484 {\n  color: #8a5a00;\n}\n\n._stepItem_18vic_14,\n._inputRequestItem_18vic_496 {\n  display: grid;\n  gap: 5px;\n  padding: 10px;\n  border: 1px solid #e4eaf2;\n  border-radius: 8px;\n  background: #ffffff;\n}\n\n._stepItemHeader_18vic_14 {\n  color: #243855;\n}\n\n._logList_18vic_509 {\n  display: grid;\n  max-height: 360px;\n  gap: 8px;\n  overflow: auto;\n  padding: 10px;\n  border: 1px solid #1f2d43;\n  border-radius: 8px;\n  background: #111b2b;\n  color: #e4edf8;\n  font-family: \"Cascadia Mono\", \"SFMono-Regular\", Consolas, monospace;\n  font-size: 11px;\n}\n\n._logLine_18vic_523 {\n  display: grid;\n  grid-template-columns: max-content max-content max-content minmax(0, 1fr);\n  align-items: baseline;\n  gap: 7px;\n  min-width: 0;\n  line-height: 1.6;\n}\n\n._logTimestamp_18vic_532 {\n  color: #91a4c1;\n  white-space: nowrap;\n}\n\n._logContent_18vic_537 {\n  min-width: 0;\n  overflow-wrap: anywhere;\n  white-space: pre-wrap;\n}\n\n._inputPrompt_18vic_543 {\n  color: #243855;\n  line-height: 1.55;\n}\n\n._executionLoadMore_18vic_548 {\n  display: flex;\n  justify-content: center;\n  margin-top: 10px;\n}\n\n._executionEmpty_18vic_554,\n._panelState_18vic_555 {\n  display: grid;\n  min-height: 180px;\n  place-items: center;\n}\n\n@media (max-width: 1100px) {\n  ._summaryMeta_18vic_104 {\n    grid-template-columns: repeat(4, minmax(0, 1fr));\n  }\n  ._contentGrid_18vic_147 {\n    grid-template-columns: minmax(0, 1fr) 260px;\n  }\n}\n@media (max-width: 1279px) {\n  ._flowGrid_18vic_106 {\n    grid-template-columns: repeat(4, minmax(210px, 1fr));\n    overflow-x: auto;\n    padding-bottom: 8px;\n  }\n  ._flowGrid_18vic_106 > ._flowCard_18vic_127:not(:last-child)::after {\n    display: none;\n  }\n}\n@media (max-width: 1023px) {\n  ._page_18vic_1 {\n    padding: 0 14px 28px;\n  }\n  ._contentGrid_18vic_147 {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  ._sideContent_18vic_156 {\n    position: static;\n  }\n  ._contextGrid_18vic_107,\n  ._developmentGrid_18vic_108 {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n}\n@media (max-width: 767px) {\n  ._summaryMeta_18vic_104,\n  ._contextGrid_18vic_107,\n  ._developmentGrid_18vic_108 {\n    grid-template-columns: minmax(0, 1fr);\n  }\n  ._topBar_18vic_8,\n  ._detailTitleRow_18vic_72 {\n    align-items: flex-start;\n    flex-direction: column;\n  }\n  ._topBar_18vic_8 {\n    padding: 8px 0;\n  }\n  ._topBarActions_18vic_45 {\n    width: 100%;\n  }\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+export const page = "_page_18vic_1";
+export const topBar = "_topBar_18vic_8";
+export const summaryHeader = "_summaryHeader_18vic_9";
+export const sectionHeading = "_sectionHeading_18vic_10";
+export const executionHeader = "_executionHeader_18vic_11";
+export const executionSectionHeading = "_executionSectionHeading_18vic_12";
+export const taskRunItemHeader = "_taskRunItemHeader_18vic_13";
+export const stepItemHeader = "_stepItemHeader_18vic_14";
+export const sideHeader = "_sideHeader_18vic_15";
+export const detailToolbar = "_detailToolbar_18vic_32";
+export const breadcrumb = "_breadcrumb_18vic_41";
+export const topBarActions = "_topBarActions_18vic_45";
+export const taskHeader = "_taskHeader_18vic_67";
+export const detailTitleRow = "_detailTitleRow_18vic_72";
+export const title = "_title_18vic_84";
+export const summaryId = "_summaryId_18vic_98";
+export const summaryMeta = "_summaryMeta_18vic_104";
+export const summaryGrid = "_summaryGrid_18vic_105";
+export const flowGrid = "_flowGrid_18vic_106";
+export const contextGrid = "_contextGrid_18vic_107";
+export const developmentGrid = "_developmentGrid_18vic_108";
+export const checklist = "_checklist_18vic_109";
+export const summaryMetaItem = "_summaryMetaItem_18vic_120";
+export const infoCard = "_infoCard_18vic_126";
+export const flowCard = "_flowCard_18vic_127";
+export const checklistItem = "_checklistItem_18vic_128";
+export const label = "_label_18vic_136";
+export const value = "_value_18vic_141";
+export const contentGrid = "_contentGrid_18vic_147";
+export const mainContent = "_mainContent_18vic_155";
+export const sideContent = "_sideContent_18vic_156";
+export const section = "_section_18vic_10";
+export const compactSection = "_compactSection_18vic_168";
+export const flowCardButton = "_flowCardButton_18vic_218";
+export const flowCardHeading = "_flowCardHeading_18vic_230";
+export const flowIcon = "_flowIcon_18vic_236";
+export const flowStepList = "_flowStepList_18vic_244";
+export const flowStep = "_flowStep_18vic_244";
+export const flowStepStatus = "_flowStepStatus_18vic_262";
+export const flowFooter = "_flowFooter_18vic_268";
+export const flowCardCurrent = "_flowCardCurrent_18vic_282";
+export const flowTitle = "_flowTitle_18vic_287";
+export const infoAction = "_infoAction_18vic_326";
+export const infoIcon = "_infoIcon_18vic_339";
+export const emptyCard = "_emptyCard_18vic_351";
+export const sideCard = "_sideCard_18vic_362";
+export const noteCard = "_noteCard_18vic_370";
+export const sideTaskId = "_sideTaskId_18vic_386";
+export const sideDescription = "_sideDescription_18vic_398";
+export const checklistLabel = "_checklistLabel_18vic_411";
+export const executionPanel = "_executionPanel_18vic_417";
+export const executionSection = "_executionSection_18vic_12";
+export const executionSelect = "_executionSelect_18vic_442";
+export const executionAlert = "_executionAlert_18vic_446";
+export const taskRunList = "_taskRunList_18vic_450";
+export const stepList = "_stepList_18vic_451";
+export const taskRunItem = "_taskRunItem_18vic_13";
+export const taskRunItemSelected = "_taskRunItemSelected_18vic_470";
+export const taskRunItemMeta = "_taskRunItemMeta_18vic_483";
+export const retryLine = "_retryLine_18vic_484";
+export const stepItem = "_stepItem_18vic_14";
+export const inputRequestItem = "_inputRequestItem_18vic_496";
+export const logList = "_logList_18vic_509";
+export const logLine = "_logLine_18vic_523";
+export const logTimestamp = "_logTimestamp_18vic_532";
+export const logContent = "_logContent_18vic_537";
+export const inputPrompt = "_inputPrompt_18vic_543";
+export const executionLoadMore = "_executionLoadMore_18vic_548";
+export const executionEmpty = "_executionEmpty_18vic_554";
+export const panelState = "_panelState_18vic_555";
+export default {
+	page: page,
+	topBar: topBar,
+	summaryHeader: summaryHeader,
+	sectionHeading: sectionHeading,
+	executionHeader: executionHeader,
+	executionSectionHeading: executionSectionHeading,
+	taskRunItemHeader: taskRunItemHeader,
+	stepItemHeader: stepItemHeader,
+	sideHeader: sideHeader,
+	detailToolbar: detailToolbar,
+	breadcrumb: breadcrumb,
+	topBarActions: topBarActions,
+	"ant-btn-primary": "_ant-btn-primary_18vic_61",
+	taskHeader: taskHeader,
+	detailTitleRow: detailTitleRow,
+	title: title,
+	summaryId: summaryId,
+	summaryMeta: summaryMeta,
+	summaryGrid: summaryGrid,
+	flowGrid: flowGrid,
+	contextGrid: contextGrid,
+	developmentGrid: developmentGrid,
+	checklist: checklist,
+	summaryMetaItem: summaryMetaItem,
+	infoCard: infoCard,
+	flowCard: flowCard,
+	checklistItem: checklistItem,
+	label: label,
+	value: value,
+	contentGrid: contentGrid,
+	mainContent: mainContent,
+	sideContent: sideContent,
+	section: section,
+	compactSection: compactSection,
+	flowCardButton: flowCardButton,
+	flowCardHeading: flowCardHeading,
+	flowIcon: flowIcon,
+	flowStepList: flowStepList,
+	flowStep: flowStep,
+	flowStepStatus: flowStepStatus,
+	flowFooter: flowFooter,
+	flowCardCurrent: flowCardCurrent,
+	flowTitle: flowTitle,
+	infoAction: infoAction,
+	infoIcon: infoIcon,
+	emptyCard: emptyCard,
+	sideCard: sideCard,
+	noteCard: noteCard,
+	sideTaskId: sideTaskId,
+	sideDescription: sideDescription,
+	checklistLabel: checklistLabel,
+	executionPanel: executionPanel,
+	executionSection: executionSection,
+	executionSelect: executionSelect,
+	executionAlert: executionAlert,
+	taskRunList: taskRunList,
+	stepList: stepList,
+	taskRunItem: taskRunItem,
+	taskRunItemSelected: taskRunItemSelected,
+	taskRunItemMeta: taskRunItemMeta,
+	retryLine: retryLine,
+	stepItem: stepItem,
+	inputRequestItem: inputRequestItem,
+	logList: logList,
+	logLine: logLine,
+	logTimestamp: logTimestamp,
+	logContent: logContent,
+	inputPrompt: inputPrompt,
+	executionLoadMore: executionLoadMore,
+	executionEmpty: executionEmpty,
+	panelState: panelState
+};
+
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

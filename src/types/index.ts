@@ -39,13 +39,6 @@ export type {
   UpdateAgentPayload,
 } from './agent'
 export type {
-  ChatSession,
-  ChatMessage,
-  MessageType,
-  TaskStatusCardPayload,
-  DiffCardPayload,
-} from './message'
-export type {
   Group,
   GroupMember,
   Message,

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { PATHS } from '@/routes/paths'
+import { formatApiError } from '@/utils/formatApiError'
 import './LoginPage.css'
 
 type AuthTab = 'login' | 'register'
@@ -35,9 +36,7 @@ export function LoginPage() {
       }
       navigate(hasTeam ? PATHS.MY_TEAMS : PATHS.WELCOME, { replace: true })
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : '网络异常，请稍后重试'
-      setError(message)
+      setError(formatApiError(err))
     } finally {
       setSubmitting(false)
     }

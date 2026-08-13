@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { PATHS } from '@/routes/paths'
 import { useAuth } from '@/context/AuthContext'
 import { teamApi } from '@/api'
+import { formatApiError } from '@/utils/formatApiError'
 import './CreateTeamPage.css'
 
 /**
@@ -32,9 +33,9 @@ export function CreateTeamPage() {
         description: description.trim() || undefined,
       })
       setHasTeam(true)
-      navigate(PATHS.teamDetail(team.id), { replace: true })
+      navigate(PATHS.teamDetail(team.id, true), { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建失败，请重试')
+      setError(formatApiError(err))
     } finally {
       setSubmitting(false)
     }

@@ -18,6 +18,7 @@ export function formatApiError(error: unknown): string {
     const msg = body?.error?.message
     if (code && msg) return `[${code}] ${msg}`
     if (msg) return msg
+    if (error.message) return error.message
     return `请求失败 (HTTP ${error.status})`
   }
   if (error instanceof Error) return error.message // http 笼统报错

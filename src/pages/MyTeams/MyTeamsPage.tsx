@@ -133,7 +133,7 @@ function TeamCard({ team }: { team: { id: string; name: string; role?: string; m
       </div>
       <h3>{team.name}</h3>
       <p className="my-teams__meta">{team.memberCount ?? '—'} 位成员</p>
-      <Link to={PATHS.teamDetail(team.id)} className="my-teams__detail">
+      <Link to={PATHS.teamDetail(team.id, team.myRole === 'TEAM_OWNER')} className="my-teams__detail">
         查看详情
       </Link>
     </article>

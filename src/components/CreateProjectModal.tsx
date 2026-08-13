@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Modal, Form, Input } from 'antd'
+import { Modal, Form, Input, Button } from 'antd'
+import { GithubOutlined } from '@ant-design/icons'
 import { useMutation } from '@tanstack/react-query'
 import { projectApi } from '@/api'
 import { PATHS } from '@/routes/paths'
@@ -69,6 +70,18 @@ export function CreateProjectModal({
             autoSize={{ minRows: 2, maxRows: 4 }}
             maxLength={200}
           />
+        </Form.Item>
+        {/* 原「Git 仓库」URL 输入已移除；改为跳转团队已授权仓库列表 */}
+        <Form.Item label="GitHub 仓库">
+          <Button
+            icon={<GithubOutlined />}
+            onClick={() => {
+              onClose()
+              navigate(PATHS.teamAuthorizedRepos(teamId))
+            }}
+          >
+            绑定github仓库
+          </Button>
         </Form.Item>
       </Form>
     </Modal>

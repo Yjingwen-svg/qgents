@@ -421,54 +421,65 @@ const MOCK_MEMORIES: Record<string, Memory[]> = {
 // GitHub 集成 Mock 数据
 // ══════════════════════════════════════════════
 
-const MOCK_TEAM_ID = 'team-xinghe'
+const MOCK_TEAM_ID = 'team-owned-001'
 
 let mockInstallations: GithubInstallation[] = [
   {
-    installationId: 'gh-install-1001',
+    id: 'gh-install-1001',
+    providerInstallationId: 12345678,
     accountLogin: 'Yjingwen-svg',
-    accountType: 'User',
+    accountType: 'USER',
     installedAt: '2026-08-01T08:00:00Z',
     status: 'ACTIVE',
-    authorizedRepoCount: 2,
+    metadataSyncedAt: '2026-08-13T10:00:00Z',
   },
   {
-    installationId: 'gh-install-1002',
+    id: 'gh-install-1002',
+    providerInstallationId: 87654321,
     accountLogin: 'qgents-lab',
-    accountType: 'Organization',
+    accountType: 'ORGANIZATION',
     installedAt: '2026-08-08T10:00:00Z',
     status: 'ACTIVE',
-    authorizedRepoCount: 1,
+    metadataSyncedAt: '2026-08-13T10:00:00Z',
   },
 ]
 
 const mockAuthorizedRepos: GithubAuthorizedRepository[] = [
   {
-    repositoryId: 'repo-1',
+    id: 'repo-1',
+    installationId: 'gh-install-1001',
+    providerRepositoryId: 987654321,
     fullName: 'Yjingwen-svg/qgents-web',
     githubUrl: 'https://github.com/Yjingwen-svg/qgents-web',
-    private: false,
-    installationId: 'gh-install-1001',
     defaultBranch: 'main',
-    syncStatus: 'SYNCED',
+    visibility: 'PUBLIC',
+    archived: false,
+    authorizationStatus: 'AUTHORIZED',
+    metadataSyncedAt: '2026-08-13T10:00:00Z',
   },
   {
-    repositoryId: 'repo-2',
+    id: 'repo-2',
+    installationId: 'gh-install-1001',
+    providerRepositoryId: 987654322,
     fullName: 'Yjingwen-svg/qgents-server',
     githubUrl: 'https://github.com/Yjingwen-svg/qgents-server',
-    private: true,
-    installationId: 'gh-install-1001',
     defaultBranch: 'main',
-    syncStatus: 'SYNCED',
+    visibility: 'PRIVATE',
+    archived: false,
+    authorizationStatus: 'AUTHORIZED',
+    metadataSyncedAt: '2026-08-13T10:00:00Z',
   },
   {
-    repositoryId: 'repo-3',
+    id: 'repo-3',
+    installationId: 'gh-install-1002',
+    providerRepositoryId: 987654323,
     fullName: 'qgents-lab/pet-app',
     githubUrl: 'https://github.com/qgents-lab/pet-app',
-    private: false,
-    installationId: 'gh-install-1002',
     defaultBranch: 'develop',
-    syncStatus: 'NOT_SYNCED',
+    visibility: 'PRIVATE',
+    archived: false,
+    authorizationStatus: 'AUTHORIZED',
+    metadataSyncedAt: '2026-08-13T09:00:00Z',
   },
 ]
 
@@ -476,21 +487,64 @@ const mockAuthorizedRepos: GithubAuthorizedRepository[] = [
 // 项目仓库绑定（内存表）
 // ══════════════════════════════════════════════
 
+/** 项目已绑定仓库内存表（MSW 进程内） */
+// 用闭包变量模拟后端落库
 function createRepoBindingHandlers() {
   const bindings = new Map<string, import('@/types/github').ProjectBoundRepository[]>()
   bindings.set('proj-qgents', [
     {
       id: 'bound-proj-qgents-repo-1',
-      installationId: 'gh-install-1001',
       repositoryId: 'repo-1',
+      installationId: 'gh-install-1001',
+      providerRepositoryId: 987654321,
       fullName: 'Yjingwen-svg/qgents-web',
       githubUrl: 'https://github.com/Yjingwen-svg/qgents-web',
       displayName: 'qgents-web',
       defaultBranch: 'main',
-      boundProjectId: 'proj-qgents',
-      boundProjectName: 'Qgents Web',
-      syncStatus: 'SYNCED',
-      lastSyncedAt: '2026-08-10T12:00:00Z',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T10:00:00Z',
+      boundAt: '2026-08-10T12:00:00Z',
+    },
+  ])
+  bindings.set('demo-project', [
+    {
+      id: 'bound-demo-auth-service',
+      repositoryId: 'repo-2',
+      installationId: 'gh-install-1001',
+      providerRepositoryId: 987654322,
+      fullName: 'Yjingwen-svg/qgents-server',
+      githubUrl: 'https://github.com/Yjingwen-svg/qgents-server',
+      displayName: 'auth-service',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T10:00:00Z',
+      boundAt: '2026-08-10T12:00:00Z',
+    },
+    {
+      id: 'bound-demo-web-console',
+      repositoryId: 'repo-1',
+      installationId: 'gh-install-1001',
+      providerRepositoryId: 987654321,
+      fullName: 'Yjingwen-svg/qgents-web',
+      githubUrl: 'https://github.com/Yjingwen-svg/qgents-web',
+      displayName: 'web-console',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T10:00:00Z',
+      boundAt: '2026-08-10T12:00:00Z',
+    },
+    {
+      id: 'bound-demo-shared-sdk',
+      repositoryId: 'repo-3',
+      installationId: 'gh-install-1002',
+      providerRepositoryId: 987654323,
+      fullName: 'qgents-lab/pet-app',
+      githubUrl: 'https://github.com/qgents-lab/pet-app',
+      displayName: 'shared-sdk',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T09:00:00Z',
+      boundAt: '2026-08-11T09:00:00Z',
     },
   ])
 
@@ -508,21 +562,22 @@ function createRepoBindingHandlers() {
       const body = (await request.json().catch(() => ({}))) as {
         installationId?: string
         repositoryId?: string
-        defaultBranch?: string
         displayName?: string
       }
-      const record = {
+      const source = mockAuthorizedRepos.find((r) => r.id === body.repositoryId)
+      const record: import('@/types/github').ProjectBoundRepository = {
         id: `bound-${projectId}-${body.repositoryId ?? 'repo'}`,
-        installationId: body.installationId ?? 'unknown',
+        installationId: body.installationId ?? source?.installationId ?? 'unknown',
         repositoryId: body.repositoryId ?? 'unknown',
-        fullName: body.displayName ?? 'demo/repo',
-        githubUrl: `https://github.com/${body.displayName ?? 'demo/repo'}`,
-        displayName: body.displayName,
-        defaultBranch: body.defaultBranch ?? 'main',
-        boundProjectId: projectId,
-        boundProjectName: projectId,
-        syncStatus: 'SYNCED' as const,
-        lastSyncedAt: new Date().toISOString(),
+        providerRepositoryId: source?.providerRepositoryId ?? 0,
+        fullName: source?.fullName ?? body.displayName ?? 'demo/repo',
+        githubUrl: source?.githubUrl ?? `https://github.com/${body.displayName ?? 'demo/repo'}`,
+        displayName:
+          body.displayName ?? source?.fullName.split('/').pop() ?? source?.fullName,
+        defaultBranch: source?.defaultBranch ?? '',
+        authorizationStatus: source?.authorizationStatus ?? 'AUTHORIZED',
+        metadataSyncedAt: source?.metadataSyncedAt ?? new Date().toISOString(),
+        boundAt: new Date().toISOString(),
       }
       const prev = (bindings.get(projectId) ?? []).filter(
         (b) => b.repositoryId !== record.repositoryId,
@@ -678,13 +733,44 @@ export const handlers = [
   http.delete(
     '/api/teams/:teamId/integrations/github/installations/:installationId',
     ({ params }) => {
-      mockInstallations = mockInstallations.filter(
-        (i) => i.installationId !== params.installationId,
-      )
+      mockInstallations = mockInstallations.filter((i) => i.id !== params.installationId)
       return new HttpResponse(null, { status: 204 })
     },
   ),
 
+  /** POST .../installations/{installationId}/sync —— 刷新 Installation 与授权仓库元数据 */
+  http.post(
+    '/api/teams/:teamId/integrations/github/installations/:installationId/sync',
+    ({ params }) => {
+      const installationId = String(params.installationId)
+      const now = new Date().toISOString()
+      mockInstallations = mockInstallations.map((i) =>
+        i.id === installationId ? { ...i, metadataSyncedAt: now } : i,
+      )
+      mockAuthorizedRepos.forEach((repo, index) => {
+        if (repo.installationId === installationId) {
+          mockAuthorizedRepos[index] = { ...repo, metadataSyncedAt: now }
+        }
+      })
+      const updated = mockInstallations.find((i) => i.id === installationId)
+      if (!updated) {
+        return HttpResponse.json(
+          {
+            error: {
+              code: 'GITHUB_RESOURCE_NOT_FOUND',
+              message: 'Installation 不存在',
+              details: [],
+            },
+            requestId: 'req_mock_sync_404',
+          },
+          { status: 404 },
+        )
+      }
+      return HttpResponse.json({ data: updated, requestId: 'req_mock_sync' })
+    },
+  ),
+
+  /** GET /teams/{teamId}/projects —— Owner 绑定仓库时用 */
   // ── Projects ──
   http.get('/api/teams/:teamId/projects', ({ params }) => {
     const projects = MOCK_PROJECTS[params.teamId as string] || []

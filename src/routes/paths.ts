@@ -22,14 +22,23 @@ export const PATHS = {
   /**
    * 团队详情（我的团队卡片「查看详情」）
    * 此页提供「创建项目」入口
+   * @param asOwner 是否来自「我创建的团队」——仅 Owner 可见「GitHub 集成」入口
    */
-  teamDetail: (teamId: string) => `/app/teams/${teamId}`,
+  teamDetail: (teamId: string, asOwner = false) =>
+    asOwner ? `/app/teams/${teamId}?as=owner` : `/app/teams/${teamId}`,
 
   /**
    * 创建项目（个人中心 / 团队详情均可进入）
    * TODO[后端联调]: teamId 用于绑定项目所属团队
    */
   createProject: (teamId: string) => `/app/teams/${teamId}/projects/create`,
+
+  /**
+   * 该团队已授权的所有 GitHub 仓库（创建项目时「绑定github仓库」进入）
+   * 数据：GET .../repositories + GET .../installations（拼授权账号）
+   */
+  teamAuthorizedRepos: (teamId: string) =>
+    `/app/teams/${encodeURIComponent(teamId)}/github/authorized-repos`,
 
   /**
    * 项目群聊工作台外壳
@@ -61,21 +70,44 @@ export const PATHS = {
   projectSkills: (projectId: string) => `/app/projects/${projectId}/skills`,
   projectMemory: (projectId: string) => `/app/projects/${projectId}/memory`,
   projectCode: (projectId: string) => `/app/projects/${projectId}/code`,
+  /** 某条分支的 Diff / CR 详情（入口：代码与 Branch 表格 Diff 列 +/-） */
+  projectCodeDiff: (projectId: string, branchId: string) =>
+    `/app/projects/${projectId}/code/diff/${encodeURIComponent(branchId)}`,
   projectTestset: (projectId: string) => `/app/projects/${projectId}/testset`,
   projectMembers: (projectId: string) => `/app/projects/${projectId}/members`,
   projectSettings: (projectId: string) => `/app/projects/${projectId}/settings`,
 
+  /**
+   * GitHub 集成（入口：我创建的团队 → 查看详情 →「GitHub 集成」按钮）
+   * 团队级 GitHub App 授权 + 仓库绑定管理
+   * TODO[后端联调]: 见接口文档 §6 GitHub App 与项目仓库
+   */
   GITHUB_INTEGRATION: '/app/integrations/github',
-  githubIntegration: (teamId: string) => `/app/integrations/github?teamId=${teamId}`,
+  githubIntegration: (teamId: string) =>
+    `/app/integrations/github?teamId=${encodeURIComponent(teamId)}`,
+
+  /**
+   * 某次安装下的已授权仓库列表（由集成页「查看仓库」进入）
+   */
   githubInstallationRepos: (teamId: string, installationId: string) =>
-    `/app/integrations/github/repositories?teamId=${teamId}&installationId=${installationId}`,
+    `/app/integrations/github/installations/${encodeURIComponent(installationId)}/repositories?teamId=${encodeURIComponent(teamId)}`,
+
+  /**
+   * 将授权仓库绑定到团队项目（Owner：看到该团队全部项目）
+   * query: installationId / repositoryId / fullName
+   */
   bindRepoToProject: (
     teamId: string,
-    options: { installationId: string; repositoryId: string; fullName?: string },
-  ) =>
-    `/app/integrations/github/bind?teamId=${teamId}&installationId=${options.installationId}&repositoryId=${options.repositoryId}${
-      options.fullName ? `&fullName=${encodeURIComponent(options.fullName)}` : ''
-    }`,
+    opts: { installationId: string; repositoryId: string; fullName?: string },
+  ) => {
+    const q = new URLSearchParams({
+      teamId,
+      installationId: opts.installationId,
+      repositoryId: opts.repositoryId,
+    })
+    if (opts.fullName) q.set('fullName', opts.fullName)
+    return `/app/integrations/github/bind-repo?${q.toString()}`
+  },
 } as const
 
 /** 项目详情左侧导航 path 段（相对 projects/:projectId） */

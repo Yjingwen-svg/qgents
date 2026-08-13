@@ -24,6 +24,7 @@ export function ProjectDetailLayout() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const onReqChat = location.pathname.includes('/req-chat')
+  const onCode = location.pathname.includes('/code')
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
   const setCurrentProject = useAppUiStore((state) => state.setCurrentProject)
 
@@ -167,7 +168,9 @@ export function ProjectDetailLayout() {
                 const active =
                   item.path === 'req-chat'
                     ? onReqChat
-                    : isActive
+                    : item.path === 'code'
+                      ? onCode
+                      : isActive
                 return `pd-nav__item${active ? ' is-active' : ''}`
               }}
             >

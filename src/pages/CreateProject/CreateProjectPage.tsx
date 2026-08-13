@@ -78,16 +78,20 @@ export function CreateProjectPage() {
           />
         </label>
 
-        <label className="create-project__field">
-          <span>Git 仓库</span>
-          <input
-            placeholder="已有仓库 URL，或留空由平台自动创建"
-            disabled
-          />
+        {/* 原「Git 仓库」URL 输入已移除；改为跳转团队已授权仓库列表 */}
+        <div className="create-project__field">
+          <span>GitHub 仓库</span>
+          <button
+            type="button"
+            className="create-project__btn create-project__btn--ghost"
+            onClick={() => navigate(PATHS.teamAuthorizedRepos(teamId))}
+          >
+            绑定github仓库
+          </button>
           <p className="create-project__hint" style={{ fontSize: 12, color: '#94a3b8', margin: '4px 0 0' }}>
-            仓库绑定将在后续版本支持，当前由平台自动创建
+            将跳转到该团队已授权的所有 GitHub 仓库列表（含默认分支、授权账号）
           </p>
-        </label>
+        </div>
 
         <div className="create-project__actions">
           <Link

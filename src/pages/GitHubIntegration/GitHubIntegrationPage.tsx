@@ -1,6 +1,6 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useEffect, useRef } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useGithubInstallRedirect } from '@/hooks/useGithubInstall'
 import {
   Typography,
@@ -69,16 +69,15 @@ const { Title, Paragraph, Text } = Typography
 //   /** 可选：后端若直接返回授权仓库数则可展示；没有则前端用 repositories 列表统计 */
 //   authorizedRepoCount?: number
 // }
+// 已冻结见 docs：Installation 主键为 id；accountType = USER | ORGANIZATION；status 不含 EXPIRED。
 function accountTypeLabel(type: GithubInstallation['accountType']): string {
-  return type === 'Organization' ? 'GitHub 组织' : 'GitHub 个人账号'
+  return type === 'ORGANIZATION' ? 'GitHub 组织' : 'GitHub 个人账号'
 }
 
 function statusTag(status: GithubInstallation['status']) {
-  return status === 'ACTIVE' ? (
-    <Tag color="success">已启用</Tag>
-  ) : (
-    <Tag color="warning">已过期</Tag>
-  )
+  if (status === 'ACTIVE') return <Tag color="success">已启用</Tag>
+  if (status === 'SUSPENDED') return <Tag color="warning">已暂停</Tag>
+  return <Tag>已删除</Tag>
 }
 
 // 给当前团队安装 GitHub App
@@ -86,6 +85,7 @@ export function GitHubIntegrationPage() {
   const { token } = theme.useToken()
   const { message } = App.useApp() //toast
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   // JS 代码里做页面跳转（编程式导航）
   // ReactRouter hook，用来读写 url 问号后面参数：
   const [searchParams, setSearchParams] = useSearchParams()
@@ -123,7 +123,10 @@ export function GitHubIntegrationPage() {
     //替换模式:不新增历史，直接覆盖当前这一条历史记录
 
     // TODO[后端联调] 安装成功后刷新 installations / repositories 列表
-  }, [searchParams, setSearchParams, message])
+    // 已冻结见 docs：installed=1 后提示一次、invalidate 列表、清理 query。
+    void queryClient.invalidateQueries({ queryKey: queryKeys.githubInstallations(teamId) })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.githubTeamRepositories(teamId) })
+  }, [searchParams, setSearchParams, message, queryClient, teamId])
   // searchParams:url 查询参数对象。
   // 只要浏览器 url 问号后面参数发生变化，searchParams 引用就会变，触发 useEffect 执行。
   //主要是看searchParams的变化,其余那两个引用一直不变
@@ -165,7 +168,7 @@ export function GitHubIntegrationPage() {
   // 计算某一条 GitHub App 安装记录，绑定了多少个授权仓库
   function repoCountOf(inst: GithubInstallation): number {
     if (typeof inst.authorizedRepoCount === 'number') return inst.authorizedRepoCount
-    return allRepos.filter((r) => r.installationId === inst.installationId).length
+    return allRepos.filter((r) => r.installationId === inst.id).length
   }
 
   return (
@@ -242,7 +245,7 @@ export function GitHubIntegrationPage() {
             }
           />
         ) : installations.length === 0 ? (
-          <Empty description="尚未安装 GitHub App">
+          <Empty description="您还没有任何安装的 GitHub App，请先安装">
             <Paragraph type="secondary">
               点击右上角「安装Github App」，在 GitHub 选择个人或组织并勾选仓库。
             </Paragraph>
@@ -250,7 +253,7 @@ export function GitHubIntegrationPage() {
         ) : (
           <Row gutter={[16, 16]}>
             {installations.map((inst) => (
-              <Col xs={24} md={12} key={inst.installationId}>
+              <Col xs={24} md={12} key={inst.id}>
                 <Card
                   size="small"
                   styles={{
@@ -296,7 +299,7 @@ export function GitHubIntegrationPage() {
                     style={{ marginTop: 16 }}
                     block
                     onClick={() =>
-                      navigate(PATHS.githubInstallationRepos(teamId, inst.installationId))
+                      navigate(PATHS.githubInstallationRepos(teamId, inst.id))
                     }
                   >
                     查看仓库

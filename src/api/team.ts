@@ -4,9 +4,27 @@ import type {
   CreateInvitationPayload,
   Team,
   TeamMember,
+<<<<<<< .merge_file_BCATV2
   TeamInvitation,
   AcceptInvitationResponse,
+=======
+  TeamRole,
+>>>>>>> .merge_file_CDQk2P
 } from '@/types'
+
+function isTeamRole(value: unknown): value is TeamRole {
+  return value === 'TEAM_OWNER' || value === 'TEAM_MEMBER'
+}
+
+/** 公网详情接口可能返回 role 而不是 myRole */
+function normalizeTeam(team: Team): Team {
+  if (team.myRole) return team
+  const extra = team as Team & { role?: unknown }
+  return {
+    ...team,
+    myRole: isTeamRole(extra.role) ? extra.role : team.myRole,
+  }
+}
 
 /**
  * 团队管理 API —— 对齐接口文档 v1.1.4 §5.1
@@ -14,7 +32,7 @@ import type {
 export const teamApi = {
   /** GET /teams — 当前用户加入的团队列表 */
   listMine() {
-    return request<Team[]>('/teams')
+    return request<Team[]>('/teams').then((teams) => teams.map(normalizeTeam))
   },
 
   /** POST /teams — 创建团队，创建者成为 TEAM_OWNER */
@@ -24,7 +42,7 @@ export const teamApi = {
 
   /** GET /teams/{teamId} — 获取团队资料 */
   getById(teamId: string) {
-    return request<Team>(`/teams/${teamId}`)
+    return request<Team>(`/teams/${teamId}`).then(normalizeTeam)
   },
 
   /** PATCH /teams/{teamId} — 修改团队资料（仅 Team Owner） */

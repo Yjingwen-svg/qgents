@@ -13,13 +13,18 @@ function isTeamRole(value: unknown): value is TeamRole {
   return value === 'TEAM_OWNER' || value === 'TEAM_MEMBER'
 }
 
-/** 兼容后端返回 role，或旧字段 myRole */
+/** 兼容后端返回 role，或旧字段 myRole；两个字段都补齐，页面读哪个都能工作 */
 function normalizeTeam(team: Team): Team {
-  if (isTeamRole(team.role)) return team
   const extra = team as Team & { myRole?: unknown }
+  const resolved = isTeamRole(team.role)
+    ? team.role
+    : isTeamRole(extra.myRole)
+      ? extra.myRole
+      : team.role
   return {
     ...team,
-    role: isTeamRole(extra.myRole) ? extra.myRole : team.role,
+    role: resolved,
+    myRole: isTeamRole(extra.myRole) ? extra.myRole : resolved,
   }
 }
 

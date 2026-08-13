@@ -69,11 +69,8 @@ export type {
   DiffFileStatus,
   DiffLineKind,
   DiffCommentSide,
-  DiffChangeStats,
   DiffLine,
   DiffHunk,
-  DiffFile,
-  DiffComment,
   DiffReviewView,
 } from './diff'
 export type {

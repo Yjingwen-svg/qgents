@@ -12,15 +12,9 @@ import {
   SettingOutlined,
   TeamOutlined,
 } from '@ant-design/icons'
-<<<<<<< HEAD
-import { Button, Space, Spin } from 'antd'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-=======
-import { Button, Modal, Spin, message } from 'antd'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Button, Modal, Space, Spin, message } from 'antd'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
->>>>>>> origin/main
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
@@ -137,13 +131,10 @@ function isCurrentUserTeamOwner(
 
 export function TeamDetailPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
-<<<<<<< HEAD
   const [searchParams] = useSearchParams()
   const { user } = useAuth()
-=======
   const navigate = useNavigate()
   const queryClient = useQueryClient()
->>>>>>> origin/main
   const [activeView, setActiveView] = useState<TeamDetailView>('projects')
   const [createOpen, setCreateOpen] = useState(false)
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)

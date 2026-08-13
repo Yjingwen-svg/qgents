@@ -10,6 +10,8 @@ export interface Team {
   name: string
   /** 当前用户在团队中的角色（后端字段名为 role，非 myRole） */
   role?: TeamRole
+  /** 旧字段别名；部分页面仍读取，normalizeTeam 会同时填到 role */
+  myRole?: TeamRole
   description?: string
   avatarUrl?: string
   createdAt?: string

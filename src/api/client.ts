@@ -1,7 +1,7 @@
 import type { Page } from '@/types'
 
 const CONFIGURED_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
-const BASE_URL = import.meta.env.VITE_USE_MOCK === 'true' ? '/api' : CONFIGURED_BASE_URL
+const BASE_URL = String(import.meta.env.VITE_USE_MOCK ?? '').trim() === 'true' ? '/api' : CONFIGURED_BASE_URL
 
 const ACCESS_TOKEN_KEY = 'qgents_access_token'
 const REFRESH_TOKEN_KEY = 'qgents_refresh_token'
@@ -27,12 +27,6 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
   /** 保留统一响应 envelope，用于同时包含 data/page/requestId 的分页响应 */
   unwrapData?: boolean
 }
-
-
-export function getApiBaseUrl(): string {
-  return BASE_URL
-}
-
 
 
 export function getStoredToken(): string | null {

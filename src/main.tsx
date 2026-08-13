@@ -93,7 +93,15 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 
 async function startMockWorker(): Promise<void> {
   const { worker } = await import('@/mocks/browser')
-  await withTimeout(worker.start({ onUnhandledRequest: 'bypass', waitUntilReady: true }), MOCK_START_TIMEOUT_MS)
+  await withTimeout(
+    worker.start({
+      onUnhandledRequest: 'bypass',
+      serviceWorker: {
+        url: '/mockServiceWorker.js',
+      },
+    }),
+    MOCK_START_TIMEOUT_MS,
+  )
 }
 
 function startupErrorMessage(error: unknown): string {
@@ -103,7 +111,7 @@ function startupErrorMessage(error: unknown): string {
 }
 
 function bootstrap(root: Root): void {
-  const useMock = import.meta.env.VITE_USE_MOCK === 'true'
+  const useMock = String(import.meta.env.VITE_USE_MOCK ?? '').trim() === 'true'
   if (!useMock) {
     renderApp(root)
     return

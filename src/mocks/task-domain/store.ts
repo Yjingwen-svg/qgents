@@ -1,5 +1,4 @@
 import type {
-  Deliverable,
   ExecutionContext,
   InputRequest,
   OrchestrationRun,
@@ -20,7 +19,6 @@ export interface TaskDomainState {
   logs: Map<string, TaskRunLog[]>
   inputRequests: Map<string, InputRequest[]>
   executionContexts: Map<string, ExecutionContext>
-  deliverables: Map<string, Deliverable>
 }
 
 export function createTaskDomainStore(initial: TaskDomainState): TaskDomainState {

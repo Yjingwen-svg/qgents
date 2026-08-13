@@ -1,5 +1,5 @@
 import { canCancelTaskRun, canWorkPackageAction } from '@/types'
-import type { DeliverableStatus, OrchestrationRunStatus, TaskRunStatus, WorkPackageStatus } from '@/types'
+import type { OrchestrationRunStatus, TaskRunStatus, WorkPackageStatus } from '@/types'
 export { canRetryTaskRun } from '@/types'
 
 import type { WorkPackageAction } from '@/types'
@@ -46,12 +46,4 @@ export function transitionOrchestrationRunCancel(status: OrchestrationRunStatus)
 export function transitionTaskRunInputRequest(status: TaskRunStatus): TaskRunStatus {
   if (status === 'WAITING_INPUT' || status === 'WAITING_APPROVAL') return 'RUNNING'
   throw new InvalidStateTransitionError('TaskRun', status, 'resume after input request')
-}
-
-export function transitionDeliverableStatus(
-  status: DeliverableStatus,
-  action: 'accept' | 'reject',
-): DeliverableStatus {
-  if (status === 'PENDING_REVIEW') return action === 'accept' ? 'ACCEPTED' : 'REJECTED'
-  throw new InvalidStateTransitionError('Deliverable', status, action)
 }

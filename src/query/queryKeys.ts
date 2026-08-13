@@ -67,12 +67,5 @@ export const queryKeys = {
         ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'input-requests', 'list', filters] as const,
     },
   },
-  deliverables: {
-    all: (projectId: string) => ['qgents', 'projects', projectId, 'deliverables'] as const,
-    list: (projectId: string, workPackageId: string, filters: CursorPageFilters = {}) =>
-      ['qgents', 'projects', projectId, 'deliverables', 'work-packages', workPackageId, filters] as const,
-    detail: (projectId: string, deliverableId: string) =>
-      ['qgents', 'projects', projectId, 'deliverables', deliverableId] as const,
-  },
 } as const
 // queryKey 是一层一层的数组路径，就像电脑文件夹路径！React Query 靠这串路径区分缓存，还能按「父文件夹」批量刷新缓存

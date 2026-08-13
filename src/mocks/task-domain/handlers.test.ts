@@ -22,13 +22,4 @@ describe('legacy task-domain handlers kept for un-migrated areas', () => {
     expect(detail.status).toBe(200)
   })
 
-  it('keeps deliverable read and review operations available', async () => {
-    const list = await fetch(`${baseUrl}/projects/project-deliverable/work-packages/work-package-project-deliverable-1/deliverables`)
-    expect(list.status).toBe(200)
-    const body = await json<{ data: Array<{ id: string; status: string }> }>(list)
-    if (body.data.length > 0) {
-      const detail = await fetch(`${baseUrl}/projects/project-deliverable/deliverables/${body.data[0].id}`)
-      expect(detail.status).toBe(200)
-    }
-  })
 })

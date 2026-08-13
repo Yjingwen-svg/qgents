@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   canRetryTaskRun,
   InvalidStateTransitionError,
-  transitionDeliverableStatus,
   transitionOrchestrationRunCancel,
   transitionWorkPackageStatus,
 } from './stateTransitions'
@@ -20,11 +19,6 @@ describe('task domain state transitions', () => {
     expect(canRetryTaskRun('CANCELLED')).toBe(true)
     expect(canRetryTaskRun('BLOCKED')).toBe(true)
     expect(canRetryTaskRun('RUNNING')).toBe(false)
-  })
-
-  it('does not accept a deliverable twice', () => {
-    expect(transitionDeliverableStatus('PENDING_REVIEW', 'accept')).toBe('ACCEPTED')
-    expect(() => transitionDeliverableStatus('ACCEPTED', 'accept')).toThrow(InvalidStateTransitionError)
   })
 
   it('cancels queued/planning runs immediately and running runs asynchronously', () => {

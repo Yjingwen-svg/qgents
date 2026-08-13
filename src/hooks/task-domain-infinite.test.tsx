@@ -10,7 +10,6 @@ const workPackageGetMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api', () => ({
   ApiError: class ApiError extends Error {},
-  deliverablesApi: {},
   orchestrationApi: { list: orchestrationListMock, create: orchestrationCreateMock },
   taskRunsApi: {},
   workPackagesApi: { get: workPackageGetMock },

@@ -2,7 +2,6 @@ import { http, HttpResponse, type PathParams } from 'msw'
 import type {
   InputRequest,
   OrchestrationRun,
-  RejectDeliverableInput,
   StartMode,
   UpdateWorkPackageInput,
   WorkPackage,
@@ -15,7 +14,6 @@ import {
 } from './fixtures'
 import {
   InvalidStateTransitionError,
-  transitionDeliverableStatus,
   transitionOrchestrationRunCancel,
   transitionWorkPackageStatus,
 } from './stateTransitions'
@@ -92,12 +90,6 @@ function errorResponse(error: unknown): HttpResponse<Record<string, unknown>> {
   )
 }
 
-function deliverableErrorResponse(status: 403 | 404 | 422, code: string, message: string): HttpResponse<Record<string, unknown>> {
-  return HttpResponse.json(
-    { error: { code, message, details: [] }, requestId: 'mock-request-id' },
-    { status },
-  ) as HttpResponse<Record<string, unknown>>
-}
 
 async function jsonObject(request: Request): Promise<Record<string, unknown>> {
   const body: unknown = await request.json()
@@ -168,7 +160,7 @@ function activateManualWorkPackage(store: TaskDomainState, workPackage: WorkPack
 export const taskDomainHandlers = [
   http.all('*/api/projects/:projectId/*', ({ request }) => {
     const pathname = new URL(request.url).pathname
-    if (pathname.includes('/tasks/') || pathname.includes('/task-runs/')) return undefined
+    if (pathname.includes('/tasks/') || pathname.includes('/task-runs/') || pathname.includes('/diffs')) return undefined
     const error = new URL(request.url).searchParams.get('error')
     if (error === 'FORBIDDEN') {
       return HttpResponse.json(
@@ -332,51 +324,7 @@ export const taskDomainHandlers = [
     return page(taskRuns, request)
   }),
 
-  http.get('*/api/projects/:projectId/work-packages/:workPackageId/deliverables', ({ params, request }) => {
-    const store = getStore(pathParam(params, 'projectId'), request)
-    const workPackageId = pathParam(params, 'workPackageId')
-    return page(
-      [...store.deliverables.values()].filter((deliverable) => deliverable.workPackageId === workPackageId),
-      request,
-    )
-  }),
-
-  http.get('*/api/projects/:projectId/deliverables/:deliverableId', ({ params, request }) => {
-    const store = getStore(pathParam(params, 'projectId'), request)
-    const deliverableId = pathParam(params, 'deliverableId')
-    if (deliverableId === 'forbidden') return deliverableErrorResponse(403, 'MOCK_FORBIDDEN', 'Forbidden')
-    const deliverable = store.deliverables.get(deliverableId)
-    return deliverable ? response(deliverable) : errorResponse(new Error('not found'))
-  }),
-
-  http.post('*/api/projects/:projectId/deliverables/:deliverableId/accept', ({ params, request }) => {
-    const store = getStore(pathParam(params, 'projectId'), request)
-    const deliverable = store.deliverables.get(pathParam(params, 'deliverableId'))
-    if (!deliverable) return errorResponse(new Error('not found'))
-    try {
-      deliverable.status = transitionDeliverableStatus(deliverable.status, 'accept')
-      deliverable.updatedAt = new Date().toISOString()
-      return response(deliverable, 202)
-    } catch (error: unknown) {
-      return errorResponse(error)
-    }
-  }),
-
-  http.post('*/api/projects/:projectId/deliverables/:deliverableId/reject', async ({ params, request }) => {
-    const store = getStore(pathParam(params, 'projectId'), request)
-    const deliverable = store.deliverables.get(pathParam(params, 'deliverableId'))
-    if (!deliverable) return errorResponse(new Error('not found'))
-    const body = (await jsonObject(request)) as unknown as RejectDeliverableInput
-    if (typeof body.reason !== 'string' || body.reason.trim().length === 0) {
-      return deliverableErrorResponse(422, 'INVALID_REJECTION_REASON', 'Rejection reason is required')
-    }
-    try {
-      deliverable.status = transitionDeliverableStatus(deliverable.status, 'reject')
-      deliverable.rejectionReason = body.reason
-      deliverable.updatedAt = new Date().toISOString()
-      return response(deliverable, 202)
-    } catch (error: unknown) {
-      return errorResponse(error)
-    }
-  }),
 ]
+
+// 仅供尚未清理的遗留领域定向测试使用；应用全局 Mock 不注册这些路径。
+export const taskDomainCoreHandlers = taskDomainHandlers

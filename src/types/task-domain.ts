@@ -71,8 +71,6 @@ export type InputRequestKind = 'INPUT' | 'APPROVAL'
 /** FE-API-005: 后端尚未在 v1.1.1 明确 sandboxStatus 的完整枚举。 */
 export type SandboxStatus = 'CREATING' | 'READY' | 'RUNNING' | 'STOPPED' | 'EXPIRED' | 'FAILED'
 
-export type DeliverableStatus = 'PENDING_REVIEW' | 'ACCEPTED' | 'REJECTED'
-
 export type AgentNodeRole =
   | 'ORCHESTRATOR'
   | 'PLANNER'
@@ -294,28 +292,6 @@ export interface CursorPageFilters {
   limit?: number
 }
 
-export type DeliverableType = 'CODE' | 'DOCUMENT' | 'TEST_REPORT'
-
-export interface Deliverable {
-  id: string
-  projectId: string
-  workPackageId: string
-  taskRunId: string
-  title: string
-  type: DeliverableType
-  version: number
-  status: DeliverableStatus
-  repositoryId: string | null
-  sourceRef: string | null
-  diffId: string | null
-  mergeRequestId: string | null
-  rejectionReason: string | null
-  /** FE-API-007 临时 Mock 摘要字段，正式接口需确认结构化交付引用。 */
-  summary?: string | null
-  createdAt: string
-  updatedAt: string
-}
-
 export interface OrchestrationRunFilters extends CursorPageFilters {
   groupId?: string
   status?: OrchestrationRunStatus
@@ -353,9 +329,5 @@ export interface InputRequestAnswer {
 }
 
 export interface DecisionInput {
-  reason: string
-}
-
-export interface RejectDeliverableInput {
   reason: string
 }

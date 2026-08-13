@@ -9,7 +9,8 @@ const useTaskMock = vi.hoisted(() => vi.fn())
 const useTaskStepsMock = vi.hoisted(() => vi.fn())
 const useTaskRunsMock = vi.hoisted(() => vi.fn())
 const useCancelTaskMock = vi.hoisted(() => vi.fn())
-vi.mock('@/hooks/task-model', () => ({ useTask: useTaskMock, useTaskSteps: useTaskStepsMock, useTaskRuns: useTaskRunsMock, useCancelTask: useCancelTaskMock }))
+const useDiffsMock = vi.hoisted(() => vi.fn())
+vi.mock('@/hooks/task-model', () => ({ useTask: useTaskMock, useTaskSteps: useTaskStepsMock, useTaskRuns: useTaskRunsMock, useCancelTask: useCancelTaskMock, useDiffs: useDiffsMock }))
 
 import { TaskDetailPage } from './TaskDetailPage'
 
@@ -19,7 +20,7 @@ const run: TaskRunSummary = { id: 'run-1', projectId: 'project-test', taskId: 't
 function page<T>(data: T[]): TaskModelPage<T> { return { data, page: { nextCursor: null, hasMore: false }, requestId: 'request-1' } }
 function renderPage(path = '/app/projects/project-test/tasks/task-1') { return render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/app/projects/:projectId/tasks/:taskId" element={<><TaskDetailPage /><LocationProbe /></>} /><Route path="/app/projects/:projectId/tasks/:taskId/executions/:taskRunId" element={<div>execution-route</div>} /></Routes></MemoryRouter>) }
 function LocationProbe() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}</output> }
-beforeEach(() => { useTaskMock.mockReturnValue({ data: task, error: null, isError: false, isLoading: false, refetch: vi.fn() }); useTaskStepsMock.mockReturnValue({ data: page([step]), error: null, isError: false, isLoading: false }); useTaskRunsMock.mockReturnValue({ data: page([run]), error: null, isError: false, isLoading: false }); useCancelTaskMock.mockReturnValue({ mutate: vi.fn(), error: null, isPending: false }) })
+beforeEach(() => { useTaskMock.mockReturnValue({ data: task, error: null, isError: false, isLoading: false, refetch: vi.fn() }); useTaskStepsMock.mockReturnValue({ data: page([step]), error: null, isError: false, isLoading: false }); useTaskRunsMock.mockReturnValue({ data: page([run]), error: null, isError: false, isLoading: false }); useCancelTaskMock.mockReturnValue({ mutate: vi.fn(), error: null, isPending: false }); useDiffsMock.mockReturnValue({ data: page([]), error: null, isError: false, isLoading: false }) })
 
 describe('TaskDetailPage', () => {
   it('loads Task, steps and task runs without legacy resources', () => {

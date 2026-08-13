@@ -32,17 +32,17 @@ function renderLayout(initialEntry: string) {
   )
 }
 
-describe('ProjectDetailLayout deliverables navigation', () => {
+describe('ProjectDetailLayout Diff Center navigation', () => {
   it('shows the delivery center entry and navigates with the project path', () => {
     renderLayout('/app/projects/project-1/overview')
 
     fireEvent.click(screen.getByText('交付中心'))
 
-    expect(screen.getByTestId('location')).toHaveTextContent('/app/projects/project-1/deliverables')
+    expect(screen.getByTestId('location')).toHaveTextContent('/app/projects/project-1/diffs')
   })
 
   it('keeps delivery center selected on the detail route', () => {
-    renderLayout('/app/projects/project-1/deliverables/deliverable-1')
+    renderLayout('/app/projects/project-1/diffs/diff-1')
 
     expect(screen.getByRole('link', { name: /交付中心/ })).toHaveClass('is-active')
   })

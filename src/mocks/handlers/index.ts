@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
-import { taskDomainHandlers } from '../task-domain/handlers'
-import { taskModelTaskCenterHandlers, taskModelTaskRunHandlers } from '../task-model/handlers'
+import { taskDomainCoreHandlers } from '../task-domain/handlers'
+import { taskModelDiffHandlers, taskModelTaskCenterHandlers, taskModelTaskRunHandlers } from '../task-model/handlers'
 import { agentHandlers } from '../agent/handlers'
 
 // ══════════════════════════════════════════════
@@ -211,9 +211,10 @@ const handlers: ReturnType<typeof http.get>[] = [
   http.post('/api/projects/:projectId/restore', () => HttpResponse.json({ data: null })),
 
   // ── B 的任务域（task-domain + agent）──
-  ...taskDomainHandlers,
+  ...taskDomainCoreHandlers,
   ...taskModelTaskCenterHandlers,
   ...taskModelTaskRunHandlers,
+  ...taskModelDiffHandlers,
   ...agentHandlers,
 ]
 

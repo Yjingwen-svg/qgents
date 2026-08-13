@@ -2,7 +2,7 @@ import { Alert, Breadcrumb, Button, Card, Empty, Result, Space, Spin, Tag, Typog
 import { ArrowLeftOutlined } from '@ant-design/icons'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '@/api'
-import { useCancelTask, useTask, useTaskRuns, useTaskSteps } from '@/hooks/task-model'
+import { useCancelTask, useDiffs, useTask, useTaskRuns, useTaskSteps } from '@/hooks/task-model'
 import type { Task, TaskRunSummary, TaskStep } from '@/types/task-model'
 import { PATHS } from '@/routes/paths'
 import { TaskModelStatusTag } from '../TaskCenter/TaskModelStatusTag'
@@ -18,6 +18,7 @@ export function TaskDetailPage() {
   const stepsQuery = useTaskSteps(projectId, taskId, { limit: 100 })
   const runsQuery = useTaskRuns(projectId, taskId, { limit: 100 })
   const cancelMutation = useCancelTask(projectId)
+  const diffsQuery = useDiffs(projectId, { taskId, limit: 100 })
   const steps = stepsQuery.data?.data ?? []
   const runs = runsQuery.data?.data ?? []
   const runsByStep = groupLatestRuns(runs)
@@ -63,6 +64,7 @@ export function TaskDetailPage() {
         <WorkspaceCard task={task} />
         <TaskStepsSection projectId={projectId} taskId={task.id} query={stepsQuery} steps={steps} runsByStep={runsByStep} />
         <TaskRunsSummary query={runsQuery} runs={runs} />
+        <TaskDiffSummary projectId={projectId} taskId={taskId} query={diffsQuery} />
       </main>
     </div>
   )
@@ -92,6 +94,14 @@ function TaskRunsSummary({ query, runs }: { query: ReturnType<typeof useTaskRuns
   if (query.isError) return <Card title="TaskRun"><SectionError resource="TaskRun" error={query.error} /></Card>
   if (runs.length === 0) return <Card title="TaskRun"><Empty description="暂无 TaskRun" /></Card>
   return <Card title="TaskRun" className={styles.section}><Space direction="vertical" style={{ width: '100%' }}>{runs.map((run) => <div key={run.id}><Text strong>{run.id}</Text><Text> · {run.role} · {display(run.agentId)} · {run.status} · step {run.taskStepId}</Text></div>)}</Space></Card>
+}
+
+function TaskDiffSummary({ projectId, taskId, query }: { projectId: string; taskId: string; query: ReturnType<typeof useDiffs> }) {
+  const navigate = useNavigate()
+  const diffs = query.data?.data ?? []
+  if (query.isLoading) return <Card title="Diff"><Spin /></Card>
+  if (query.isError) return <Card title="Diff"><SectionError resource="Diff" error={query.error} /></Card>
+  return <Card title="Diff" className={styles.section}><Space direction="vertical"><Text>Diff 数量：{diffs.length}</Text>{diffs.length === 0 ? <Empty description="暂无可查看 Diff" /> : diffs.map((diff) => <Button key={diff.id} type="link" onClick={() => navigate(PATHS.projectDiff(projectId, diff.id), { state: { from: PATHS.projectTaskDetail(projectId, taskId) } })}>查看 Diff 摘要：{diff.id}</Button>)}<Button onClick={() => navigate(`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(taskId)}`)}>查看该任务全部 Diff</Button></Space></Card>
 }
 
 function groupLatestRuns(runs: TaskRunSummary[]): Map<string, TaskRunSummary> {

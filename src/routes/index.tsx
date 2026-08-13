@@ -19,7 +19,7 @@ import { ProjectDetailLayout } from '@/pages/ProjectDetail/ProjectDetailLayout'
 import { RequirementChatPage } from '@/pages/ProjectDetail/RequirementChatPage'
 import { TaskDetailPage } from '@/pages/ProjectDetail/TaskDetail/TaskDetailPage'
 import { TaskRunDetailPage } from '@/pages/ProjectDetail/TaskRunDetail/TaskRunDetailPage'
-import { DeliverablesPage } from '@/pages/ProjectDetail/Deliverables/DeliverablesPage'
+import { DiffCenterPage } from '@/pages/ProjectDetail/DiffCenter/DiffCenterPage'
 import { AgentTeamPage } from '@/pages/ProjectDetail/AgentTeam/AgentTeamPage'
 import { WorkflowViewerPage } from '@/pages/ProjectDetail/Workflow/WorkflowViewerPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
@@ -86,8 +86,8 @@ export function AppRouter() {
                 <Route path="tasks" element={<TasksPage />} />
                 <Route path="tasks/:taskId/executions/:taskRunId" element={<TaskRunDetailPage />} />
                 <Route path="tasks/:taskId" element={<TaskDetailPage />} />
-                <Route path="deliverables" element={<DeliverablesPage />} />
-                <Route path="deliverables/:deliverableId" element={<DeliverablesPage />} />
+                <Route path="diffs" element={<DiffCenterPage />} />
+                <Route path="diffs/:diffId" element={<DiffCenterPage />} />
                 <Route path="workflow" element={<WorkflowViewerPage />} />
                 <Route path="agents" element={<AgentTeamPage />} />
 

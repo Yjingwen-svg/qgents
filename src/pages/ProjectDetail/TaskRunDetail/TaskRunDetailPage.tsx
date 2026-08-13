@@ -66,9 +66,15 @@ export function TaskRunDetailPage() {
       <LogsSection query={logsQuery} />
       <ContextSection query={contextQuery} />
       <InputRequestsSection projectId={projectId} taskRunId={taskRun.id} query={inputRequestsQuery} />
-      <Card title="Diff"><Button disabled title="Diff 中心迁移中">Diff 中心迁移中</Button></Card>
+      <TaskRunDiffSummary projectId={projectId} taskId={taskId} taskRun={taskRun} />
     </div>
   </div>
+}
+
+function TaskRunDiffSummary({ projectId, taskId, taskRun }: { projectId: string; taskId: string; taskRun: TaskRunDetail }) {
+  const navigate = useNavigate()
+  const count = taskRun.artifactSummary.diffs.count
+  return <Card title="Diff"><Space direction="vertical"><Text>Diff 数量：{count}</Text>{count > 0 ? <Button onClick={() => navigate(`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(taskId)}`)}>查看该任务 Diff</Button> : <Empty description="暂无可查看 Diff" />}</Space></Card>
 }
 
 function TaskRunActions({ taskRun, retry, cancel, retryPending, cancelPending, retryError, cancelError, onRefresh }: { taskRun: TaskRunDetail; retry: () => void; cancel: () => void; retryPending: boolean; cancelPending: boolean; retryError: Error | null; cancelError: Error | null; onRefresh: () => void }) {

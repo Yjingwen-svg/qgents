@@ -9,6 +9,7 @@ export type {
   RegisterPayload,
   AuthResponse,
   RefreshResponse,
+  MeResponse,
 } from './auth'
 export type {
   Team,
@@ -24,6 +25,7 @@ export type {
   Group,
   GroupMember,
   Message,
+  MessageSummary,
   MessageContentType,
   MessageSenderType,
   TextMessageContent,
@@ -63,6 +65,15 @@ export type {
   DiffComment,
   DiffReviewView,
 } from './diff'
+export type {
+  Memory,
+  MemoryStatus,
+  MemorySourceType,
+  MemorySourceRef,
+  MemoryActor,
+  CreateMemoryPayload,
+  GenerateMemoryDraftPayload,
+} from './memory'
 export type {
   GithubInstallation,
   GithubInstallationRedirect,

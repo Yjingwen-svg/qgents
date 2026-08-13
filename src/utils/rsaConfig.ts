@@ -1,11 +1,10 @@
-import { JSEncrypt } from 'jsencrypt'
-
 /**
  * RSA 公钥配置 —— 对齐接口文档 v1.1.4 §4.1
  *
  * 当前演示环境没有可用域名，公钥不再通过接口动态拉取，
  * 而是硬编码在前端代码中（也可通过构建环境变量注入）。
  */
+import { JSEncrypt } from 'jsencrypt'
 
 /** RSA 公钥 keyId —— 与后端私钥配对 */
 export const RSA_KEY_ID = 'rsa-2026-08'
@@ -26,25 +25,14 @@ Pwyg+E3scliNZYXywo7eMWS1RjkHPcXnnwIDAQAB
 /**
  * 使用 RSA 公钥加密密码。
  *
- * TODO[加密]: 当前 mock 阶段直接返回明文。
- * 正式环境可引入 jsencrypt 或用 Web Crypto API (SubtleCrypto) 实现，
- * 调用示例：
- *   const jsEncrypt = new JSEncrypt()
- *   jsEncrypt.setPublicKey(RSA_PUBLIC_KEY_PEM)
- *   return jsEncrypt.encrypt(plainPassword)  // 返回 Base64 密文
+ * 采用 RSA/ECB/PKCS1Padding（PKCS#1 v1.5），对齐接口文档 §4.1。
+ * 浏览器原生 Web Crypto 的 RSA 加密仅支持 OAEP、不支持 PKCS#1 v1.5，
+ * 故用 jsencrypt 实现。
  */
 export async function encryptPassword(plainPassword: string): Promise<string> {
-  // TODO: 正式环境实现 RSA 加密
-  // mock 阶段直传明文（MSW 不校验加密），后端联调前必须实现
-  if (import.meta.env.VITE_USE_MOCK === 'true') {
-    return plainPassword
-  }
-
   const jsEncrypt = new JSEncrypt()
   jsEncrypt.setPublicKey(RSA_PUBLIC_KEY_PEM)
-  const encrypted = jsEncrypt.encrypt(plainPassword)
-  if (!encrypted) {
-    throw new Error('密码 RSA 加密失败')
-  }
-  return encrypted
+  const cipher = jsEncrypt.encrypt(plainPassword)
+  if (!cipher) throw new Error('RSA 加密失败：公钥无效或格式不受支持')
+  return cipher
 }

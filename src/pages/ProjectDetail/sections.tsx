@@ -4,6 +4,7 @@ import { Spin } from 'antd'
 import { PROJECT_NAV } from '@/routes/paths'
 import { projectApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
+import { MemoryPage as MemoryPageImpl } from './MemoryPage'
 
 /**
  * 项目详情其它导航子页的统一占位壳
@@ -82,7 +83,7 @@ export function OverviewPage() {
         {/* 基础统计卡片 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
           <StatCard label="仓库" value={String(project.repositoryCount ?? 0)} />
-          <StatCard label="我的角色" value={project.myRole === 'PROJECT_ADMIN' ? 'Admin' : 'Member'} />
+          <StatCard label="我的角色" value={project.role === 'PROJECT_ADMIN' ? 'Admin' : 'Member'} />
           <StatCard label="项目 ID" value={project.id} mono />
         </div>
 
@@ -152,17 +153,7 @@ export function SkillsPage() {
 }
 
 export function MemoryPage() {
-  return (
-    <ProjectSectionPage
-      section="memory"
-      title="共享 Memory"
-      todos={[
-        'TODO: A - Memory 列表和详情',
-        'TODO: A - 从群消息生成草稿',
-        'TODO: A - 手动创建 / 审核 / 归档',
-      ]}
-    />
-  )
+  return <MemoryPageImpl />
 }
 
 export { CodePage } from './CodePage'

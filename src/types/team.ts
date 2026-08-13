@@ -8,19 +8,21 @@ export type TeamRole = 'TEAM_OWNER' | 'TEAM_MEMBER'
 export interface Team {
   id: string
   name: string
+  /** 当前用户在团队中的角色（后端字段名为 role，非 myRole） */
+  role?: TeamRole
   description?: string
   avatarUrl?: string
   createdAt?: string
-  /** 当前用户在团队中的角色 */
-  myRole?: TeamRole
-  /** 团队成员数 */
+  /** 团队成员数（后端暂未返回，联调后补） */
   memberCount?: number
 }
 
 export interface TeamMember {
   userId: string
-  displayName: string
-  email: string
+  /** 显示名（后端成员接口暂未返回，联调后补） */
+  displayName?: string
+  /** 邮箱（后端成员接口暂未返回，联调后补） */
+  email?: string
   role: TeamRole
   avatarUrl?: string
 }

@@ -51,3 +51,10 @@ export interface RefreshResponse {
   refreshToken: string
   refreshTokenExpiresIn: number
 }
+
+/** GET /me 响应（data 层为聚合结构：user + teams + projects） */
+export interface MeResponse {
+  user: User
+  teams: Array<{ id: string; name: string; role: string }>
+  projects: Array<{ id: string; teamId: string; name: string; role: string }>
+}

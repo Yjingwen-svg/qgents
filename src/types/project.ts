@@ -11,8 +11,8 @@ export interface Project {
   name: string
   description?: string
   createdAt?: string
-  /** 当前用户在项目中的角色 */
-  myRole?: ProjectRole
+  /** 当前用户在项目中的角色（后端字段名为 role，非 myRole） */
+  role?: ProjectRole
   /** 绑定的仓库数量 */
   repositoryCount?: number
 }

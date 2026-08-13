@@ -9,6 +9,7 @@ import {
 } from 'react'
 import type { User } from '@/types'
 import { authApi, teamApi } from '@/api'
+import { AUTH_EXPIRED_EVENT } from '@/api/client'
 import { RSA_KEY_ID, encryptPassword } from '@/utils/rsaConfig'
 
 interface AuthContextValue {
@@ -59,11 +60,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const me = await authApi.me()
         if (cancelled) return
-        setUser(me)
-
-        const teams = await teamApi.listMine()
-        if (cancelled) return
-        setHasTeam(teams.length > 0)
+        setUser(me.user)
+        // /me 已返回 teams 聚合，直接取用；为空时兜底再查一次
+        if (me.teams && me.teams.length > 0) {
+          setHasTeam(true)
+        } else {
+          const teams = await teamApi.listMine()
+          if (cancelled) return
+          setHasTeam(teams.length > 0)
+        }
       } catch {
         // token 过期或无效 → 清掉
         if (!cancelled) {
@@ -80,6 +85,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
+  }, [])
+
+  // ──── 监听登录态失效（client.ts 在 refresh 也失败时派发）────
+  // user 置 null 后，RequireAuth 守卫会自动跳回登录页
+  useEffect(() => {
+    function handleAuthExpired() {
+      setUser(null)
+      setHasTeam(false)
+    }
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
   }, [])
 
   // ──── 登录（返回 hasTeam，调用方用于决定跳转目标）────

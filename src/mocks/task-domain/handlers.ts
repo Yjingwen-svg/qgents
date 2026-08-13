@@ -1,16 +1,12 @@
 import { http, HttpResponse, type PathParams } from 'msw'
 import type {
-  DecisionInput,
   InputRequest,
-  InputRequestAnswer,
   OrchestrationRun,
   RejectDeliverableInput,
   StartMode,
-  TaskRun,
   UpdateWorkPackageInput,
   WorkPackage,
 } from '@/types'
-import { canRetryTaskRun } from '@/types'
 import {
   addCreatedOrchestrationRunResources,
   createTaskDomainScenario,
@@ -20,15 +16,11 @@ import {
 import {
   InvalidStateTransitionError,
   transitionDeliverableStatus,
-  transitionTaskRunInputRequest,
-  transitionTaskRunCancel,
   transitionOrchestrationRunCancel,
   transitionWorkPackageStatus,
 } from './stateTransitions'
 import {
-  findInputRequest,
   findOrchestrationRun,
-  findTaskRun,
   findWorkPackage,
   type TaskDomainState,
 } from './store'
@@ -175,6 +167,8 @@ function activateManualWorkPackage(store: TaskDomainState, workPackage: WorkPack
 
 export const taskDomainHandlers = [
   http.all('*/api/projects/:projectId/*', ({ request }) => {
+    const pathname = new URL(request.url).pathname
+    if (pathname.includes('/tasks/') || pathname.includes('/task-runs/')) return undefined
     const error = new URL(request.url).searchParams.get('error')
     if (error === 'FORBIDDEN') {
       return HttpResponse.json(
@@ -337,133 +331,6 @@ export const taskDomainHandlers = [
     )
     return page(taskRuns, request)
   }),
-
-  http.get('*/api/projects/:projectId/task-runs/:taskRunId', ({ params, request }) => {
-    const store = getStore(pathParam(params, 'projectId'), request)
-    const taskRun = findTaskRun(store, pathParam(params, 'taskRunId'))
-    return taskRun ? response(taskRun) : errorResponse(new Error('not found'))
-  }),
-
-  http.post('*/api/projects/:projectId/task-runs/:taskRunId/retry', ({ params, request }) => {
-    const store = getStore(pathParam(params, 'projectId'), request)
-    const taskRun = findTaskRun(store, pathParam(params, 'taskRunId'))
-    if (!taskRun) return errorResponse(new Error('not found'))
-    if (!canRetryTaskRun(taskRun.status)) {
-      return errorResponse(new InvalidStateTransitionError('TaskRun', taskRun.status, 'retry'))
-    }
-    const retry: TaskRun = {
-      ...taskRun,
-      id: `${taskRun.id}-retry-${Date.now()}`,
-      status: 'QUEUED',
-      retryOfTaskRunId: taskRun.id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }
-    store.taskRuns.set(retry.id, retry)
-    const retrySteps = store.steps.get(taskRun.id)
-    if (retrySteps) {
-      store.steps.set(retry.id, retrySteps.map((step) => ({
-        ...step,
-        id: `${retry.id}-${step.id}`,
-        taskRunId: retry.id,
-      })))
-    }
-    const retryLogs = store.logs.get(taskRun.id)
-    if (retryLogs) {
-      store.logs.set(retry.id, retryLogs.map((log) => ({
-        ...log,
-        id: `${retry.id}-${log.id}`,
-        taskRunId: retry.id,
-      })))
-    }
-    const retryContext = store.executionContexts.get(taskRun.id)
-    if (retryContext) {
-      store.executionContexts.set(retry.id, { ...retryContext, id: `${retry.id}-context`, taskRunId: retry.id })
-    }
-    const retryRequests = store.inputRequests.get(taskRun.id)
-    if (retryRequests) {
-      store.inputRequests.set(retry.id, retryRequests.map((request) => ({
-        ...request,
-        id: `${retry.id}-${request.id}`,
-        taskRunId: retry.id,
-      })))
-    }
-    return response(retry, 202)
-  }),
-
-  http.post('*/api/projects/:projectId/task-runs/:taskRunId/cancel', ({ params, request }) => {
-    const store = getStore(pathParam(params, 'projectId'), request)
-    const taskRun = findTaskRun(store, pathParam(params, 'taskRunId'))
-    if (!taskRun) return errorResponse(new Error('not found'))
-    try {
-      taskRun.status = transitionTaskRunCancel(taskRun.status)
-      taskRun.updatedAt = new Date().toISOString()
-      completeCancellation(taskRun)
-      return response(taskRun, 202)
-    } catch (error: unknown) {
-      return errorResponse(error)
-    }
-  }),
-
-  http.get('*/api/projects/:projectId/task-runs/:taskRunId/steps', ({ params, request }) => {
-    const store = getStore(pathParam(params, 'projectId'), request)
-    return page(store.steps.get(pathParam(params, 'taskRunId')) ?? [], request)
-  }),
-
-  http.get('*/api/projects/:projectId/task-runs/:taskRunId/logs', ({ params, request }) => {
-    const store = getStore(pathParam(params, 'projectId'), request)
-    return page(store.logs.get(pathParam(params, 'taskRunId')) ?? [], request)
-  }),
-
-  http.get('*/api/projects/:projectId/task-runs/:taskRunId/execution-context', ({ params, request }) => {
-    const store = getStore(pathParam(params, 'projectId'), request)
-    const context = store.executionContexts.get(pathParam(params, 'taskRunId'))
-    return context ? response(context) : errorResponse(new Error('not found'))
-  }),
-
-  http.get('*/api/projects/:projectId/task-runs/:taskRunId/input-requests', ({ params, request }) => {
-    const store = getStore(pathParam(params, 'projectId'), request)
-    return page(store.inputRequests.get(pathParam(params, 'taskRunId')) ?? [], request)
-  }),
-
-  ...(['reply', 'approve', 'reject'] as const).map((action) =>
-    http.post(
-      `*/api/projects/:projectId/task-runs/:taskRunId/input-requests/:requestId/${action}`,
-      async ({ params, request }) => {
-        const store = getStore(pathParam(params, 'projectId'), request)
-        const inputRequest = findInputRequest(
-          store,
-          pathParam(params, 'taskRunId'),
-          pathParam(params, 'requestId'),
-        )
-        if (!inputRequest) return errorResponse(new Error('not found'))
-        if (inputRequest.status !== 'PENDING') {
-          return errorResponse(new InvalidStateTransitionError('InputRequest', inputRequest.status, action))
-        }
-        const body = await jsonObject(request)
-        if (action === 'reply') {
-          const answer = body as unknown as InputRequestAnswer
-          if (!answer.answer || typeof answer.answer.value !== 'string' || answer.answer.value.trim().length === 0) {
-            return errorResponse(new InvalidStateTransitionError('InputRequest', 'INVALID', action))
-          }
-          inputRequest.status = 'ANSWERED'
-        } else {
-          const decision = body as unknown as DecisionInput
-          if (typeof decision.reason !== 'string' || (action === 'reject' && decision.reason.trim().length === 0)) {
-            return errorResponse(new InvalidStateTransitionError('InputRequest', 'INVALID', action))
-          }
-          inputRequest.status = action === 'approve' ? 'APPROVED' : 'REJECTED'
-        }
-        inputRequest.resolvedAt = new Date().toISOString()
-        const taskRun = findTaskRun(store, pathParam(params, 'taskRunId'))
-        if (taskRun && (taskRun.status === 'WAITING_INPUT' || taskRun.status === 'WAITING_APPROVAL')) {
-          taskRun.status = transitionTaskRunInputRequest(taskRun.status)
-          taskRun.updatedAt = inputRequest.resolvedAt
-        }
-        return response(inputRequest, 202)
-      },
-    ),
-  ),
 
   http.get('*/api/projects/:projectId/work-packages/:workPackageId/deliverables', ({ params, request }) => {
     const store = getStore(pathParam(params, 'projectId'), request)

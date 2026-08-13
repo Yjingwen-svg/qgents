@@ -1,20 +1,17 @@
 import type { QueryKey } from '@tanstack/react-query'
-import { queryClient, queryKeys } from '@/query'
+import { queryClient, taskModelQueryKeys } from '@/query'
 import type { ProjectTaskEvent, ProjectTaskEventPayload } from './eventParser'
 
-export const TASK_DOMAIN_QUERY_ROOTS = (projectId: string): readonly QueryKey[] => [
-  queryKeys.orchestrationRuns.all(projectId),
-  queryKeys.workPackages.all(projectId),
-  queryKeys.taskRuns.all(projectId),
-  queryKeys.deliverables.all(projectId),
+export const TASK_MODEL_QUERY_ROOTS = (projectId: string): readonly QueryKey[] => [
+  taskModelQueryKeys.tasks.all(projectId),
+  taskModelQueryKeys.taskSteps.root(projectId),
+  taskModelQueryKeys.taskRuns.root(projectId),
+  taskModelQueryKeys.diffs.all(projectId),
 ]
 
-function stringId(payload: ProjectTaskEventPayload, ...names: string[]): string | null {
-  for (const name of names) {
-    const value = payload[name]
-    if (typeof value === 'string' && value.length > 0) return value
-  }
-  return null
+function stringId(payload: ProjectTaskEventPayload, name: string): string | null {
+  const value = payload[name]
+  return typeof value === 'string' && value.length > 0 ? value : null
 }
 
 function addKey(keys: QueryKey[], key: QueryKey | null): void {
@@ -26,47 +23,50 @@ export function queryKeysForProjectTaskEvent(
   projectId: string,
   event: ProjectTaskEvent,
 ): readonly QueryKey[] {
+  if (event.payload.projectId !== projectId) return []
+
   const payload = event.payload
-  const keys: QueryKey[] = []
-  const orchestrationRunId = stringId(payload, 'orchestrationRunId', 'runId')
-  const workPackageId = stringId(payload, 'workPackageId')
+  const taskId = stringId(payload, 'taskId')
+  const taskStepId = stringId(payload, 'taskStepId')
   const taskRunId = stringId(payload, 'taskRunId')
+  const diffId = stringId(payload, 'diffId')
+  const keys: QueryKey[] = []
 
   switch (event.type) {
-    case 'orchestration-run.updated':
-      addKey(keys, queryKeys.orchestrationRuns.all(projectId))
-      addKey(keys, orchestrationRunId ? queryKeys.orchestrationRuns.detail(projectId, orchestrationRunId) : null)
+    case 'task.updated':
+      if (!taskId) return []
+      addKey(keys, taskModelQueryKeys.tasks.all(projectId))
+      addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
       break
-    case 'work-package.updated':
-      addKey(keys, queryKeys.workPackages.all(projectId))
-      addKey(keys, workPackageId ? queryKeys.workPackages.detail(projectId, workPackageId) : null)
-      addKey(keys, orchestrationRunId ? queryKeys.orchestrationRuns.detail(projectId, orchestrationRunId) : null)
+    case 'task-step.updated':
+      if (!taskId || !taskStepId) return []
+      addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      addKey(keys, taskModelQueryKeys.taskSteps.all(projectId, taskId))
+      addKey(keys, taskModelQueryKeys.taskRuns.all(projectId, taskId))
       break
     case 'task-run.updated':
-      addKey(keys, queryKeys.taskRuns.all(projectId))
-      addKey(keys, taskRunId ? queryKeys.taskRuns.detail(projectId, taskRunId) : null)
-      addKey(keys, workPackageId ? queryKeys.workPackages.detail(projectId, workPackageId) : null)
-      addKey(keys, orchestrationRunId ? queryKeys.orchestrationRuns.detail(projectId, orchestrationRunId) : null)
+      if (!taskId || !taskRunId) return []
+      addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
+      addKey(keys, taskModelQueryKeys.taskRuns.all(projectId, taskId))
+      addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
       break
     case 'task-run.step.progress':
-      if (taskRunId) {
-        addKey(keys, queryKeys.taskRuns.detail(projectId, taskRunId))
-        addKey(keys, queryKeys.taskRuns.stepsAll(projectId, taskRunId))
-      }
+      if (!taskRunId) return []
+      addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
       break
-    case 'task-run.input-required':
-    case 'task-run.approval-required':
-      addKey(keys, queryKeys.taskRuns.all(projectId))
-      addKey(keys, taskRunId ? queryKeys.taskRuns.detail(projectId, taskRunId) : null)
-      addKey(keys, taskRunId ? queryKeys.taskRuns.inputRequests.all(projectId, taskRunId) : null)
-      addKey(keys, workPackageId ? queryKeys.workPackages.detail(projectId, workPackageId) : null)
-      addKey(keys, orchestrationRunId ? queryKeys.orchestrationRuns.detail(projectId, orchestrationRunId) : null)
-      addKey(keys, queryKeys.orchestrationRuns.all(projectId))
+    case 'input-required':
+    case 'approval-required':
+      if (!taskId || !taskRunId) return []
+      addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
+      addKey(keys, taskModelQueryKeys.taskRuns.inputRequests.all(projectId, taskRunId))
+      addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
       break
-    case 'deliverable.created':
-      addKey(keys, queryKeys.deliverables.all(projectId))
-      addKey(keys, workPackageId ? queryKeys.deliverables.list(projectId, workPackageId) : null)
-      addKey(keys, taskRunId ? queryKeys.taskRuns.detail(projectId, taskRunId) : null)
+    case 'diff.created':
+      if (!taskId || !diffId) return []
+      addKey(keys, taskModelQueryKeys.diffs.all(projectId))
+      addKey(keys, taskModelQueryKeys.diffs.detail(projectId, diffId))
+      addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      if (taskRunId) addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
       break
   }
 
@@ -74,14 +74,13 @@ export function queryKeysForProjectTaskEvent(
 }
 
 export function invalidateProjectTaskEvent(projectId: string, event: ProjectTaskEvent): void {
-  if (event.payload.projectId !== projectId) return
   for (const queryKey of queryKeysForProjectTaskEvent(projectId, event)) {
     void queryClient.invalidateQueries({ queryKey })
   }
 }
 
-export function invalidateProjectTaskDomain(projectId: string): void {
-  for (const queryKey of TASK_DOMAIN_QUERY_ROOTS(projectId)) {
+export function invalidateProjectTaskModel(projectId: string): void {
+  for (const queryKey of TASK_MODEL_QUERY_ROOTS(projectId)) {
     void queryClient.invalidateQueries({ queryKey })
   }
 }

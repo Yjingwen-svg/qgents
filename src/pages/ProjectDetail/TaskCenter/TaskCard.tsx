@@ -1,21 +1,19 @@
 import { Button, Card, Col, Divider, Space, Tag, Typography } from 'antd'
-import type { OrchestrationRun } from '@/types'
-import { TaskStatusTag } from '../TaskShared/TaskStatusTag'
-import { getTaskPresentation } from '../TaskShared/taskPresentation'
+import type { Task } from '@/types/task-model'
+import { TaskModelStatusTag } from './TaskModelStatusTag'
+import { valueOrNone } from './taskDisplay'
 import styles from './TaskCenterPage.module.scss'
 
 const { Text, Paragraph } = Typography
 
 interface TaskCardProps {
-  run: OrchestrationRun
+  task: Task
   selected: boolean
-  onSelect: (runId: string) => void
-  onViewDetails: (runId: string) => void
+  onSelect: (taskId: string) => void
+  onViewDetails: (taskId: string) => void
 }
 
-export function TaskCard({ run, selected, onSelect, onViewDetails }: TaskCardProps) {
-  const presentation = getTaskPresentation(run)
-
+export function TaskCard({ task, selected, onSelect, onViewDetails }: TaskCardProps) {
   return (
     <Col xs={24} sm={12} lg={8} xl={6}>
       <Card
@@ -24,50 +22,37 @@ export function TaskCard({ run, selected, onSelect, onViewDetails }: TaskCardPro
         role="button"
         tabIndex={0}
         aria-pressed={selected}
-        onClick={() => onSelect(run.id)}
+        onClick={() => onSelect(task.id)}
         onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') onSelect(run.id)
+          if (event.key === 'Enter' || event.key === ' ') onSelect(task.id)
         }}
       >
         <div className={styles.taskCardHeading}>
-          <div className={styles.taskCardTitleLine}>
-            <Typography.Title level={5} ellipsis={{ tooltip: run.instruction }}>{run.instruction}</Typography.Title>
-            <Text className={styles.taskCount}>{presentation.taskCount}</Text>
-          </div>
-          <TaskStatusTag status={run.status} />
+          <Typography.Title level={5} ellipsis={{ tooltip: valueOrNone(task.title) }}>{valueOrNone(task.title)}</Typography.Title>
+          <TaskModelStatusTag status={task.status} />
         </div>
-
         <Space wrap size={[6, 6]} className={styles.taskCardTags}>
-          <Tag className={styles.groupTag}>{presentation.groupLabel}</Tag>
-          <Tag className={styles.deliveryTag}>{presentation.deliveryTypeLabel}</Tag>
+          <Tag className={styles.groupTag}>{valueOrNone(task.requirementGroupId)}</Tag>
+          <Tag>{valueOrNone(task.createdBy)}</Tag>
         </Space>
-
-        <Paragraph ellipsis={{ rows: 2 }} className={styles.taskCardCopy}>
-          {presentation.description}
-        </Paragraph>
-
+        <Paragraph ellipsis={{ rows: 2 }} className={styles.taskCardCopy}>{valueOrNone(task.requirement)}</Paragraph>
         <div className={styles.taskCardTarget}>
-          <Text type="secondary">目标执行位置</Text>
-          <Text strong>{presentation.targetLabel}</Text>
+          <Text type="secondary">工作区 / 仓库</Text>
+          <Text strong>{workspaceSummary(task)}</Text>
         </div>
-
         <Divider />
-
-        {presentation.statusCounts ? (
-          <div className={styles.taskCardCounts}>
-            <StatusCount label="执行中" value={presentation.statusCounts.running} />
-            <StatusCount label="待执行" value={presentation.statusCounts.pending} />
-            <StatusCount label="已完成" value={presentation.statusCounts.completed} />
-          </div>
-        ) : <Text type="secondary">暂无统计</Text>}
-
+        <div className={styles.taskCardTarget}>
+          <Text type="secondary">创建时间</Text>
+          <Text>{formatDate(task.createdAt)}</Text>
+          <Text type="secondary">更新时间</Text>
+          <Text>{formatDate(task.updatedAt)}</Text>
+        </div>
         <Button
           type="link"
+          disabled={false}
+          title="任务详情迁移中"
           className={styles.cardDetailsButton}
-          onClick={(event) => {
-            event.stopPropagation()
-            onViewDetails(run.id)
-          }}
+          onClick={(event) => { event.stopPropagation(); onViewDetails(task.id) }}
         >
           查看完整任务详情
         </Button>
@@ -76,6 +61,15 @@ export function TaskCard({ run, selected, onSelect, onViewDetails }: TaskCardPro
   )
 }
 
-function StatusCount({ label, value }: { label: string; value: number }) {
-  return <div className={styles.statusCount}><Text type="secondary">{label}</Text><Text strong>{value}</Text></div>
+function workspaceSummary(task: Task): string {
+  const repositories = task.repositories.map((repository) => repository.repositoryId).filter(Boolean)
+  const workspace = valueOrNone(task.workspaceId)
+  return repositories.length > 0 ? `${workspace} / ${repositories.join(', ')}` : workspace
+}
+
+function formatDate(value: string | null | undefined): string {
+  if (!value) return '暂无'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return valueOrNone(value)
+  return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }

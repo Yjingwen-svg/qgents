@@ -1,13 +1,13 @@
 import type { EventSourceMessage } from '@microsoft/fetch-event-source'
 
 export const PROJECT_TASK_EVENT_TYPES = [
-  'orchestration-run.updated',
-  'work-package.updated',
+  'task.updated',
+  'task-step.updated',
   'task-run.updated',
   'task-run.step.progress',
-  'task-run.input-required',
-  'task-run.approval-required',
-  'deliverable.created',
+  'input-required',
+  'approval-required',
+  'diff.created',
 ] as const
 
 export type ProjectTaskEventType = (typeof PROJECT_TASK_EVENT_TYPES)[number]

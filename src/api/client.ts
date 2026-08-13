@@ -24,6 +24,8 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown
   /** 跳过自动附带 Token（登录/注册接口用） */
   skipAuth?: boolean
+  /** 保留统一响应 envelope，用于同时包含 data/page/requestId 的分页响应 */
+  unwrapData?: boolean
 }
 
 export function getStoredToken(): string | null {
@@ -36,7 +38,7 @@ export function getApiBaseUrl(): string {
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { body, skipAuth, headers, ...rest } = options
+  const { body, skipAuth, headers, unwrapData = true, ...rest } = options
   const finalHeaders: HeadersInit = {
     'Content-Type': 'application/json',
     ...headers,
@@ -73,7 +75,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const json: unknown = await res.json()
 
   // 后端统一响应格式: { data: {...}, requestId: "..." }
-  if (json && typeof json === 'object' && 'data' in json) {
+  if (unwrapData && json && typeof json === 'object' && 'data' in json) {
     return (json as { data: T }).data
   }
 

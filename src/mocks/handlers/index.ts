@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { taskDomainHandlers } from '../task-domain/handlers'
+import { taskModelTaskCenterHandlers, taskModelTaskRunHandlers } from '../task-model/handlers'
 import { agentHandlers } from '../agent/handlers'
 
 // ══════════════════════════════════════════════
@@ -154,7 +155,7 @@ const handlers: ReturnType<typeof http.get>[] = [
   http.get('/api/teams/:teamId/invitations', () => HttpResponse.json({ data: [] })),
 
   /** POST /api/team-invitations/:token/accept */
-  http.post('/api/team-invitations/:token/accept', ({ params }) =>
+  http.post('/api/team-invitations/:token/accept', ({ params: _params }) =>
     HttpResponse.json({ data: { teamId: 'team-joined-001', teamName: '广工创新团队' } }),
   ),
 
@@ -211,6 +212,8 @@ const handlers: ReturnType<typeof http.get>[] = [
 
   // ── B 的任务域（task-domain + agent）──
   ...taskDomainHandlers,
+  ...taskModelTaskCenterHandlers,
+  ...taskModelTaskRunHandlers,
   ...agentHandlers,
 ]
 

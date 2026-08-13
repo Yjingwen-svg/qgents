@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Form, Input, Modal, Radio, Typography } from 'antd'
+import { Alert, Form, Input, message, Modal, Select } from 'antd'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { ApiError } from '@/api'
-import { useCreateOrchestrationRun } from '@/hooks'
+import { githubApi } from '@/api/github'
+import { useCreateTask } from '@/hooks/task-model'
+import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
-import type { CreateOrchestrationRunInput, StartMode } from '@/types'
-
-const WORKFLOW_ID = 'system-default-code-delivery' as const
+import type { TaskCreateInput } from '@/types/task-model'
 
 export interface TaskTriggerModalProps {
   open: boolean
@@ -17,56 +18,65 @@ export interface TaskTriggerModalProps {
 }
 
 interface TaskTriggerFormValues {
-  instruction: string
-  startMode: StartMode
+  title: string
+  requirement: string
+  repositoryIds: string[]
+  baseRef: string
 }
 
 function errorMessage(error: Error | null): string | null {
   if (!error) return null
   if (error instanceof ApiError) {
-    if (error.status === 403) return '暂无权限从该需求群发起任务。'
-    if (error.status === 409) return '任务状态或幂等请求发生冲突，请刷新后重试。'
-    if (error.status === 422) return '任务说明或启动参数未通过校验，请检查后重试。'
+    if (error.status === 403) return '暂无权限从该需求群创建任务。'
+    if (error.status === 409) return '任务状态或并发请求发生冲突，请刷新后重试。'
+    if (error.status === 422) return '任务字段未通过校验，请检查后重试。'
   }
   return '任务创建失败，请稍后重试。'
 }
 
-export function TaskTriggerModal({
-  open,
-  projectId,
-  groupId,
-  initialInstruction,
-  onClose,
-}: TaskTriggerModalProps) {
+export function TaskTriggerModal({ open, projectId, groupId, initialInstruction, onClose }: TaskTriggerModalProps) {
   const [form] = Form.useForm<TaskTriggerFormValues>()
   const navigate = useNavigate()
-  const mutation = useCreateOrchestrationRun(projectId)
+  const mutation = useCreateTask(projectId)
+  const repositoriesQuery = useQuery({
+    queryKey: queryKeys.projectRepositories(projectId),
+    queryFn: () => githubApi.listProjectRepositories(projectId),
+    enabled: Boolean(projectId && open),
+  })
   const { reset: resetMutation } = mutation
   const [isSubmitting, setIsSubmitting] = useState(false)
   const submitLockRef = useRef(false)
   const failureMessage = errorMessage(mutation.error)
+  const repositories = repositoriesQuery.data ?? []
+  const repositoryOptions = repositories.map((repository) => ({
+    value: repository.repositoryId,
+    label: repository.fullName || repository.repositoryId || '暂无',
+  }))
 
   useEffect(() => {
     if (!open) return
-    form.setFieldsValue({ instruction: initialInstruction, startMode: 'AUTO' })
+    form.setFieldsValue({ title: '', requirement: initialInstruction, repositoryIds: [], baseRef: '' })
     resetMutation()
+    submitLockRef.current = false
+    setIsSubmitting(false)
   }, [form, initialInstruction, open, resetMutation])
 
   async function handleFinish(values: TaskTriggerFormValues) {
-    if (submitLockRef.current) return
+    if (submitLockRef.current || repositories.length === 0) return
     submitLockRef.current = true
     setIsSubmitting(true)
-    const input: CreateOrchestrationRunInput = {
-      groupId,
-      instruction: values.instruction.trim(),
-      workflowId: WORKFLOW_ID,
-      startMode: values.startMode,
+    const input: TaskCreateInput = {
+      requirementGroupId: groupId,
+      title: values.title.trim(),
+      requirement: values.requirement.trim(),
+      repositoryIds: values.repositoryIds,
+      baseRef: values.baseRef.trim(),
     }
-
     try {
-      const run = await mutation.mutateAsync(input)
+      const task = await mutation.mutateAsync(input)
       onClose()
-      navigate(PATHS.projectTaskDetail(projectId, run.id))
+      message.success('任务已提交至云端，可以安全离开页面')
+      navigate(`${PATHS.projectTasks(projectId)}?taskId=${encodeURIComponent(task.id)}`)
     } catch {
       submitLockRef.current = false
       setIsSubmitting(false)
@@ -74,49 +84,45 @@ export function TaskTriggerModal({
   }
 
   const pending = isSubmitting || mutation.isPending
+  const repositoryUnavailable = !repositoriesQuery.isLoading && repositories.length === 0
 
   return (
     <Modal
       open={open}
-      title="从需求群发起任务"
+      title="创建任务"
       onCancel={onClose}
       onOk={() => form.submit()}
       okText="创建任务"
       cancelText="取消"
       confirmLoading={pending}
-      okButtonProps={{ disabled: pending }}
+      okButtonProps={{ disabled: pending || repositoriesQuery.isLoading || repositoryUnavailable }}
       maskClosable={!pending}
       closable={!pending}
     >
       {failureMessage ? <Alert role="alert" type="error" showIcon message={failureMessage} /> : null}
+      {repositoriesQuery.isError ? <Alert role="alert" type="error" showIcon message="项目仓库加载失败，请稍后重试。" /> : null}
+      {repositoryUnavailable && !repositoriesQuery.isError ? <Alert type="info" showIcon message="当前项目暂无可用仓库，无法创建任务。" /> : null}
       <Form<TaskTriggerFormValues>
         form={form}
         layout="vertical"
-        initialValues={{ instruction: initialInstruction, startMode: 'AUTO' }}
         onFinish={handleFinish}
-        disabled={pending}
+        disabled={pending || repositoryUnavailable}
       >
-        <Form.Item label="当前需求群">
+        <Form.Item label="需求群">
           <Input value={groupId} readOnly />
         </Form.Item>
-        <Form.Item
-          label="任务说明"
-          name="instruction"
-          rules={[{ validator: (_, value: unknown) => typeof value === 'string' && value.trim().length > 0
-            ? Promise.resolve()
-            : Promise.reject(new Error('请输入任务说明')) }]}
-        >
+        <Form.Item label="任务标题" name="title" rules={[{ required: true, whitespace: true, message: '请输入任务标题' }]}>
+          <Input placeholder="请输入任务标题" />
+        </Form.Item>
+        <Form.Item label="需求说明" name="requirement" rules={[{ required: true, whitespace: true, message: '请输入需求说明' }]}>
           <Input.TextArea rows={5} placeholder="描述希望交付的任务" />
         </Form.Item>
-        <Form.Item label="启动方式" name="startMode">
-          <Radio.Group>
-            <Radio value="AUTO">AUTO：计划完成后自动启动</Radio>
-            <Radio value="MANUAL">MANUAL：只生成计划，后续手动启动 WorkPackage</Radio>
-          </Radio.Group>
+        <Form.Item label="仓库" name="repositoryIds" rules={[{ required: true, type: 'array', min: 1, message: '至少选择一个仓库' }]}>
+          <Select mode="multiple" options={repositoryOptions} placeholder="请选择仓库" />
         </Form.Item>
-        <Typography.Text type="secondary">
-          工作流：{WORKFLOW_ID}。当前没有正式 Testset 数据，因此不选择 Testset。
-        </Typography.Text>
+        <Form.Item label="基准分支" name="baseRef" rules={[{ required: true, whitespace: true, message: '请输入基准分支' }]}>
+          <Input placeholder="例如 main" />
+        </Form.Item>
       </Form>
     </Modal>
   )

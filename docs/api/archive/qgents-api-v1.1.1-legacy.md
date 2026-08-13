@@ -1,3 +1,4 @@
+> 已废弃：旧 OrchestrationRun/WorkPackage/Deliverable 模型仅供迁移参考，不得用于新增或修改业务。
 # Qgents接口文档
 
 **状态**：未定案业务契约  

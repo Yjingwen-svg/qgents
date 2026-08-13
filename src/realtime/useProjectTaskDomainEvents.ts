@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { invalidateProjectTaskDomain, invalidateProjectTaskEvent } from './queryInvalidation'
+import { invalidateProjectTaskEvent, invalidateProjectTaskModel } from './queryInvalidation'
 import { ProjectEventConnection, type ProjectEventConnectionStatus } from './projectEventConnection'
 
 type StatusListener = (status: ProjectEventConnectionStatus) => void
@@ -22,7 +22,7 @@ function createSharedConnection(projectId: string): SharedProjectConnection {
   }
   shared.connection = new ProjectEventConnection(projectId, {
     onEvent: (event) => invalidateProjectTaskEvent(projectId, event),
-    onCursorExpired: () => invalidateProjectTaskDomain(projectId),
+    onCursorExpired: () => invalidateProjectTaskModel(projectId),
     onStatusChange: (status) => {
       shared.status = status
       for (const listener of shared.listeners) listener(status)

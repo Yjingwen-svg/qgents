@@ -84,8 +84,8 @@ export function AppRouter() {
 
                 {/* B 的任务模块 */}
                 <Route path="tasks" element={<TasksPage />} />
-                <Route path="tasks/:runId/executions/:taskRunId" element={<TaskRunDetailPage />} />
-                <Route path="tasks/:runId" element={<TaskDetailPage />} />
+                <Route path="tasks/:taskId/executions/:taskRunId" element={<TaskRunDetailPage />} />
+                <Route path="tasks/:taskId" element={<TaskDetailPage />} />
                 <Route path="deliverables" element={<DeliverablesPage />} />
                 <Route path="deliverables/:deliverableId" element={<DeliverablesPage />} />
                 <Route path="workflow" element={<WorkflowViewerPage />} />

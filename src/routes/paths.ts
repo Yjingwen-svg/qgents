@@ -93,9 +93,9 @@ export const PATHS = {
   projectDeliverables: (projectId: string) => `/app/projects/${projectId}/deliverables`,
   projectDeliverable: (projectId: string, deliverableId: string) =>
     `/app/projects/${projectId}/deliverables/${deliverableId}`,
-  projectTaskDetail: (projectId: string, runId: string) => `/app/projects/${projectId}/tasks/${runId}`,
-  projectTaskRunDetail: (projectId: string, runId: string, taskRunId: string) =>
-    `/app/projects/${projectId}/tasks/${runId}/executions/${taskRunId}`,
+  projectTaskDetail: (projectId: string, taskId: string) => `/app/projects/${projectId}/tasks/${taskId}`,
+  projectTaskRunDetail: (projectId: string, taskId: string, taskRunId: string) =>
+    `/app/projects/${projectId}/tasks/${taskId}/executions/${taskRunId}`,
   projectWorkflow: (projectId: string) => `/app/projects/${projectId}/workflow`,
   projectAgents: (projectId: string) => `/app/projects/${projectId}/agents`,
   projectSkills: (projectId: string) => `/app/projects/${projectId}/skills`,

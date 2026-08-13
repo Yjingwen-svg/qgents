@@ -103,7 +103,7 @@ function StatCard({ label, value, mono }: { label: string; value: string; mono?:
   return (
     <div style={{ padding: '16px 20px', background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
       <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: '#e2e8f0', fontFamily: mono ? 'monospace' : undefined, fontSize: mono ? 14 : 22 }}>
+      <div style={{ fontSize: mono ? 14 : 22, fontWeight: 700, color: '#e2e8f0', fontFamily: mono ? 'monospace' : undefined }}>
         {value}
       </div>
     </div>

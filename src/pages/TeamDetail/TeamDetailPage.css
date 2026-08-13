@@ -102,6 +102,17 @@
   cursor: default;
 }
 
+.team-detail__nav-item--danger {
+  margin-top: 12px;
+  color: #f87171;
+  cursor: pointer;
+}
+
+.team-detail__nav-item--danger:hover {
+  background: rgba(248, 113, 113, 0.12);
+  color: #fca5a5;
+}
+
 .team-detail__main {
   min-width: 0;
   padding: 30px 34px 42px;

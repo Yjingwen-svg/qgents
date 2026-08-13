@@ -57,4 +57,9 @@ export const teamApi = {
   removeMember(teamId: string, userId: string) {
     return request<void>(`/teams/${teamId}/members/${userId}`, { method: 'DELETE' })
   },
+
+  /** DELETE /teams/{teamId} —— 解散团队（仅 TEAM_OWNER） */
+  disband(teamId: string) {
+    return request<void>(`/teams/${teamId}`, { method: 'DELETE' })
+  },
 }

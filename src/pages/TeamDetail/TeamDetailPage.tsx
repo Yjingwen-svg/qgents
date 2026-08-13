@@ -4,15 +4,16 @@ import {
   BranchesOutlined,
   CheckCircleFilled,
   ClockCircleOutlined,
+  DeleteOutlined,
   FolderOutlined,
   PlusOutlined,
   RobotOutlined,
   SettingOutlined,
   TeamOutlined,
 } from '@ant-design/icons'
-import { Button, Spin } from 'antd'
-import { Link, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { Button, Modal, Spin, message } from 'antd'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
@@ -105,6 +106,8 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
 
 export function TeamDetailPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [activeView, setActiveView] = useState<TeamDetailView>('projects')
   const [createOpen, setCreateOpen] = useState(false)
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
@@ -139,6 +142,32 @@ export function TeamDetailPage() {
   const isLoading = teamLoading || membersLoading || projectsLoading
   const recentActivities = getRecentActivities(projects)
   const ownerCount = members.filter((member) => member.role === 'TEAM_OWNER').length
+
+  const isOwner = team?.role === 'TEAM_OWNER'
+
+  // 解散团队（仅 TEAM_OWNER 可操作）
+  const disbandTeam = useMutation({
+    mutationFn: () => teamApi.disband(teamId),
+    onSuccess: () => {
+      message.success('团队已解散')
+      queryClient.invalidateQueries({ queryKey: ['teams', 'mine'] })
+      navigate(PATHS.MY_TEAMS, { replace: true })
+    },
+    onError: (err) => {
+      message.error(err instanceof Error ? err.message : '解散失败')
+    },
+  })
+
+  function handleDisband() {
+    Modal.confirm({
+      title: '解散团队',
+      content: `确定要解散「${team?.name}」吗？解散后团队下的所有项目、群聊和成员将不可恢复。`,
+      okText: '解散',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => disbandTeam.mutate(),
+    })
+  }
 
   if (isLoading) {
     return (
@@ -198,6 +227,17 @@ export function TeamDetailPage() {
             团队设置
           </span>
         </nav>
+
+        {isOwner && (
+          <button
+            type="button"
+            className="team-detail__nav-item team-detail__nav-item--danger"
+            onClick={handleDisband}
+          >
+            <DeleteOutlined />
+            解散团队
+          </button>
+        )}
       </aside>
 
       <main className="team-detail__main">

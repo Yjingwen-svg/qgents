@@ -75,7 +75,7 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
       <div className="team-detail__project-body">
         <div className="team-detail__project-heading">
           <h3>{project.name}</h3>
-          <span className="team-detail__project-role">{getRoleLabel(project.myRole)}</span>
+          <span className="team-detail__project-role">{getRoleLabel(project.role)}</span>
         </div>
         <p>{project.description || '暂无项目简介'}</p>
         <div className="team-detail__project-meta">
@@ -162,7 +162,7 @@ export function TeamDetailPage() {
             <h2>{team.name}</h2>
             <p>{team.description || '团队项目协作空间'}</p>
           </div>
-          <span className="team-detail__team-role">{getRoleLabel(team.myRole)}</span>
+          <span className="team-detail__team-role">{getRoleLabel(team.role)}</span>
         </div>
 
         <nav className="team-detail__nav">

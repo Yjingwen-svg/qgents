@@ -83,7 +83,7 @@ export function OverviewPage() {
         {/* 基础统计卡片 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
           <StatCard label="仓库" value={String(project.repositoryCount ?? 0)} />
-          <StatCard label="我的角色" value={project.myRole === 'PROJECT_ADMIN' ? 'Admin' : 'Member'} />
+          <StatCard label="我的角色" value={project.role === 'PROJECT_ADMIN' ? 'Admin' : 'Member'} />
           <StatCard label="项目 ID" value={project.id} mono />
         </div>
 

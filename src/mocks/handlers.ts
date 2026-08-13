@@ -20,7 +20,7 @@ const MOCK_TEAMS = [
     name: '星河工作室',
     description: '全栈开发团队，专注内部工具与开源项目',
     createdAt: '2026-06-01T08:00:00Z',
-    myRole: 'TEAM_OWNER' as const,
+    role: 'TEAM_OWNER' as const,
     memberCount: 5,
   },
   {
@@ -28,7 +28,7 @@ const MOCK_TEAMS = [
     name: '广工创新团队',
     description: '校园技术团队，AI 与 Web 方向',
     createdAt: '2026-05-15T08:00:00Z',
-    myRole: 'TEAM_MEMBER' as const,
+    role: 'TEAM_MEMBER' as const,
     memberCount: 8,
   },
 ]
@@ -41,14 +41,14 @@ const MOCK_TEAM_MEMBERS = [
   { userId: 'user-005', displayName: '赵架构', email: 'zhao@example.com', role: 'TEAM_MEMBER' as const },
 ]
 
-const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: string; description: string; createdAt: string; myRole: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'; repositoryCount: number }>> = {
+const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: string; description: string; createdAt: string; role: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'; repositoryCount: number }>> = {
   'team-owned-001': [
-    { id: 'proj-001', teamId: 'team-owned-001', name: 'Qgents', description: '团队多人 + 多 Agent 云端协作开发平台', createdAt: '2026-07-01T08:00:00Z', myRole: 'PROJECT_ADMIN', repositoryCount: 3 },
-    { id: 'proj-002', teamId: 'team-owned-001', name: '宠影记', description: '宠物健康管理小程序', createdAt: '2026-07-15T08:00:00Z', myRole: 'PROJECT_ADMIN', repositoryCount: 1 },
+    { id: 'proj-001', teamId: 'team-owned-001', name: 'Qgents', description: '团队多人 + 多 Agent 云端协作开发平台', createdAt: '2026-07-01T08:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 3 },
+    { id: 'proj-002', teamId: 'team-owned-001', name: '宠影记', description: '宠物健康管理小程序', createdAt: '2026-07-15T08:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 1 },
   ],
   'team-joined-001': [
-    { id: 'proj-003', teamId: 'team-joined-001', name: 'AI 决策系统', description: '校园选课推荐与学业规划', createdAt: '2026-06-10T08:00:00Z', myRole: 'PROJECT_MEMBER', repositoryCount: 2 },
-    { id: 'proj-004', teamId: 'team-joined-001', name: '校园助手', description: '课表、成绩、图书馆一站式查询', createdAt: '2026-08-01T08:00:00Z', myRole: 'PROJECT_MEMBER', repositoryCount: 1 },
+    { id: 'proj-003', teamId: 'team-joined-001', name: 'AI 决策系统', description: '校园选课推荐与学业规划', createdAt: '2026-06-10T08:00:00Z', role: 'PROJECT_MEMBER', repositoryCount: 2 },
+    { id: 'proj-004', teamId: 'team-joined-001', name: '校园助手', description: '课表、成绩、图书馆一站式查询', createdAt: '2026-08-01T08:00:00Z', role: 'PROJECT_MEMBER', repositoryCount: 1 },
   ],
 }
 
@@ -598,7 +598,7 @@ export const handlers = [
       name: body.name || '未命名团队',
       description: body.description || '',
       createdAt: new Date().toISOString(),
-      myRole: 'TEAM_OWNER' as const,
+      role: 'TEAM_OWNER' as const,
       memberCount: 1,
     }
     return HttpResponse.json({ data: newTeam }, { status: 201 })
@@ -700,7 +700,7 @@ export const handlers = [
       name: body.name || '未命名项目',
       description: body.description || '',
       createdAt: new Date().toISOString(),
-      myRole: 'PROJECT_ADMIN' as const,
+      role: 'PROJECT_ADMIN' as const,
       repositoryCount: 0,
     }
     // 写回内存，保证后续 GET /projects/:id 能查到

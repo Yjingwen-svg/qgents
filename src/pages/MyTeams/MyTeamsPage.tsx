@@ -54,8 +54,8 @@ export function MyTeamsPage() {
   }
 
   // ──── 拆分团队 ────
-  const ownedTeams = (teams ?? []).filter((t) => t.myRole === 'TEAM_OWNER')
-  const joinedTeams = (teams ?? []).filter((t) => t.myRole !== 'TEAM_OWNER')
+  const ownedTeams = (teams ?? []).filter((t) => t.role === 'TEAM_OWNER')
+  const joinedTeams = (teams ?? []).filter((t) => t.role !== 'TEAM_OWNER')
 
   return (
     <div className="my-teams">
@@ -118,10 +118,10 @@ export function MyTeamsPage() {
 }
 
 /** 团队卡片 */
-function TeamCard({ team }: { team: { id: string; name: string; myRole?: string; memberCount?: number } }) {
+function TeamCard({ team }: { team: { id: string; name: string; role?: string; memberCount?: number } }) {
   const letter = team.name.slice(0, 1)
-  const color = team.myRole === 'TEAM_OWNER' ? '#3b82f6' : '#8b5cf6'
-  const roleLabel = team.myRole === 'TEAM_OWNER' ? 'Owner' : 'Member'
+  const color = team.role === 'TEAM_OWNER' ? '#3b82f6' : '#8b5cf6'
+  const roleLabel = team.role === 'TEAM_OWNER' ? 'Owner' : 'Member'
 
   return (
     <article className="my-teams__card">

@@ -64,7 +64,7 @@ export function MemoryPage() {
     queryFn: () => projectApi.getById(projectId),
     enabled: !!projectId,
   })
-  const isAdmin = project?.myRole === 'PROJECT_ADMIN'
+  const isAdmin = project?.role === 'PROJECT_ADMIN'
 
   const { data: memories = [], isLoading } = useQuery({
     queryKey: ['memories', projectId],

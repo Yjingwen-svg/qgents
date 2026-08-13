@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   Drawer,
   Avatar,
@@ -8,7 +9,6 @@ import {
   Button,
   Space,
   Divider,
-  List,
   theme,
 } from 'antd'
 import {
@@ -21,34 +21,11 @@ import { useAuth } from '@/context/AuthContext'
 import { usePersonalCenter } from '@/context/PersonalCenterContext'
 import { useCurrentTeamId } from '@/store/appUiStore'
 import { CreateProjectModal } from '@/components/CreateProjectModal'
+import { teamApi, projectApi } from '@/api'
 import { PATHS } from '@/routes/paths'
+import type { Team } from '@/types'
 
 const { Title, Text } = Typography
-
-/** 列表占位数据 —— 仅撑起 UI 结构，联调后删除 */
-const DEMO_TEAM_TREE = [
-  {
-    id: 'team-xinghe',
-    name: '星河工作室',
-    projects: [
-      { id: 'proj-qgents', name: 'Qgents', role: 'Maintainer' },
-      { id: 'proj-pet', name: '宠影记', role: 'Developer' },
-    ],
-  },
-  {
-    id: 'team-gdut',
-    name: '广工创新团队',
-    projects: [
-      { id: 'proj-ai', name: 'AI 决策系统', role: 'Developer' },
-      { id: 'proj-campus', name: '校园助手', role: 'Developer' },
-    ],
-  },
-  {
-    id: 'team-lab',
-    name: '个人实验室',
-    projects: [] as { id: string; name: string; role: string }[],
-  },
-]
 
 /**
  * 个人中心 —— Ant Design Drawer
@@ -56,11 +33,16 @@ const DEMO_TEAM_TREE = [
  */
 export function PersonalCenter() {
   const navigate = useNavigate()
-  const { token } = theme.useToken()
   const { user, logout } = useAuth()
   const { open, closePersonalCenter } = usePersonalCenter()
   const currentTeamId = useCurrentTeamId()
   const [createOpen, setCreateOpen] = useState(false)
+
+  // 真实团队列表（替换原 DEMO_TEAM_TREE 假数据）
+  const { data: teams = [] } = useQuery({
+    queryKey: ['teams', 'mine'],
+    queryFn: teamApi.listMine,
+  })
 
   const name = user?.displayName ?? '用户'
   const email = user?.email ?? '—'
@@ -117,36 +99,13 @@ export function PersonalCenter() {
       <Input.Search placeholder="搜索团队或项目" disabled style={{ marginBottom: 16 }} />
 
       <div style={{ maxHeight: 280, overflow: 'auto', marginBottom: 16 }}>
-        {DEMO_TEAM_TREE.map((team) => (
-          <div key={team.id} style={{ marginBottom: 12 }}>
-            <Space size={6} style={{ marginBottom: 6 }}>
-              <TeamOutlined style={{ color: token.colorTextSecondary }} />
-              <Text strong>{team.name}</Text>
-            </Space>
-            {team.projects.length > 0 && (
-              <List
-                size="small"
-                dataSource={team.projects}
-                renderItem={(p) => (
-                  <List.Item style={{ padding: '4px 0 4px 20px', border: 'none' }}>
-                    <Button
-                      type="link"
-                      style={{ padding: 0, height: 'auto' }}
-                      onClick={() => handleNav(PATHS.projectDetail(p.id))}
-                    >
-                      <Space>
-                        <span>{p.name}</span>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {p.role}
-                        </Text>
-                      </Space>
-                    </Button>
-                  </List.Item>
-                )}
-              />
-            )}
-          </div>
-        ))}
+        {teams.length === 0 ? (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            暂无团队
+          </Text>
+        ) : (
+          teams.map((team) => <TeamProjectGroup key={team.id} team={team} onNav={handleNav} />)
+        )}
       </div>
 
       <Divider style={{ margin: '16px 0' }} />
@@ -173,5 +132,52 @@ export function PersonalCenter() {
         />
       )}
     </Drawer>
+  )
+}
+
+/** 团队 + 其下项目列表（真实接口，替换假数据） */
+function TeamProjectGroup({
+  team,
+  onNav,
+}: {
+  team: Team
+  onNav: (to: string) => void
+}) {
+  const { token } = theme.useToken()
+  const { data: projects = [] } = useQuery({
+    queryKey: ['teams', team.id, 'projects'],
+    queryFn: () => projectApi.listByTeam(team.id),
+    enabled: !!team.id,
+  })
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <Space size={6} style={{ marginBottom: 6 }}>
+        <TeamOutlined style={{ color: token.colorTextSecondary }} />
+        <Text strong>{team.name}</Text>
+      </Space>
+      {projects.length > 0 ? (
+        projects.map((p) => (
+          <div key={p.id} style={{ padding: '4px 0 4px 20px' }}>
+            <Button
+              type="link"
+              style={{ padding: 0, height: 'auto' }}
+              onClick={() => onNav(PATHS.projectDetail(p.id))}
+            >
+              <Space>
+                <span>{p.name}</span>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {p.role === 'PROJECT_ADMIN' ? 'Maintainer' : 'Developer'}
+                </Text>
+              </Space>
+            </Button>
+          </div>
+        ))
+      ) : (
+        <Text type="secondary" style={{ fontSize: 12, paddingLeft: 20, display: 'block' }}>
+          暂无项目
+        </Text>
+      )}
+    </div>
   )
 }

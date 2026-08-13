@@ -4,9 +4,23 @@
 
 .pd {
   display: grid;
-  grid-template-columns: 234px minmax(0, 1fr);
+  grid-template-columns: 264px 6px minmax(0, 1fr);
   min-height: calc(100vh - var(--qg-banner-h));
   background: var(--qg-bg-light);
+}
+
+// ──── 拖拽手柄（左侧栏与内容区之间的分隔）────
+
+.pd-resizer {
+  cursor: col-resize;
+  background: transparent;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.15s ease;
+}
+
+.pd-resizer:hover,
+.pd-resizer:active {
+  background: rgba(13, 155, 138, 0.35);
 }
 
 // ──── 左侧导航栏 ────

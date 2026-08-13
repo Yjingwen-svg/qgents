@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Modal, Form, Input } from 'antd'
@@ -30,6 +30,31 @@ export function ProjectDetailLayout() {
   const [createOpen, setCreateOpen] = useState(false)
   const [groupSearch, setGroupSearch] = useState('')
   const [form] = Form.useForm<CreateGroupPayload>()
+
+  // 左侧导航栏宽度（可拖拽调整）
+  const [sidebarWidth, setSidebarWidth] = useState(264)
+  const MIN_SIDEBAR = 200
+  const MAX_SIDEBAR = 520
+
+  function startResize(e: ReactMouseEvent<HTMLDivElement>) {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = sidebarWidth
+    function onMove(ev: MouseEvent) {
+      const next = startWidth + (ev.clientX - startX)
+      setSidebarWidth(Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, next)))
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+  }
 
   // 从后端获取项目名
   const { data: project } = useQuery({
@@ -118,7 +143,7 @@ export function ProjectDetailLayout() {
   }
 
   return (
-    <div className="pd">
+    <div className="pd" style={{ gridTemplateColumns: `${sidebarWidth}px 6px minmax(0, 1fr)` }}>
       <aside className="pd-nav" aria-label="项目导航">
         {/* 当前项目名 —— 位于导航列表上方 */}
         <div className="pd-nav__project">
@@ -187,6 +212,15 @@ export function ProjectDetailLayout() {
           </button>
         </div>
       </aside>
+
+      {/* 拖拽手柄：调整左侧导航栏宽度 */}
+      <div
+        className="pd-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="拖拽调整侧栏宽度"
+        onMouseDown={startResize}
+      />
 
       <div className="pd-main">
         <Outlet />

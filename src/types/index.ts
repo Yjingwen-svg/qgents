@@ -24,6 +24,7 @@ export type {
   Group,
   GroupMember,
   Message,
+  MessageSummary,
   MessageContentType,
   MessageSenderType,
   TextMessageContent,
@@ -45,6 +46,15 @@ export type {
   CreateTaskPayload,
 } from './task'
 export type { Notification, NotificationKind } from './notification'
+export type {
+  Memory,
+  MemoryStatus,
+  MemorySourceType,
+  MemorySourceRef,
+  MemoryActor,
+  CreateMemoryPayload,
+  GenerateMemoryDraftPayload,
+} from './memory'
 export type {
   GithubInstallation,
   GithubInstallationRedirect,

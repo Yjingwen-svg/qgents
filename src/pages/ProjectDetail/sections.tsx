@@ -4,6 +4,7 @@ import { Spin } from 'antd'
 import { PROJECT_NAV } from '@/routes/paths'
 import { projectApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
+import { MemoryPage as MemoryPageImpl } from './MemoryPage'
 
 /**
  * 项目详情其它导航子页的统一占位壳
@@ -152,17 +153,7 @@ export function SkillsPage() {
 }
 
 export function MemoryPage() {
-  return (
-    <ProjectSectionPage
-      section="memory"
-      title="共享 Memory"
-      todos={[
-        'TODO: A - Memory 列表和详情',
-        'TODO: A - 从群消息生成草稿',
-        'TODO: A - 手动创建 / 审核 / 归档',
-      ]}
-    />
-  )
+  return <MemoryPageImpl />
 }
 
 export function CodePage() {

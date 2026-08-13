@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Modal, Form, Input } from 'antd'
+import { SearchOutlined, PushpinOutlined } from '@ant-design/icons'
 import { PATHS, PROJECT_NAV } from '@/routes/paths'
 import { groupApi, projectApi } from '@/api'
 import { useAppUiStore } from '@/store/appUiStore'
-import type { CreateGroupPayload } from '@/types'
+import type { CreateGroupPayload, Group } from '@/types'
 import './ProjectDetailLayout.scss'
 
 /**
@@ -27,6 +28,7 @@ export function ProjectDetailLayout() {
   const setCurrentProject = useAppUiStore((state) => state.setCurrentProject)
 
   const [createOpen, setCreateOpen] = useState(false)
+  const [groupSearch, setGroupSearch] = useState('')
   const [form] = Form.useForm<CreateGroupPayload>()
 
   // 从后端获取项目名
@@ -44,7 +46,18 @@ export function ProjectDetailLayout() {
     enabled: !!projectId,
   })
   const mainGroup = groups.find((g) => g.type === 'PROJECT_MAIN') ?? groups[0]
+
+  // 需求群拆分：归档 / 活跃；搜索按标题过滤；活跃群置顶优先 + 最近活跃排序
   const requirementGroups = groups.filter((g) => g.type === 'REQUIREMENT')
+  const activeRequirement = requirementGroups.filter((g) => !g.isArchived)
+  const archivedGroups = requirementGroups.filter((g) => g.isArchived)
+  const keyword = groupSearch.trim().toLowerCase()
+  const matches = (g: Group) => !keyword || g.title.toLowerCase().includes(keyword)
+  const pinnedGroups = activeRequirement.filter((g) => g.isPinned && matches(g))
+  const normalGroups = activeRequirement
+    .filter((g) => !g.isPinned && matches(g))
+    .sort((a, b) => (b.latestActivityAt ?? '').localeCompare(a.latestActivityAt ?? ''))
+  const archivedMatches = archivedGroups.filter(matches)
 
   // 记录项目及所属团队上下文，供顶部「团队首页」按钮回到正确团队
   useEffect(() => {
@@ -67,6 +80,41 @@ export function ProjectDetailLayout() {
   // 在群聊路径但未指定具体群（/req-chat 无 groupId）时，重定向到项目总群
   if (onReqChat && !groupId && mainGroup) {
     return <Navigate to={PATHS.projectReqChat(projectId, mainGroup.id)} replace />
+  }
+
+  // 单个群列表项：置顶标记 + 标题 + 未读数 + 最新消息摘要
+  function renderBranch(g: Group, pinned = false) {
+    return (
+      <li key={g.id}>
+        <NavLink
+          to={PATHS.projectReqChat(projectId, g.id)}
+          className={() =>
+            `pd-nav__branch${onReqChat && groupId === g.id ? ' is-active' : ''}`
+          }
+        >
+          <span className="pd-nav__branch-hash">#</span>
+          <span className="pd-nav__branch-text">
+            <span className="pd-nav__branch-title-row">
+              {pinned && <PushpinOutlined className="pd-nav__branch-pin" />}
+              <span className="pd-nav__branch-title">{g.title}</span>
+              {g.unreadCount ? (
+                <span className="pd-nav__branch-unread">{g.unreadCount}</span>
+              ) : null}
+            </span>
+            {g.latestMessage ? (
+              <span className="pd-nav__branch-summary">
+                {g.latestMessage.senderName ? `${g.latestMessage.senderName}: ` : ''}
+                {g.latestMessage.text}
+              </span>
+            ) : (
+              <span className="pd-nav__branch-ref">
+                {g.type === 'PROJECT_MAIN' ? '项目总群' : '需求群'}
+              </span>
+            )}
+          </span>
+        </NavLink>
+      </li>
+    )
   }
 
   return (
@@ -108,39 +156,26 @@ export function ProjectDetailLayout() {
           <div className="pd-nav__branches-head">
             <span>群聊</span>
           </div>
+          <Input
+            className="pd-nav__search"
+            placeholder="搜索群聊"
+            prefix={<SearchOutlined />}
+            value={groupSearch}
+            onChange={(e) => setGroupSearch(e.target.value)}
+            allowClear
+            size="small"
+          />
           <ul className="pd-nav__branch-list">
-            {mainGroup && (
-              <li>
-                <NavLink
-                  to={PATHS.projectReqChat(projectId, mainGroup.id)}
-                  className={() =>
-                    `pd-nav__branch${onReqChat && groupId === mainGroup.id ? ' is-active' : ''}`
-                  }
-                >
-                  <span className="pd-nav__branch-hash">#</span>
-                  <span className="pd-nav__branch-text">
-                    <span className="pd-nav__branch-title">{mainGroup.title}</span>
-                    <span className="pd-nav__branch-ref">项目总群</span>
-                  </span>
-                </NavLink>
-              </li>
+            {mainGroup && matches(mainGroup) && renderBranch(mainGroup)}
+            {pinnedGroups.map((g) => renderBranch(g, true))}
+            {normalGroups.map((g) => renderBranch(g))}
+            {archivedMatches.length > 0 && (
+              <li className="pd-nav__branches-subhead">已归档</li>
             )}
-            {requirementGroups.map((g) => (
-              <li key={g.id}>
-                <NavLink
-                  to={PATHS.projectReqChat(projectId, g.id)}
-                  className={() =>
-                    `pd-nav__branch${onReqChat && groupId === g.id ? ' is-active' : ''}`
-                  }
-                >
-                  <span className="pd-nav__branch-hash">#</span>
-                  <span className="pd-nav__branch-text">
-                    <span className="pd-nav__branch-title">{g.title}</span>
-                    <span className="pd-nav__branch-ref">需求群</span>
-                  </span>
-                </NavLink>
-              </li>
-            ))}
+            {archivedMatches.map((g) => renderBranch(g))}
+            {activeRequirement.length === 0 && !keyword && (
+              <li className="pd-nav__empty">暂无需求群，点击下方新建</li>
+            )}
           </ul>
 
           <button

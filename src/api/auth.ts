@@ -4,7 +4,7 @@ import type {
   RegisterPayload,
   AuthResponse,
   RefreshResponse,
-  User,
+  MeResponse,
 } from '@/types'
 
 /**
@@ -41,9 +41,9 @@ export const authApi = {
     })
   },
 
-  /** GET /me — 获取当前用户信息 */
+  /** GET /me — 获取当前用户信息（data 层为聚合结构 user + teams + projects） */
   me() {
-    return request<User>('/me')
+    return request<MeResponse>('/me')
   },
 
   /** POST /auth/logout — 登出，使当前 refreshToken 失效 */

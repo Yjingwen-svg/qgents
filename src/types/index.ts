@@ -9,6 +9,7 @@ export type {
   RegisterPayload,
   AuthResponse,
   RefreshResponse,
+  MeResponse,
 } from './auth'
 export type {
   Team,

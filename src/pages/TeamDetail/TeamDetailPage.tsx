@@ -49,14 +49,17 @@ function getRecentActivities(projects: Project[]) {
 }
 
 function MemberPreview({ member }: { member: TeamMember }) {
+  // 后端成员接口暂未返回 displayName/email，缺失时用 userId 兜底，避免渲染崩溃
+  const displayName = member.displayName || member.userId
+  const email = member.email || '—'
   return (
     <li className="team-detail__member-row">
       <span className="team-detail__member-avatar" aria-hidden>
-        {member.displayName.slice(0, 1)}
+        {displayName.slice(0, 1)}
       </span>
       <div className="team-detail__member-copy">
-        <strong>{member.displayName}</strong>
-        <span>{member.email}</span>
+        <strong>{displayName}</strong>
+        <span>{email}</span>
       </div>
       <span className="team-detail__member-role">{getRoleLabel(member.role)}</span>
     </li>

@@ -19,8 +19,10 @@ export interface Team {
 
 export interface TeamMember {
   userId: string
-  displayName: string
-  email: string
+  /** 显示名（后端成员接口暂未返回，联调后补） */
+  displayName?: string
+  /** 邮箱（后端成员接口暂未返回，联调后补） */
+  email?: string
   role: TeamRole
   avatarUrl?: string
 }

@@ -46,6 +46,24 @@ export type {
   DiffCardPayload,
 } from './message'
 export type {
+  Group,
+  GroupMember,
+  Message,
+  MessageContentType,
+  MessageSenderType,
+  TextMessageContent,
+  CodeMessageContent,
+  SendMessagePayload,
+  CreateGroupPayload,
+  Page,
+} from './group'
+export type {
+  TaskRepository,
+  WorkflowRole,
+  CreateTaskPayload,
+} from './task'
+export type { Notification, NotificationKind } from './notification'
+export type {
   GithubInstallation,
   GithubInstallationRedirect,
   GithubAuthorizedRepository,

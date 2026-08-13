@@ -9,21 +9,17 @@ import { CreateTeamPage } from '@/pages/CreateTeam/CreateTeamPage'
 import { JoinTeamPage } from '@/pages/JoinTeam/JoinTeamPage'
 import { MyTeamsPage } from '@/pages/MyTeams/MyTeamsPage'
 import { ChatWorkspacePage } from '@/pages/ChatWorkspace/ChatWorkspacePage'
-import { GitHubIntegrationPage } from '@/pages/GitHubIntegration/GitHubIntegrationPage'
-import { GithubInstallationReposPage } from '@/pages/GitHubIntegration/GithubInstallationReposPage'
-import { BindRepoToProjectPage } from '@/pages/GitHubIntegration/BindRepoToProjectPage'
 import { TeamDetailPage } from '@/pages/TeamDetail/TeamDetailPage'
 import { CreateProjectPage } from '@/pages/CreateProject/CreateProjectPage'
-import { TeamAuthorizedReposPage } from '@/pages/GitHubIntegration/TeamAuthorizedReposPage'
 import { ProjectDetailLayout } from '@/pages/ProjectDetail/ProjectDetailLayout'
 import { RequirementChatPage } from '@/pages/ProjectDetail/RequirementChatPage'
-import { TaskDetailPage } from '@/pages/ProjectDetail/TaskDetail/TaskDetailPage'
-import { TaskRunDetailPage } from '@/pages/ProjectDetail/TaskRunDetail/TaskRunDetailPage'
-import { DiffCenterPage } from '@/pages/ProjectDetail/DiffCenter/DiffCenterPage'
-import { AgentTeamPage } from '@/pages/ProjectDetail/AgentTeam/AgentTeamPage'
-import { WorkflowViewerPage } from '@/pages/ProjectDetail/Workflow/WorkflowViewerPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { ForbiddenPage } from '@/pages/ForbiddenPage'
+import { TaskDetailPage } from '../pages/ProjectDetail/TaskDetail/TaskDetailPage'
+import { TaskRunDetailPage } from '../pages/ProjectDetail/TaskRunDetail/TaskRunDetailPage'
+import { DiffCenterPage } from '../pages/ProjectDetail/DiffCenter/DiffCenterPage'
+import { WorkflowViewerPage } from '../pages/ProjectDetail/Workflow/WorkflowViewerPage'
+import { AgentTeamPage } from '../pages/ProjectDetail/AgentTeam/AgentTeamPage'
 import {
   OverviewPage,
   TasksPage,
@@ -61,26 +57,19 @@ export function AppRouter() {
               <Route path="teams/join" element={<JoinTeamPage />} />
               <Route path="teams/:teamId" element={<TeamDetailPage />} />
               <Route path="teams/:teamId/projects/create" element={<CreateProjectPage />} />
-              <Route
-                path="teams/:teamId/github/authorized-repos"
-                element={<TeamAuthorizedReposPage />}
-              />
               <Route path="chat" element={<ChatWorkspacePage />} />
-              <Route path="integrations/github" element={<GitHubIntegrationPage />} />
-              <Route
-                path="integrations/github/installations/:installationId/repositories"
-                element={<GithubInstallationReposPage />}
-              />
-              <Route path="integrations/github/bind-repo" element={<BindRepoToProjectPage />} />
 
               <Route path="projects/:projectId" element={<ProjectDetailLayout />}>
-                {/* 默认进入「登录功能」需求群聊 */}
-                <Route index element={<Navigate to="req-chat/login" replace />} />
+                {/* 默认进入项目总群（由 ProjectDetailLayout 根据群列表跳转） */}
+                <Route index element={<Navigate to="req-chat" replace />} />
                 <Route path="overview" element={<OverviewPage />} />
 
-                {/* 需求群聊 */}
-                <Route path="req-chat/:reqId" element={<RequirementChatPage />} />
-                <Route path="req-chat" element={<Navigate to="login" replace />} />
+                {/*
+                  群聊：每个群独立路由，IM 外壳相同、会话按 groupId 隔离
+                  req-chat 无参数时由 ProjectDetailLayout 重定向到项目总群
+                */}
+                <Route path="req-chat/:groupId" element={<RequirementChatPage />} />
+                <Route path="req-chat" element={<RequirementChatPage />} />
 
                 {/* B 的任务模块 */}
                 <Route path="tasks" element={<TasksPage />} />

@@ -149,7 +149,7 @@ export function ChatWorkspacePage() {
           </div>
           <Space>
             <Button type="text" icon={<MoreOutlined />} disabled />
-            <Link to={PATHS.projectReqChat('demo-project', 'login')}>
+            <Link to={PATHS.projectDetail('demo-project')}>
               <Button type="primary">进入项目详情</Button>
             </Link>
           </Space>

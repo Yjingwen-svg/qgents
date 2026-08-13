@@ -12,7 +12,6 @@ import './MyTeamsPage.css'
  * - 调 GET /teams 获取当前用户的团队列表
  * - 按 myRole 拆成「我创建的」和「我参与的」
  * - 加载中显示 Spin，加载失败显示错误，无团队显示空状态
- * - 「查看详情」→ 团队详情；Owner 带 ?as=owner，兼容详情页 GitHub 入口
  */
 export function MyTeamsPage() {
   const {
@@ -118,16 +117,11 @@ export function MyTeamsPage() {
   )
 }
 
-/** 团队卡片 —— 「查看详情」进入团队详情页 */
-function TeamCard({
-  team,
-}: {
-  team: { id: string; name: string; myRole?: string; memberCount?: number }
-}) {
+/** 团队卡片 */
+function TeamCard({ team }: { team: { id: string; name: string; myRole?: string; memberCount?: number } }) {
   const letter = team.name.slice(0, 1)
-  const isOwner = team.myRole === 'TEAM_OWNER'
-  const color = isOwner ? '#3b82f6' : '#8b5cf6'
-  const roleLabel = isOwner ? 'Owner' : 'Member'
+  const color = team.myRole === 'TEAM_OWNER' ? '#3b82f6' : '#8b5cf6'
+  const roleLabel = team.myRole === 'TEAM_OWNER' ? 'Owner' : 'Member'
 
   return (
     <article className="my-teams__card">
@@ -139,8 +133,7 @@ function TeamCard({
       </div>
       <h3>{team.name}</h3>
       <p className="my-teams__meta">{team.memberCount ?? '—'} 位成员</p>
-      {/* Owner 带 as=owner，详情页可显示 github集成（亦可用接口 myRole） */}
-      <Link to={PATHS.teamDetail(team.id, isOwner)} className="my-teams__detail">
+      <Link to={PATHS.teamDetail(team.id)} className="my-teams__detail">
         查看详情
       </Link>
     </article>

@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { GithubOutlined } from '@ant-design/icons'
 import { PATHS } from '@/routes/paths'
 import { projectApi } from '@/api'
 import './CreateProjectPage.css'
@@ -10,8 +9,6 @@ import './CreateProjectPage.css'
  *
  * POST /teams/{teamId}/projects
  * 入口：团队详情页 →「创建项目」、个人中心 →「创建项目」
- *
- * GitHub 仓库：不填 URL；点「绑定github仓库」跳转团队已授权仓库列表再绑定
  */
 export function CreateProjectPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
@@ -35,7 +32,7 @@ export function CreateProjectPage() {
         description: description.trim() || undefined,
       })
       // 创建成功后跳转到项目需求群聊
-      navigate(PATHS.projectReqChat(project.id, 'login'), { replace: true })
+      navigate(PATHS.projectDetail(project.id), { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建项目失败，请重试')
     } finally {
@@ -81,22 +78,16 @@ export function CreateProjectPage() {
           />
         </label>
 
-        {/* 原「Git 仓库」URL 输入已移除；改为跳转团队已授权仓库列表 */}
-        <div className="create-project__field">
-          <span>GitHub 仓库</span>
-          <button
-            type="button"
-            className="create-project__btn create-project__btn--ghost"
-            style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            onClick={() => navigate(PATHS.teamAuthorizedRepos(teamId))}
-          >
-            <GithubOutlined />
-            绑定github仓库
-          </button>
+        <label className="create-project__field">
+          <span>Git 仓库</span>
+          <input
+            placeholder="已有仓库 URL，或留空由平台自动创建"
+            disabled
+          />
           <p className="create-project__hint" style={{ fontSize: 12, color: '#94a3b8', margin: '4px 0 0' }}>
-            将跳转到该团队已授权的所有 GitHub 仓库列表（含默认分支、同步状态、授权账号）
+            仓库绑定将在后续版本支持，当前由平台自动创建
           </p>
-        </div>
+        </label>
 
         <div className="create-project__actions">
           <Link

@@ -1,29 +1,13 @@
 import { request } from './client'
 import type { CreateProjectPayload, Project, ProjectMember } from '@/types'
 
-/** 接口文档统一成功响应外壳 */
-interface ApiEnvelope<T> {
-  data: T
-  requestId?: string
-}
-
-function unwrapData<T>(res: ApiEnvelope<T> | T): T {
-  if (res !== null && typeof res === 'object' && 'data' in (res as object)) {
-    return (res as ApiEnvelope<T>).data
-  }
-  return res as T
-}
-
 /**
  * 项目管理 API —— 对齐接口文档 v1.1.4 §5.2
  */
 export const projectApi = {
-  /**
-   * GET /teams/{teamId}/projects
-   * 文档：团队成员可访问；Owner 绑定仓库时列出该团队全部项目
-   */
+  /** GET /teams/{teamId}/projects — 团队下的项目列表（仅返回有权限访问的） */
   listByTeam(teamId: string) {
-    return request<ApiEnvelope<Project[]> | Project[]>(`/teams/${teamId}/projects`).then(unwrapData)
+    return request<Project[]>(`/teams/${teamId}/projects`)
   },
 
   /** POST /teams/{teamId}/projects — 创建项目 */
@@ -36,7 +20,7 @@ export const projectApi = {
 
   /** GET /projects/{projectId} — 获取项目资料 */
   getById(projectId: string) {
-    return request<ApiEnvelope<Project> | Project>(`/projects/${projectId}`).then(unwrapData)
+    return request<Project>(`/projects/${projectId}`)
   },
 
   /** PATCH /projects/{projectId} — 修改项目资料（仅 PROJECT_ADMIN） */

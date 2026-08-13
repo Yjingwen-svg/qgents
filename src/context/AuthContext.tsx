@@ -42,25 +42,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [hasTeam, setHasTeam] = useState(false)
   const [isBootstrapping, setIsBootstrapping] = useState(true)
-  // 防止 StrictMode 下 useEffect 执行两次
-  const bootstrapped = useRef(false)
 
-  /**
-   * 启动时恢复登录态
-   * 说明：跳转 GitHub App 安装是整页离开，回调回来会重新加载 SPA。
-   * 必须用 localStorage 里的 token 调 /me 恢复会话，否则 RequireAuth 会误踢到 /login。
-   * AppProviders 的 BootstrapGate 会等 isBootstrapping=false 再渲染路由。
-   */
+  // ──── 启动时恢复登录态 ────
+  // 每次挂载都执行 restore；用 cancelled 标志处理卸载竞态。
+  // React StrictMode 开发模式下会「挂载 → 卸载 → 再挂载」，
+  // 第一次 restore 因 cleanup 置 cancelled 而被丢弃，第二次挂载重新恢复。
   useEffect(() => {
-    if (bootstrapped.current) return
-    bootstrapped.current = true
-
     let cancelled = false
 
     async function restore() {
       const token = localStorage.getItem(ACCESS_TOKEN_KEY)
       if (!token) {
-        setIsBootstrapping(false)
+        if (!cancelled) setIsBootstrapping(false)
         return
       }
 
@@ -79,9 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.removeItem(REFRESH_TOKEN_KEY)
         }
       } finally {
-        // 注意：这里不能检查 cancelled，因为 StrictMode 开发模式下
-        // cleanup 会先设 cancelled=true，导致 setIsBootstrapping(false) 被跳过
-        setIsBootstrapping(false)
+        if (!cancelled) setIsBootstrapping(false)
       }
     }
 
@@ -105,18 +96,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     localStorage.setItem(ACCESS_TOKEN_KEY, result.accessToken)
     localStorage.setItem(REFRESH_TOKEN_KEY, result.refreshToken)
-    setUser(result.user)
 
-    // 登录后检查用户是否有团队
+    // 先查清团队归属，再一次性 setUser + setHasTeam。
+    // 若先 setUser 再异步查 teams，中间会出现「isAuthenticated=true 但 hasTeam 仍是旧值」的
+    // 渲染帧，包裹 /login 的 RedirectIfAuthed 会误判并把用户抢跳 /welcome，造成闪一下欢迎页。
+    let haveTeam = false
     try {
       const teams = await teamApi.listMine()
-      const haveTeam = teams.length > 0
-      setHasTeam(haveTeam)
-      return haveTeam
+      haveTeam = teams.length > 0
     } catch {
-      setHasTeam(false)
-      return false
+      haveTeam = false
     }
+
+    // 两个 setState 在同一同步块内更新，React 批处理成一次渲染，避免不一致的中间帧。
+    setUser(result.user)
+    setHasTeam(haveTeam)
+    return haveTeam
   }, [])
 
   // ──── 注册（新用户没有团队，返回 false）────

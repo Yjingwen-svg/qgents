@@ -1,22 +1,23 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ApartmentOutlined,
   BranchesOutlined,
   CheckCircleFilled,
   ClockCircleOutlined,
   FolderOutlined,
-  GithubOutlined,
   PlusOutlined,
   RobotOutlined,
   SettingOutlined,
   TeamOutlined,
 } from '@ant-design/icons'
-import { Button, Space, Spin } from 'antd'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Button, Spin } from 'antd'
+import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
+import { CreateProjectModal } from '@/components/CreateProjectModal'
+import { useAppUiStore } from '@/store/appUiStore'
 import type { Project, TeamMember } from '@/types'
 import './TeamDetailPage.css'
 
@@ -92,24 +93,23 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
           </span>
         </div>
       </div>
-      <Link to={PATHS.projectReqChat(project.id, 'login')} className="team-detail__enter-project">
+      <Link to={PATHS.projectDetail(project.id)} className="team-detail__enter-project">
         进入项目
       </Link>
     </article>
   )
 }
 
-/**
- * 团队详情
- *
- * 「GitHub 集成」入口：Team Owner 可见（接口 myRole === TEAM_OWNER；
- * 兼容旧链接 ?as=owner，例如从「我创建的团队 → 查看详情」进入）
- * 点击后跳转：/app/integrations/github?teamId=...
- */
 export function TeamDetailPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
-  const [searchParams] = useSearchParams()
   const [activeView, setActiveView] = useState<TeamDetailView>('projects')
+  const [createOpen, setCreateOpen] = useState(false)
+  const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
+
+  // 进入团队详情即记录当前团队，供顶部「团队首页」按钮回到此团队
+  useEffect(() => {
+    if (teamId) setCurrentTeam(teamId)
+  }, [teamId, setCurrentTeam])
 
   const {
     data: team,
@@ -136,10 +136,6 @@ export function TeamDetailPage() {
   const isLoading = teamLoading || membersLoading || projectsLoading
   const recentActivities = getRecentActivities(projects)
   const ownerCount = members.filter((member) => member.role === 'TEAM_OWNER').length
-
-  /** 优先接口角色；兼容历史 ?as=owner */
-  const isTeamOwner =
-    team?.myRole === 'TEAM_OWNER' || searchParams.get('as') === 'owner'
 
   if (isLoading) {
     return (
@@ -210,18 +206,13 @@ export function TeamDetailPage() {
             <h1>{team.name}</h1>
             <p>从个人中心切换团队或项目，进入项目总群继续协作。</p>
           </div>
-          <Space wrap>
-            {isTeamOwner ? (
-              <Link to={PATHS.githubIntegration(teamId)}>
-                <Button icon={<GithubOutlined />}>github集成</Button>
-              </Link>
-            ) : null}
-            <Link to={PATHS.createProject(teamId)}>
-              <Button type="primary" icon={<PlusOutlined />}>
-                创建项目
-              </Button>
-            </Link>
-          </Space>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setCreateOpen(true)}
+          >
+            创建项目
+          </Button>
         </section>
 
         {activeView === 'projects' ? (
@@ -303,6 +294,12 @@ export function TeamDetailPage() {
           <p className="team-detail__muted">当前接口没有待处理项目邀请列表，这里先保留原型中的信息区位置。</p>
         </section>
       </aside>
+
+      <CreateProjectModal
+        teamId={teamId}
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+      />
     </div>
   )
 }

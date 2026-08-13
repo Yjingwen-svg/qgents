@@ -1,6 +1,5 @@
 .team-detail {
   min-height: calc(100vh - var(--qg-banner-h));
-  min-width: 1160px;
   display: grid;
   grid-template-columns: 248px minmax(520px, 1fr) 360px;
   background: #f8fafc;

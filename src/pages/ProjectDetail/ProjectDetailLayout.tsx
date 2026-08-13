@@ -1,24 +1,33 @@
-import { NavLink, Outlet, useLocation, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Modal, Form, Input } from 'antd'
 import { PATHS, PROJECT_NAV } from '@/routes/paths'
-import { projectApi } from '@/api'
-import { PROJECT_REQUIREMENTS } from './requirements'
+import { groupApi, projectApi } from '@/api'
+import { useAppUiStore } from '@/store/appUiStore'
+import type { CreateGroupPayload } from '@/types'
 import './ProjectDetailLayout.scss'
 
 /**
  * 项目详情布局：固定左侧导航，右侧为子路由 Outlet
  *
- * 左侧「需求」列表：每一项对应独立路由
- *   /app/projects/:projectId/req-chat/:reqId
+ * 左侧「群聊」列表：项目总群 + 需求群，数据来自 GET /groups
+ *   /app/projects/:projectId/req-chat/:groupId
  */
 export function ProjectDetailLayout() {
-  const { projectId = '', reqId } = useParams<{
+  const { projectId = '', groupId } = useParams<{
     projectId: string
-    reqId?: string
+    groupId?: string
   }>()
   const location = useLocation()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const onReqChat = location.pathname.includes('/req-chat')
-  const activeReqId = reqId
+  const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
+  const setCurrentProject = useAppUiStore((state) => state.setCurrentProject)
+
+  const [createOpen, setCreateOpen] = useState(false)
+  const [form] = Form.useForm<CreateGroupPayload>()
 
   // 从后端获取项目名
   const { data: project } = useQuery({
@@ -27,6 +36,38 @@ export function ProjectDetailLayout() {
     enabled: !!projectId,
   })
   const projectName = project?.name ?? projectId
+
+  // 群列表（项目总群 + 需求群）
+  const { data: groups = [] } = useQuery({
+    queryKey: ['groups', projectId],
+    queryFn: () => groupApi.listByProject(projectId),
+    enabled: !!projectId,
+  })
+  const mainGroup = groups.find((g) => g.type === 'PROJECT_MAIN') ?? groups[0]
+  const requirementGroups = groups.filter((g) => g.type === 'REQUIREMENT')
+
+  // 记录项目及所属团队上下文，供顶部「团队首页」按钮回到正确团队
+  useEffect(() => {
+    if (!projectId) return
+    if (project?.teamId) setCurrentTeam(project.teamId)
+    setCurrentProject(projectId)
+  }, [projectId, project?.teamId, setCurrentTeam, setCurrentProject])
+
+  // 创建需求群
+  const createGroup = useMutation({
+    mutationFn: (payload: CreateGroupPayload) => groupApi.create(projectId, payload),
+    onSuccess: (group) => {
+      queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+      setCreateOpen(false)
+      form.resetFields()
+      navigate(PATHS.projectReqChat(projectId, group.id), { replace: true })
+    },
+  })
+
+  // 在群聊路径但未指定具体群（/req-chat 无 groupId）时，重定向到项目总群
+  if (onReqChat && !groupId && mainGroup) {
+    return <Navigate to={PATHS.projectReqChat(projectId, mainGroup.id)} replace />
+  }
 
   return (
     <div className="pd">
@@ -62,48 +103,95 @@ export function ProjectDetailLayout() {
           ))}
         </nav>
 
-        {/* —— 需求列表 —— */}
+        {/* —— 群聊列表 —— */}
         <div className="pd-nav__branches">
           <div className="pd-nav__branches-head">
-            <span>需求</span>
+            <span>群聊</span>
           </div>
           <ul className="pd-nav__branch-list">
-            {PROJECT_REQUIREMENTS.map((r) => (
-              <li key={r.id}>
-                {/*
-                  每个功能需求独立路由，例如：
-                  /app/projects/demo-project/req-chat/login  → 登录功能 IM
-                  /app/projects/demo-project/req-chat/pay    → 支付回调 IM
-                */}
+            {mainGroup && (
+              <li>
                 <NavLink
-                  to={PATHS.projectReqChat(projectId, r.id)}
+                  to={PATHS.projectReqChat(projectId, mainGroup.id)}
                   className={() =>
-                    `pd-nav__branch${onReqChat && activeReqId === r.id ? ' is-active' : ''}`
+                    `pd-nav__branch${onReqChat && groupId === mainGroup.id ? ' is-active' : ''}`
                   }
                 >
                   <span className="pd-nav__branch-hash">#</span>
                   <span className="pd-nav__branch-text">
-                    <span className="pd-nav__branch-title">{r.title}</span>
-                    <span className="pd-nav__branch-ref">{r.ref}</span>
+                    <span className="pd-nav__branch-title">{mainGroup.title}</span>
+                    <span className="pd-nav__branch-ref">项目总群</span>
+                  </span>
+                </NavLink>
+              </li>
+            )}
+            {requirementGroups.map((g) => (
+              <li key={g.id}>
+                <NavLink
+                  to={PATHS.projectReqChat(projectId, g.id)}
+                  className={() =>
+                    `pd-nav__branch${onReqChat && groupId === g.id ? ' is-active' : ''}`
+                  }
+                >
+                  <span className="pd-nav__branch-hash">#</span>
+                  <span className="pd-nav__branch-text">
+                    <span className="pd-nav__branch-title">{g.title}</span>
+                    <span className="pd-nav__branch-ref">需求群</span>
                   </span>
                 </NavLink>
               </li>
             ))}
           </ul>
 
-          {/*
-            新建需求群 —— 仅 UI 占位，暂不挂路由
-            TODO: 后续接「创建需求群」页面 / 弹窗
-          */}
-          <div className="pd-nav__new-branch-chat" aria-hidden>
+          <button
+            type="button"
+            className="pd-nav__new-branch-chat"
+            onClick={() => setCreateOpen(true)}
+          >
             + 新建需求群
-          </div>
+          </button>
         </div>
       </aside>
 
       <div className="pd-main">
         <Outlet />
       </div>
+
+      {/* 新建需求群弹窗 */}
+      <Modal
+        title="新建需求群"
+        open={createOpen}
+        onCancel={() => {
+          setCreateOpen(false)
+          form.resetFields()
+        }}
+        onOk={() => form.submit()}
+        confirmLoading={createGroup.isPending}
+        okText="创建"
+        cancelText="取消"
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={(values) => createGroup.mutate(values)}
+          initialValues={{ type: 'REQUIREMENT' }}
+        >
+          <Form.Item
+            name="title"
+            label="需求群名称"
+            rules={[{ required: true, message: '请输入需求群名称' }]}
+          >
+            <Input placeholder="例如：登录功能" maxLength={50} />
+          </Form.Item>
+          <Form.Item name="description" label="描述（可选）">
+            <Input.TextArea
+              placeholder="简要说明这个需求群要讨论什么"
+              autoSize={{ minRows: 2, maxRows: 4 }}
+              maxLength={200}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   )
 }

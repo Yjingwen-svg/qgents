@@ -1,11 +1,9 @@
-import { App as AntdApp, ConfigProvider, Spin } from 'antd'
-import zhCN from 'antd/locale/zh_CN'
+import { ConfigProvider, Spin } from 'antd'
 import type { ReactNode } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { PersonalCenterProvider } from '@/context/PersonalCenterContext'
 import { queryClient } from '@/query'
-import { qgAntdTheme } from '@/theme/antdTheme'
 
 /**
  * 启动加载门控。
@@ -33,25 +31,16 @@ function BootstrapGate({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
-/**
- * 应用级 Provider 聚合（唯一入口）
- * - Ant Design 主题 + 中文 + 静态方法容器
- * - React Query 共享 queryClient
- * - Auth / PersonalCenter 业务上下文
- * - BootstrapGate：启动时验证 token，显示 loading screen
- */
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
-    <ConfigProvider theme={qgAntdTheme} locale={zhCN}>
-      <AntdApp>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <PersonalCenterProvider>
-              <BootstrapGate>{children}</BootstrapGate>
-            </PersonalCenterProvider>
-          </AuthProvider>
-        </QueryClientProvider>
-      </AntdApp>
+    <ConfigProvider theme={{ token: { colorPrimary: '#0d9b8a', borderRadius: 10 } }}>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <PersonalCenterProvider>
+            <BootstrapGate>{children}</BootstrapGate>
+          </PersonalCenterProvider>
+        </AuthProvider>
+      </QueryClientProvider>
     </ConfigProvider>
   )
 }

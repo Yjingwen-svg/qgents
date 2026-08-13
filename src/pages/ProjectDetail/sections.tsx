@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Spin } from 'antd'
 import { PROJECT_NAV } from '@/routes/paths'
@@ -113,8 +113,8 @@ function StatCard({ label, value, mono }: { label: string; value: string; mono?:
 /** 快捷入口卡片 */
 function QuickLink({ label, desc, to }: { label: string; desc: string; to: string }) {
   return (
-    <a
-      href={to}
+    <Link
+      to={to}
       style={{
         display: 'block',
         padding: '12px 16px',
@@ -130,7 +130,7 @@ function QuickLink({ label, desc, to }: { label: string; desc: string; to: strin
     >
       <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 12, color: '#94a3b8' }}>{desc}</div>
-    </a>
+    </Link>
   )
 }
 

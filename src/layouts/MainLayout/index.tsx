@@ -14,11 +14,10 @@ export function MainLayout() {
   const location = useLocation()
   const isChat = location.pathname.startsWith(PATHS.CHAT)
   const isProject = location.pathname.startsWith('/app/projects/')
-  const isTaskDetail = /^\/app\/projects\/[^/]+\/tasks\/[^/]+/.test(location.pathname)
 
   return (
-    <Layout className={`qg-full-height${isTaskDetail ? ' qg-task-detail-shell' : ''}`} style={{ minHeight: '100vh' }}>
-      {!isTaskDetail ? <Banner /> : null}
+    <Layout className="qg-full-height" style={{ minHeight: '100%', background: 'var(--qg-navy)' }}>
+      <Banner />
       <Content
         className={isChat || isProject ? 'qg-content-flush' : undefined}
         style={{

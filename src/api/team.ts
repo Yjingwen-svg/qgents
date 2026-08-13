@@ -33,11 +33,12 @@ export const teamApi = {
   },
 
   /** GET /teams/{teamId}/members — 团队成员列表 */
+  /** GET /teams/:id/members */
   listMembers(teamId: string) {
     return request<TeamMember[]>(`/teams/${teamId}/members`)
   },
 
-  /** POST /teams/{teamId}/invitations — 按邮箱创建团队邀请 */
+  /** POST /teams/:id/invitations — 按邮箱创建团队邀请 */
   invite(teamId: string, payload: CreateInvitationPayload) {
     return request<TeamInvitation>(`/teams/${teamId}/invitations`, {
       method: 'POST',
@@ -45,10 +46,18 @@ export const teamApi = {
     })
   },
 
-  /** GET /teams/{teamId}/invitations — 查询邀请状态（仅 Team Owner） */
+  /** GET /teams/:id/invitations — 查询邀请状态 */
   listInvitations(teamId: string) {
     return request<TeamInvitation[]>(`/teams/${teamId}/invitations`)
   },
+
+  /** POST /team-invitations/:token/accept — 接受团队邀请 */
+  acceptInvitation(token: string) {
+    return request<AcceptInvitationResponse>(`/team-invitations/${token}/accept`, {
+      method: 'POST',
+    })
+  },
+
 
   /** DELETE /teams/{teamId}/invitations/{invitationId} — 撤销邀请 */
   revokeInvitation(teamId: string, invitationId: string) {
@@ -57,12 +66,6 @@ export const teamApi = {
     })
   },
 
-  /** POST /team-invitations/{token}/accept — 接受邀请并加入团队 */
-  acceptInvitation(token: string) {
-    return request<AcceptInvitationResponse>(`/team-invitations/${token}/accept`, {
-      method: 'POST',
-    })
-  },
 
   /** PATCH /teams/{teamId}/members/{userId} — 调整团队角色（仅 Team Owner） */
   updateMemberRole(teamId: string, userId: string, role: string) {

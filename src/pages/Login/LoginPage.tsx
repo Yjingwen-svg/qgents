@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { PATHS } from '@/routes/paths'
 import './LoginPage.css'
@@ -9,15 +9,9 @@ type AuthTab = 'login' | 'register'
 /**
  * 登录 / 注册页 —— 对齐接口文档 v1.1.3 §4
  * 左：品牌与价值主张；右：登录卡片
- *
- * GitHub App 回调兜底：
- * RequireAuth 踢来时会带 state.from（如 /integrations/github?...&installed=1）。
- * 登录成功后优先回到 from，避免用户重走安装流程。
- * 正常情况靠 AuthContext token 恢复，回调不会进本页。
  */
 export function LoginPage() {
   const navigate = useNavigate()
-  const location = useLocation()
   const { login, register } = useAuth()
   const [tab, setTab] = useState<AuthTab>('login')
   const [email, setEmail] = useState('')
@@ -26,18 +20,6 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  /** 被守卫踢来时带上 from（例如 GitHub 回调后的集成页 + installed=1） */
-  const from =
-    (location.state as { from?: { pathname?: string; search?: string } } | null)?.from
-
-  function goAfterLogin(hasTeam: boolean) {
-    if (from?.pathname) {
-      navigate(`${from.pathname}${from.search || ''}`, { replace: true })
-      return
-    }
-    navigate(hasTeam ? PATHS.MY_TEAMS : PATHS.WELCOME, { replace: true })
-  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -51,7 +33,7 @@ export function LoginPage() {
       } else {
         hasTeam = await register(email, password, displayName || email.split('@')[0])
       }
-      goAfterLogin(hasTeam)
+      navigate(hasTeam ? PATHS.MY_TEAMS : PATHS.WELCOME, { replace: true })
     } catch (err) {
       const message =
         err instanceof Error ? err.message : '网络异常，请稍后重试'

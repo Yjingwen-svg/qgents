@@ -26,7 +26,7 @@ export function WelcomePage() {
         <Row gutter={[24, 24]}>
           <Col xs={24} md={12}>
             <Card hoverable style={{ height: '100%', textAlign: 'center' }} styles={{ body: { padding: 32 } }}>
-              <Space direction="vertical" size={16} style={{ width: '100%' }}>
+              <Space orientation="vertical" size={16} style={{ width: '100%' }}>
                 <div
                   style={{
                     width: 48,
@@ -57,7 +57,7 @@ export function WelcomePage() {
 
           <Col xs={24} md={12}>
             <Card hoverable style={{ height: '100%', textAlign: 'center' }} styles={{ body: { padding: 32 } }}>
-              <Space direction="vertical" size={16} style={{ width: '100%' }}>
+              <Space orientation="vertical" size={16} style={{ width: '100%' }}>
                 <div
                   style={{
                     width: 48,

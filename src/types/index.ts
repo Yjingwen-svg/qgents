@@ -19,6 +19,7 @@ export type {
   CreateInvitationPayload,
   TeamInvitation,
   AcceptInvitationResponse,
+  MyTeamInvitation,
 } from './team'
 export type { Project, ProjectRole, ProjectMember, CreateProjectPayload } from './project'
 export type {
@@ -101,6 +102,13 @@ export type {
   SkillActor,
   CreateSkillPayload,
 } from './skill'
+export type {
+  Activity,
+  ActivityType,
+  ActivityTargetType,
+  ActivityActor,
+  ActivityTarget,
+} from './activity'
 export type {
   GithubInstallClient,
   GithubInstallation,

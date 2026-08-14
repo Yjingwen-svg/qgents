@@ -33,6 +33,11 @@ export const PATHS = {
   teamSettings: (teamId: string) => `/app/teams/${encodeURIComponent(teamId)}/settings`,
 
   /**
+   * 团队动态页（查看全部动态）
+   */
+  teamActivities: (teamId: string) => `/app/teams/${encodeURIComponent(teamId)}/activities`,
+
+  /**
    * 创建项目（个人中心 / 团队详情均可进入）
    * TODO[后端联调]: teamId 用于绑定项目所属团队
    */

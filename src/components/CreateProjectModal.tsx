@@ -1,9 +1,9 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Modal, Form, Input, Button } from 'antd'
+import { Modal, Form, Input, Button, Select } from 'antd'
 import { GithubOutlined } from '@ant-design/icons'
-import { useMutation } from '@tanstack/react-query'
-import { projectApi } from '@/api'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { projectApi, teamApi } from '@/api'
 import { PATHS } from '@/routes/paths'
 import type { CreateProjectPayload } from '@/types'
 
@@ -26,6 +26,13 @@ export function CreateProjectModal({
 }) {
   const navigate = useNavigate()
   const [form] = Form.useForm<CreateProjectPayload>()
+
+  // 团队成员列表（作为「初始成员」多选候选）
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ['teams', teamId, 'members'],
+    queryFn: () => teamApi.listMembers(teamId),
+    enabled: !!teamId && open,
+  })
 
   const createProject = useMutation({
     mutationFn: (payload: CreateProjectPayload) => projectApi.create(payload),
@@ -69,6 +76,18 @@ export function CreateProjectModal({
             placeholder="描述项目用途与协作方向"
             autoSize={{ minRows: 2, maxRows: 4 }}
             maxLength={200}
+          />
+        </Form.Item>
+        <Form.Item name="memberIds" label="初始成员（可选）">
+          <Select
+            mode="multiple"
+            placeholder="从团队成员中选择，选中即加入项目"
+            options={teamMembers.map((m) => ({
+              value: m.userId,
+              label: m.displayName || m.userId,
+            }))}
+            optionFilterProp="label"
+            allowClear
           />
         </Form.Item>
         {/* 原「Git 仓库」URL 输入已移除；改为跳转团队已授权仓库列表 */}

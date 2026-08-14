@@ -152,10 +152,16 @@ function TeamProjectGroup({
 
   return (
     <div style={{ marginBottom: 12 }}>
-      <Space size={6} style={{ marginBottom: 6 }}>
-        <TeamOutlined style={{ color: token.colorTextSecondary }} />
-        <Text strong>{team.name}</Text>
-      </Space>
+      <Button
+        type="link"
+        style={{ padding: 0, height: 'auto', marginBottom: 6 }}
+        onClick={() => onNav(PATHS.teamDetail(team.id))}
+      >
+        <Space size={6}>
+          <TeamOutlined style={{ color: token.colorTextSecondary }} />
+          <Text strong>{team.name}</Text>
+        </Space>
+      </Button>
       {projects.length > 0 ? (
         projects.map((p) => (
           <div key={p.id} style={{ padding: '4px 0 4px 20px' }}>

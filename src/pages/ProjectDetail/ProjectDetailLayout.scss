@@ -291,3 +291,46 @@
   flex-direction: column;
   background: #fff;
 }
+
+// ──── 项目动态面板（群聊页右侧第三栏）────
+
+.pd-activity {
+  min-width: 0;
+  background: #fbfcfe;
+  border-left: 1px solid #e8edf3;
+  overflow-y: auto;
+  padding: 18px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.pd-activity__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pd-activity__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.pd-activity__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pd-activity__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}

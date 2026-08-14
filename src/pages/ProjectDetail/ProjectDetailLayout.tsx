@@ -7,6 +7,7 @@ import { PATHS, PROJECT_NAV } from '@/routes/paths'
 import { ApiError, groupApi, projectApi } from '@/api'
 import { useAppUiStore } from '@/store/appUiStore'
 import { useProjectTaskDomainEvents } from '@/realtime/useProjectTaskDomainEvents'
+import { ProjectActivityPanel } from './ProjectActivityPanel'
 import type { CreateGroupPayload, Group } from '@/types'
 import './ProjectDetailLayout.scss'
 
@@ -152,8 +153,17 @@ export function ProjectDetailLayout() {
     )
   }
 
+  const showActivityPanel = onReqChat && mainGroup && groupId === mainGroup.id
+
   return (
-    <div className="pd" style={{ gridTemplateColumns: `${sidebarWidth}px 6px minmax(0, 1fr)` }}>
+    <div
+      className="pd"
+      style={{
+        gridTemplateColumns: showActivityPanel
+          ? `${sidebarWidth}px 6px minmax(0, 1fr) 320px`
+          : `${sidebarWidth}px 6px minmax(0, 1fr)`,
+      }}
+    >
       <aside className="pd-nav" aria-label="项目导航">
         {/* 当前项目名 —— 位于导航列表上方 */}
         <div className="pd-nav__project">
@@ -237,6 +247,9 @@ export function ProjectDetailLayout() {
       <div className="pd-main">
         <Outlet />
       </div>
+
+      {/* 群聊页右侧：项目动态面板（仅项目总群显示，需求群不显示） */}
+      {showActivityPanel && <ProjectActivityPanel projectId={projectId} />}
 
       {/* 新建需求群弹窗 */}
       <Modal

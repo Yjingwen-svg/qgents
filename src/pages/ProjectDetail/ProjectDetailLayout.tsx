@@ -27,6 +27,7 @@ export function ProjectDetailLayout() {
   const onCode = location.pathname.includes('/code')
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
   const setCurrentProject = useAppUiStore((state) => state.setCurrentProject)
+  const openProjectDetailNav = useAppUiStore((state) => state.openProjectDetailNav)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [groupSearch, setGroupSearch] = useState('')
@@ -89,12 +90,14 @@ export function ProjectDetailLayout() {
     .sort((a, b) => (b.latestActivityAt ?? '').localeCompare(a.latestActivityAt ?? ''))
   const archivedMatches = archivedGroups.filter(matches)
 
-  // 记录项目及所属团队上下文，供顶部「团队首页」按钮回到正确团队
+  // 记录项目及所属团队上下文，供顶部「团队首页」按钮回到正确团队；
+  // 同时点亮 Banner 的「项目详情」页签（进入项目详情即出现并选中）
   useEffect(() => {
     if (!projectId) return
     if (project?.teamId) setCurrentTeam(project.teamId)
     setCurrentProject(projectId)
-  }, [projectId, project?.teamId, setCurrentTeam, setCurrentProject])
+    openProjectDetailNav(projectId)
+  }, [projectId, project?.teamId, setCurrentTeam, setCurrentProject, openProjectDetailNav])
 
   // 创建需求群
   const createGroup = useMutation({

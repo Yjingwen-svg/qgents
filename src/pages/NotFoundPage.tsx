@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PATHS } from '@/routes/paths'
 
@@ -6,6 +7,7 @@ import { PATHS } from '@/routes/paths'
  */
 export function NotFoundPage() {
   const navigate = useNavigate()
+  const [hover, setHover] = useState(false)
 
   return (
     <div
@@ -28,15 +30,18 @@ export function NotFoundPage() {
       <button
         type="button"
         onClick={() => navigate(PATHS.MY_TEAMS, { replace: true })}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
         style={{
           marginTop: 8,
           padding: '8px 24px',
           borderRadius: 8,
           border: 'none',
-          background: '#0d9b8a',
+          background: hover ? '#0aa18e' : '#0d9b8a',
           color: '#fff',
           fontSize: 14,
           cursor: 'pointer',
+          transition: 'background 0.15s ease',
         }}
       >
         返回团队首页

@@ -2,6 +2,7 @@
   max-width: 720px;
   margin: 0 auto;
   padding: 24px 28px 48px;
+  color: var(--qg-text-on-dark);
 }
 
 .create-team__top {

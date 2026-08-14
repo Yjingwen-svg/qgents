@@ -5,7 +5,7 @@ import {
   MessageOutlined,
   ProjectOutlined,
 } from '@ant-design/icons'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { usePersonalCenter } from '@/context/PersonalCenterContext'
 import { useAppUiStore, useCurrentTeamId } from '@/store/appUiStore'
@@ -40,6 +40,7 @@ export function Banner() {
   const currentTeamId = useCurrentTeamId()
   const name = user?.displayName ?? '用户'
   const avatarChar = user?.avatarChar ?? name.slice(0, 1)
+  const [hoverTab, setHoverTab] = useState<BannerTab['key'] | null>(null)
 
   const onProjectDetailRoute = location.pathname.startsWith('/app/projects/')
 
@@ -129,6 +130,8 @@ export function Banner() {
                 key={tab.key}
                 type="button"
                 onClick={() => goTab(tab.key)}
+                onMouseEnter={() => setHoverTab(tab.key)}
+                onMouseLeave={() => setHoverTab(null)}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -139,8 +142,8 @@ export function Banner() {
                   borderBottom: active
                     ? '2px solid var(--qg-mint)'
                     : '2px solid transparent',
-                  background: 'transparent',
-                  color: active ? 'var(--qg-mint)' : LIGHT_MUTED,
+                  background: !active && hoverTab === tab.key ? 'rgba(255,255,255,0.06)' : 'transparent',
+                  color: active ? 'var(--qg-mint)' : hoverTab === tab.key ? LIGHT : LIGHT_MUTED,
                   fontSize: 14,
                   fontWeight: active ? 600 : 400,
                   cursor: 'pointer',

@@ -26,6 +26,7 @@ import { githubApi } from '@/api/github'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
+import { DarkPage } from '@/components/DarkPage'
 import type { GithubInstallation } from '@/types/github'
 
 /**
@@ -172,7 +173,7 @@ export function GitHubIntegrationPage() {
   }
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto' }}>
+    <DarkPage>
       {/* 入口来自团队详情「github集成」，提供返回，避免只能靠浏览器后退 */}
       <Link to={PATHS.teamDetail(teamId)}>
         <Button type="link" icon={<ArrowLeftOutlined />} style={{ paddingLeft: 0, marginBottom: 16 }}>
@@ -326,6 +327,6 @@ export function GitHubIntegrationPage() {
           </li>
         </ul>
       </Card>
-    </div>
+    </DarkPage>
   )
 }

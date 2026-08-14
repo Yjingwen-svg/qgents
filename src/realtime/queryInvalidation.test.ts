@@ -60,6 +60,22 @@ describe('project SSE Task model query invalidation mapping', () => {
     expect(keysFor('diff.created', { taskId: 'task-1', diffId: 'diff-1' }).some((key) => key.includes('task-runs'))).toBe(false)
   })
 
+  it('maps artifact events to artifact timeline and related run queries', () => {
+    expect(keysFor('task.artifact.created', { taskId: 'task-1', artifactId: 'artifact-1', sequenceNo: 1, artifactType: 'PLAN' })).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-artifacts', 'task-1']))
+    expect(keysFor('task-run.artifact.created', { taskId: 'task-1', taskRunId: 'run-1', taskStepId: 'step-1', artifactId: 'artifact-1', sequenceNo: 2, artifactType: 'CODING' })).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1']))
+  })
+
+  it('maps Diff review and delivery events to Task and batch queries', () => {
+    for (const type of ['diff-review.created', 'task.awaiting-diff-confirmation', 'diff-review.confirmed', 'diff-review.rejected', 'delivery.completed', 'delivery.failed', 'task.diff-review.failed'] as const) {
+      const keys = keysFor(type, { taskId: 'task-1', reviewBatchId: 'batch-1', deliveryStatus: 'FAILED', reason: 'failed' })
+      expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks']))
+      expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-diff-review', 'task-1']))
+    }
+    const repositoryKeys = keysFor('delivery.repository.updated', { taskId: 'task-1', diffId: 'diff-1', deliveryStatus: 'DELIVERED' })
+    expect(repositoryKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks']))
+    expect(repositoryKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'diffs', 'diff-1']))
+  })
+
   it('ignores mismatched projects and missing required IDs without broad invalidation', () => {
     expect(queryKeysForProjectTaskEvent(projectId, {
       id: 'evt-2',
@@ -91,6 +107,8 @@ describe('project SSE Task model query invalidation mapping', () => {
       JSON.stringify(['qgents', 'projects', projectId, 'tasks']),
       JSON.stringify(['qgents', 'projects', projectId, 'task-runs']),
       JSON.stringify(['qgents', 'projects', projectId, 'diffs']),
+      JSON.stringify(['qgents', 'projects', projectId, 'task-artifacts']),
+      JSON.stringify(['qgents', 'projects', projectId, 'task-diff-review']),
     ])
   })
 })

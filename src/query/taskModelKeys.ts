@@ -7,6 +7,14 @@ export const taskModelQueryKeys = {
     infinite: (projectId: string, filters: Omit<TaskListFilters, 'cursor'> = {}) => ['qgents', 'projects', projectId, 'tasks', 'infinite', filters] as const,
     detail: (projectId: string, taskId: string) => ['qgents', 'projects', projectId, 'tasks', taskId] as const,
   },
+  taskArtifacts: {
+    root: (projectId: string) => ['qgents', 'projects', projectId, 'task-artifacts'] as const,
+    all: (projectId: string, taskId: string) => ['qgents', 'projects', projectId, 'task-artifacts', taskId] as const,
+  },
+  taskDiffReview: {
+    root: (projectId: string) => ['qgents', 'projects', projectId, 'task-diff-review'] as const,
+    detail: (projectId: string, taskId: string) => ['qgents', 'projects', projectId, 'task-diff-review', taskId] as const,
+  },
   taskSteps: {
     root: (projectId: string) => ['qgents', 'projects', projectId, 'task-steps'] as const,
     all: (projectId: string, taskId: string) => ['qgents', 'projects', projectId, 'tasks', taskId, 'steps'] as const,

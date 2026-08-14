@@ -8,6 +8,16 @@ export const PROJECT_TASK_EVENT_TYPES = [
   'input-required',
   'approval-required',
   'diff.created',
+  'task.artifact.created',
+  'task-run.artifact.created',
+  'diff-review.created',
+  'task.awaiting-diff-confirmation',
+  'diff-review.confirmed',
+  'diff-review.rejected',
+  'delivery.repository.updated',
+  'delivery.completed',
+  'delivery.failed',
+  'task.diff-review.failed',
 ] as const
 
 export type ProjectTaskEventType = (typeof PROJECT_TASK_EVENT_TYPES)[number]
@@ -42,8 +52,23 @@ function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPay
     'input-required': ['taskId', 'taskStepId', 'taskRunId', 'inputRequestId'],
     'approval-required': ['taskId', 'taskStepId', 'taskRunId', 'inputRequestId'],
     'diff.created': ['taskId', 'diffId'],
+    'task.artifact.created': ['taskId', 'artifactId', 'artifactType'],
+    'task-run.artifact.created': ['taskId', 'taskRunId', 'taskStepId', 'artifactId', 'artifactType'],
+    'diff-review.created': ['taskId', 'reviewBatchId', 'reviewStatus', 'aggregateHash'],
+    'task.awaiting-diff-confirmation': ['taskId', 'reviewBatchId'],
+    'diff-review.confirmed': ['taskId', 'reviewBatchId'],
+    'diff-review.rejected': ['taskId', 'reviewBatchId'],
+    'delivery.repository.updated': ['taskId', 'diffId', 'deliveryStatus'],
+    'delivery.completed': ['taskId', 'reviewBatchId', 'deliveryStatus'],
+    'delivery.failed': ['taskId', 'reviewBatchId', 'deliveryStatus'],
+    'task.diff-review.failed': ['taskId', 'reason'],
   }
-  return required[type].every((key) => typeof payload[key] === 'string' && (payload[key] as string).length > 0)
+  const stringsValid = required[type].every((key) => typeof payload[key] === 'string' && (payload[key] as string).length > 0)
+  if (!stringsValid) return false
+  if (type === 'task.artifact.created' || type === 'task-run.artifact.created') {
+    return typeof payload.sequenceNo === 'number' && Number.isInteger(payload.sequenceNo) && payload.sequenceNo >= 0
+  }
+  return true
 }
 
 export function parseProjectTaskEvent(message: Pick<EventSourceMessage, 'id' | 'event' | 'data'>): ProjectTaskEvent | null {

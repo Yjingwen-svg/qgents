@@ -119,6 +119,7 @@ function DetailFields({ diff }: { diff: DiffDetail }) {
 }
 
 function DiffAcceptance({ diff, projectId, onRefresh }: { diff: DiffDetail; projectId: string; onRefresh: () => void }) {
+  const navigate = useNavigate()
   const accept = useAcceptDiff(projectId)
   const reject = useRejectDiff(projectId)
   const [reason, setReason] = useState('')
@@ -127,7 +128,7 @@ function DiffAcceptance({ diff, projectId, onRefresh }: { diff: DiffDetail; proj
   return <Form layout="vertical" onFinish={() => { if (reason.trim()) reject.mutate({ diffId: diff.id, input: { reason: reason.trim() } }, { onError: (error) => { if (error instanceof ApiError && error.status === 409) onRefresh() } }) }}>
     <Form.Item label="拒绝原因" required><Input.TextArea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="请输入拒绝原因" disabled={pending} /></Form.Item>
     <Space wrap><Button aria-label="accept-diff" type="primary" icon={<CheckOutlined />} loading={accept.isPending} disabled={pending} onClick={() => { if (!window.confirm('确认验收此 Diff？')) return; accept.mutate(diff.id, { onError: (error) => { if (error instanceof ApiError && error.status === 409) onRefresh() } }) }}>验收 Diff</Button><Button aria-label="reject-diff" danger htmlType="submit" icon={<CloseOutlined />} loading={reject.isPending} disabled={pending || !reason.trim()}>拒绝 Diff</Button></Space>
-    {accept.error || reject.error ? <Alert className={styles.mutationError} type="error" showIcon message={mutationError(accept.error ?? reject.error)} action={accept.error instanceof ApiError && accept.error.status === 409 || reject.error instanceof ApiError && reject.error.status === 409 ? <Button size="small" onClick={onRefresh}>刷新状态</Button> : undefined} /> : null}
+    {accept.error || reject.error ? <Alert className={styles.mutationError} type="error" showIcon message={mutationError(accept.error ?? reject.error)} action={errorCode(accept.error ?? reject.error) === 'DIFF_BATCH_REVIEW_REQUIRED' ? <Button size="small" onClick={() => navigate(PATHS.projectTaskDetail(projectId, diff.taskId))}>进入总 Diff 验收</Button> : accept.error instanceof ApiError && accept.error.status === 409 || reject.error instanceof ApiError && reject.error.status === 409 ? <Button size="small" onClick={onRefresh}>刷新状态</Button> : undefined} /> : null}
   </Form>
 }
 
@@ -144,4 +145,10 @@ function errorTitle(error: Error | null, resource: string): string {
 function mutationError(error: Error | null): string {
   if (error instanceof ApiError) return error.status === 409 ? 'Diff 状态已变化，请刷新后重试' : error.status === 422 ? '请求参数不合法' : error.status === 403 ? '暂无权限执行该操作' : error.status === 404 ? 'Diff 不存在或不可见' : '操作失败'
   return '操作失败，请稍后重试'
+}
+
+function errorCode(error: Error | null): string | undefined {
+  if (!(error instanceof ApiError) || !error.body || typeof error.body !== 'object' || !('error' in error.body)) return undefined
+  const bodyError = (error.body as { error?: { code?: unknown } }).error
+  return typeof bodyError?.code === 'string' ? bodyError.code : undefined
 }

@@ -9,6 +9,8 @@ import type {
   TaskStatus,
   TaskStep,
   TaskStepRole,
+  TaskArtifact,
+  DiffReviewBatch,
 } from '@/types/task-model'
 import { createTaskModelStore, type TaskModelStore } from './store'
 
@@ -19,6 +21,9 @@ const taskStatuses: readonly TaskStatus[] = [
   'PLANNING',
   'PENDING',
   'RUNNING',
+  'WAITING_DIFF_CONFIRMATION',
+  'DELIVERING',
+  'DELIVERY_FAILED',
   'SUCCEEDED',
   'FAILED',
   'CANCELLING',
@@ -47,6 +52,7 @@ function createTask(projectId: string, id: string, status: TaskStatus, index: nu
     title: `Task ${index + 1}`,
     requirement: `Requirement for ${id}`,
     status,
+    deliveryMode: 'DIFF_FIRST',
     workspaceId: `workspace-${id}`,
     workspaceStatus: 'READY',
     continuationOfTaskId: null,
@@ -159,7 +165,7 @@ export function addDiff(
   status: DiffDetail['status'],
   suffix: string,
   taskRunId = `run-${step.id}`,
-): void {
+): DiffDetail {
   const diff: DiffDetail = {
     id: `diff-${task.projectId}-${suffix}`,
     projectId: task.projectId,
@@ -185,6 +191,42 @@ export function addDiff(
   store.diffs.set(diff.id, diff)
   store.diffFiles.set(diff.id, [{ path: 'src/login.ts', body: '@@ -1 +1 @@', side: 'NEW' }])
   store.diffComments.set(diff.id, [])
+  return diff
+}
+
+function addArtifacts(store: TaskModelStore, task: Task, runs: TaskRunDetail[]): void {
+  const plannerRun = runs.find((run) => run.role === 'PLANNER')
+  const developerRun = runs.find((run) => run.role === 'DEVELOPER')
+  const reviewerRun = runs.find((run) => run.role === 'REVIEWER') ?? runs[runs.length - 1]
+  const codingRun = developerRun ?? reviewerRun ?? plannerRun
+  const artifacts: TaskArtifact[] = [
+    { id: `artifact-${task.id}-plan`, taskId: task.id, taskRunId: null, taskStepId: null, sequenceNo: 1, artifactType: 'PLAN', summary: { title: 'Planner plan generated', approved: true }, createdAt: timestamp },
+    { id: `artifact-${task.id}-coding`, taskId: task.id, taskRunId: codingRun?.id ?? null, taskStepId: codingRun?.taskStepId ?? null, sequenceNo: 2, artifactType: 'CODING', summary: { title: 'Implementation completed', files: 2 }, createdAt: laterTimestamp },
+    { id: `artifact-${task.id}-review`, taskId: task.id, taskRunId: reviewerRun?.id ?? plannerRun?.id ?? null, taskStepId: reviewerRun?.taskStepId ?? plannerRun?.taskStepId ?? null, sequenceNo: 3, artifactType: 'REVIEWING', summary: { title: 'Review summary', passed: true }, createdAt: laterTimestamp },
+  ]
+  store.taskArtifacts.set(task.id, artifacts)
+}
+
+function addDiffReview(
+  store: TaskModelStore,
+  task: Task,
+  diffIds: string[],
+  deliveryStatus: DiffReviewBatch['deliveryStatus'] = 'NOT_STARTED',
+  reviewStatus: DiffReviewBatch['reviewStatus'] = 'PENDING_CONFIRMATION',
+): void {
+  const diffs = diffIds.flatMap((id) => {
+    const diff = store.diffs.get(id)
+    return diff ? [diff] : []
+  })
+  store.diffReviews.set(task.id, {
+    id: `review-batch-${task.id}`,
+    taskId: task.id,
+    reviewStatus,
+    deliveryStatus,
+    aggregateHash: `sha256-${task.id}`,
+    reviewReason: null,
+    diffs: diffs.map(({ workingTreeHash: _workingTreeHash, snapshotKey: _snapshotKey, reviewedBy: _reviewedBy, reviewReason: _reviewReason, reviewedAt: _reviewedAt, updatedAt: _updatedAt, ...summary }) => summary),
+  })
 }
 
 export function createTaskModelScenario(projectId: string): TaskModelStore {
@@ -211,10 +253,44 @@ export function createTaskModelScenario(projectId: string): TaskModelStore {
     store.taskRuns.set(run.id, run)
     addRunResources(store, run, run.steps !== undefined)
   }
+  addArtifacts(store, mainTask, mainRuns)
   addInputRequest(store, mainRuns[1]!, 'INPUT')
   addDiff(store, mainTask, planner, 'PENDING_REVIEW', 'pending')
   addDiff(store, mainTask, planner, 'ACCEPTED', 'accepted')
   addDiff(store, mainTask, planner, 'REJECTED', 'rejected')
+
+  const reviewTask = statusTasks.find((task) => task.status === 'WAITING_DIFF_CONFIRMATION')
+  if (reviewTask) {
+    const reviewStep = createStep(reviewTask, 'review', 'REVIEWER', [])
+    store.taskSteps.set(reviewStep.id, reviewStep)
+    const reviewRun = createRun(reviewTask, reviewStep, 'SUCCEEDED', true)
+    store.taskRuns.set(reviewRun.id, reviewRun)
+    addRunResources(store, reviewRun, true)
+    addArtifacts(store, reviewTask, [reviewRun])
+    const reviewDiff = addDiff(store, reviewTask, reviewStep, 'PENDING_REVIEW', 'batch')
+    addDiffReview(store, reviewTask, [reviewDiff.id])
+  }
+  const deliveringTask = statusTasks.find((task) => task.status === 'DELIVERING')
+  if (deliveringTask) {
+    const deliveringStep = createStep(deliveringTask, 'delivery', 'REVIEWER', [])
+    store.taskSteps.set(deliveringStep.id, deliveringStep)
+    const deliveringRun = createRun(deliveringTask, deliveringStep, 'SUCCEEDED', true)
+    store.taskRuns.set(deliveringRun.id, deliveringRun)
+    addRunResources(store, deliveringRun, true)
+    addArtifacts(store, deliveringTask, [deliveringRun])
+    const deliveringDiff = addDiff(store, deliveringTask, deliveringStep, 'ACCEPTED', 'delivering')
+    addDiffReview(store, deliveringTask, [deliveringDiff.id], 'DELIVERING', 'ACCEPTED')
+  }
+  const failedDeliveryTask = statusTasks.find((task) => task.status === 'DELIVERY_FAILED')
+  if (failedDeliveryTask) {
+    const failedStep = createStep(failedDeliveryTask, 'delivery', 'REVIEWER', [])
+    store.taskSteps.set(failedStep.id, failedStep)
+    const failedRun = createRun(failedDeliveryTask, failedStep, 'SUCCEEDED', true)
+    store.taskRuns.set(failedRun.id, failedRun)
+    addRunResources(store, failedRun, true)
+    const failedDiff = addDiff(store, failedDeliveryTask, failedStep, 'ACCEPTED', 'delivery-failed')
+    addDiffReview(store, failedDeliveryTask, [failedDiff.id], 'FAILED', 'ACCEPTED')
+  }
 
   const runStatusTask = statusTasks[1]!
   const runStatusStep = createStep(runStatusTask, 'developer', 'DEVELOPER', [])

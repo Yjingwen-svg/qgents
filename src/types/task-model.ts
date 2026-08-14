@@ -2,6 +2,9 @@ export type TaskStatus =
   | 'PLANNING'
   | 'PENDING'
   | 'RUNNING'
+  | 'WAITING_DIFF_CONFIRMATION'
+  | 'DELIVERING'
+  | 'DELIVERY_FAILED'
   | 'SUCCEEDED'
   | 'FAILED'
   | 'CANCELLING'
@@ -30,6 +33,10 @@ export type SandboxStatus = 'CREATING' | 'READY' | 'RUNNING' | 'STOPPED' | 'EXPI
 
 export type DiffStatus = 'PENDING_REVIEW' | 'ACCEPTED' | 'REJECTED'
 
+export type TaskArtifactType = 'PLAN' | 'CODING' | 'TESTING' | 'REVIEWING'
+export type DiffReviewStatus = 'PENDING_CONFIRMATION' | 'ACCEPTED' | 'REJECTED'
+export type DiffReviewDeliveryStatus = 'NOT_STARTED' | 'DELIVERING' | 'DELIVERED' | 'PARTIALLY_DELIVERED' | 'FAILED'
+
 export interface WorkspaceRepository {
   repositoryId: string
   baseCommit: string
@@ -45,6 +52,7 @@ export interface Task {
   title: string
   requirement: string
   status: TaskStatus
+  deliveryMode: 'DIFF_FIRST'
   workspaceId: string
   workspaceStatus: string
   continuationOfTaskId: string | null
@@ -53,6 +61,17 @@ export interface Task {
   createdBy: string
   createdAt: string
   updatedAt: string
+}
+
+export interface TaskArtifact {
+  id: string
+  taskId: string
+  taskRunId: string | null
+  taskStepId: string | null
+  sequenceNo: number
+  artifactType: TaskArtifactType
+  summary: Record<string, unknown>
+  createdAt: string
 }
 
 export interface TaskCreateInput {
@@ -263,4 +282,14 @@ export interface DiffCommentInput {
 
 export interface DiffRejectInput {
   reason: string
+}
+
+export interface DiffReviewBatch {
+  id: string
+  taskId: string
+  reviewStatus: DiffReviewStatus
+  deliveryStatus: DiffReviewDeliveryStatus
+  aggregateHash: string
+  reviewReason: string | null
+  diffs: DiffListItem[]
 }

@@ -179,6 +179,98 @@ describe('independent Task model mock chain', () => {
     await expect(diffsApi.reject('project-diff', rejected.id, { reason: 'Again' })).rejects.toMatchObject({ status: 409 })
   })
 
+  it('serves Task artifacts in sequence order and enforces task Diff review transitions', async () => {
+    const projectId = 'project-review'
+    const taskId = 'task-project-review-waiting_diff_confirmation'
+    const artifacts = await fetch(`/api/projects/${projectId}/tasks/${taskId}/artifacts`).then((response) => response.json()) as { data: Array<{ sequenceNo: number; taskRunId: string | null }> }
+    expect(artifacts.data.map((artifact) => artifact.sequenceNo)).toEqual([1, 2, 3])
+    expect(artifacts.data[0]?.taskRunId).toBeNull()
+    expect(artifacts.data.slice(1).every((artifact) => artifact.taskRunId)).toBe(true)
+
+    const batch = await tasksApi.diffReview(projectId, taskId)
+    expect(batch).toMatchObject({ taskId, reviewStatus: 'PENDING_CONFIRMATION', deliveryStatus: 'NOT_STARTED' })
+    const diffId = batch.diffs[0]!.id
+    await expect(diffsApi.accept(projectId, diffId)).rejects.toMatchObject({ status: 409 })
+    const confirmed = await tasksApi.confirmDiffReview(projectId, taskId)
+    expect(confirmed).toMatchObject({ reviewStatus: 'ACCEPTED', deliveryStatus: 'DELIVERING' })
+    expect((await tasksApi.get(projectId, taskId)).status).toBe('DELIVERING')
+    await expect(tasksApi.confirmDiffReview(projectId, taskId)).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('supports rejection reason validation and retrying failed delivery', async () => {
+    const projectId = 'project-review'
+    const rejectedTaskId = 'task-project-review-waiting_diff_confirmation'
+    await expect(tasksApi.rejectDiffReview(projectId, rejectedTaskId, { reason: '   ' })).rejects.toMatchObject({ status: 400 })
+
+    const rejected = await tasksApi.rejectDiffReview(projectId, rejectedTaskId, { reason: '  Needs another review  ' })
+    expect(rejected.reviewReason).toBe('Needs another review')
+    expect((await tasksApi.get(projectId, rejectedTaskId)).status).toBe('FAILED')
+
+    const failedTaskId = 'task-project-review-delivery_failed'
+    const failedArtifacts = await tasksApi.artifacts(projectId, failedTaskId)
+    expect(failedArtifacts.filter((artifact) => artifact.artifactType !== 'PLAN').every((artifact) => artifact.taskRunId)).toBe(true)
+    const failed = await tasksApi.diffReview(projectId, failedTaskId)
+    expect(failed).toMatchObject({ reviewStatus: 'ACCEPTED', deliveryStatus: 'FAILED' })
+    const retried = await tasksApi.retryDiffReviewDelivery(projectId, failedTaskId)
+    expect(retried.deliveryStatus).toBe('DELIVERED')
+    expect((await tasksApi.get(projectId, failedTaskId)).status).toBe('SUCCEEDED')
+    await expect(tasksApi.retryDiffReviewDelivery(projectId, failedTaskId)).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('keeps an in-flight delivery batch readable after Task refresh', async () => {
+    const projectId = 'project-review'
+    const taskId = 'task-project-review-delivering'
+    expect((await tasksApi.get(projectId, taskId)).status).toBe('DELIVERING')
+    expect(await tasksApi.diffReview(projectId, taskId)).toMatchObject({ reviewStatus: 'ACCEPTED', deliveryStatus: 'DELIVERING' })
+  })
+
+  it('walks the v1.3 Artifact and DiffReview resources by returned IDs', async () => {
+    const projectId = 'project-v13-chain'
+    const tasks = (await tasksApi.list(projectId)).data
+    const waitingTask = tasks.find((task) => task.status === 'WAITING_DIFF_CONFIRMATION')
+    const failedTask = tasks.find((task) => task.status === 'DELIVERY_FAILED')
+    expect(waitingTask).toBeDefined()
+    expect(failedTask).toBeDefined()
+    if (!waitingTask || !failedTask) return
+
+    const artifacts = await tasksApi.artifacts(projectId, waitingTask.id)
+    expect(artifacts).toEqual([...artifacts].sort((left, right) => left.sequenceNo - right.sequenceNo))
+    const pendingBatch = await tasksApi.diffReview(projectId, waitingTask.id)
+    expect(pendingBatch.taskId).toBe(waitingTask.id)
+    const confirmedBatch = await tasksApi.confirmDiffReview(projectId, pendingBatch.taskId)
+    expect(confirmedBatch.deliveryStatus).toBe('DELIVERING')
+
+    const failedBatch = await tasksApi.diffReview(projectId, failedTask.id)
+    expect(failedBatch.reviewStatus).toBe('ACCEPTED')
+    expect(failedBatch.deliveryStatus).toBe('FAILED')
+    const deliveredBatch = await tasksApi.retryDiffReviewDelivery(projectId, failedBatch.taskId)
+    expect(deliveredBatch.deliveryStatus).toBe('DELIVERED')
+    expect((await tasksApi.diffReview(projectId, deliveredBatch.taskId)).deliveryStatus).toBe('DELIVERED')
+  })
+
+  it('returns the documented no-batch error and requires Idempotency-Key', async () => {
+    await expect(tasksApi.diffReview('project-review', 'task-project-review-main')).rejects.toMatchObject({ status: 404 })
+    const response = await fetch('/api/projects/project-review/tasks/task-project-review-waiting_diff_confirmation/diff-review/confirm', { method: 'POST' })
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ error: { code: 'IDEMPOTENCY_KEY_REQUIRED' } })
+  })
+
+  it('replays a Diff review mutation for the same key and rejects reuse for another operation', async () => {
+    const url = '/api/projects/project-idempotency/tasks/task-project-idempotency-waiting_diff_confirmation/diff-review/confirm'
+    const first = await fetch(url, { method: 'POST', headers: { 'Idempotency-Key': 'same-key' } })
+    const replay = await fetch(url, { method: 'POST', headers: { 'Idempotency-Key': 'same-key' } })
+    expect(first.status).toBe(200)
+    expect(replay.status).toBe(200)
+    expect(await replay.json()).toEqual(await first.clone().json())
+
+    const retry = await fetch('/api/projects/project-idempotency/tasks/task-project-idempotency-waiting_diff_confirmation/diff-review/retry-delivery', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'same-key' },
+    })
+    expect(retry.status).toBe(409)
+    expect(await retry.json()).toMatchObject({ error: { code: 'IDEMPOTENCY_KEY_REUSED' } })
+  })
+
   it('isolates resources by project and supports an empty scenario', async () => {
     const projectA = await tasksApi.list('project-a')
     const projectB = await tasksApi.list('project-b')

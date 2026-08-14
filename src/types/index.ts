@@ -96,6 +96,13 @@ export type {
   CreateSkillPayload,
 } from './skill'
 export type {
+  Activity,
+  ActivityType,
+  ActivityTargetType,
+  ActivityActor,
+  ActivityTarget,
+} from './activity'
+export type {
   GithubInstallation,
   GithubInstallationRedirect,
   GithubAuthorizedRepository,

@@ -39,13 +39,15 @@ function getRoleLabel(role?: string) {
   return 'Developer'
 }
 
-function getRecentActivities(projects: Project[]) {
-  return projects.slice(0, 4).map((project, index) => ({
-    id: project.id,
-    title: index % 2 === 0 ? `进入 ${project.name} 总群` : `${project.name} 项目资料已同步`,
-    meta: index % 2 === 0 ? '项目协作入口已就绪' : '项目配置已更新',
-    time: index === 0 ? '刚刚' : `${index + 1} 小时前`,
-  }))
+/** 相对时间：刚刚 / N 分钟前 / N 小时前 / N 天前 */
+function formatRelativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const min = Math.floor(diff / 60000)
+  if (min < 1) return '刚刚'
+  if (min < 60) return `${min} 分钟前`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr} 小时前`
+  return `${Math.floor(hr / 24)} 天前`
 }
 
 function MemberPreview({ member }: { member: TeamMember }) {
@@ -124,6 +126,11 @@ export function TeamDetailPage() {
     enabled: !!teamId,
   })
 
+  // 团队资料加载后，把角色同步进 store，供 Banner「团队首页」跳转时带 as=owner
+  useEffect(() => {
+    if (team) setCurrentTeam(team.id, team.role)
+  }, [team, setCurrentTeam])
+
   const { data: members = [], isLoading: membersLoading } = useQuery({
     queryKey: ['teams', teamId, 'members'],
     queryFn: () => teamApi.listMembers(teamId),
@@ -136,8 +143,14 @@ export function TeamDetailPage() {
     enabled: !!teamId,
   })
 
+  // 团队最近动态（真实接口，见「前端待接接口清单.md」；后端未实现时走 mock）
+  const { data: activities = [] } = useQuery({
+    queryKey: ['teams', teamId, 'activities'],
+    queryFn: () => teamApi.activities(teamId),
+    enabled: !!teamId,
+  })
+
   const isLoading = teamLoading || membersLoading || projectsLoading
-  const recentActivities = getRecentActivities(projects)
   const ownerCount = members.filter((member) => member.role === 'TEAM_OWNER').length
 
   if (isLoading) {
@@ -273,18 +286,18 @@ export function TeamDetailPage() {
             <h2>最近动态</h2>
             <Link to={PATHS.MY_TEAMS}>查看全部</Link>
           </div>
-          {recentActivities.length === 0 ? (
+          {activities.length === 0 ? (
             <p className="team-detail__muted">创建项目后会显示团队动态。</p>
           ) : (
             <ul className="team-detail__activity-list">
-              {recentActivities.map((activity) => (
+              {activities.map((activity) => (
                 <li key={activity.id} className="team-detail__activity-item">
                   <CheckCircleFilled />
                   <div>
                     <strong>{activity.title}</strong>
-                    <span>{activity.meta}</span>
+                    <span>{activity.summary || activity.actor.displayName}</span>
                   </div>
-                  <time>{activity.time}</time>
+                  <time>{formatRelativeTime(activity.createdAt)}</time>
                 </li>
               ))}
             </ul>

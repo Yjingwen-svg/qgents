@@ -1,6 +1,21 @@
 import type { Page } from '@/types'
 
-const CONFIGURED_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
+function normalizeApiBaseUrl(value: string): string {
+  const normalized = value.trim().replace(/\/+$/, '')
+  if (!normalized) throw new Error('VITE_API_BASE_URL must be a non-empty API base path')
+
+  if (/^https?:\/\/[^/]+$/i.test(normalized)) {
+    throw new Error('VITE_API_BASE_URL must include the API path, for example https://api.example.com/api/v1')
+  }
+
+  return normalized
+}
+
+function joinApiUrl(baseUrl: string, path: string): string {
+  return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`
+}
+
+const CONFIGURED_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL ?? '/api')
 const BASE_URL = import.meta.env.VITE_USE_MOCK === 'true' ? '/api' : CONFIGURED_BASE_URL
 
 const ACCESS_TOKEN_KEY = 'qgents_access_token'
@@ -28,7 +43,7 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
   unwrapData?: boolean
 }
 
-function getStoredToken(): string | null {
+export function getStoredToken(): string | null {
   return localStorage.getItem(ACCESS_TOKEN_KEY)
 }
 
@@ -39,6 +54,10 @@ function getStoredRefreshToken(): string | null {
 /** 生成幂等键：UUID v4。后端要求写操作携带 Idempotency-Key（接口文档 §2） */
 function generateIdempotencyKey(): string {
   return crypto.randomUUID()
+}
+
+export function getApiBaseUrl(): string {
+  return BASE_URL
 }
 
 /** 需要携带 Idempotency-Key 的写方法 */
@@ -54,7 +73,7 @@ async function refreshAccessToken(): Promise<string | null> {
 
   refreshPromise = (async () => {
     try {
-      const res = await fetch(`${BASE_URL}/auth/refresh`, {
+      const res = await fetch(joinApiUrl(BASE_URL, '/auth/refresh'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -84,15 +103,6 @@ async function refreshAccessToken(): Promise<string | null> {
   return refreshPromise
 }
 
-/** 判断后端错误是否为「access token 失效」 */
-function isInvalidToken(json: unknown): boolean {
-  if (json && typeof json === 'object' && 'error' in json) {
-    const err = (json as Record<string, unknown>).error as { code?: string } | undefined
-    return err?.code === 'INVALID_ACCESS_TOKEN'
-  }
-  return false
-}
-
 /** 发出一次请求（构造 headers + fetch + 解析）。幂等键由调用方传入，重试时复用同一个，避免写操作重复 */
 async function doFetch(
   path: string,
@@ -114,7 +124,7 @@ async function doFetch(
     finalHeaders['Idempotency-Key'] = idempotencyKey ?? generateIdempotencyKey()
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(joinApiUrl(BASE_URL, path), {
     ...rest,
     headers: finalHeaders,
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -151,8 +161,9 @@ async function rawRequest(path: string, options: RequestOptions = {}): Promise<u
 
   let { res, json } = await doFetch(path, options, idempotencyKey)
 
-  // access token 失效时：自动刷新并重试一次（skipAuth 的接口如 login/refresh 不触发，避免死循环）
-  if (res.status === 401 && !skipAuth && isInvalidToken(json)) {
+  // 接口契约只保证 401 表示未认证或 Token 失效，未承诺具体错误码。
+  // 因此任意受认证请求遇到 401 都刷新一次并重试；skipAuth 接口不触发，避免 refresh 死循环。
+  if (res.status === 401 && !skipAuth) {
     const newToken = await refreshAccessToken()
     if (newToken) {
       ;({ res, json } = await doFetch(path, options, idempotencyKey))

@@ -32,7 +32,6 @@ export type DiffStatus = 'PENDING_REVIEW' | 'ACCEPTED' | 'REJECTED'
 
 export interface WorkspaceRepository {
   repositoryId: string
-  workspacePath: string
   baseCommit: string
   sourceBranch: string
   headCommit: string | null

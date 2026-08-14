@@ -9,11 +9,14 @@ const connectProjectEventsMock = vi.hoisted(() => vi.fn(async (init: ProjectEven
 
 vi.mock('@/api/projectEvents', () => ({
   connectProjectEvents: connectProjectEventsMock,
+  projectEventsEnabled: projectEventsEnabledMock,
 }))
+const projectEventsEnabledMock = vi.hoisted(() => vi.fn(() => true))
 
 describe('project task event subscription', () => {
   afterEach(() => {
     connectProjectEventsMock.mockClear()
+    projectEventsEnabledMock.mockReturnValue(true)
   })
 
   it('shares one connection and switches projects by aborting the old stream', async () => {
@@ -42,5 +45,13 @@ describe('project task event subscription', () => {
 
     first.unmount()
     expect(streams[1]?.signal.aborted).toBe(true)
+  })
+
+  it('does not create a real stream in Mock mode', () => {
+    projectEventsEnabledMock.mockReturnValue(false)
+    const hook = renderHook(() => useProjectTaskDomainEvents('project-mock'))
+    expect(hook.result.current).toBe('idle')
+    expect(connectProjectEventsMock).not.toHaveBeenCalled()
+    hook.unmount()
   })
 })

@@ -148,7 +148,6 @@ function createTaskResources(store: TaskModelStore, input: TaskCreateInput, proj
     repositoryIds: input.repositoryIds,
     repositories: input.repositoryIds.map((repository) => ({
       repositoryId: repository,
-      workspacePath: `workspaces/${id}/${repository}`,
       baseCommit: `base-${input.baseRef}`,
       sourceBranch: input.baseRef,
       headCommit: null,

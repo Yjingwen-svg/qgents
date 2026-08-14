@@ -93,7 +93,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 
 async function startMockWorker(): Promise<void> {
   const { worker } = await import('@/mocks/browser')
-  await withTimeout(worker.start({ onUnhandledRequest: 'bypass', waitUntilReady: true }), MOCK_START_TIMEOUT_MS)
+  await withTimeout(worker.start({ onUnhandledRequest: 'error', waitUntilReady: true }), MOCK_START_TIMEOUT_MS)
 }
 
 function startupErrorMessage(error: unknown): string {

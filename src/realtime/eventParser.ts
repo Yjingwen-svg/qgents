@@ -33,6 +33,19 @@ function isPayload(value: unknown): value is ProjectTaskEventPayload {
   return typeof projectId === 'string' && projectId.length > 0
 }
 
+function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPayload): boolean {
+  const required: Record<ProjectTaskEventType, readonly string[]> = {
+    'task.updated': ['taskId'],
+    'task-step.updated': ['taskId', 'taskStepId'],
+    'task-run.updated': ['taskId', 'taskStepId', 'taskRunId'],
+    'task-run.step.progress': ['taskId', 'stepId', 'taskRunId'],
+    'input-required': ['taskId', 'taskStepId', 'taskRunId', 'inputRequestId'],
+    'approval-required': ['taskId', 'taskStepId', 'taskRunId', 'inputRequestId'],
+    'diff.created': ['taskId', 'diffId'],
+  }
+  return required[type].every((key) => typeof payload[key] === 'string' && (payload[key] as string).length > 0)
+}
+
 export function parseProjectTaskEvent(message: Pick<EventSourceMessage, 'id' | 'event' | 'data'>): ProjectTaskEvent | null {
   const eventType = message.event.trim()
   const data = message.data.trim()
@@ -40,7 +53,7 @@ export function parseProjectTaskEvent(message: Pick<EventSourceMessage, 'id' | '
 
   try {
     const payload: unknown = JSON.parse(data)
-    if (!isPayload(payload)) return null
+    if (!isPayload(payload) || !hasRequiredIds(eventType, payload)) return null
     return {
       id: message.id.trim() || null,
       type: eventType,

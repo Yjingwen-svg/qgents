@@ -16,7 +16,8 @@ export interface WorkflowGraph {
 function compareNewest(left: TaskRunSummary, right: TaskRunSummary): number {
   const leftTime = Date.parse(left.updatedAt || left.createdAt)
   const rightTime = Date.parse(right.updatedAt || right.createdAt)
-  return rightTime - leftTime
+  if (rightTime !== leftTime) return rightTime - leftTime
+  return right.id.localeCompare(left.id)
 }
 
 export function runsForStep(taskRuns: TaskRunSummary[], taskStepId: string): TaskRunSummary[] {

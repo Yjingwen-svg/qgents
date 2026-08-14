@@ -11,11 +11,13 @@ const useTaskMock = vi.hoisted(() => vi.fn())
 const useTaskStepsMock = vi.hoisted(() => vi.fn())
 const useTaskRunsMock = vi.hoisted(() => vi.fn())
 const useAgentsMock = vi.hoisted(() => vi.fn())
+const useAgentMock = vi.hoisted(() => vi.fn())
+const useAgentSkillBindingsMock = vi.hoisted(() => vi.fn())
 const projectGetByIdMock = vi.hoisted(() => vi.fn())
 const agentGetMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/task-model', () => ({ useInfiniteTasks: useInfiniteTasksMock, useTask: useTaskMock, useTaskSteps: useTaskStepsMock, useTaskRuns: useTaskRunsMock }))
-vi.mock('@/hooks/agents', () => ({ useAgents: useAgentsMock }))
+vi.mock('@/hooks/agents', () => ({ useAgents: useAgentsMock, useAgent: useAgentMock, useAgentSkillBindings: useAgentSkillBindingsMock }))
 vi.mock('@/api', () => ({ projectApi: { getById: projectGetByIdMock }, agentApi: { get: agentGetMock } }))
 
 const task: Task = {
@@ -47,6 +49,8 @@ beforeEach(() => {
   useTaskStepsMock.mockReturnValue({ data: { data: steps }, isPending: false, isError: false, error: null })
   useTaskRunsMock.mockReturnValue({ data: { data: runs }, isPending: false, isError: false, error: null })
   useAgentsMock.mockReturnValue({ data: { data: [{ id: 'agent-1', name: '执行 Agent' }] }, isPending: false, isError: false, error: null })
+  useAgentMock.mockReturnValue({ data: { id: 'agent-1', name: '执行 Agent' }, isPending: false, isError: false })
+  useAgentSkillBindingsMock.mockReturnValue({ data: { agentId: 'agent-1', skillIds: ['skill-1'], skills: [{ id: 'skill-1', name: 'TypeScript', visibility: 'PROJECT_SHARED', status: 'PUBLISHED' }], updatedAt: '2026-08-13T00:00:00Z' }, isError: false })
 })
 
 describe('WorkflowViewerPage', () => {
@@ -103,6 +107,13 @@ describe('WorkflowViewerPage', () => {
     useAgentsMock.mockReturnValue({ data: undefined, isPending: false, isError: true, error: new Error('403') })
     renderPage()
     await waitFor(() => expect(screen.getByText('Agent 摘要加载失败，仍显示 Agent ID。')).toBeInTheDocument())
+    expect(screen.getByText('DEVELOPER')).toBeInTheDocument()
+  })
+
+  it('keeps the topology when Skill binding lookup fails', async () => {
+    useAgentSkillBindingsMock.mockReturnValue({ data: undefined, isError: true })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Skill 模块尚未接入')).toBeInTheDocument())
     expect(screen.getByText('DEVELOPER')).toBeInTheDocument()
   })
 })

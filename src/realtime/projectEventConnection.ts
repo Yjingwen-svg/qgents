@@ -12,6 +12,16 @@ export class EventCursorExpiredError extends Error {
   }
 }
 
+class TerminalEventStreamError extends Error {
+  readonly status: number
+
+  constructor(status: number) {
+    super(`Project event stream failed: ${status}`)
+    this.name = 'TerminalEventStreamError'
+    this.status = status
+  }
+}
+
 export interface ProjectEventConnectionOptions {
   cursorStore?: EventCursorStore
   retryDelaysMs?: readonly number[]
@@ -22,6 +32,21 @@ export interface ProjectEventConnectionOptions {
 }
 
 const DEFAULT_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000] as const
+
+async function eventErrorCode(response: Response): Promise<string | null> {
+  try {
+    const body: unknown = await response.clone().json()
+    if (typeof body !== 'object' || body === null) return null
+    const record = body as Record<string, unknown>
+    const error = record.error
+    if (typeof error === 'object' && error !== null && typeof (error as Record<string, unknown>).code === 'string') {
+      return (error as Record<string, unknown>).code as string
+    }
+    return typeof record.code === 'string' ? record.code : null
+  } catch {
+    return null
+  }
+}
 
 export class ProjectEventConnection {
   private readonly projectId: string
@@ -74,10 +99,12 @@ export class ProjectEventConnection {
       lastEventId,
       signal: controller.signal,
       onopen: async (response) => {
-        if (response.status === 409) {
-          throw new EventCursorExpiredError()
+        if (!response.ok) {
+          const code = response.status === 409 ? await eventErrorCode(response) : null
+          if (response.status === 409 && code === 'EVENT_CURSOR_EXPIRED') throw new EventCursorExpiredError()
+          if (response.status === 401 || response.status === 403 || response.status === 409) throw new TerminalEventStreamError(response.status)
+          throw new Error(`Project event stream failed: ${response.status}`)
         }
-        if (!response.ok) throw new Error(`Project event stream failed: ${response.status}`)
         const contentType = response.headers.get('content-type')
         if (!contentType?.startsWith(EventStreamContentType)) {
           throw new Error(`Expected content-type to be ${EventStreamContentType}`)
@@ -99,6 +126,11 @@ export class ProjectEventConnection {
           this.seenEventIds.clear()
           this.retryAttempt = 0
           this.onCursorExpired()
+          throw error
+        }
+        if (error instanceof TerminalEventStreamError) {
+          this.running = false
+          this.setStatus('disconnected')
           throw error
         }
         if (this.running) this.setStatus('disconnected')

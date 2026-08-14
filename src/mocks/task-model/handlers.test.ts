@@ -50,9 +50,11 @@ describe('independent Task model mock chain', () => {
       baseRef: 'main',
     })
     const fetchedTask = await tasksApi.get(projectId, task.id)
+    const listedTasks = await tasksApi.list(projectId)
     const steps = (await tasksApi.listSteps(projectId, task.id)).data
     const runs = (await taskRunsApi.list(projectId, task.id)).data
     expect(fetchedTask.id).toBe(task.id)
+    expect(listedTasks.data.some((item) => item.id === task.id)).toBe(true)
     expect(steps.length).toBeGreaterThanOrEqual(3)
     expect(runs.every((run) => run.taskId === task.id && steps.some((step) => step.id === run.taskStepId))).toBe(true)
 

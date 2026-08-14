@@ -14,7 +14,7 @@ vi.mock('@/hooks/task-model', () => ({ useTask: useTaskMock, useTaskSteps: useTa
 
 import { TaskDetailPage } from './TaskDetailPage'
 
-const task: Task = { id: 'task-1', projectId: 'project-test', requirementGroupId: 'group-1', triggerMessageId: 'message-1', title: '登录任务', requirement: '实现登录功能', status: 'RUNNING', workspaceId: 'workspace-1', workspaceStatus: 'READY', continuationOfTaskId: null, repositoryIds: ['repo-1'], repositories: [{ repositoryId: 'repo-1', workspacePath: '/workspace', baseCommit: 'base-1', sourceBranch: 'main', headCommit: 'head-1' }], createdBy: 'user-1', createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z' }
+const task: Task = { id: 'task-1', projectId: 'project-test', requirementGroupId: 'group-1', triggerMessageId: 'message-1', title: '登录任务', requirement: '实现登录功能', status: 'RUNNING', workspaceId: 'workspace-1', workspaceStatus: 'READY', continuationOfTaskId: null, repositoryIds: ['repo-1'], repositories: [{ repositoryId: 'repo-1', baseCommit: 'base-1', sourceBranch: 'main', headCommit: 'head-1' }], createdBy: 'user-1', createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z' }
 const step: TaskStep = { id: 'step-1', taskId: 'task-1', role: 'DEVELOPER', agentId: 'agent-1', repositoryId: 'repo-1', baseRef: 'main', dependencies: [], testsetIds: ['testset-1'], status: 'RUNNING', acceptanceNotes: '覆盖登录场景' }
 const run: TaskRunSummary = { id: 'run-1', projectId: 'project-test', taskId: 'task-1', taskStepId: 'step-1', agentId: 'agent-1', role: 'DEVELOPER', status: 'RUNNING', retryOfTaskRunId: null, createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z' }
 function page<T>(data: T[]): TaskModelPage<T> { return { data, page: { nextCursor: null, hasMore: false }, requestId: 'request-1' } }

@@ -30,8 +30,9 @@ beforeEach(() => { useTaskMock.mockReturnValue({ data: task, error: null, isErro
 describe('TaskDetailPage', () => {
   it('loads Task, steps and task runs without legacy resources', () => {
     renderPage()
-    expect(screen.getByRole('heading', { name: /任务 ID：task-1登录任务/ })).toBeInTheDocument()
-    expect(screen.getByText('实现登录功能')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '登录任务' })).toBeInTheDocument()
+    expect(screen.getByText('T-1')).toBeInTheDocument()
+    expect(screen.getAllByText('实现登录功能').length).toBeGreaterThan(0)
     expect(screen.getByText(/Agent：Agent One/)).toBeInTheDocument()
     expect(screen.getByText('查看最新 TaskRun：run-1')).toBeInTheDocument()
     expect(useTaskMock).toHaveBeenCalledWith('project-test', 'task-1')
@@ -46,8 +47,8 @@ describe('TaskDetailPage', () => {
     ]
     useTaskArtifactsMock.mockReturnValue({ data: artifacts, error: null, isError: false, isLoading: false })
     renderPage()
-    expect(screen.getByText('#1 PLAN')).toBeInTheDocument()
-    expect(screen.getByText('#2 CODING')).toBeInTheDocument()
+    expect(screen.getByText('计划')).toBeInTheDocument()
+    expect(screen.getByText('代码编写')).toBeInTheDocument()
     expect(screen.getByText('该产物未关联 TaskRun')).toBeInTheDocument()
     expect(screen.getByText('title：Implemented')).toBeInTheDocument()
   })

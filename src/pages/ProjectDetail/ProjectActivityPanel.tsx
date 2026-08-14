@@ -7,7 +7,7 @@ import {
   ExclamationCircleFilled,
 } from '@ant-design/icons'
 import { groupApi, tasksApi } from '@/api'
-import type { Task, TaskStatus } from '@/types/task-model'
+import type { TaskListItem, TaskStatus } from '@/types/task-model'
 
 const { Text } = Typography
 
@@ -47,8 +47,8 @@ const TASK_STATUS_META: Record<TaskStatus, { label: string; color: string }> = {
 }
 
 /** 按群上关联任务的优先级，派生需求群进度 */
-function groupProgress(tasks: Task[], groupId: string): GroupProgressKey {
-  const ts = tasks.filter((t) => t.requirementGroupId === groupId)
+function groupProgress(tasks: TaskListItem[], groupId: string): GroupProgressKey {
+  const ts = tasks.filter((t) => t.requirementGroup?.id === groupId)
   if (ts.length === 0) return 'todo'
   if (ts.some((t) => RUNNING_STATUSES.includes(t.status))) return 'running'
   if (ts.some((t) => t.status === 'SUCCEEDED')) return 'done'

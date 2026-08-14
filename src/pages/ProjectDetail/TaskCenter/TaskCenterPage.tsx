@@ -14,7 +14,7 @@ import styles from './TaskCenterPage.module.scss'
 
 const { Title, Text } = Typography
 const PAGE_SIZE = 20
-const SEARCH_PARAMS = new Set(['taskId', 'status', 'groupId', 'createdBy', 'view', 'panel'])
+const SEARCH_PARAMS = new Set(['taskId', 'status', 'groupId', 'createdBy', 'repositoryId', 'view', 'panel'])
 
 const taskCenterTheme: ThemeConfig = {
   algorithm: theme.defaultAlgorithm,
@@ -29,10 +29,11 @@ export function TaskCenterPage() {
   const status = parseStatus(searchParams.get('status'))
   const groupId = searchParams.get('groupId') ?? undefined
   const createdBy = searchParams.get('createdBy') ?? undefined
+  const repositoryId = searchParams.get('repositoryId') ?? undefined
   const requestedTaskId = searchParams.get('taskId')?.trim() || undefined
   const view = searchParams.get('view') === 'table' ? 'table' : 'board'
   const panel = parseTaskCenterPanel(searchParams.get('panel'))
-  const query = useInfiniteTasks(projectId, { groupId, status: status === 'all' ? undefined : status, createdBy, limit: PAGE_SIZE })
+  const query = useInfiniteTasks(projectId, { groupId, status: status === 'all' ? undefined : status, createdBy, repositoryId, limit: PAGE_SIZE })
 
   const tasks = useMemo(() => {
     const seen = new Map<string, TaskListItem>()
@@ -42,8 +43,10 @@ export function TaskCenterPage() {
   const selectedTaskId = requestedTaskId ?? tasks[0]?.id
   const selectedTask = tasks.find((task) => task.id === selectedTaskId)
   const groupOptions = useMemo(() => uniqueOptions(tasks.map((task) => ({ label: task.requirementGroup?.name || '暂无', value: task.requirementGroup?.id ?? '' }))), [tasks])
+  const repositoryOptions = useMemo(() => uniqueOptions(tasks.flatMap((task) => task.repositories.map((repository) => ({ label: repository.name, value: repository.repositoryId })))), [tasks])
+  const createdByOptions = useMemo(() => uniqueOptions(tasks.flatMap((task) => task.createdByUser ? [{ label: task.createdByUser.displayName, value: task.createdByUser.id }] : [])), [tasks])
   const hasServerItems = query.data?.pages.some((page) => page.data.length > 0) ?? false
-  const isUnfiltered = status === 'all' && !createdBy && !groupId
+  const isUnfiltered = status === 'all' && !createdBy && !groupId && !repositoryId
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams)
@@ -71,7 +74,7 @@ export function TaskCenterPage() {
 
   function resetFilters() {
     const next = new URLSearchParams(searchParams)
-    for (const key of ['status', 'createdBy', 'groupId']) next.delete(key)
+    for (const key of ['status', 'createdBy', 'groupId', 'repositoryId']) next.delete(key)
     setSearchParams(next, { replace: true })
   }
 
@@ -93,10 +96,14 @@ export function TaskCenterPage() {
           <TaskFilters
             status={status}
             groupId={groupId}
+            repositoryId={repositoryId}
             createdBy={createdBy}
             groupOptions={groupOptions}
+            repositoryOptions={repositoryOptions}
+            createdByOptions={createdByOptions}
             onStatusChange={(value) => updateParam('status', value === 'all' ? undefined : value)}
             onGroupChange={(value) => updateParam('groupId', value)}
+            onRepositoryChange={(value) => updateParam('repositoryId', value)}
             onCreatedByChange={(value) => updateParam('createdBy', value)}
             onReset={resetFilters}
           />
@@ -107,7 +114,15 @@ export function TaskCenterPage() {
           <TaskCenterContent query={query} tasks={tasks} hasServerItems={hasServerItems} isUnfiltered={isUnfiltered} view={view} selectedTaskId={selectedTaskId} onSelectTask={(taskId) => updateParam('taskId', taskId)} onViewDetails={(taskId) => navigate(PATHS.projectTaskDetail(projectId, taskId), { state: { from: `${PATHS.projectTasks(projectId)}?taskId=${encodeURIComponent(taskId)}` } })} onRetry={() => void query.refetch()} />
           {!query.isLoading && query.hasNextPage ? <div className={styles.loadMore}><Button onClick={() => void query.fetchNextPage()} loading={query.isFetchingNextPage}>加载更多</Button></div> : null}
         </main>
-      <TaskContextPanel task={selectedTask} taskId={selectedTaskId} panel={panel} onPanelChange={handlePanelChange} />
+      <TaskContextPanel
+        projectId={projectId}
+        task={selectedTask}
+        taskId={selectedTaskId}
+        panel={panel}
+        onPanelChange={handlePanelChange}
+        onViewDetails={(taskId) => navigate(PATHS.projectTaskDetail(projectId, taskId), { state: { from: `${PATHS.projectTasks(projectId)}?taskId=${encodeURIComponent(taskId)}` } })}
+        onViewRun={(taskId, taskRunId) => navigate(PATHS.projectTaskRunDetail(projectId, taskId, taskRunId))}
+      />
       </div>
     </ConfigProvider>
   )

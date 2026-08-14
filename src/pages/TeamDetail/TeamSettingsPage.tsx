@@ -254,7 +254,9 @@ function MembersTab({ teamId, members, isOwner }: { teamId: string; members: Tea
   })
 
   const inviteMutation = useMutation({
-    mutationFn: () => teamApi.invite(teamId, { email: inviteEmail.trim(), role: inviteRole }),
+    // expiresInDays 后端必填（INVALID_ARGUMENT），前端默认 7 天
+    mutationFn: () =>
+      teamApi.invite(teamId, { email: inviteEmail.trim(), role: inviteRole, expiresInDays: 7 }),
     onSuccess: () => {
       message.success('邀请已发送')
       setInviteEmail('')

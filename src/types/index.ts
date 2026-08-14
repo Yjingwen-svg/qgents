@@ -19,6 +19,7 @@ export type {
   CreateInvitationPayload,
   TeamInvitation,
   AcceptInvitationResponse,
+  MyTeamInvitation,
 } from './team'
 export type { Project, ProjectRole, ProjectMember, CreateProjectPayload } from './project'
 export type {

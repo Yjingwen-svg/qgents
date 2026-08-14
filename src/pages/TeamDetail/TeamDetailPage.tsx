@@ -303,14 +303,14 @@ export function TeamDetailPage() {
             </ul>
           )}
         </section>
-
+{/* 
         <section className="team-detail__panel">
           <div className="team-detail__panel-heading">
             <h2>待处理的团队邀请</h2>
             <span>0 个</span>
           </div>
           <p className="team-detail__muted">当前接口没有待处理项目邀请列表，这里先保留原型中的信息区位置。</p>
-        </section>
+        </section> */}
       </aside>
 
       <CreateProjectModal

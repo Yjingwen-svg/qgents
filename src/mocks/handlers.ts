@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import type { GithubAuthorizedRepository, GithubInstallation } from '@/types/github'
 import type { Group, GroupMember, Message } from '@/types/group'
-import type { Activity, Memory, Notification } from '@/types'
+import type { Activity, Memory, Notification, MyTeamInvitation } from '@/types'
 import { MOCK_CURRENT_USER } from './currentUser'
 
 // ══════════════════════════════════════════════
@@ -51,6 +51,21 @@ const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: st
 
 let nextTeamId = 10
 let nextProjectId = 10
+
+// 当前用户收到的待处理团队邀请（演示用样例）
+const MOCK_MY_INVITATIONS: MyTeamInvitation[] = [
+  {
+    id: 'my-inv-001',
+    token: 'inv-token-demo-001',
+    teamId: 'team-joined-001',
+    teamName: '广工创新团队',
+    role: 'TEAM_MEMBER',
+    inviterDisplayName: '陈同学',
+    status: 'PENDING',
+    expiresAt: '2026-08-21T00:00:00Z',
+    createdAt: '2026-08-14T10:00:00Z',
+  },
+]
 
 // ══════════════════════════════════════════════
 // 群聊（Group / Message）Mock 数据 —— 对齐接口文档 v1.1.8 §7
@@ -881,6 +896,9 @@ export const handlers = [
   }),
 
   http.get('/api/teams/:teamId/invitations', () => HttpResponse.json({ data: [] })),
+
+  // GET /team-invitations —— 当前用户收到的待处理邀请（收件人视角）
+  http.get('/api/team-invitations', () => HttpResponse.json({ data: MOCK_MY_INVITATIONS })),
 
   http.post('/api/team-invitations/:token/accept', () =>
     HttpResponse.json({ data: { teamId: 'team-joined-001', teamName: '广工创新团队' } }),

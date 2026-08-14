@@ -8,6 +8,7 @@ import type {
   AcceptInvitationResponse,
   TeamRole,
   Activity,
+  MyTeamInvitation,
 } from '@/types'
 
 function isTeamRole(value: unknown): value is TeamRole {
@@ -82,6 +83,11 @@ export const teamApi = {
     return request<AcceptInvitationResponse>(`/team-invitations/${token}/accept`, {
       method: 'POST',
     })
+  },
+
+  /** GET /team-invitations — 当前用户收到的待处理团队邀请（收件人视角） */
+  listMyInvitations() {
+    return request<MyTeamInvitation[]>('/team-invitations')
   },
 
 

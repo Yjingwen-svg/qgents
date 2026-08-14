@@ -6,6 +6,7 @@ import { projectApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
 import { MemoryPage as MemoryPageImpl } from './MemoryPage'
 import { SkillPage as SkillPageImpl } from './SkillPage'
+import { MembersPage as MembersPageImpl } from './MembersPage'
 
 /**
  * 项目详情其它导航子页的统一占位壳
@@ -164,7 +165,7 @@ export function TestsetPage() {
 }
 
 export function MembersPage() {
-  return <ProjectSectionPage section="members" title="项目成员" todos={['TODO: C - 成员列表、角色、邀请/移除']} />
+  return <MembersPageImpl />
 }
 
 export function SettingsPage() {

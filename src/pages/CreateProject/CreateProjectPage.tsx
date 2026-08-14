@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Select } from 'antd'
+import { useQuery } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
-import { projectApi } from '@/api'
+import { projectApi, teamApi } from '@/api'
 import './CreateProjectPage.css'
 
 /**
@@ -16,8 +18,16 @@ export function CreateProjectPage() {
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [memberIds, setMemberIds] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // 团队成员列表（作为「初始成员」多选候选）
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ['teams', teamId, 'members'],
+    queryFn: () => teamApi.listMembers(teamId),
+    enabled: !!teamId,
+  })
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -30,6 +40,7 @@ export function CreateProjectPage() {
         teamId,
         name: name.trim(),
         description: description.trim() || undefined,
+        memberIds: memberIds.length > 0 ? memberIds : undefined,
       })
       // 创建成功后跳转到项目需求群聊
       navigate(PATHS.projectDetail(project.id), { replace: true })
@@ -77,6 +88,25 @@ export function CreateProjectPage() {
             rows={3}
           />
         </label>
+
+        <div className="create-project__field">
+          <span>初始成员（可选）</span>
+          <Select
+            mode="multiple"
+            placeholder="从团队成员中选择，选中即加入项目"
+            value={memberIds}
+            onChange={setMemberIds}
+            options={teamMembers.map((m) => ({
+              value: m.userId,
+              label: m.displayName || m.userId,
+            }))}
+            optionFilterProp="label"
+            allowClear
+          />
+          <p className="create-project__hint" style={{ fontSize: 12, color: '#94a3b8', margin: '4px 0 0' }}>
+            从团队现有成员中选择，创建后即成为项目初始成员
+          </p>
+        </div>
 
         {/* 原「Git 仓库」URL 输入已移除；改为跳转团队已授权仓库列表 */}
         <div className="create-project__field">

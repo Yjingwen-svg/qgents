@@ -6,8 +6,11 @@
  * ============================================================================
  */
 
+/** 安装链接来源端：后端写入 state，callback 据此回跳 Web 或移动端 */
+export type GithubInstallClient = 'WEB' | 'MOBILE'
+
 /**
- * POST /teams/{teamId}/integrations/github/installations
+ * POST /teams/{teamId}/integrations/github/installations?client=WEB|MOBILE
  * 成功响应 data 字段（外层还有 { data, requestId } 信封）
  *
  * 文档示例：

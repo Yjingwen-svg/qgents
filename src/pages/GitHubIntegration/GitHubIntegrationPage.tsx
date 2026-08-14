@@ -107,7 +107,7 @@ export function GitHubIntegrationPage() {
    * /app/integrations/github?teamId={id}&installed=1
    */
   const handledRef = useRef(false)
-  // 处理 GitHub 安装完成回调回跳
+  // 处理 GitHub 安装完成页面回跳
   useEffect(() => {
     const installed = searchParams.get('installed')
     if (installed !== '1') return
@@ -124,10 +124,10 @@ export function GitHubIntegrationPage() {
     //替换模式:不新增历史，直接覆盖当前这一条历史记录
 
     // TODO[后端联调] 安装成功后刷新 installations / repositories 列表
-    // 已冻结见 docs：installed=1 后提示一次、invalidate 列表、清理 query。
+  // 已冻结见 docs：installed=1 后提示一次、invalidate 列表、清理 query。清除旧缓存
     void queryClient.invalidateQueries({ queryKey: queryKeys.githubInstallations(teamId) })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.githubTeamRepositories(teamId) })
-  }, [searchParams, setSearchParams, message, queryClient, teamId])
+    void queryClient.invalidateQueries({ queryKey: queryKeys.githubTeamRepositories(teamId) })//302负责跳转页面
+  }, [searchParams, setSearchParams, message, queryClient, teamId])//searchParams,teamId
   // searchParams:url 查询参数对象。
   // 只要浏览器 url 问号后面参数发生变化，searchParams 引用就会变，触发 useEffect 执行。
   //主要是看searchParams的变化,其余那两个引用一直不变
@@ -148,7 +148,7 @@ export function GitHubIntegrationPage() {
   /** 按钮点击入口：仅触发 mutation，业务全在上面 */
   function handleInstallApp() {
     installMutation.mutate()
-  }
+  }//触发网络请求返回的信息,弹窗
 
   /** GET 团队已安装的 GitHub App 列表 */
   const installationsQuery = useQuery({

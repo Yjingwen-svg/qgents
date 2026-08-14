@@ -83,6 +83,7 @@ export type {
   GenerateMemoryDraftPayload,
 } from './memory'
 export type {
+  GithubInstallClient,
   GithubInstallation,
   GithubInstallationRedirect,
   GithubAuthorizedRepository,

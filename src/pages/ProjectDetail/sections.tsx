@@ -5,6 +5,7 @@ import { PROJECT_NAV } from '@/routes/paths'
 import { projectApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
 import { MemoryPage as MemoryPageImpl } from './MemoryPage'
+import { SkillPage as SkillPageImpl } from './SkillPage'
 
 /**
  * 项目详情其它导航子页的统一占位壳
@@ -149,7 +150,7 @@ export function AgentsPage() {
 }
 
 export function SkillsPage() {
-  return <ProjectSectionPage section="skills" title="共享 Skill" todos={['TODO: B - Skill 创建/审核/发布']} />
+  return <SkillPageImpl />
 }
 
 export function MemoryPage() {

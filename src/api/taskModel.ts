@@ -22,6 +22,8 @@ import type {
   TaskStepCreateInput,
   ReplaceTaskStepAgentInput,
   PageFilters,
+  TaskArtifact,
+  DiffReviewBatch,
 } from '@/types/task-model'
 
 const taskPath = (projectId: string, taskId: string) => `/projects/${projectId}/tasks/${taskId}`
@@ -43,6 +45,36 @@ export const tasksApi = {
 
   get(projectId: string, taskId: string) {
     return requestModelData<Task>(taskPath(projectId, taskId))
+  },
+
+  artifacts(projectId: string, taskId: string) {
+    return requestModelData<TaskArtifact[]>(`${taskPath(projectId, taskId)}/artifacts`)
+  },
+
+  diffReview(projectId: string, taskId: string) {
+    return requestModelData<DiffReviewBatch>(`${taskPath(projectId, taskId)}/diff-review`)
+  },
+
+  confirmDiffReview(projectId: string, taskId: string) {
+    return requestModelData<DiffReviewBatch>(`${taskPath(projectId, taskId)}/diff-review/confirm`, {
+      method: 'POST',
+      headers: writeModelHeaders(),
+    })
+  },
+
+  rejectDiffReview(projectId: string, taskId: string, input: DiffRejectInput) {
+    return requestModelData<DiffReviewBatch>(`${taskPath(projectId, taskId)}/diff-review/reject`, {
+      method: 'POST',
+      headers: writeModelHeaders(),
+      body: input,
+    })
+  },
+
+  retryDiffReviewDelivery(projectId: string, taskId: string) {
+    return requestModelData<DiffReviewBatch>(`${taskPath(projectId, taskId)}/diff-review/retry-delivery`, {
+      method: 'POST',
+      headers: writeModelHeaders(),
+    })
   },
 
   listSteps(projectId: string, taskId: string, filters: PageFilters = {}) {

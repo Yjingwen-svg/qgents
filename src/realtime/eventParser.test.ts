@@ -12,8 +12,22 @@ describe('project SSE event parsing', () => {
           : eventType === 'task-run.updated'
             ? { taskId: 'task-1', taskStepId: 'step-1', taskRunId: 'run-1' }
             : eventType === 'diff.created'
-              ? { taskId: 'task-1', diffId: 'diff-1' }
-              : { taskId: 'task-1', taskStepId: 'step-1', taskRunId: 'run-1', inputRequestId: 'input-1' }
+            ? { taskId: 'task-1', diffId: 'diff-1' }
+              : eventType === 'task.artifact.created'
+                ? { taskId: 'task-1', artifactId: 'artifact-1', sequenceNo: 1, artifactType: 'PLAN' }
+                : eventType === 'task-run.artifact.created'
+                  ? { taskId: 'task-1', taskStepId: 'step-1', taskRunId: 'run-1', artifactId: 'artifact-1', sequenceNo: 2, artifactType: 'CODING' }
+                  : eventType === 'diff-review.created'
+                    ? { taskId: 'task-1', reviewBatchId: 'batch-1', reviewStatus: 'PENDING_CONFIRMATION', aggregateHash: 'hash-1' }
+                    : eventType === 'task.awaiting-diff-confirmation' || eventType === 'diff-review.confirmed' || eventType === 'diff-review.rejected'
+                      ? { taskId: 'task-1', reviewBatchId: 'batch-1' }
+                      : eventType === 'delivery.repository.updated'
+                        ? { taskId: 'task-1', diffId: 'diff-1', deliveryStatus: 'DELIVERED' }
+                        : eventType === 'delivery.completed' || eventType === 'delivery.failed'
+                          ? { taskId: 'task-1', reviewBatchId: 'batch-1', deliveryStatus: 'DELIVERED' }
+                          : eventType === 'task.diff-review.failed'
+                            ? { taskId: 'task-1', reason: 'delivery failed' }
+                            : { taskId: 'task-1', taskStepId: 'step-1', taskRunId: 'run-1', inputRequestId: 'input-1' }
     const event = parseProjectTaskEvent({
       id: 'evt-new',
       event: eventType,

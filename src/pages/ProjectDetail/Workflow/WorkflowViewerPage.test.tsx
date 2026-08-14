@@ -21,7 +21,7 @@ vi.mock('@/hooks/agents', () => ({ useAgents: useAgentsMock, useAgent: useAgentM
 vi.mock('@/api', () => ({ projectApi: { getById: projectGetByIdMock }, agentApi: { get: agentGetMock } }))
 
 const task: Task = {
-  id: 'task-1', projectId: 'project-1', requirementGroupId: 'group-1', triggerMessageId: 'message-1', title: '登录流程', requirement: '实现登录流程', status: 'RUNNING', workspaceId: 'workspace-1', workspaceStatus: 'READY', continuationOfTaskId: null, repositoryIds: ['repo-1'], repositories: [], createdBy: 'user-1', createdAt: '2026-08-12T08:00:00Z', updatedAt: '2026-08-12T08:01:00Z',
+  id: 'task-1', projectId: 'project-1', requirementGroupId: 'group-1', triggerMessageId: 'message-1', title: '登录流程', requirement: '实现登录流程', status: 'RUNNING', deliveryMode: 'DIFF_FIRST', workspaceId: 'workspace-1', workspaceStatus: 'READY', continuationOfTaskId: null, repositoryIds: ['repo-1'], repositories: [], createdBy: 'user-1', createdAt: '2026-08-12T08:00:00Z', updatedAt: '2026-08-12T08:01:00Z',
 }
 const steps: TaskStep[] = [
   { id: 'step-a', taskId: task.id, role: 'PLANNER', agentId: 'agent-1', repositoryId: 'repo-1', baseRef: 'main', dependencies: [], testsetIds: [], status: 'SUCCEEDED', acceptanceNotes: '规划完成' },

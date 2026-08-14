@@ -10,7 +10,7 @@ vi.mock('@/hooks/task-model', () => ({ useTask: useTaskMock, useTaskRun: useTask
 
 import { TaskRunDetailPage } from './TaskRunDetailPage'
 
-const task: Task = { id: 'task-1', projectId: 'project-test', requirementGroupId: 'group-1', triggerMessageId: 'message-1', title: '执行任务', requirement: '需求', status: 'RUNNING', workspaceId: 'workspace-1', workspaceStatus: 'READY', continuationOfTaskId: null, repositoryIds: ['repo-1'], repositories: [], createdBy: 'user-1', createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z' }
+const task: Task = { id: 'task-1', projectId: 'project-test', requirementGroupId: 'group-1', triggerMessageId: 'message-1', title: '执行任务', requirement: '需求', status: 'RUNNING', deliveryMode: 'DIFF_FIRST', workspaceId: 'workspace-1', workspaceStatus: 'READY', continuationOfTaskId: null, repositoryIds: ['repo-1'], repositories: [], createdBy: 'user-1', createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z' }
 const step: TaskStep = { id: 'step-1', taskId: 'task-1', role: 'DEVELOPER', agentId: 'agent-1', repositoryId: 'repo-1', baseRef: 'main', dependencies: [], testsetIds: [], status: 'RUNNING', acceptanceNotes: null }
 const run: TaskRunDetail = { id: 'run-1', projectId: 'project-test', taskId: 'task-1', taskStepId: 'step-1', agentId: 'agent-1', role: 'DEVELOPER', status: 'WAITING_INPUT', retryOfTaskRunId: null, artifactSummary: { diffs: { count: 2, byStatus: { PENDING_REVIEW: 2 } } }, startedAt: '2026-08-11T08:00:00Z', finishedAt: null, durationMs: null, createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z' }
 function page<T>(data: T[]): TaskModelPage<T> { return { data, page: { nextCursor: null, hasMore: false }, requestId: 'request-1' } }

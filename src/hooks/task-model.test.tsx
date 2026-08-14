@@ -33,6 +33,7 @@ const task: Task = {
   title: 'Implement login',
   requirement: 'Support login',
   status: 'RUNNING',
+  deliveryMode: 'DIFF_FIRST',
   workspaceId: 'workspace-1',
   workspaceStatus: 'READY',
   continuationOfTaskId: null,

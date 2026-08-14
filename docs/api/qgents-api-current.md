@@ -1,64 +1,42 @@
-Qgents 接口文档
-
-版本：v1.2.0
+版本：v1.3.1
 
 状态：第 6 节 GitHub 集成接口已冻结；通知中心（§7.1）与群列表/消息字段按 A 联调约定补全
 
-更新日期：2026-08-13
-
-
+更新日期：2026-08-14
 
 
 ---
 
-
-
 1. 范围
 
-
-
 本文定义 Qgents 的账号、团队、项目、群聊、Skill、Memory、Agent、Task、Workspace、受控执行、Diff、测试与 MR 接口。
-
-
 
 本轮 P0 闭环为：
 
 需求群 -> 创建 Task -> Planner 写入 TaskStep -> TaskRun 执行 -> 查看 Diff / MR
 
-
-
 - 当前执行模型唯一为 Task -> TaskStep -> TaskRun；orchestrationRun、workPackage、Deliverable、TaskDelivery 等旧模型不属于当前版本。
-  
+
 - 项目总群与需求群统一为 Group，使用 PROJECT_MAIN 与 REQUIREMENT 区分。
-  
+
 - 客户端只能发起受控执行、读取状态和查看产物；不得直接操作 Workspace、Sandbox、Git 凭据或宿主机文件系统。
-  
+
 - 当前分支已经包含 Task、Workspace repository、TaskRun、Diff、Test Run、Dry Run 和 MR 镜像的持久模型；真实 Git commit/push 与 GitHub PR 接缝仍需由受控执行服务接入后才能宣称完成。
-  
+
 - 通知中心已按用户维度持久化（§7.1）；离线推送、会话个人偏好（未读数/置顶）、搜索、分支查询和 Test Run / Dry Run 历史列表不在本轮范围。
-  
-    
-  
+
 
 ---
 
-
-
 2. 通用约定
 
-
-
-基础地址：https://api.qgents.example.com/api/v1  
+基础地址：https://api.qgents.example.com/api/v1
 
 请求和响应：均为 JSON，时间为 UTC RFC 3339，所有资源 ID 为 UUID。
-
-
 
 除注册、登录、刷新 Token、重置密码和 GitHub App 回调外，均需在请求头中携带：
 
 Authorization: Bearer <accessToken>
-
-
 
 成功响应统一为：
 
@@ -66,8 +44,6 @@ Authorization: Bearer <accessToken>
   "data": {},
   "requestId": "req_01J..."
 }
-
-
 
 失败响应统一为：
 
@@ -80,44 +56,38 @@ Authorization: Bearer <accessToken>
   "requestId": "req_01J..."
 }
 
-
-
 HTTP 状态码：
 
 - 400：参数错误
-  
+
 - 401：未认证或 Token 失效
-  
+
 - 403：权限不足
-  
+
 - 404：资源不存在或不可见
-  
+
 - 409：幂等/状态冲突
-  
+
 - 422：业务校验失败
-  
+
 - 429：限流
-  
+
 - 500：服务异常
-  
-    
-  
+
 幂等性：
 
 - 写操作必须支持 Idempotency-Key 头。
-  
+
 - 同一用户在 24 小时内重复提交相同键与请求体时，返回首次结果。
-  
+
 - 相同键但请求体不同时，返回 409 IDEMPOTENCY_KEY_REUSED。
-  
-    
-  
+
 列表分页：
 
 - 使用 cursor、limit，默认 30、最大 100。
-  
+
 - 响应格式：
-  
+
 {
     "data": [],
     "page": {"nextCursor": "cursor_...", "hasMore": true},
@@ -125,19 +95,11 @@ HTTP 状态码：
 }
 
 
-
-
 ---
-
-
 
 3. 权限与状态
 
-
-
 3.1 角色
-
-
 
 角色
 作用域
@@ -155,23 +117,17 @@ PROJECT_MEMBER
 项目
 参与需求群聊；创建 Skill/Memory 草稿；使用已发布 Skill 和已批准 Memory；查看项目内配置和 MR 状态
 
-
-
 注意：
 
 - 服务端从 Token 和资源归属判断权限，客户端传入的 userId、role 不得作为授权依据。
-  
+
 - Project Admin 只能将已在项目中的成员提升为 Project Admin。
-  
+
 - 最后一名 Project Admin 不能被移除或降级。
-  
+
 - Project Admin 不能直接邀请团队外用户，团队邀请仅由 Team Owner 完成。
-  
-    
-  
+
 3.2 状态枚举
-
-
 
 资源
 状态与约束
@@ -190,7 +146,7 @@ PENDING / RUNNING / PASSED / FAILED
 Group
 PROJECT_MAIN 或 REQUIREMENT；仅 REQUIREMENT 可归档，PROJECT_MAIN 永远保持 ACTIVE
 Task
-PLANNING -> PENDING -> RUNNING -> SUCCEEDED / FAILED；取消时 RUNNING -> CANCELLING -> CANCELLED
+PLANNING -> PENDING -> RUNNING -> WAITING_DIFF_CONFIRMATION -> DELIVERING -> SUCCEEDED / DELIVERY_FAILED / FAILED；取消时 RUNNING -> CANCELLING -> CANCELLED
 TaskStep
 PENDING -> RUNNING -> SUCCEEDED / FAILED / SKIPPED
 TaskRun
@@ -201,15 +157,9 @@ PENDING_REVIEW -> ACCEPTED / REJECTED
 QUEUED -> RUNNING -> PASSED / FAILED / CANCELLED
 
 
-
-
 ---
 
-
-
 4. 认证与账户
-
-
 
 方法
 路径
@@ -248,8 +198,6 @@ PATCH
 登录用户
 修改昵称和头像
 
-
-
 注册请求示例：
 
 {
@@ -258,8 +206,6 @@ PATCH
   "password": "Base64(RSA-PKCS1-v1_5(password))",
   "displayName": "Lin"
 }
-
-
 
 登录响应示例：
 
@@ -277,28 +223,22 @@ PATCH
   }
 }
 
-
-
 4.1 密码传输与存储
 
-
-
 - 当前演示环境注册、登录和重置密码请求中的 password、newPassword 必须为前端使用平台 RSA 公钥加密后的 Base64 密文。
-  
+
 - 账号、邮箱等非敏感标识可保持明文。
-  
+
 - 客户端不得自行生成密钥。
-  
+
 - 服务端使用与 keyId 对应的私钥解密，解密失败、keyId 不存在或明文提交均返回 400 INVALID_ENCRYPTED_PASSWORD。
-  
+
 - 解密后的明文仅在内存中用于复杂度校验和密码验证，随后使用 Argon2id 或 BCrypt 加盐哈希后存储。
-  
+
 - 密码、私钥、重置令牌和 Token 不得写入日志、群聊内容或后续 Agent 上下文。
-  
+
 - GitHub OAuth 登录不属于本期必需能力。
-  
-    
-  
+
 安全提醒：RSA 加密仅降低演示环境中密码明文直接出现在请求体或普通网络日志中的风险，不能替代 HTTPS。部署具备域名与证书条件后，必须迁移到 HTTPS，并保留服务端密码哈希。
 
 
@@ -308,15 +248,9 @@ PATCH
 
 ---
 
-
-
 5. 团队、项目与成员
 
-
-
 5.1 团队与邀请
-
-
 
 方法
 路径
@@ -363,8 +297,6 @@ DELETE
 Team Owner
 移除团队成员
 
-
-
 邀请请求示例：
 
 {
@@ -373,8 +305,6 @@ Team Owner
   "expiresInDays": 7
 }
 
-
-
 受邀邮箱尚未注册时，系统发送注册链接和邀请令牌；用户以相同邮箱注册后可接受邀请。
 
 
@@ -382,8 +312,6 @@ Team Owner
 
 
 5.2 项目与项目成员
-
-
 
 方法
 路径
@@ -426,8 +354,6 @@ DELETE
 Project Admin
 从项目移除成员
 
-
-
 创建项目请求示例：
 
 {
@@ -435,8 +361,6 @@ Project Admin
   "description": "Web client",
   "memberIds": ["user-uuid"]
 }
-
-
 
 添加项目成员时 userId 必须已属于该团队。项目创建者自动成为 PROJECT_ADMIN；Team Owner 对本团队项目具有兜底管理权限。
 
@@ -446,8 +370,6 @@ Project Admin
 
 
 ---
-
-
 
 6. GitHub App 与项目仓库
 
@@ -509,7 +431,7 @@ Team Owner
 GET
 /teams/{teamId}/integrations/github/repositories
 Team Owner 或 Project Admin
-查询该团队被授权的仓库<br>
+查询该团队被授权的仓库\\\<br>
 GET
 /projects/{projectId}/repositories
 项目成员
@@ -535,11 +457,11 @@ Repository.visibility = PUBLIC | PRIVATE | INTERNAL
 Repository.authorizationStatus = AUTHORIZED | REVOKED
 
 - Installation 不使用 EXPIRED；短期 Installation Token 过期不代表 App Installation 过期。
-  
+
 - archived=true 表示 GitHub 仓库已归档；authorizationStatus=REVOKED 表示 GitHub App 已无权访问。
-  
+
 - 第一版不返回 authorizedRepositoryCount，客户端可按授权仓库的 installationId 统计。
-  
+
 安装与元数据刷新
 
 发起安装请求必须携带 Idempotency-Key，成功返回：
@@ -621,6 +543,8 @@ GET /integrations/github/callback?installation_id=...&state=...
 
 
 
+
+
 {
   "installationId": "installation-local-uuid",
   "repositoryId": "repository-local-uuid",
@@ -677,6 +601,8 @@ callback 只保存 Installation 元数据和授权仓库范围。GitHub App 私�
 
 
 
+
+
 6.1 分支策略与质量门禁
 
 方法
@@ -707,17 +633,13 @@ requiredTestsetIds 是不可被普通成员绕过的强制测试集。门禁规�
 
 
 
+
+
 ---
-
-
 
 7. 统一 Group 与消息
 
-
-
 项目可有一个项目主讨论群和多个需求群，统一建模为 Group。创建项目时服务端自动创建唯一的 PROJECT_MAIN Group；它不可归档或删除。REQUIREMENT Group 是上下文与协作边界，可引用多个仓库；它不代表 Git main，也不天然生成或绑定分支。
-
-
 
 方法
 路径
@@ -764,21 +686,29 @@ GET
 项目成员
 组装群聊上下文（需求 + 近期消息 + 关联仓库 + 已发布 Skill + 已批准 Memory），供 Agent 作为输入；limit 参数控制近期消息条数（默认 50，上限 200）
 
-
-
 群详情说明：
 
+
+
 - 群详情与改名已由 GET/PATCH /projects/{projectId}/groups/{groupId} 覆盖。
-  
+
+
+
 - 详情响应包含 memberCount（群成员数 = 项目成员数 + 群内 Agent 数）。
-  
+
+
+
 - 群成员 = 项目成员 + 参与群聊的 Agent，群内成员平等、无角色区分。
-  
+
+
+
 - Agent 通过服务端内部 sendAsAgent 首次回群后自动成为群参与者（group_agents 表），成员响应含 memberType（USER/AGENT）。
-  
+
+
+
 - POST .../leave（退出群聊）即当前用户移出本项目成员，移出后失去对该项目全部群/消息/资源的访问权限；最后一名 Project Admin 不可退群（与 §3.1 一致）。
-  
-  
+
+
 
 
 
@@ -790,8 +720,6 @@ GET
   "repositoryIds": ["project-repository-binding-uuid"],
   "type": "REQUIREMENT"
 }
-
-
 
 POST /groups 只接受 REQUIREMENT 或省略 type；传入 PROJECT_MAIN 返回 422 SYSTEM_GROUP_MANAGED。
 
@@ -815,36 +743,40 @@ POST /groups 只接受 REQUIREMENT 或省略 type；传入 PROJECT_MAIN 返回 4
   "clientMessageId": "cmsg_01J..."
 }
 
-
-
 消息类型说明：
 
 - type 为 TEXT、CODE、IMAGE、FILE、DIFF、TASK_STATUS、SYSTEM 或 QUOTE。
-  
+
 - 服务端写入单调递增 sequence；clientMessageId 在同一需求群内唯一，断线重试返回原消息。
-  
+
 - DIFF（Diff 卡片）content 至少含 diffId，如 {"diffId":"...","title":"实现邮箱登录","additions":12,"deletions":3}。
-  
+
 - TASK_STATUS（任务状态卡片）content 至少含 taskId、status，如 {"taskId":"...","status":"RUNNING","node":"DEVELOPER","message":"正在执行测试"}。
-  
+
 - 消息响应 senderType 为 USER/AGENT/SYSTEM：用户发送为 USER，Agent 通过服务端内部 sendAsAgent 回群为 AGENT，系统消息为 SYSTEM。
-  
+
 - Agent 可参与项目群聊（回群消息），但私聊与 Agent 好友不在本期范围。
-  
+
 群列表 DTO 补充（GET /projects/{id}/groups，A 联调约定 §2）：
 
 - latestActivityAt：后端返回，ISO8601 UTC 字符串，作为列表排序依据；从未发言时以创建时间兜底。
+
 - latestMessage：后端返回，列表摘要对象 { "senderName": string|null, "text": string|null }；senderName 为用户昵称或 Agent 名称（SYSTEM 消息为空），text 为最新消息文本（仅 TEXT/QUOTE 等含 $.text 的类型可取到，其余为空）。
+
 - unreadCount、isPinned：本轮后端不返回，由前端 localStorage 兜底（会话个人偏好不在本轮）。
+
 - 归档判断：使用 status（ACTIVE/ARCHIVED），不设独立 isArchived 字段。
-  
+
 消息 DTO 补充（GET/POST .../messages，A 联调约定 §3）：
 
 - senderId：后端返回；USER 消息 = userId，AGENT 消息 = agentId，前端据此判断是否本人发送。
+
 - senderName：后端不返回，前端用 senderId 反查群成员列表（GET .../members）获取 displayName。
+
 - sequence：后端返回，单调递增，作为分页游标。
+
 - clientMessageId：前端发送时携带，服务端在同一需求群内幂等去重，断线重试返回原消息。
-  
+
 7.1 通知中心
 
 通知中心按用户维度持久化已读状态与历史列表；SSE（§12.1）只负责「实时提醒」（新事件铃铛提醒），不承担历史列表与已读状态。通知由事件触发写入，接收人为任务发起人。
@@ -914,8 +846,6 @@ MR_PENDING
 
 7.2 群搜索（第三批，暂不实现）
 
-
-
 方法
 路径
 权限
@@ -926,19 +856,11 @@ GET
 按关键字搜索当前用户可访问的群（群名匹配），返回群摘要列表；该能力属于后续批次，本期不实现
 
 
-
-
 ---
-
-
 
 8. 共享 Skill
 
-
-
 Skill 是项目需求群内可复用的能力片段，例如规范、提示词、操作指引或工具调用约束。成员先创建自己的 PRIVATE Skill，并可装配给自己拥有的 Agent；Project Admin 可将其发布为 PROJECT_SHARED，供该项目成员的 Agent 使用。Skill 不是 Memory，不能承载未经确认的客观事实。
-
-
 
 方法
 路径
@@ -973,8 +895,6 @@ POST
 Project Admin
 下线已发布 Skill
 
-
-
 创建 Skill 请求示例：
 
 {
@@ -983,8 +903,6 @@ Project Admin
   "tags": ["java", "backend"],
   "visibility": "PRIVATE"
 }
-
-
 
 被共享的 Skill 在后续执行时可由 Agent 卡片或工作流节点引用；Agent 仅获得其当前项目中有权使用的 Skill，归档后不再装配到新执行中。
 
@@ -995,15 +913,9 @@ Project Admin
 
 ---
 
-
-
 9. 共享 Memory
 
-
-
 Memory 是经人工确认后供项目复用的知识，不是原始聊天记录。AI 可以根据多条消息生成草稿，但不得直接批准或发布；后续 Agent 只能按相关性和标签检索已批准的 Memory，不能默认注入全部内容。
-
-
 
 方法
 路径
@@ -1042,8 +954,6 @@ POST
 Project Admin
 归档 Memory
 
-
-
 手动创建草稿请求示例：
 
 {
@@ -1052,8 +962,6 @@ Project Admin
   "category": "ENGINEERING_DECISION",
   "tags": ["auth", "security"]
 }
-
-
 
 群聊生成草稿请求示例：
 
@@ -1065,8 +973,6 @@ Project Admin
   "instruction": "沉淀为项目认证安全约定"
 }
 
-
-
 Memory 响应必须包含 creator、reviewer、reviewedAt、category、tags 与 sources。当前支持 MANUAL、MESSAGE 来源；未来任务/Diff 来源可扩展，但不在本版创建接口范围。
 
 
@@ -1076,15 +982,9 @@ Memory 响应必须包含 creator、reviewer、reviewedAt、category、tags 与 
 
 ---
 
-
-
 10. Testset
 
-
-
 Testset 是项目自建、可复用的测试配置，而不是特殊语法。它可表示单元、接口或集成测试；本期只管理配置，实际执行由后续系统承担。
-
-
 
 方法
 路径
@@ -1115,8 +1015,6 @@ DELETE
 Project Admin
 删除未被门禁引用的 Testset
 
-
-
 创建 Testset 请求示例：
 
 {
@@ -1129,8 +1027,6 @@ Project Admin
   "acceptanceNotes": "登录成功、错误密码和不存在用户均需覆盖。"
 }
 
-
-
 Project Member 可查看并在未来任务计划中选择 ENABLED Testset；受保护分支的必选 Testset 以质量门禁配置为准，成员不能替换或跳过。
 
 
@@ -1140,23 +1036,13 @@ Project Member 可查看并在未来任务计划中选择 ENABLED Testset；受�
 
 ---
 
-
-
 11. Agent、团队工作流与任务拆分
-
-
 
 系统随每个团队提供不可修改的“新手大礼包”：AgentOrchestrator、Planner、Developer、Tester、Reviewer 及内置默认代码交付工作流。用户不配置任何内容时，在需求群中 @ AgentOrchestrator 即可运行该默认流程：Planner 拆分 TaskStep → Developer 实现 → Tester 执行 Testset → Reviewer 审查 → 质量门禁汇总。
 
-
-
 团队成员可创建仅自己可用的 Agent；发布后成为团队可用资源。产品界面至少展示每张 Agent 身份卡的昵称、头像、角色、能力标签、可用状态、创建者和可访问的 Skill 摘要；不得向其他成员泄露私有提示词或凭据。
 
-
-
 11.1 个人与团队 Agent
-
-
 
 方法
 路径
@@ -1195,8 +1081,6 @@ PUT
 Agent 创建者或 Project Admin
 全量替换绑定集；空数组清空（幂等，无需 Idempotency-Key）
 
-
-
 创建 Agent 请求示例：
 
 {
@@ -1206,8 +1090,6 @@ Agent 创建者或 Project Admin
   "capabilities": ["java", "spring-boot", "api"],
   "prompt": "遵循项目 API 规范和测试要求。"
 }
-
-
 
 Agent 卡响应示例（GET/PATCH /teams/{teamId}/agents/{agentId} 返回）：
 
@@ -1223,8 +1105,6 @@ Agent 卡响应示例（GET/PATCH /teams/{teamId}/agents/{agentId} 返回）：
   "createdBy": "user-uuid"
 }
 
-
-
 身份卡字段由 agents 表持久化（产品需求 §2.3）：name（昵称）、avatar（头像）、role（角色标签）、capabilities（能力标签，JSON 数组）、prompt（系统提示词）。私有提示词与私有可见性仅创建者可见，不得向其他成员泄露。
 
 
@@ -1233,21 +1113,13 @@ Agent 卡响应示例（GET/PATCH /teams/{teamId}/agents/{agentId} 返回）：
 
 role 为 ORCHESTRATOR、PLANNER、DEVELOPER、TESTER、REVIEWER 或 GENERAL。角色和能力是身份卡上的调度线索，不是权限绕过手段；工作流节点可按角色选择 Agent，调度器再从可用 Agent 中选择实际执行者。
 
-
-
-11.1 .1 Agent-Skill 绑定
-
-
+11.1.1 Agent-Skill 绑定
 
 绑定将项目内可用 Skill 装配到 Team 级 Agent，同一 Agent 在不同项目可绑定不同技能集；绑定按项目隔离。可绑定 Skill：本人 PRIVATE（未归档）或已发布的 PROJECT_SHARED。修改权限：Agent 创建者或 Project Admin；读取权限：项目成员。
-
-
 
 请求体（PUT，全量替换，空数组清空）：
 
 {"skillIds": ["skill-uuid-1", "skill-uuid-2"]}
-
-
 
 响应体：
 
@@ -1259,8 +1131,6 @@ role 为 ORCHESTRATOR、PLANNER、DEVELOPER、TESTER、REVIEWER 或 GENERAL。�
   ],
   "updatedAt": "2026-08-12T10:00:00Z"
 }
-
-
 
 状态码
 错误码
@@ -1287,19 +1157,11 @@ Skill 不属于当前项目
 SKILL_NOT_BINDABLE
 Skill 已归档/他人 PRIVATE/PROJECT_SHARED 未发布
 
-
-
 11.2 团队工作流模板
-
-
 
 本版本仅提供不可修改的 system-default-code-delivery 工作流。自定义团队工作流模板及其配置接口不在本版本范围。
 
-
-
 11.3 Task、Workspace 与执行计划
-
-
 
 系统必须将代码实现、测试和审查分派给不同 Agent 角色。当前公开模型以用户可见的 Task 为顶层任务，Planner 将计划写入 TaskStep，每个步骤可产生多次 TaskRun；禁止重新引入 WorkPackage、Deliverable 或 orchestration 兼容层。
 
@@ -1350,7 +1212,11 @@ POST
 
 
 
+
+
 重要说明：创建请求中的 repositoryIds 与 baseRef 属于随之创建的 Workspace（worktree），不属于 Task 本身；tasks 表不存这两列。repositoryIds 每一项必须是第 6 节 ProjectRepository 响应的 id，即 project_repositories.id，不得传 github_repositories.id 或 GitHub provider 数字 ID。前端创建 Task 时带上它们是告诉系统用哪些项目仓库绑定、以哪个分支为基准初始化 Workspace。
+
+
 
 
 
@@ -1358,7 +1224,9 @@ POST
 
 
 
-Task 状态为 PLANNING/PENDING/RUNNING/SUCCEEDED/FAILED/CANCELLING/CANCELLED；TaskStep 状态为 PENDING/RUNNING/SUCCEEDED/FAILED/SKIPPED；TaskRun 状态为 QUEUED/RUNNING/SUCCEEDED/FAILED/WAITING_INPUT/WAITING_APPROVAL/BLOCKED/CANCELLING/CANCELLED 等受控状态。一个 Workspace 同一时刻只能有一个有效写入者；复用 Workspace 的后续 Task 必须显式引用前序 Task，不能仅凭聊天上下文复用。
+
+
+Task 状态为 PLANNING/PENDING/RUNNING/WAITING_DIFF_CONFIRMATION/DELIVERING/SUCCEEDED/DELIVERY_FAILED/FAILED/CANCELLING/CANCELLED；TaskStep 状态为 PENDING/RUNNING/SUCCEEDED/FAILED/SKIPPED；TaskRun 状态为 QUEUED/RUNNING/SUCCEEDED/FAILED/WAITING_INPUT/WAITING_APPROVAL/BLOCKED/CANCELLING/CANCELLED 等受控状态。WAITING_DIFF_CONFIRMATION 表示最终 Diff 已生成、等待用户决定；DELIVERY_FAILED 表示总确认已接受，但至少一个仓库交付失败，可重试。一个 Workspace 同一时刻只能有一个有效写入者；复用 Workspace 的后续 Task 必须显式引用前序 Task，不能仅凭聊天上下文复用。
 
 Task 响应示例（创建/详情/列表项均为此结构）：
 
@@ -1370,6 +1238,7 @@ Task 响应示例（创建/详情/列表项均为此结构）：
   "title": "实现邮箱登录",
   "requirement": "前后端都要支持，并完成测试。",
   "status": "RUNNING",
+  "deliveryMode": "DIFF_FIRST",
   "workspaceId": "workspace-uuid",
   "workspaceStatus": "READY",
   "continuationOfTaskId": null,
@@ -1408,22 +1277,22 @@ TaskStep 响应示例（GET /projects/{projectId}/tasks/{taskId}/steps 列表项
 
 
 - TaskRun.agentId 指向实际执行该步骤的 Agent（agents 表，§11.1）。
-  
-    
-  
+
+
+
 - TaskStep.role 声明所需工作流角色（ORCHESTRATOR/PLANNER/DEVELOPER/TESTER/REVIEWER），调度器按角色挑选可用 Agent。
-  
-    
-  
+
+
+
 - Agent 可装配的 Skill 通过 PUT /projects/{projectId}/agent-skill-bindings/{agentId} 维护。
-  
-    
-  
+
+
+
 - TaskStep.testsetIds 与质量门禁 requiredTestsetIds 引用 Testset（§6.1/§10）。
-  
-    
-  
-  
+
+
+
+
 
 Workspace 是 Project 内持久化的 Git 工作目录，Workspace repository 必须记录真实 base commit、source branch 和 head commit；Sandbox 仅是临时执行环境，销毁后未提交 Workspace 修改仍需保留。
 
@@ -1432,19 +1301,11 @@ Workspace 是 Project 内持久化的 Git 工作目录，Workspace repository �
 
 12. 受控执行、Diff 与实时事件
 
-
-
 本节记录 TaskStep 的实际执行尝试为 TaskRun。TaskRun 必须关联 Task 与 TaskStep；它不是新的顶层任务，也不单独向用户产出 Diff 或 MR。用户可发起重试、读取受控日志和查看 Task 级结果，但不能直接创建、进入或操作 Workspace/Sandbox。
-
-
 
 所有本节 POST 接口均要求 Idempotency-Key，成功受理时返回 202 Accepted 和资源摘要；列表接口复用第 2 节的 cursor 与 limit。服务端必须校验路径中的 projectId、关联资源与当前用户在同一项目中，禁止仅通过 UUID 查询资源。
 
-
-
 12.1 实时事件流
-
-
 
 方法
 路径
@@ -1455,11 +1316,7 @@ GET
 Project Member
 建立项目级 SSE 连接，接收状态和产物事件
 
-
-
 该接口的 Content-Type 为 text/event-stream，不套用 JSON 成功响应。客户端可通过 Last-Event-ID 断线续传；服务端每 15 秒发送心跳，并至少保留 24 小时事件。续传点过期时返回 409 EVENT_CURSOR_EXPIRED，客户端应重新拉取相关资源。
-
-
 
 SSE 事件示例：
 
@@ -1467,36 +1324,50 @@ id: evt_01J...
 event: task-run.step.progress
 data: {"projectId":"project-uuid","taskId":"task-uuid","stepId":"step-uuid","taskRunId":"task-run-uuid","node":"DEVELOPER","sequence":12,"content":"正在执行测试","timestamp":"2026-08-10T12:00:00Z"}
 
-
-
 事件类型：
 
 - message.created
-  
+
 - group.updated
-  
+
 - task.updated
-  
+
 - task-step.updated
-  
+
 - task-run.updated
-  
+
 - task-run.step.progress
-  
+
 - input-required
-  
+
 - approval-required
-  
+
 - test-run.updated
-  
+
 - dry-run.updated
-  
+
 - diff.created
-  
+
+- task.artifact.created
+
+- task-run.artifact.created
+
+- diff-review.created
+
+- task.awaiting-diff-confirmation
+
+- diff-review.confirmed
+
+- diff-review.rejected
+
+- delivery.repository.updated
+
+- delivery.failed
+
+- delivery.completed
+
 - merge-request.updated
-  
-    
-  
+
 事件仅用于刷新界面；客户端恢复连接或收到乱序事件后必须以相应的查询接口为准。受控日志不得包含 Token、密码、GitHub 安装令牌、私钥或未脱敏的环境变量。
 
 
@@ -1505,11 +1376,7 @@ data: {"projectId":"project-uuid","taskId":"task-uuid","stepId":"step-uuid","tas
 
 SSE 事件 id 即项目内单调递增 sequenceNo，作为 Last-Event-ID 续传游标；输入与审批事件必须包含 inputRequestId。
 
-
-
 各事件 Payload 示例：
-
-
 
 task.updated（Task 状态变化）：
 
@@ -1522,8 +1389,6 @@ task.updated（Task 状态变化）：
   "timestamp": "2026-08-12T10:00:00Z"
 }
 
-
-
 task-step.updated（TaskStep 状态变化）：
 
 {
@@ -1534,8 +1399,6 @@ task-step.updated（TaskStep 状态变化）：
   "status": "RUNNING",
   "timestamp": "2026-08-12T10:00:00Z"
 }
-
-
 
 task-run.updated（TaskRun 状态变化）：
 
@@ -1548,8 +1411,6 @@ task-run.updated（TaskRun 状态变化）：
   "sequence": 0,
   "timestamp": "2026-08-12T10:00:00Z"
 }
-
-
 
 input-required / approval-required（人机输入/审批）：
 
@@ -1566,8 +1427,6 @@ input-required / approval-required（人机输入/审批）：
 }
 
 其中 kind 为 INPUT（input-required）或 APPROVAL（approval-required）；inputRequestId 即事件 resourceId。
-
-
 
 diff.created（Diff 快照创建）：
 
@@ -1589,8 +1448,6 @@ Diff 尚未产生真实提交时 headCommit 键省略（payload 中不出现该�
 
 
 12.2 任务运行与执行上下文
-
-
 
 方法
 路径
@@ -1637,8 +1494,6 @@ POST
 Project Admin
 拒绝 WAITING_APPROVAL 请求
 
-
-
 retry 只接受状态为 FAILED、CANCELLED 或 BLOCKED 的运行；原运行不可重置。响应中的新运行应包含 retryOfTaskRunId。
 
 
@@ -1676,8 +1531,6 @@ TaskRun 响应示例（GET /tasks/{taskId}/task-runs 列表项 / GET /task-runs/
   "updatedAt": "2026-08-12T10:00:00Z"
 }
 
-
-
 GET /tasks/{taskId}/task-runs 列表项只含摘要字段（id/projectId/taskId/taskStepId/agentId/role/status/retryOfTaskRunId/createdAt/updatedAt），不含执行时序与产物；详情（GET /task-runs/{taskRunId}）才含 startedAt/finishedAt/durationMs/artifactSummary。durationMs 由 finishedAt-startedAt 派生，任一端为空时为 null（未开始运行勿用 0 兜底）。
 
 
@@ -1687,11 +1540,9 @@ GET /tasks/{taskId}/task-runs 列表项只含摘要字段（id/projectId/taskId/
 TaskRun 执行步骤查询方式：
 
 - 实时进度：通过 SSE task-run.step.progress 事件（§12.1，含 node/sequence/content）推送。
-  
+
 - 历史步骤：通过 GET /task-runs/{taskRunId}/logs 游标读取脱敏日志。
-  
-    
-  
+
 日志条目（LogEntryResponse）示例：
 
 {
@@ -1701,8 +1552,6 @@ TaskRun 执行步骤查询方式：
   "content": "checkout base",
   "timestamp": "2026-08-12T10:00:00Z"
 }
-
-
 
 日志分页游标取上页最后一条的 sequence；node 为产生日志的执行节点名，单节点运行为空。如需步骤级清单回看，TaskRun 详情可附 steps 数组（节点状态 PENDING/RUNNING/PASSED/FAILED/SKIPPED/CANCELLED，含 node/status/startedAt/finishedAt/durationMs/可选 errorCode），由执行服务提供。
 
@@ -1717,8 +1566,6 @@ TaskRun 执行步骤查询方式：
 
 
 12.3 Diff 与审查意见
-
-
 
 方法
 路径
@@ -1749,13 +1596,17 @@ POST
 发起人或 Project Admin
 拒绝 Diff 并给出退回原因
 
-
-
 创建 Diff 由受控执行服务完成，客户端不得伪造其关联的测试结果或文件状态。
+
+
 
 reject 请求为 {"reason":"请补充错误密码场景测试"}。
 
+
+
 行级评论应包含 path、side、line 或 hunkId、body，并绑定 Diff 快照，避免 Diff 更新后评论指向错误代码。
+
+
 
 accept 接受 Diff 时由受控 Git 执行器基于被审查快照创建真实 Git 提交，不绕过目标分支的质量门禁，也不等同于合并。
 
@@ -1782,15 +1633,9 @@ Diff 列表项（GET /diffs，DiffListItemResponse）：
   "createdAt": "2026-08-12T10:00:00Z"
 }
 
-
-
 Diff 详情（GET /diffs/{diffId}，DiffResponse）在列表项基础上增加 workingTreeHash、snapshotKey、reviewedBy、reviewReason、reviewedAt、updatedAt。taskRunId/taskStepId 记录产出该 Diff 的运行与步骤，requirementGroupId 由其所属 Task 派生。
 
-
-
 12.4 Test Run 与 Dry Run
-
-
 
 方法
 路径
@@ -1813,11 +1658,13 @@ GET
 Project Member
 获取试运行报告和冲突、测试摘要
 
-
-
 test-runs 请求必须提供 repositoryId，并且提供 taskId 或 ref 之一；testsetIds 必须属于该仓库且为 ENABLED。
 
+
+
 dry-runs 请求必须提供 repositoryId、sourceRef、targetBranch，可选关联 taskId。
+
+
 
 受保护分支所需的 Testset 由第 6.1 节质量门禁决定，调用方不能通过传入较少的 testsetIds 跳过它们。
 
@@ -1828,15 +1675,9 @@ dry-runs 请求必须提供 repositoryId、sourceRef、targetBranch，可选关�
 
 ---
 
-
-
 13. MR、审查与质量状态
 
-
-
 MR 属于仓库，Qgents 将其镜像为项目内记录。创建、同步、人工 CQ 审查和合并均通过本节受控接口触发服务端操作；客户端不持有 GitHub 凭据，也不能直接写入检查结果或绕过分支策略。
-
-
 
 方法
 路径
@@ -1879,8 +1720,6 @@ POST
 Project Admin
 通过质量门禁后执行合并
 
-
-
 创建 MR 请求示例：
 
 {
@@ -1890,9 +1729,9 @@ Project Admin
   "title": "实现邮箱登录"
 }
 
-
-
 服务端从 Task 的持久化 Workspace repository 取得源分支和提交 SHA，并校验源已提交推送、分支仍存在且调用方有项目访问权；不接受客户端提交的 GitHub Token、提交 SHA 或门禁结果。
+
+
 
 sync、merge 和两个 CQ 写操作同样需要 Idempotency-Key。
 
@@ -1923,9 +1762,9 @@ MR 详情的最小响应示例：
   }
 }
 
-
-
 正式合并前的业务规则为：关联 Diff/提交通过指定 Testset，AI 审查与 dry-run 通过，至少获得一次有效人工 CQ+1，且由 PROJECT_ADMIN 按仓库策略确认合并。是否满足这些规则由 qualityGate.status 表示。
+
+
 
 merge 在条件不满足时返回 409 QUALITY_GATE_NOT_PASSED；接口不存在跳过门禁、伪造检查结果或以手工结果覆盖自动检查的能力。
 
@@ -1936,30 +1775,232 @@ merge 在条件不满足时返回 409 QUALITY_GATE_NOT_PASSED；接口不存在�
 
 ---
 
-
-
 14. 后续接口边界
-
-
 
 以下增强能力暂不提供公开接口，客户端不得假定其路径或字段：
 
-
-
 - 自定义团队工作流模板及其节点配置；
-  
+
 - 用户直接操作 Workspace、Docker Engine、Sandbox 生命周期、文件读取/写入；
-  
+
 - Git 分支创建、推送和 Patch 应用的直接操作；
-  
+
 - 绕过质量门禁或手工改写 Testset、AI Review、Dry Run 结果；
-  
+
 - WebSocket、离线同步与移动端推送（SSE 见第 12.1 节）。
-  
-    
-  
+
 这些能力接入时必须复用本文件的项目、需求群、仓库、Testset、Memory、Skill、Task/TaskStep 和质量门禁资源模型，并遵循“不得由单一 Agent 独自完成完整交付”的产品约束。
 
+15. v1.3.0 更新：任务级总 Diff 确认与多仓库交付
 
+15.1 Task 状态流转更新
 
+- PLANNING -> PENDING -> RUNNING -> WAITING_DIFF_CONFIRMATION -> DELIVERING -> SUCCEEDED / DELIVERY_FAILED / FAILED
 
+- 新增字段 deliveryMode：支持 DIFF_FIRST 或 MR_FIRST（当前默认且仅实现 DIFF_FIRST）。
+
+15.2 交付模式
+
+- 任务完成 Review 之后，如果处于 DIFF_FIRST，会自动创建 DiffReviewBatch。
+
+- 用户可以查看所有的 Repository Diff。
+
+- 用户只进行一次总 Diff 确认。后端随后逐仓库执行 Commit、Push 与 PR 创建；跨仓库不构成分布式事务，允许部分成功并支持重试。
+
+15.3 总 Diff 查询与审核接口
+
+15.3.1 获取任务级最终 Diff
+
+GET /api/v1/projects/{projectId}/tasks/{taskId}/diff-review
+
+- 响应: 200 OK，返回 DiffReviewBatchResponse，字段和空批次行为见 §15.6。
+
+15.3.2 确认总 Diff
+
+POST /api/v1/projects/{projectId}/tasks/{taskId}/diff-review/confirm
+
+- Headers: 必须携带 Idempotency-Key。
+
+- 响应: 200 OK，返回确认后的 DiffReviewBatchResponse。仅任务发起者或 Project Admin 可确认；确认前会重新校验全部仓库的 HEAD 与 Diff hash。校验通过后进入 DELIVERING，再逐仓库交付。
+
+15.3.3 拒绝总 Diff
+
+POST /api/v1/projects/{projectId}/tasks/{taskId}/diff-review/reject
+
+- Headers: 必须携带 Idempotency-Key。
+
+- 请求体: {"reason":"请补充错误密码场景测试"}；reason 必填，最多 4000 个字符。
+
+- 响应: 200 OK，返回 reviewStatus=REJECTED 的 DiffReviewBatchResponse。拒绝后不进行 Commit、Push 或 PR 创建。
+
+15.3.4 重试失败的交付
+
+POST /api/v1/projects/{projectId}/tasks/{taskId}/diff-review/retry-delivery
+
+- Headers: 必须携带 Idempotency-Key。
+
+- 响应: 200 OK，返回重试后的 DiffReviewBatchResponse。仅接受已确认且交付未完成的批次；已为 MR_CREATED 的仓库不会重复交付。
+
+15.3.5 读取单仓库原始 Patch
+
+GET /api/v1/projects/{projectId}/tasks/{taskId}/diff-review/diffs/{diffId}/patch
+
+- 权限: 项目成员。
+
+- 响应: 200 OK，返回 {"diffId":"...","repositoryId":"...","patch":"..."}。调用方只能读取当前任务最终 Diff 批次内的 Patch。
+
+15.4 SSE 事件补充
+
+以下事件的 Payload 均为脱敏摘要，格式如：
+
+projectId、taskId 和事件对应资源 ID 是所有新增事件的最小定位字段；具体 payload 见 §15.6。
+
+- diff-review.created: 总 Diff 快照生成完毕
+
+- task.awaiting-diff-confirmation: 任务等待用户确认 Diff
+
+- diff-review.confirmed: 用户确认了总 Diff
+
+- diff-review.rejected: 用户拒绝了总 Diff
+
+- delivery.repository.updated: 某仓库已完成交付，状态为 MR_CREATED
+
+- delivery.failed: 交付失败
+
+- delivery.completed: 所有仓库交付完成
+
+15.5 单仓库 Diff 接口调整
+
+- 如果单 Diff 属于某个 Diff Review Batch，那么调用原有的 POST /diffs/{diffId}/accept 或 POST /diffs/{diffId}/reject 将返回 409 DIFF_BATCH_REVIEW_REQUIRED，要求用户走总 Diff 确认接口。
+
+15.6 前端对接契约
+
+15.6.1 执行产物时间线
+
+方法
+路径
+权限
+响应
+GET
+/api/v1/projects/{projectId}/tasks/{taskId}/artifacts
+项目成员
+200 OK，按 sequenceNo 升序返回 Artifact 数组
+
+Artifact 响应结构：
+
+    {
+      "id": "artifact-uuid",
+      "taskId": "task-uuid",
+      "taskRunId": "task-run-uuid",
+      "taskStepId": "step-uuid",
+      "sequenceNo": 2,
+      "artifactType": "CODING",
+      "summary": {"title": "完成登录接口实现"},
+      "createdAt": "2026-08-14T10:00:00Z"
+    }
+
+artifactType 取值为 PLAN、CODING、TESTING、REVIEWING。PLAN 只关联 taskId，因此 taskRunId 和 taskStepId 为 null；其余类型同时关联 Task、TaskRun 与 TaskStep。summary 是已脱敏的展示摘要，不包含命令原文、凭据、环境变量或宿主机绝对路径。
+
+15.6.2 最终 Diff 批次
+
+GET /diff-review 在最终 Diff 尚未生成时返回 404 DIFF_REVIEW_NOT_FOUND，不是空数组或 204。批次状态枚举如下：
+
+字段
+取值
+前端含义
+reviewStatus
+PENDING_CONFIRMATION、ACCEPTED、REJECTED
+是否仍可确认或拒绝
+deliveryStatus
+NOT_STARTED、DELIVERING、DELIVERED、PARTIALLY_DELIVERED、FAILED
+总体交付结果
+单仓库持久化状态
+NOT_STARTED、COMMITTED、MR_CREATED、FAILED
+仅用于后端交付与重试；当前未包含在 DiffListItemResponse 中
+
+当前 DiffReviewBatchResponse：
+
+    {
+      "id": "review-batch-uuid",
+      "taskId": "task-uuid",
+      "reviewStatus": "PENDING_CONFIRMATION",
+      "deliveryStatus": "NOT_STARTED",
+      "aggregateHash": "sha256-...",
+      "reviewReason": null,
+      "diffs": [
+        {
+          "id": "diff-uuid",
+          "projectId": "project-uuid",
+          "taskId": "task-uuid",
+          "taskRunId": "task-run-uuid",
+          "taskStepId": "step-uuid",
+          "requirementGroupId": null,
+          "workspaceId": "workspace-uuid",
+          "repositoryId": "project-repository-binding-uuid",
+          "baseCommit": "abc123",
+          "sourceBranch": "feat/login-api",
+          "headCommit": "def456",
+          "status": "PENDING_REVIEW",
+          "changeStats": {"files": 2, "additions": 10, "deletions": 2},
+          "createdAt": "2026-08-14T10:00:00Z"
+        }
+      ]
+    }
+
+批次内 Diff 与普通单 Diff 的关联由服务端 reviewBatchId 持久化字段表达。该字段当前不在公开 DiffResponse 或 DiffListItemResponse 中；前端应以 Task 级 diff-review 接口作为最终 Diff 审核入口。
+
+当前已落地的公开响应只提供批次总体 deliveryStatus。每仓库 deliveryStatus、deliveryFailureReason 与关联 MR 摘要尚未返回；在该响应扩展完成前，前端不能在刷新后准确恢复“部分成功”的仓库级列表。
+
+15.6.3 确认、拒绝与重试
+
+三个写接口都由全局幂等过滤器要求 Idempotency-Key。缺失时返回 400 IDEMPOTENCY_KEY_REQUIRED；同一键但请求体不同返回 409 IDEMPOTENCY_KEY_REUSED；同一键与相同请求会回放首次成功响应。
+
+接口
+成功响应
+主要业务错误
+POST .../confirm
+200 + DiffReviewBatchResponse
+403 DIFF_REVIEW_FORBIDDEN、404 DIFF_REVIEW_NOT_FOUND、409 DIFF_REVIEW_NOT_DECIDABLE、409 DIFF_SNAPSHOT_STALE
+POST .../reject
+200 + DiffReviewBatchResponse
+400 DIFF_REJECT_REASON_REQUIRED、403 DIFF_REVIEW_FORBIDDEN、409 DIFF_REVIEW_NOT_DECIDABLE
+POST .../retry-delivery
+200 + DiffReviewBatchResponse
+403 DIFF_REVIEW_FORBIDDEN、409 DIFF_DELIVERY_NOT_RETRYABLE
+
+确认成功仅表示用户已接受整个快照；后端仍会逐仓库交付。前端必须根据返回的总体 deliveryStatus 和后续 SSE 刷新 Task 与批次，不得将 ACCEPTED 当作“所有 PR 已创建”。
+
+15.6.4 新增 SSE 事件与 payload
+
+SSE 事件仍使用 §12.1 的事件信封；以下为 data 中的业务 payload 必填字段。事件到达后可重新请求对应的 Task、Artifact 或 Diff Review 资源。
+
+事件
+payload 必填字段
+推荐刷新资源
+task.artifact.created
+taskId、artifactId、sequenceNo、artifactType
+Task Artifact 时间线
+task-run.artifact.created
+以上字段，加 taskRunId、taskStepId
+Task Artifact 时间线、TaskRun
+diff.created
+projectId、taskId、diffId、repositoryId、status
+Task Diff Review
+diff-review.created
+projectId、taskId、reviewBatchId、reviewStatus、aggregateHash
+Task、Task Diff Review
+task.awaiting-diff-confirmation
+projectId、taskId、reviewBatchId
+Task、Task Diff Review
+diff-review.confirmed / diff-review.rejected
+projectId、taskId、reviewBatchId
+Task、Task Diff Review
+delivery.repository.updated
+projectId、taskId、diffId、deliveryStatus
+Task Diff Review、MR 列表
+delivery.completed / delivery.failed
+projectId、taskId、reviewBatchId、deliveryStatus
+Task、Task Diff Review、MR 列表
+task.diff-review.failed
+projectId、taskId、reason
+Task 与错误提示

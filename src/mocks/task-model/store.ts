@@ -9,12 +9,16 @@ import type {
   TaskRunLog,
   TaskRunStep,
   TaskStep,
+  TaskArtifact,
+  DiffReviewBatch,
 } from '@/types/task-model'
 
 export interface TaskModelStore {
   tasks: Map<string, Task>
   taskSteps: Map<string, TaskStep>
   taskRuns: Map<string, TaskRunDetail>
+  taskArtifacts: Map<string, TaskArtifact[]>
+  diffReviews: Map<string, DiffReviewBatch>
   taskRunSteps: Map<string, TaskRunStep[]>
   taskRunLogs: Map<string, TaskRunLog[]>
   executionContexts: Map<string, ExecutionContext>
@@ -29,6 +33,8 @@ export function createTaskModelStore(): TaskModelStore {
     tasks: new Map(),
     taskSteps: new Map(),
     taskRuns: new Map(),
+    taskArtifacts: new Map(),
+    diffReviews: new Map(),
     taskRunSteps: new Map(),
     taskRunLogs: new Map(),
     executionContexts: new Map(),

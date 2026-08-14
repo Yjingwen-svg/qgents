@@ -10,6 +10,7 @@ import type {
   TaskRunDetail,
   TaskRunSummary,
   TaskStep,
+  TaskArtifact,
 } from '@/types/task-model'
 import {
   InvalidTaskModelTransitionError,
@@ -29,10 +30,12 @@ import {
 import { findDiff, findInputRequest, findTask, findTaskRun, findTaskStep, type TaskModelStore } from './store'
 
 const stores = new Map<string, TaskModelStore>()
+const diffReviewIdempotency = new Map<string, { fingerprint: string; batch: import('@/types/task-model').DiffReviewBatch }>()
 const requestId = 'task-model-mock-request'
 
 export function resetTaskModelStore(): void {
   stores.clear()
+  diffReviewIdempotency.clear()
 }
 
 function pathParam(params: PathParams, name: string): string {
@@ -108,6 +111,27 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.length > 0 && value.every((item) => isNonEmptyString(item))
 }
 
+function diffReviewIdempotencyResponse(
+  projectId: string,
+  taskId: string,
+  request: Request,
+  fingerprint: string,
+): HttpResponse<Record<string, unknown>> | null {
+  const key = request.headers.get('Idempotency-Key')
+  if (!key) return errorResponse(400, 'IDEMPOTENCY_KEY_REQUIRED', 'Idempotency-Key is required')
+  const recordKey = `${projectId}:${taskId}:${key}`
+  const existing = diffReviewIdempotency.get(recordKey)
+  if (!existing) return null
+  if (existing.fingerprint !== fingerprint) return errorResponse(409, 'IDEMPOTENCY_KEY_REUSED', 'Idempotency-Key was already used for another request')
+  return response(structuredClone(existing.batch))
+}
+
+function rememberDiffReviewIdempotency(projectId: string, taskId: string, request: Request, fingerprint: string, batch: import('@/types/task-model').DiffReviewBatch): void {
+  const key = request.headers.get('Idempotency-Key')
+  if (!key) return
+  diffReviewIdempotency.set(`${projectId}:${taskId}:${key}`, { fingerprint, batch: structuredClone(batch) })
+}
+
 async function jsonObject(request: Request): Promise<Record<string, unknown>> {
   const body: unknown = await request.json()
   return body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : {}
@@ -141,6 +165,7 @@ function createTaskResources(store: TaskModelStore, input: TaskCreateInput, proj
     title: input.title,
     requirement: input.requirement,
     status: 'PENDING',
+    deliveryMode: 'DIFF_FIRST',
     workspaceId: input.workspaceId ?? `workspace-${id}`,
     workspaceStatus: 'READY',
     continuationOfTaskId: input.continuationOfTaskId ?? null,
@@ -560,6 +585,7 @@ export const taskModelDiffHandlers: HttpHandler[] = [
     const store = getStore(projectId, request)
     const diff = findDiff(store, pathParam(params, 'diffId'))
     if (!diff) return missing('Diff')
+    if (store.diffReviews.has(diff.taskId)) return errorResponse(409, 'DIFF_BATCH_REVIEW_REQUIRED', 'Review the task Diff batch instead')
     try {
       diff.status = transitionDiff(diff.status, 'accept')
       diff.reviewedBy = 'mock-reviewer'
@@ -578,6 +604,7 @@ export const taskModelDiffHandlers: HttpHandler[] = [
     const store = getStore(projectId, request)
     const diff = findDiff(store, pathParam(params, 'diffId'))
     if (!diff) return missing('Diff')
+    if (store.diffReviews.has(diff.taskId)) return errorResponse(409, 'DIFF_BATCH_REVIEW_REQUIRED', 'Review the task Diff batch instead')
     const body = await jsonObject(request) as unknown as DiffRejectInput
     if (!isNonEmptyString(body.reason)) return errorResponse(422, 'VALIDATION_FAILED', 'A rejection reason is required', 'reason')
     try {
@@ -590,6 +617,83 @@ export const taskModelDiffHandlers: HttpHandler[] = [
     } catch (error: unknown) {
       return transitionError(error)
     }
+  }),
+]
+
+const taskArtifactAndDiffReviewHandlers: HttpHandler[] = [
+  http.get('*/api/projects/:projectId/tasks/:taskId/artifacts', ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const store = getStore(projectId, request)
+    const task = findTask(store, pathParam(params, 'taskId'))
+    if (!task || task.projectId !== projectId) return missing('Task')
+    return response([...(store.taskArtifacts.get(task.id) ?? [])] satisfies TaskArtifact[])
+  }),
+  http.get('*/api/projects/:projectId/tasks/:taskId/diff-review', ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const store = getStore(projectId, request)
+    const task = findTask(store, pathParam(params, 'taskId'))
+    const batch = task ? store.diffReviews.get(task.id) : undefined
+    return batch ? response(batch) : errorResponse(404, 'DIFF_REVIEW_NOT_FOUND', 'Final Diff has not been generated')
+  }),
+  http.post('*/api/projects/:projectId/tasks/:taskId/diff-review/confirm', ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const store = getStore(projectId, request)
+    const taskId = pathParam(params, 'taskId')
+    const idempotencyResponse = diffReviewIdempotencyResponse(projectId, taskId, request, 'confirm')
+    if (idempotencyResponse) return idempotencyResponse
+    const batch = store.diffReviews.get(taskId)
+    if (!batch) return errorResponse(404, 'DIFF_REVIEW_NOT_FOUND', 'Final Diff has not been generated')
+    if (batch.reviewStatus !== 'PENDING_CONFIRMATION') return errorResponse(409, 'DIFF_REVIEW_NOT_DECIDABLE', 'Diff review is no longer pending')
+    batch.reviewStatus = 'ACCEPTED'
+    batch.deliveryStatus = 'DELIVERING'
+    const task = findTask(store, taskId)
+    if (task) task.status = 'DELIVERING'
+    rememberDiffReviewIdempotency(projectId, taskId, request, 'confirm', batch)
+    return response(batch)
+  }),
+  http.post('*/api/projects/:projectId/tasks/:taskId/diff-review/reject', async ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const body = await jsonObject(request)
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : ''
+    if (!reason || reason.length > 4000) return errorResponse(400, 'DIFF_REJECT_REASON_REQUIRED', 'A rejection reason is required')
+    const store = getStore(projectId, request)
+    const taskId = pathParam(params, 'taskId')
+    const idempotencyResponse = diffReviewIdempotencyResponse(projectId, taskId, request, `reject:${reason}`)
+    if (idempotencyResponse) return idempotencyResponse
+    const batch = store.diffReviews.get(taskId)
+    if (!batch) return errorResponse(404, 'DIFF_REVIEW_NOT_FOUND', 'Final Diff has not been generated')
+    if (batch.reviewStatus !== 'PENDING_CONFIRMATION') return errorResponse(409, 'DIFF_REVIEW_NOT_DECIDABLE', 'Diff review is no longer pending')
+    batch.reviewStatus = 'REJECTED'
+    batch.reviewReason = reason
+    const task = findTask(store, taskId)
+    if (task) task.status = 'FAILED'
+    rememberDiffReviewIdempotency(projectId, taskId, request, `reject:${reason}`, batch)
+    return response(batch)
+  }),
+  http.post('*/api/projects/:projectId/tasks/:taskId/diff-review/retry-delivery', ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const store = getStore(projectId, request)
+    const taskId = pathParam(params, 'taskId')
+    const idempotencyResponse = diffReviewIdempotencyResponse(projectId, taskId, request, 'retry-delivery')
+    if (idempotencyResponse) return idempotencyResponse
+    const batch = store.diffReviews.get(taskId)
+    if (!batch) return errorResponse(404, 'DIFF_REVIEW_NOT_FOUND', 'Final Diff has not been generated')
+    if (batch.reviewStatus !== 'ACCEPTED' || (batch.deliveryStatus !== 'FAILED' && batch.deliveryStatus !== 'PARTIALLY_DELIVERED')) return errorResponse(409, 'DIFF_DELIVERY_NOT_RETRYABLE', 'Diff delivery cannot be retried')
+    batch.deliveryStatus = 'DELIVERED'
+    const task = findTask(store, taskId)
+    if (task) task.status = 'SUCCEEDED'
+    rememberDiffReviewIdempotency(projectId, taskId, request, 'retry-delivery', batch)
+    return response(batch)
   }),
 ]
 
@@ -619,6 +723,7 @@ const taskModelRepositoryHandlers: HttpHandler[] = [
 
 export const taskModelHandlers: HttpHandler[] = [
   ...taskModelRepositoryHandlers,
+  ...taskArtifactAndDiffReviewHandlers,
   ...taskModelTaskHandlers,
   ...taskModelTaskRunHandlers,
   ...taskModelDiffHandlers,

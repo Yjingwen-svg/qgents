@@ -32,6 +32,8 @@ import type {
   ReplaceTaskStepAgentInput,
   PageFilters,
   TaskModelPage,
+  TaskArtifact,
+  DiffReviewBatch,
 } from '@/types/task-model'
 
 type Page<T> = TaskModelPage<T>
@@ -62,6 +64,22 @@ export function useTask(projectId: string, taskId: string): UseQueryResult<Task>
     queryKey: taskModelQueryKeys.tasks.detail(projectId, taskId),
     queryFn: () => tasksApi.get(projectId, taskId),
     enabled: Boolean(projectId && taskId),
+  })
+}
+
+export function useTaskArtifacts(projectId: string, taskId: string): UseQueryResult<TaskArtifact[]> {
+  return useQuery({
+    queryKey: taskModelQueryKeys.taskArtifacts.all(projectId, taskId),
+    queryFn: () => tasksApi.artifacts(projectId, taskId),
+    enabled: Boolean(projectId && taskId),
+  })
+}
+
+export function useTaskDiffReview(projectId: string, taskId: string, enabled = true): UseQueryResult<DiffReviewBatch> {
+  return useQuery({
+    queryKey: taskModelQueryKeys.taskDiffReview.detail(projectId, taskId),
+    queryFn: () => tasksApi.diffReview(projectId, taskId),
+    enabled: Boolean(projectId && taskId && enabled),
   })
 }
 
@@ -276,6 +294,37 @@ export function useRejectDiff(projectId: string): UseMutationResult<DiffDetail, 
   return useMutation({
     mutationFn: ({ diffId, input }) => diffsApi.reject(projectId, diffId, input),
     onSuccess: (diff) => invalidateDiffQueries(projectId, diff),
+  })
+}
+
+type TaskDiffReviewRejectInput = { taskId: string; input: DiffRejectInput }
+
+function invalidateTaskDiffReview(projectId: string, batch: DiffReviewBatch): void {
+  queryClient.setQueryData(taskModelQueryKeys.taskDiffReview.detail(projectId, batch.taskId), batch)
+  void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskDiffReview.detail(projectId, batch.taskId) })
+  void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.detail(projectId, batch.taskId) })
+  void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.all(projectId) })
+  void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.diffs.all(projectId) })
+}
+
+export function useConfirmTaskDiffReview(projectId: string): UseMutationResult<DiffReviewBatch, Error, string> {
+  return useMutation({
+    mutationFn: (taskId) => tasksApi.confirmDiffReview(projectId, taskId),
+    onSuccess: (batch) => invalidateTaskDiffReview(projectId, batch),
+  })
+}
+
+export function useRejectTaskDiffReview(projectId: string): UseMutationResult<DiffReviewBatch, Error, TaskDiffReviewRejectInput> {
+  return useMutation({
+    mutationFn: ({ taskId, input }) => tasksApi.rejectDiffReview(projectId, taskId, input),
+    onSuccess: (batch) => invalidateTaskDiffReview(projectId, batch),
+  })
+}
+
+export function useRetryTaskDiffReviewDelivery(projectId: string): UseMutationResult<DiffReviewBatch, Error, string> {
+  return useMutation({
+    mutationFn: (taskId) => tasksApi.retryDiffReviewDelivery(projectId, taskId),
+    onSuccess: (batch) => invalidateTaskDiffReview(projectId, batch),
   })
 }
 

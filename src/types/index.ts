@@ -89,6 +89,13 @@ export type {
   GenerateMemoryDraftPayload,
 } from './memory'
 export type {
+  Skill,
+  SkillStatus,
+  SkillVisibility,
+  SkillActor,
+  CreateSkillPayload,
+} from './skill'
+export type {
   GithubInstallation,
   GithubInstallationRedirect,
   GithubAuthorizedRepository,

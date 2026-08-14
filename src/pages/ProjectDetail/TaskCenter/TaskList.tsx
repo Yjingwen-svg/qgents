@@ -1,6 +1,6 @@
 import { Empty, Row, Table } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import type { Task } from '@/types/task-model'
+import type { TaskListItem } from '@/types/task-model'
 import { TaskModelStatusTag } from './TaskModelStatusTag'
 import type { TaskCenterView } from './taskCenterConfig'
 import { TaskCard } from './TaskCard'
@@ -8,7 +8,7 @@ import { valueOrNone } from './taskDisplay'
 import styles from './TaskCenterPage.module.scss'
 
 interface TaskListProps {
-  tasks: Task[]
+  tasks: TaskListItem[]
   view: TaskCenterView
   selectedTaskId?: string
   onSelectTask: (taskId: string) => void
@@ -19,11 +19,11 @@ export function TaskList({ tasks, view, selectedTaskId, onSelectTask, onViewDeta
   if (tasks.length === 0) return <Empty description="暂无匹配任务" className={styles.empty} />
 
   if (view === 'table') {
-    const columns: ColumnsType<Task> = [
+    const columns: ColumnsType<TaskListItem> = [
       { title: '任务', key: 'title', render: (_, task) => valueOrNone(task.title), ellipsis: true },
       { title: '状态', key: 'status', render: (_, task) => <TaskModelStatusTag status={task.status} /> },
-      { title: '需求群', key: 'requirementGroupId', render: (_, task) => valueOrNone(task.requirementGroupId) },
-      { title: '创建人', key: 'createdBy', render: (_, task) => valueOrNone(task.createdBy) },
+      { title: '需求群', key: 'requirementGroup', render: (_, task) => valueOrNone(task.requirementGroup?.name) },
+      { title: '创建人', key: 'createdByUser', render: (_, task) => valueOrNone(task.createdByUser?.displayName) },
       { title: '更新时间', key: 'updatedAt', render: (_, task) => valueOrNone(task.updatedAt) },
       { title: '详情', key: 'details', render: (_, task) => <a onClick={(event) => { event.stopPropagation(); onViewDetails(task.id) }}>查看完整任务详情</a> },
     ]

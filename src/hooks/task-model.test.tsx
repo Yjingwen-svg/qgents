@@ -26,38 +26,11 @@ import {
 } from './task-model'
 
 const task: Task = {
-  id: 'task-1',
-  projectId: 'project-1',
-  requirementGroupId: 'group-1',
-  triggerMessageId: 'message-1',
-  title: 'Implement login',
-  requirement: 'Support login',
-  status: 'RUNNING',
-  workspaceId: 'workspace-1',
-  workspaceStatus: 'READY',
-  continuationOfTaskId: null,
-  repositoryIds: ['repo-1'],
-  repositories: [],
-  createdBy: 'user-1',
-  createdAt: '2026-08-12T00:00:00Z',
-  updatedAt: '2026-08-12T00:00:00Z',
+  id: 'task-1', displayCode: 'T-1', projectId: 'project-1', title: 'Implement login', requirementSummary: 'Support login', status: 'RUNNING', deliveryMode: 'DIFF_FIRST', requirementGroup: { id: 'group-1', name: 'Login', status: 'ACTIVE' }, createdByUser: { id: 'user-1', displayName: 'User', avatarUrl: null }, repositories: [], executionSummary: { totalSteps: 0, pendingSteps: 0, runningSteps: 0, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: null, currentStageTitle: null, requiresUserAction: false }, attention: null, createdAt: '2026-08-12T00:00:00Z', updatedAt: '2026-08-12T00:00:00Z', requirement: 'Support login', acceptanceCriteria: [], workspace: null, capabilities: { canCancel: true, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false }, artifactSummary: { total: 0, byType: {} }, diffReviewSummary: { available: false, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 }, sourceMessage: null, triggerMessageId: null,
 }
 
 const taskRun: TaskRunDetail = {
-  id: 'run-2',
-  projectId: 'project-1',
-  taskId: 'task-1',
-  taskStepId: 'step-1',
-  agentId: 'agent-1',
-  role: 'DEVELOPER',
-  status: 'QUEUED',
-  retryOfTaskRunId: 'run-1',
-  artifactSummary: { diffs: { count: 0, byStatus: {} } },
-  startedAt: null,
-  finishedAt: null,
-  durationMs: null,
-  createdAt: '2026-08-12T00:00:00Z',
-  updatedAt: '2026-08-12T00:00:00Z',
+  id: 'run-2', taskId: 'task-1', taskStepId: 'step-1', taskStepTitle: 'Developer', agent: null, role: 'DEVELOPER', status: 'QUEUED', retryOfTaskRunId: 'run-1', statusSummary: null, statusReason: null, startedAt: null, finishedAt: null, durationMs: null, artifactSummary: { total: 0, diffCount: 0 }, createdAt: '2026-08-12T00:00:00Z', updatedAt: '2026-08-12T00:00:00Z',
 }
 
 function wrapper(client: QueryClient) {

@@ -1,5 +1,5 @@
 import { Button, Card, Col, Divider, Space, Tag, Typography } from 'antd'
-import type { Task } from '@/types/task-model'
+import type { TaskListItem } from '@/types/task-model'
 import { TaskModelStatusTag } from './TaskModelStatusTag'
 import { valueOrNone } from './taskDisplay'
 import styles from './TaskCenterPage.module.scss'
@@ -7,7 +7,7 @@ import styles from './TaskCenterPage.module.scss'
 const { Text, Paragraph } = Typography
 
 interface TaskCardProps {
-  task: Task
+  task: TaskListItem
   selected: boolean
   onSelect: (taskId: string) => void
   onViewDetails: (taskId: string) => void
@@ -32,10 +32,10 @@ export function TaskCard({ task, selected, onSelect, onViewDetails }: TaskCardPr
           <TaskModelStatusTag status={task.status} />
         </div>
         <Space wrap size={[6, 6]} className={styles.taskCardTags}>
-          <Tag className={styles.groupTag}>{valueOrNone(task.requirementGroupId)}</Tag>
-          <Tag>{valueOrNone(task.createdBy)}</Tag>
+          <Tag className={styles.groupTag}>{valueOrNone(task.requirementGroup?.name)}</Tag>
+          <Tag>{valueOrNone(task.createdByUser?.displayName)}</Tag>
         </Space>
-        <Paragraph ellipsis={{ rows: 2 }} className={styles.taskCardCopy}>{valueOrNone(task.requirement)}</Paragraph>
+        <Paragraph ellipsis={{ rows: 2 }} className={styles.taskCardCopy}>{valueOrNone(task.requirementSummary)}</Paragraph>
         <div className={styles.taskCardTarget}>
           <Text type="secondary">工作区 / 仓库</Text>
           <Text strong>{workspaceSummary(task)}</Text>
@@ -61,9 +61,9 @@ export function TaskCard({ task, selected, onSelect, onViewDetails }: TaskCardPr
   )
 }
 
-function workspaceSummary(task: Task): string {
+function workspaceSummary(task: TaskListItem): string {
   const repositories = task.repositories.map((repository) => repository.repositoryId).filter(Boolean)
-  const workspace = valueOrNone(task.workspaceId)
+  const workspace = valueOrNone(task.repositories[0]?.repositoryId)
   return repositories.length > 0 ? `${workspace} / ${repositories.join(', ')}` : workspace
 }
 

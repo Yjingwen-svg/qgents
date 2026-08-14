@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { TaskRunSummary, TaskStep } from '@/types/task-model'
 import { buildWorkflowGraph } from './runtime'
 
-const step = (id: string, dependencies: string[] = []): TaskStep => ({ id, taskId: 'task-1', role: 'DEVELOPER', agentId: null, repositoryId: null, baseRef: null, dependencies, testsetIds: [], status: 'PENDING', acceptanceNotes: null })
-const run = (id: string, taskStepId: string, updatedAt: string): TaskRunSummary => ({ id, projectId: 'project-1', taskId: 'task-1', taskStepId, agentId: 'agent-1', role: 'DEVELOPER', status: 'SUCCEEDED', retryOfTaskRunId: null, createdAt: updatedAt, updatedAt })
+const step = (id: string, dependencies: string[] = []): TaskStep => ({ id, taskId: 'task-1', sequenceNo: 1, title: 'Developer', description: null, role: 'DEVELOPER', agent: null, repository: null, dependencies, status: 'PENDING', acceptanceNotes: null, latestRun: null, runCount: 0, startedAt: null, finishedAt: null, createdAt: '2026-08-12T00:00:00Z', updatedAt: '2026-08-12T00:00:00Z' })
+const run = (id: string, taskStepId: string, updatedAt: string): TaskRunSummary => ({ id, taskId: 'task-1', taskStepId, taskStepTitle: 'Developer', agent: { id: 'agent-1', name: 'Agent', role: 'DEVELOPER', avatarUrl: null }, role: 'DEVELOPER', status: 'SUCCEEDED', retryOfTaskRunId: null, statusSummary: null, statusReason: null, startedAt: updatedAt, finishedAt: updatedAt, durationMs: 1, artifactSummary: { total: 0, diffCount: 0 }, createdAt: updatedAt, updatedAt })
 
 describe('workflow runtime graph', () => {
   it('orders dependency chains and keeps parallel roots/siblings', () => {

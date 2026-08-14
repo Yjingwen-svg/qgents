@@ -21,6 +21,7 @@ import type {
   InputRequestAnswer,
   InputRequestDecision,
   Task,
+  TaskListItem,
   TaskCreateInput,
   TaskListFilters,
   TaskRunDetail,
@@ -38,7 +39,7 @@ import type {
 
 type Page<T> = TaskModelPage<T>
 
-export function useTasks(projectId: string, filters: TaskListFilters = {}): UseQueryResult<Page<Task>> {
+export function useTasks(projectId: string, filters: TaskListFilters = {}): UseQueryResult<Page<TaskListItem>> {
   return useQuery({
     queryKey: taskModelQueryKeys.tasks.list(projectId, filters),
     queryFn: () => tasksApi.list(projectId, filters),
@@ -49,7 +50,7 @@ export function useTasks(projectId: string, filters: TaskListFilters = {}): UseQ
 export function useInfiniteTasks(
   projectId: string,
   filters: Omit<TaskListFilters, 'cursor'> = {},
-): UseInfiniteQueryResult<InfiniteData<Page<Task>, string | undefined>, Error> {
+): UseInfiniteQueryResult<InfiniteData<Page<TaskListItem>, string | undefined>, Error> {
   return useInfiniteQuery({
     queryKey: taskModelQueryKeys.tasks.infinite(projectId, filters),
     queryFn: ({ pageParam }) => tasksApi.list(projectId, { ...filters, cursor: pageParam }),

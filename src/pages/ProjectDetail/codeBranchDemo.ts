@@ -261,7 +261,7 @@ const BRANCHES_BY_FULL_NAME: Record<string, string> = {
 }
 
 export function demoBoundReposForProject(projectId: string): ProjectBoundRepository[] {
-  if (projectId === 'demo-project') return DEMO_BOUND_REPOS
+  if (projectId === 'demo-project' || projectId === 'proj-001') return DEMO_BOUND_REPOS
   return []
 }
 

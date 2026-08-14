@@ -19,9 +19,9 @@ vi.mock('@/hooks/task-model', () => ({ useTask: useTaskMock, useTaskSteps: useTa
 
 import { TaskDetailPage } from './TaskDetailPage'
 
-const task: Task = { id: 'task-1', projectId: 'project-test', requirementGroupId: 'group-1', triggerMessageId: 'message-1', title: '登录任务', requirement: '实现登录功能', status: 'RUNNING', deliveryMode: 'DIFF_FIRST', workspaceId: 'workspace-1', workspaceStatus: 'READY', continuationOfTaskId: null, repositoryIds: ['repo-1'], repositories: [{ repositoryId: 'repo-1', baseCommit: 'base-1', sourceBranch: 'main', headCommit: 'head-1' }], createdBy: 'user-1', createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z' }
-const step: TaskStep = { id: 'step-1', taskId: 'task-1', role: 'DEVELOPER', agentId: 'agent-1', repositoryId: 'repo-1', baseRef: 'main', dependencies: [], testsetIds: ['testset-1'], status: 'RUNNING', acceptanceNotes: '覆盖登录场景' }
-const run: TaskRunSummary = { id: 'run-1', projectId: 'project-test', taskId: 'task-1', taskStepId: 'step-1', agentId: 'agent-1', role: 'DEVELOPER', status: 'RUNNING', retryOfTaskRunId: null, createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z' }
+const task: Task = { id: 'task-1', displayCode: 'T-1', projectId: 'project-test', title: '登录任务', requirementSummary: '实现登录功能', status: 'RUNNING', deliveryMode: 'DIFF_FIRST', requirementGroup: { id: 'group-1', name: 'Login', status: 'ACTIVE' }, createdByUser: { id: 'user-1', displayName: 'User', avatarUrl: null }, repositories: [{ repositoryId: 'repo-1', name: 'Repo', fullName: 'mock/repo', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'main', baseCommit: 'base-1', sourceBranch: 'main', headCommit: 'head-1' }], executionSummary: { totalSteps: 1, pendingSteps: 0, runningSteps: 1, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: 'DEVELOPER', currentStageTitle: 'Developer', requiresUserAction: false }, attention: null, createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z', requirement: '实现登录功能', acceptanceCriteria: [], workspace: null, capabilities: { canCancel: true, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false }, artifactSummary: { total: 0, byType: {} }, diffReviewSummary: { available: false, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 }, sourceMessage: null, triggerMessageId: null }
+const step: TaskStep = { id: 'step-1', taskId: 'task-1', sequenceNo: 1, title: 'Developer', description: null, role: 'DEVELOPER', agent: { id: 'agent-1', name: 'Agent One', role: 'DEVELOPER', avatarUrl: null, status: 'ACTIVE' }, repository: { repositoryId: 'repo-1', name: 'Repo', sourceBranch: 'main' }, dependencies: [], status: 'RUNNING', acceptanceNotes: '覆盖登录场景', latestRun: null, runCount: 1, startedAt: null, finishedAt: null, createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z' }
+const run: TaskRunSummary = { id: 'run-1', taskId: 'task-1', taskStepId: 'step-1', taskStepTitle: 'Developer', agent: null, role: 'DEVELOPER', status: 'RUNNING', retryOfTaskRunId: null, statusSummary: null, statusReason: null, startedAt: '2026-08-11T08:00:00Z', finishedAt: null, durationMs: null, artifactSummary: { total: 0, diffCount: 0 }, createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z' }
 function page<T>(data: T[]): TaskModelPage<T> { return { data, page: { nextCursor: null, hasMore: false }, requestId: 'request-1' } }
 function renderPage(path = '/app/projects/project-test/tasks/task-1') { return render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/app/projects/:projectId/tasks/:taskId" element={<><TaskDetailPage /><LocationProbe /></>} /><Route path="/app/projects/:projectId/tasks/:taskId/executions/:taskRunId" element={<div>execution-route</div>} /></Routes></MemoryRouter>) }
 function LocationProbe() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}</output> }
@@ -32,7 +32,7 @@ describe('TaskDetailPage', () => {
     renderPage()
     expect(screen.getByRole('heading', { name: /任务 ID：task-1登录任务/ })).toBeInTheDocument()
     expect(screen.getByText('实现登录功能')).toBeInTheDocument()
-    expect(screen.getByText(/Agent：agent-1/)).toBeInTheDocument()
+    expect(screen.getByText(/Agent：Agent One/)).toBeInTheDocument()
     expect(screen.getByText('查看最新 TaskRun：run-1')).toBeInTheDocument()
     expect(useTaskMock).toHaveBeenCalledWith('project-test', 'task-1')
     expect(useTaskStepsMock).toHaveBeenCalledWith('project-test', 'task-1', { limit: 100 })
@@ -41,8 +41,8 @@ describe('TaskDetailPage', () => {
 
   it('renders the artifact timeline safely and keeps PLAN unlinked', () => {
     const artifacts: TaskArtifact[] = [
-      { id: 'artifact-coding', taskId: 'task-1', taskRunId: 'run-1', taskStepId: 'step-1', sequenceNo: 2, artifactType: 'CODING', summary: { title: 'Implemented', files: 2 }, createdAt: '2026-08-11T08:01:00Z' },
-      { id: 'artifact-plan', taskId: 'task-1', taskRunId: null, taskStepId: null, sequenceNo: 1, artifactType: 'PLAN', summary: { approved: true }, createdAt: '2026-08-11T08:00:00Z' },
+      { id: 'artifact-coding', taskId: 'task-1', taskRunId: 'run-1', taskStepId: 'step-1', sequenceNo: 2, artifactType: 'CODING', title: '代码编写', description: null, status: 'SUCCEEDED', summary: { title: 'Implemented', files: 2 }, resources: [], createdAt: '2026-08-11T08:01:00Z' },
+      { id: 'artifact-plan', taskId: 'task-1', taskRunId: null, taskStepId: null, sequenceNo: 1, artifactType: 'PLAN', title: '计划', description: null, status: null, summary: { approved: true }, resources: [], createdAt: '2026-08-11T08:00:00Z' },
     ]
     useTaskArtifactsMock.mockReturnValue({ data: artifacts, error: null, isError: false, isLoading: false })
     renderPage()

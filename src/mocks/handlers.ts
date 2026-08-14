@@ -2,17 +2,13 @@ import { http, HttpResponse } from 'msw'
 import type { GithubAuthorizedRepository, GithubInstallation } from '@/types/github'
 import type { Group, GroupMember, Message } from '@/types/group'
 import type { Activity, Memory, Notification } from '@/types'
+import { MOCK_CURRENT_USER } from './currentUser'
 
 // ══════════════════════════════════════════════
 // Mock 数据
 // ══════════════════════════════════════════════
 
-const MOCK_USER = {
-  id: 'user-001',
-  email: 'demo@qgents.dev',
-  displayName: '陈同学',
-  avatarChar: '陈',
-}
+const MOCK_USER = MOCK_CURRENT_USER
 
 const MOCK_TEAMS = [
   {
@@ -43,6 +39,7 @@ const MOCK_TEAM_MEMBERS = [
 
 const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: string; description: string; createdAt: string; role: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'; repositoryCount: number }>> = {
   'team-owned-001': [
+    { id: 'demo-project', teamId: 'team-owned-001', name: 'Demo Project', description: 'Demo project for Mock acceptance', createdAt: '2026-08-13T00:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 1 },
     { id: 'proj-001', teamId: 'team-owned-001', name: 'Qgents', description: '团队多人 + 多 Agent 云端协作开发平台', createdAt: '2026-07-01T08:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 3 },
     { id: 'proj-002', teamId: 'team-owned-001', name: '宠影记', description: '宠物健康管理小程序', createdAt: '2026-07-15T08:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 1 },
   ],
@@ -631,6 +628,47 @@ function createRepoBindingHandlers() {
       boundAt: '2026-08-10T12:00:00Z',
     },
   ])
+  bindings.set('proj-001', [
+    {
+      id: 'bound-demo-auth-service',
+      repositoryId: 'repo-2',
+      installationId: 'gh-install-1001',
+      providerRepositoryId: 987654322,
+      fullName: 'Yjingwen-svg/qgents-server',
+      githubUrl: 'https://github.com/Yjingwen-svg/qgents-server',
+      displayName: 'auth-service',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T10:00:00Z',
+      boundAt: '2026-08-10T12:00:00Z',
+    },
+    {
+      id: 'bound-demo-web-console',
+      repositoryId: 'repo-1',
+      installationId: 'gh-install-1001',
+      providerRepositoryId: 987654321,
+      fullName: 'Yjingwen-svg/qgents-web',
+      githubUrl: 'https://github.com/Yjingwen-svg/qgents-web',
+      displayName: 'web-console',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T10:00:00Z',
+      boundAt: '2026-08-10T12:00:00Z',
+    },
+    {
+      id: 'bound-demo-shared-sdk',
+      repositoryId: 'repo-3',
+      installationId: 'gh-install-1002',
+      providerRepositoryId: 987654323,
+      fullName: 'qgents-lab/pet-app',
+      githubUrl: 'https://github.com/qgents-lab/pet-app',
+      displayName: 'shared-sdk',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T09:00:00Z',
+      boundAt: '2026-08-11T09:00:00Z',
+    },
+  ])
   bindings.set('demo-project', [
     {
       id: 'bound-demo-auth-service',
@@ -868,13 +906,23 @@ export const handlers = [
       requestId: 'req_mock_authorized_repos',
     })
   }),
-
-  http.post('/api/teams/:teamId/integrations/github/installations', ({ params, request }) => {
+// 来自 MSW 内部，在【拦截成功、路由匹配上之后】，MSW 自动组装、生成这个info上下文对象，再调用你的回调函数，把它塞进来。
+//info 对象;const params = info.params
+    // const request = info.request
+    // const cookies = info.cookies
+    // const requestId = info.requestId
+// 拦截,匹配路由,执行回调函数
+//匹配路由:只要是 POST 请求，并且 URL 路径符合 /api/teams/【任意值】/integrations/github/installations 这个格式，就触发后面这个回调，不要发到真实后端。
+//拦截 = MSW 在浏览器发出真实网络请求、发给后端之前，把这个请求 “半路截住”，不走真实后端，直接用你写的 mock 函数返回假数据。
+//request.url 不是对象！是字符串！
+  http.post('/api/teams/:teamId/integrations/github/installations', ({ params, request }) => {//路径参数对象params,就是路径当中用:进行占位的都赋值给params
     const teamId = String(params.teamId)
     const idempotencyKey = request.headers.get('Idempotency-Key')
-    console.info('[MSW] createInstallation', { teamId, idempotencyKey })
+    const clientParam = new URL(request.url).searchParams.get('client')
+    const client = clientParam === 'MOBILE' ? 'MOBILE' : 'WEB'
+    console.info('[MSW] createInstallation', { teamId, client, idempotencyKey })
 
-    const state = encodeURIComponent(`mock:${teamId}:${Date.now()}`)
+    const state = encodeURIComponent(`mock:${teamId}:${Date.now()}`)//模拟的state,真实的不会这样写.进行url编码,encodeURIComponent 只是传输包装，不是 state 本身的业务内容。
     const installationUrl = `https://github.com/apps/qgents/installations/new?state=${state}`
 
     return HttpResponse.json({

@@ -1,4 +1,4 @@
-版本：v1.3.1
+版本：v1.4.0
 
 状态：第 6 节 GitHub 集成接口已冻结；通知中心（§7.1）与群列表/消息字段按 A 联调约定补全
 
@@ -30,7 +30,7 @@
 
 2. 通用约定
 
-基础地址：https://api.qgents.example.com/api/v1
+基础地址：https://api.qgents.dpdns.org/api/v1
 
 请求和响应：均为 JSON，时间为 UTC RFC 3339，所有资源 ID 为 UUID。
 
@@ -242,10 +242,6 @@ PATCH
 安全提醒：RSA 加密仅降低演示环境中密码明文直接出现在请求体或普通网络日志中的风险，不能替代 HTTPS。部署具备域名与证书条件后，必须迁移到 HTTPS，并保留服务端密码哈希。
 
 
-
-
-
-
 ---
 
 5. 团队、项目与成员
@@ -306,11 +302,6 @@ Team Owner
 }
 
 受邀邮箱尚未注册时，系统发送注册链接和邀请令牌；用户以相同邮箱注册后可接受邀请。
-
-
-
-
-
 5.2 项目与项目成员
 
 方法
@@ -364,19 +355,11 @@ Project Admin
 
 添加项目成员时 userId 必须已属于该团队。项目创建者自动成为 PROJECT_ADMIN；Team Owner 对本团队项目具有兜底管理权限。
 
-
-
-
-
-
 ---
 
 6. GitHub App 与项目仓库
-
 GitHub App 授权是团队级代码访问授权，不等同于 Qgents 的成员角色。仓库无需属于 PROJECT_ADMIN；只要组织/仓库管理员已为团队安装并授权 Qgents GitHub App，PROJECT_ADMIN 即可绑定该仓库。
-
 GitHub 集成使用三层不同 ID：
-
 资源
 字段
 实际含义
@@ -401,9 +384,7 @@ ProjectRepository
 id
 project_repositories.id，项目仓库绑定 UUID
 PATCH、DELETE，以及 Task/Workspace/Diff/MR 等开发链路
-
 绑定请求不得传 providerInstallationId 或 providerRepositoryId。绑定成功后，下游接口中名为 repositoryId / repositoryIds 的字段均表示 project_repositories.id。
-
 方法
 路径
 权限
@@ -411,7 +392,7 @@ PATCH、DELETE，以及 Task/Workspace/Diff/MR 等开发链路
 POST
 /teams/{teamId}/integrations/github/installations
 Team Owner
-生成 GitHub App 安装跳转地址
+生成 GitHub App 安装跳转地址；可通过 client 指定回跳端
 GET
 /integrations/github/callback
 GitHub/浏览器
@@ -431,7 +412,8 @@ Team Owner
 GET
 /teams/{teamId}/integrations/github/repositories
 Team Owner 或 Project Admin
-查询该团队被授权的仓库\\\<br>
+查询该团队被授权的仓库
+
 GET
 /projects/{projectId}/repositories
 项目成员
@@ -448,24 +430,35 @@ DELETE
 /projects/{projectId}/repositories/{projectRepositoryId}
 Project Admin
 解绑仓库，成功返回 204
-
 GitHub 枚举与状态
-
 Installation.status = ACTIVE | SUSPENDED | DELETED
 Installation.accountType = USER | ORGANIZATION
 Repository.visibility = PUBLIC | PRIVATE | INTERNAL
 Repository.authorizationStatus = AUTHORIZED | REVOKED
-
 - Installation 不使用 EXPIRED；短期 Installation Token 过期不代表 App Installation 过期。
-
 - archived=true 表示 GitHub 仓库已归档；authorizationStatus=REVOKED 表示 GitHub App 已无权访问。
-
 - 第一版不返回 authorizedRepositoryCount，客户端可按授权仓库的 installationId 统计。
-
 安装与元数据刷新
-
-发起安装请求必须携带 Idempotency-Key，成功返回：
-
+发起安装请求必须携带 Idempotency-Key。
+安装请求通过查询参数指定发起端，client 只允许以下值：
+参数
+类型
+必填
+说明
+client
+WEB 或 MOBILE
+否
+回调成功后的前端类型，省略时默认为 WEB
+Web 端请求：
+POST /teams/{teamId}/integrations/github/installations?client=WEB
+Idempotency-Key: <unique-key>
+Authorization: Bearer <accessToken>
+移动端请求：
+POST /teams/{teamId}/integrations/github/installations?client=MOBILE
+Idempotency-Key: <unique-key>
+Authorization: Bearer <accessToken>
+client 不是回跳 URL，前端不得传入任意 URL。后端会将该值写入签名 state，GitHub 回调时由后端验证并决定回跳地址。
+成功返回：
 {
   "data": {
     "installationUrl": "https://github.com/apps/qgents/installations/new?state=...",
@@ -473,9 +466,7 @@ Repository.authorizationStatus = AUTHORIZED | REVOKED
   },
   "requestId": "req_01J..."
 }
-
 Installation 列表项：
-
 {
   "id": "installation-local-uuid",
   "providerInstallationId": 12345678,
@@ -485,23 +476,29 @@ Installation 列表项：
   "installedAt": "2026-08-01T08:00:00Z",
   "metadataSyncedAt": "2026-08-13T10:00:00Z"
 }
-
 callback 固定为：
-
-GET /integrations/github/callback?installation_id=...&state=...
-
-后端校验签名 state，保存 Installation 并刷新授权仓库元数据。成功返回：
-
-302 Location: {FRONTEND_URL}/app/integrations/github?teamId={teamId}&installed=1
-
+GET /integrations/github/callback?installation_id=...&setup_action=...&state=...
+其中 setup_action 由 GitHub 回调携带，常见值为 install 或 update，后端不要求前端额外处理。
+后端校验签名 state，保存 Installation 并刷新授权仓库元数据。state 中包含客户端类型，例如：
+{
+  "sub": "<teamId>",
+  "client": "WEB"
+}
+旧版本没有 client 字段的 state 默认按 WEB 处理。
+成功返回：
+302 Location: {FRONTEND_URL_WEB}/app/integrations/github?teamId={teamId}&installed=1
+当安装请求使用 client=MOBILE 时，回跳地址为：
+302 Location: {FRONTEND_URL_MOBILE}/app/integrations/github?teamId={teamId}&installed=1
+后端部署配置：
+FRONTEND_URL_WEB=https://qgents.dpdns.org
+FRONTEND_URL_MOBILE=https://mobile.qgents.dpdns.org
+Web 和移动端共用同一个 GitHub App 和同一个 callback 地址：
+https://api.qgents.dpdns.org/api/v1/integrations/github/callback
+区别只在于创建安装链接时传递的 client 参数。
 手动刷新请求中的 {installationId} 是 Installation 本地 id。该操作只刷新 GitHub Installation 与授权仓库元数据，不执行 clone/fetch，也不改变 Workspace 状态；成功返回 200 和刷新后的 Installation 对象。客户端随后重新 GET Installation 列表和授权仓库列表。
-
 解除团队 Installation 成功返回 204 No Content；仍被项目仓库绑定引用时返回 409 GITHUB_INSTALLATION_IN_USE。
-
 授权仓库
-
 授权仓库列表项：
-
 {
   "id": "repository-local-uuid",
   "installationId": "installation-local-uuid",
@@ -514,13 +511,9 @@ GET /integrations/github/callback?installation_id=...&state=...
   "authorizationStatus": "AUTHORIZED",
   "metadataSyncedAt": "2026-08-13T10:00:00Z"
 }
-
 客户端只允许绑定 authorizationStatus=AUTHORIZED、archived=false、defaultBranch 非空且对应 Installation 为 ACTIVE 的仓库。defaultBranch 缺失时不得回退为固定的 main。
-
 项目仓库绑定
-
 项目仓库绑定列表项及绑定成功响应：
-
 {
   "id": "project-repository-binding-uuid",
   "repositoryId": "repository-local-uuid",
@@ -534,38 +527,28 @@ GET /integrations/github/callback?installation_id=...&state=...
   "metadataSyncedAt": "2026-08-13T10:00:00Z",
   "boundAt": "2026-08-13T10:00:00Z"
 }
-
 项目绑定 DTO 不返回代码含义的 syncStatus、lastSyncedAt 或 syncError。项目上下文已由路径确定，不重复返回 boundProjectId / boundProjectName。第一版不提供按授权仓库批量反查所有已绑定项目的接口。
-
 绑定仓库请求：
-
 一个项目可绑定多个仓库，前端如需批量绑定，可循环调用本接口，每次传入不同的 repositoryId 即可。
-
-
-
-
-
 {
   "installationId": "installation-local-uuid",
   "repositoryId": "repository-local-uuid",
   "defaultBranch": "main",
   "displayName": "qgents-web"
 }
-
 defaultBranch 是可选兼容字段。后端始终以授权仓库元数据中的真实默认分支为可信来源，忽略客户端覆盖值；真实默认分支缺失时拒绝绑定。成功返回 200 和完整 ProjectRepository 对象，其中 id 是后续 PATCH、DELETE 和 Task 创建使用的项目仓库绑定 ID。
-
 PATCH 与 DELETE 路径中的 {projectRepositoryId} 均为 ProjectRepository 响应的 id，不是授权仓库 repositoryId 或 GitHub 数字 ID。第一版前端不调用 PATCH 修改默认分支。DELETE 成功返回 204 No Content，客户端随后重新 GET 项目绑定列表。
-
 GitHub 写接口幂等与主要错误
-
 生成安装链接、删除 Installation、手动刷新、绑定项目仓库、PATCH 项目仓库和解绑项目仓库均要求 Idempotency-Key。callback 不要求前端传该请求头。
-
 HTTP
 错误码
 含义
 400
 INVALID_GITHUB_INSTALLATION_STATE
 callback state 无效或过期
+400
+INVALID_REQUEST
+client 不是 WEB 或 MOBILE
 400
 IDEMPOTENCY_KEY_REQUIRED
 缺少幂等键
@@ -596,15 +579,8 @@ REPOSITORY_NOT_AUTHORIZED_FOR_PROJECT
 502
 GITHUB_API_UNAVAILABLE
 GitHub API 暂时不可用
-
-callback 只保存 Installation 元数据和授权仓库范围。GitHub App 私钥、安装访问令牌和用户 PAT 永不通过前端 API 返回；后续代码操作必须使用服务端受控 Git 服务或短期权限，凭据不得进入前端、Agent、日志或 Workspace 配置。
-
-
-
-
-
+ callback 只保存 Installation 元数据和授权仓库范围。GitHub App 私钥、安装访问令牌和用户 PAT 永不通过前端 API 返回；后续代码操作必须使用服务端受控 Git 服务或短期权限，凭据不得进入前端、Agent、日志或 Workspace 配置。
 6.1 分支策略与质量门禁
-
 方法
 路径
 权限
@@ -617,8 +593,9 @@ GET/PUT
 /projects/{projectId}/repositories/{projectRepositoryId}/quality-gates/{branch}
 项目成员/Project Admin
 查询/配置目标分支的门禁
-
 质量门禁示例：
+
+
 
 {
   "requirePullRequest": true,
@@ -627,16 +604,9 @@ GET/PUT
   "minimumHumanApprovals": 1,
   "allowDirectPush": false
 }
-
 requiredTestsetIds 是不可被普通成员绕过的强制测试集。门禁规则定义期望条件，检查的实际运行和回写由后续执行/同步服务处理。
 
-
-
-
-
-
 ---
-
 7. 统一 Group 与消息
 
 项目可有一个项目主讨论群和多个需求群，统一建模为 Group。创建项目时服务端自动创建唯一的 PROJECT_MAIN Group；它不可归档或删除。REQUIREMENT Group 是上下文与协作边界，可引用多个仓库；它不代表 Git main，也不天然生成或绑定分支。
@@ -677,6 +647,7 @@ POST
 /projects/{projectId}/groups/{groupId}/messages
 项目成员
 发送文本、代码块、图片、文件或引用
+
 POST
 /projects/{projectId}/attachments
 项目成员
@@ -687,30 +658,11 @@ GET
 组装群聊上下文（需求 + 近期消息 + 关联仓库 + 已发布 Skill + 已批准 Memory），供 Agent 作为输入；limit 参数控制近期消息条数（默认 50，上限 200）
 
 群详情说明：
-
-
-
 - 群详情与改名已由 GET/PATCH /projects/{projectId}/groups/{groupId} 覆盖。
-
-
-
 - 详情响应包含 memberCount（群成员数 = 项目成员数 + 群内 Agent 数）。
-
-
-
 - 群成员 = 项目成员 + 参与群聊的 Agent，群内成员平等、无角色区分。
-
-
-
 - Agent 通过服务端内部 sendAsAgent 首次回群后自动成为群参与者（group_agents 表），成员响应含 memberType（USER/AGENT）。
-
-
-
 - POST .../leave（退出群聊）即当前用户移出本项目成员，移出后失去对该项目全部群/消息/资源的访问权限；最后一名 Project Admin 不可退群（与 §3.1 一致）。
-
-
-
-
 
 创建需求群请求示例：
 
@@ -2004,3 +1956,169 @@ Task、Task Diff Review、MR 列表
 task.diff-review.failed
 projectId、taskId、reason
 Task 与错误提示
+16. v1.4.0 更新：任务中心与任务详情展示字段
+
+基线 v1.3.0。本小节补充任务中心/任务详情/执行流程/总 Diff 交付摘要的展示契约，
+使前端一次拿到卡片所需摘要，避免逐条 N+1 查询。所有摘要 DTO 均为只读展示，不携带敏感信息。
+
+16.1 任务列表（增强）
+
+GET /api/v1/projects/{projectId}/tasks
+
+新增查询参数（原有参数沿用）：
+
+参数
+类型
+说明
+groupId
+UUID
+按需求群筛选（可选）
+status
+string
+按任务状态筛选（可选）
+createdBy
+UUID
+按发起人筛选（可选）
+repositoryId
+UUID
+按项目仓库绑定 ID 筛选（SQL 层 IN 子查询，避免只过滤当前页漏数据）
+cursor
+string
+游标分页（上一页最后一项 id）
+limit
+int
+每页条数，默认 20，最大 100
+
+响应改为分页结构 { data, page, requestId }，data 为 TaskListItemResponse[]：
+
+{
+  "id": "task-uuid",
+  "displayCode": "T-1024",
+  "projectId": "project-uuid",
+  "title": "登录接口实现",
+  "requirementSummary": "实现账号密码登录并签发 JWT",
+  "status": "RUNNING",
+  "priority": null,
+  "deliveryMode": "DIFF_FIRST",
+  "requirementGroup": { "id": "group-uuid", "name": "登录功能", "status": "ACTIVE" },
+  "createdByUser": { "id": "user-uuid", "displayName": "陈同学", "avatarUrl": null },
+  "repositories": [
+    { "repositoryId": "binding-uuid", "name": "auth-service", "fullName": "qgents/auth-service",
+      "provider": "GITHUB", "defaultBranch": "main", "baseRef": "main", "baseCommit": "abc123",
+      "sourceBranch": "feat/login-api", "headCommit": null }
+  ],
+  "executionSummary": { "totalSteps": 4, "pendingSteps": 1, "runningSteps": 1, "waitingSteps": 0,
+    "blockedSteps": 0, "succeededSteps": 2, "failedSteps": 0, "currentStage": "DEVELOPER",
+    "currentStageTitle": "后端接口开发", "requiresUserAction": false },
+  "attention": null,
+  "createdAt": "2026-08-14T10:00:00Z",
+  "updatedAt": "2026-08-14T10:42:00Z"
+}
+
+字段约定：
+
+- displayCode：项目内唯一、创建后不可变的展示编号（T-<序号>）；所有 API 关联仍使用 id。
+- priority：后端明确不提供，恒为 null，前端应移除该展示。
+- requirementSummary：服务端截断的纯文本摘要（≤200 字符，不含 HTML）。
+- executionSummary：由 TaskStep 真实状态聚合；waitingSteps/blockedSteps 取每步骤最新 TaskRun 状态
+（WAITING_INPUT/WAITING_APPROVAL→等待，BLOCKED→阻塞）；currentStage 使用正式 TaskStep role；
+requiresUserAction = attention != null。不返回伪造的进度百分比。
+- attention：待处理事项，无则 null。kind 枚举：
+INPUT_REQUIRED/APPROVAL_REQUIRED/BLOCKED/EXECUTION_FAILED/DIFF_CONFIRMATION_REQUIRED/DELIVERY_FAILED。
+- repositories[].repositoryId 恒为 project_repositories.id；baseRef 为 Workspace 初始化基准分支
+（当前以项目默认分支表示）；headCommit 未提交前为 null。
+
+16.2 任务详情
+
+GET /api/v1/projects/{projectId}/tasks/{taskId} 返回 TaskDetailResponse（在列表项基础上补充）：
+
+- requirement：完整需求文本。
+- acceptanceCriteria[]：Task 级验收标准 { id, title, description, status }，status 枚举
+PENDING/SATISFIED/UNSATISFIED/NOT_APPLICABLE；验收状态由后端结果或检查资源决定。
+当前尚无验收标准生产者，返回空数组（契约先行，不伪造）。
+- workspace：{ id, status, repositories[] }，Workspace 生命周期状态 + 仓库摘要。
+- capabilities：当前用户对当前任务的操作能力（后端派生，前端不猜测）：
+canCancel、canReplacePendingStepAgent、canConfirmDiffReview、canRejectDiffReview、canRetryDelivery，
+各能力可携带 xxxDisabledReason 错误码（如 TASK_NOT_CANCELLABLE、DIFF_REVIEW_NOT_DECIDABLE）。
+- artifactSummary：{ total, byType }，按产物类型（PLAN/CODING/TESTING/REVIEWING）计数。
+- diffReviewSummary：{ available, reviewStatus, deliveryStatus, repositoryCount, filesChanged, additions, deletions }；
+available=false 表示无总 Diff 批次。
+- sourceMessage：{ id, sender: UserSummary, textExcerpt, createdAt }，由 triggerMessageId 派生；
+仅返回脱敏文本摘要，附件走现有消息/附件权限接口。
+- triggerMessageId：来源消息 ID，无则 null。
+
+16.3 任务步骤列表（新增）
+
+GET /api/v1/projects/{projectId}/tasks/{taskId}/steps 返回 TaskStepListItemResponse[]：
+
+{
+  "id": "step-uuid", "taskId": "task-uuid", "sequenceNo": 2, "title": "后端接口开发",
+  "description": "实现登录接口、JWT 签发和错误处理", "role": "DEVELOPER",
+  "agent": { "id": "agent-uuid", "name": "Backend Developer Agent", "role": "DEVELOPER",
+    "avatarUrl": null, "status": "ACTIVE" },
+  "repository": { "repositoryId": "binding-uuid", "name": "auth-service", "sourceBranch": "feat/login-api" },
+  "dependencies": ["step-uuid-1"], "status": "RUNNING",
+  "acceptanceNotes": "覆盖成功、错误密码和用户不存在场景",
+  "latestRun": { "id": "run-uuid", "status": "RUNNING", "startedAt": "…", "finishedAt": null, "durationMs": null },
+  "runCount": 1,
+  "startedAt": "2026-08-14T10:16:00Z", "finishedAt": null,
+  "createdAt": "2026-08-14T10:05:00Z", "updatedAt": "2026-08-14T10:20:00Z"
+}
+
+- description 为步骤指令的脱敏展示；acceptanceNotes 为步骤验收条件。
+- latestRun 为最新一次 TaskRun 摘要；runCount 为该步骤累计执行次数。
+- startedAt/finishedAt 由该步骤所有 TaskRun 的最早开始/最晚结束时间派生，无运行时为 null。
+- 结构化 checkpoints 后端明确不提供（执行器未持久化步骤内部检查项），前端只展示 acceptanceNotes。
+
+16.4 任务运行列表（增强）
+
+GET /api/v1/projects/{projectId}/tasks/{taskId}/task-runs 返回 TaskRunListItemResponse[]（较旧摘要新增）：
+
+- taskStepTitle：所属步骤标题。
+- agent：执行 Agent 摘要（未分配为 null）。
+- statusSummary：脱敏状态摘要（如“等待用户补充输入”），不返回日志原文/Prompt/Token/环境变量。
+- statusReason：等待/阻塞/失败原因 { code, title, summary, retryable, occurredAt }，无等待或失败时为 null。
+  - code 枚举：INPUT_REQUIRED/APPROVAL_REQUIRED/BLOCKED/EXECUTION_FAILED/CANCELLED。
+  - retryable 由后端按状态机判断（FAILED/CANCELLED/BLOCKED 可重试）。
+- startedAt/finishedAt/durationMs：执行时间。
+- artifactSummary：{ total, diffCount }，该运行自身产出的执行产物与 Diff 数量。
+
+GET /api/v1/projects/{projectId}/task-runs/{taskRunId}（详情）同样增加 statusReason。
+
+16.5 任务执行产物（增强）
+
+GET /api/v1/projects/{projectId}/tasks/{taskId}/artifacts 在保留 summary 的同时增加结构化展示字段：
+
+- title：由产物类型派生的稳定标题（PLAN→“计划”/CODING→“代码编写”/TESTING→“测试”/REVIEWING→“代码审查”）。
+- status：由执行结果 outcome 派生（SUCCEEDED→SUCCEEDED，其余→FAILED；无 outcome 时为 null）。
+- description：产物摘要中的脱敏说明（截断 ≤200 字符），无则 null。
+- resources：受权限保护的内部资源引用列表 { resourceType, resourceId, title }；
+当前无校验过的内部资源引用时返回空数组，不伪造。
+
+16.6 总 Diff 逐仓库交付详情（增强）
+
+GET /api/v1/projects/{projectId}/tasks/{taskId}/diff-review 响应新增 repositoryDeliveries[]：
+
+{
+  "repositoryId": "binding-uuid",
+  "repositoryName": "auth-service",
+  "diffId": "diff-uuid",
+  "deliveryStatus": "MR_CREATED",
+  "failureCode": null,
+  "failureReason": null,
+  "mergeRequest": { "id": "mr-uuid", "number": 128, "title": "feat: implement login API",
+    "status": "OPEN", "webUrl": "https://github.com/qgents/auth-service/pull/128" },
+  "updatedAt": "2026-08-14T11:00:00Z"
+}
+
+- deliveryStatus 枚举：NOT_STARTED/COMMITTED/MR_CREATED/FAILED。
+- failureCode 预留（当前为 null）；failureReason 为脱敏失败原因，成功时为 null。
+- mergeRequest 仅在 MR_CREATED 且存在真实 MR 记录时返回；webUrl 由 GitHub 仓库镜像与真实 PR 编号构造，
+不可可靠构造时为 null。MR 完整审查与合并仍由 MR 模块负责，此处仅展示摘要与入口。
+- 批次 deliveryStatus 为 PARTIALLY_DELIVERED 时，通过 repositoryDeliveries 指出成功与失败仓库。
+
+16.7 明确不提供项
+
+- discussionSummary（无“消息→Task”归属关系，仅提供来源消息 sourceMessage）。
+- 决策记录、执行时 Skill/Memory 版本快照、TaskStep checkpoints、人工 Reviewer 分配（无真实数据源）。
+- 进度百分比（禁止伪造）；priority（产品暂无优先级业务）。

@@ -3,6 +3,7 @@ import type {
   BindProjectRepositoryPayload,
   GithubAccountType,
   GithubAuthorizationStatus,
+  GithubInstallClient,
   GithubInstallation,
   GithubInstallationRedirect,
   GithubInstallationStatus,
@@ -125,7 +126,8 @@ function idempotencyHeaders(): Record<string, string> {
  *
  * ① 前端（Team Owner）点击「安装Github App」
  *    → 调用本文件 createInstallation(teamId)
- *    → POST /teams/{teamId}/integrations/github/installations
+ *    → POST /teams/{teamId}/integrations/github/installations?client=WEB
+ *    → client 只允许 WEB | MOBILE，禁止传 returnUrl / 完整域名
  *    → 请求头需带 Authorization: Bearer <token>
  *    → 写操作需带 Idempotency-Key（文档要求）
  *
@@ -156,10 +158,11 @@ export const githubApi = {
    * 生成 GitHub App 安装跳转地址
    *
    * METHOD: POST
-   * PATH:   /teams/{teamId}/integrations/github/installations
+   * PATH:   /teams/{teamId}/integrations/github/installations?client=WEB
    * AUTH:   Team Owner（Bearer Token）
    *
    * @param teamId 当前团队 ID（从团队详情页 URL / 上下文传入）
+   * @param client 回跳端标记；Web 固定 WEB，移动端传 MOBILE。后端写入 state。
    * @returns data.installationUrl / data.expiresAt
    *
    * TODO[后端联调] 常见失败码（以文档为准，联调时对照实际返回）：
@@ -170,15 +173,15 @@ export const githubApi = {
    * - 429 / 500 限流或服务异常
    * 已冻结见 docs：写接口必须带 Idempotency-Key；错误码见 github-backend-fields-needed.md §8。
    */
-  createInstallation(teamId: string) {
+  createInstallation(teamId: string, client: GithubInstallClient = 'WEB') {
     // 每次点击生成新的幂等键，避免用户连点被当成「相同写操作」
     const idempotencyKey = crypto.randomUUID()//浏览器原生 API，生成一个唯一 UUID
 
     return request<ApiEnvelope<GithubInstallationRedirect>>(
-      `/teams/${teamId}/integrations/github/installations`,
+      `/teams/${teamId}/integrations/github/installations?client=${encodeURIComponent(client)}`,
       {
         method: 'POST',
-        unwrapData: false,
+        unwrapData: false,//自己进行解包
         // 文档：写操作必须支持 Idempotency-Key
         headers: {
           'Idempotency-Key': idempotencyKey,

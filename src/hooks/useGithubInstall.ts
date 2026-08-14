@@ -39,24 +39,25 @@ export function useGithubInstallRedirect(teamId: string) {
       if (!teamId.trim()) {
         throw new Error('缺少 teamId，请从「我创建的团队 → 查看详情 → github集成」进入本页')
       }
-      const data = await githubApi.createInstallation(teamId)
+      const data = await githubApi.createInstallation(teamId)//先从createInstallation获取跳转地址
       console.info('[GitHubInstall] 后端返回', data)
-      return data
-    },
+      return data//后端返回信息
+    },//后端返回信息就是这两个东西{ installationUrl, expiresAt }
     onSuccess: ({ installationUrl, expiresAt }) => {
       if (!installationUrl || typeof installationUrl !== 'string') {
         message.error('后端未返回 installationUrl，请检查 POST installations 响应')
         console.error('[GitHubInstall] 非法响应：缺少 installationUrl', { expiresAt })
         return
       }
-      const expireMs = Date.parse(expiresAt)
-      if (!Number.isNaN(expireMs) && expireMs < Date.now()) {
+      const expireMs = Date.parse(expiresAt)//把后端返回的过期时间字符串（比如 2026-08-14T13:30:00Z）转成毫秒时间戳。
+      if (!Number.isNaN(expireMs) && expireMs < Date.now()) {//判断时间合法并且过期,才进行拦截
         message.warning('安装链接已过期，请再次点击「安装Github App」获取新链接')
         return
       }
+      // 没给过期时间也能跳转
       message.loading({
         content: '正在跳转到 GitHub 完成安装…',
-        key: 'github-install-redirect',
+        key: 'github-install-redirect',// Ant Design message 的前端标识,同一个 key 再弹一次会覆盖上一条，
         duration: 1.5,
       })
       console.info('即将跳转', installationUrl)

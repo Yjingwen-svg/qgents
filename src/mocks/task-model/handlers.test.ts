@@ -37,7 +37,7 @@ describe('independent Task model mock chain', () => {
     const runs = await taskRunsApi.list('project-create', task.id)
     expect(runs.data.length).toBeGreaterThanOrEqual(2)
     expect(runs.data.every((run) => run.taskId === task.id)).toBe(true)
-    expect(runs.data[0]).not.toHaveProperty('artifactSummary')
+    expect(runs.data[0]).toHaveProperty('artifactSummary')
   })
 
   it('walks one newly-created resource chain through input, retry, Diff review, and Task cancel', async () => {
@@ -63,7 +63,7 @@ describe('independent Task model mock chain', () => {
     const inputRequest = inputRequests.data[0]!
     expect(inputRequest.taskRunId).toBe(inputRun.id)
     expect((await taskRunsApi.logs(projectId, inputRun.id)).data[0]?.id).toContain(inputRun.id)
-    expect((await taskRunsApi.executionContext(projectId, inputRun.id)).workspaceId).toBe(task.workspaceId)
+    expect((await taskRunsApi.executionContext(projectId, inputRun.id)).workspaceId).toBe(task.workspace?.id)
     expect((await taskRunsApi.replyInputRequest(projectId, inputRun.id, inputRequest.id, { answer: { value: 'main' } })).status).toBe('ANSWERED')
 
     const failedRun = runs.find((run) => run.status === 'FAILED')!
@@ -110,7 +110,7 @@ describe('independent Task model mock chain', () => {
     expect(first.data).toHaveLength(1)
     expect(first.page.hasMore).toBe(false)
     const filtered = await tasksApi.list('project-list', { groupId: 'group-project-list-requirements', createdBy: 'user-1' })
-    expect(filtered.data.every((task) => task.requirementGroupId === 'group-project-list-requirements' && task.createdBy === 'user-1')).toBe(true)
+    expect(filtered.data.every((task) => task.requirementGroup?.id === 'group-project-list-requirements' && task.createdByUser?.id === 'user-1')).toBe(true)
 
     const paged = await tasksApi.list('project-list', { limit: 2 })
     expect(paged.data).toHaveLength(2)
@@ -130,9 +130,9 @@ describe('independent Task model mock chain', () => {
   it('keeps TaskRun list summaries separate from optional detail steps', async () => {
     const list = await taskRunsApi.list('project-runs', 'task-project-runs-pending')
     expect(list.data[0]).toMatchObject({ taskId: 'task-project-runs-pending', status: 'QUEUED' })
-    expect(list.data[0]).not.toHaveProperty('startedAt')
+    expect(list.data[0]).toHaveProperty('startedAt')
     const detail = await taskRunsApi.get('project-runs', 'run-project-runs-queued')
-    expect(detail).not.toHaveProperty('steps')
+    expect(detail).toHaveProperty('steps')
     const detailed = await taskRunsApi.get('project-runs', 'run-project-runs-running')
     expect((detailed as TaskRunDetail).steps).toBeDefined()
     expect(detailed.durationMs).toEqual(null)

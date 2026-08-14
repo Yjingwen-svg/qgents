@@ -12,6 +12,10 @@ export const queryKeys = {
       ['qgents', 'projects', projectId, 'teams', teamId, 'agents', agentId] as const,
     skillBindings: (projectId: string, agentId: string) =>
       ['qgents', 'projects', projectId, 'agent-skill-bindings', agentId] as const,
+    assignments: (projectId: string, agentId: string, type: string) =>
+      ['qgents', 'projects', projectId, 'agents', agentId, 'assignments', type] as const,
+    taskRuns: (projectId: string, agentId: string, status?: string) =>
+      ['qgents', 'projects', projectId, 'task-runs', 'agent', agentId, status ?? null] as const,
   },
   projectSkills: (projectId: string) => ['qgents', 'projects', projectId, 'skills'] as const,
   // 标记「这个团队的 GitHub App 安装列表」这份接口数据的缓存地址

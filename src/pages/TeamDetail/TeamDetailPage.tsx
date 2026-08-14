@@ -284,13 +284,13 @@ export function TeamDetailPage() {
         <section className="team-detail__panel">
           <div className="team-detail__panel-heading">
             <h2>最近动态</h2>
-            <Link to={PATHS.MY_TEAMS}>查看全部</Link>
+            <Link to={PATHS.teamActivities(teamId)}>查看全部</Link>
           </div>
           {activities.length === 0 ? (
             <p className="team-detail__muted">创建项目后会显示团队动态。</p>
           ) : (
             <ul className="team-detail__activity-list">
-              {activities.map((activity) => (
+              {activities.slice(0, 3).map((activity) => (
                 <li key={activity.id} className="team-detail__activity-item">
                   <CheckCircleFilled />
                   <div>

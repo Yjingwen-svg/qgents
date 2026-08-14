@@ -4,6 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { PersonalCenterProvider } from '@/context/PersonalCenterContext'
 import { queryClient } from '@/query'
+import { QG_FONT_FAMILY } from '@/theme/antdTheme'
 
 /**
  * 启动加载门控。
@@ -33,7 +34,9 @@ function BootstrapGate({ children }: { children: ReactNode }) {
 
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
-    <ConfigProvider theme={{ token: { colorPrimary: '#0d9b8a', borderRadius: 10 } }}>
+    <ConfigProvider
+      theme={{ token: { colorPrimary: '#0d9b8a', borderRadius: 10, fontFamily: QG_FONT_FAMILY } }}
+    >
       <AntdApp>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>

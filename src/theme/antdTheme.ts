@@ -1,6 +1,13 @@
 import { theme, type ThemeConfig } from 'antd'
 
 /**
+ * 品牌字体栈。Plus Jakarta Sans 不含汉字，必须把中文无衬线字体写在 generic sans-serif 之前，
+ * 否则 Windows 会把卡片/按钮/标签里的中文回退成宋体或 Times。
+ */
+export const QG_FONT_FAMILY =
+  "'Plus Jakarta Sans', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif"
+
+/**
  * Qgents Ant Design 主题
  * 对齐现有深色 Navy + 绿色品牌色；全局通过 ConfigProvider 注入
  */
@@ -15,8 +22,7 @@ export const qgAntdTheme: ThemeConfig = {
     colorText: '#e6edf3',
     colorTextSecondary: '#8b949e',
     borderRadius: 8,
-    fontFamily:
-      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: QG_FONT_FAMILY,
   },
   components: {
     Layout: {
@@ -40,6 +46,7 @@ export const qgLoginLightTheme: ThemeConfig = {
   token: {
     colorPrimary: '#0d9b8a',
     borderRadius: 10,
+    fontFamily: QG_FONT_FAMILY,
   },
 }
 
@@ -53,5 +60,6 @@ export const qgDarkPageTheme: ThemeConfig = {
   token: {
     colorPrimary: '#0d9b8a',
     borderRadius: 10,
+    fontFamily: QG_FONT_FAMILY,
   },
 }

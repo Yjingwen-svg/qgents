@@ -103,7 +103,7 @@ function startupErrorMessage(error: unknown): string {
 }
 
 function bootstrap(root: Root): void {
-  const useMock = import.meta.env.VITE_USE_MOCK === 'true'
+  const useMock = String(import.meta.env.VITE_USE_MOCK ?? '').trim() === 'true'
   if (!useMock) {
     renderApp(root)
     return

@@ -12,6 +12,7 @@ import {
   SendOutlined,
 } from '@ant-design/icons'
 import { PATHS } from '@/routes/paths'
+import { useAppUiStore } from '@/store/appUiStore'
 
 const { Sider, Content } = Layout
 const { Title, Text } = Typography
@@ -90,6 +91,10 @@ function SessionItem({
  */
 export function ChatWorkspacePage() {
   const { token } = theme.useToken()
+  const openProjectDetailNav = useAppUiStore((s) => s.openProjectDetailNav)
+
+  /** 演示用项目 id；联调后改为当前会话对应的真实 projectId */
+  const demoProjectId = 'demo-project'
 
   return (
     <Layout style={{ height: 'calc(100vh - 56px)', background: token.colorBgBase }}>
@@ -149,7 +154,10 @@ export function ChatWorkspacePage() {
           </div>
           <Space>
             <Button type="text" icon={<MoreOutlined />} disabled />
-            <Link to={PATHS.projectDetail('demo-project')}>
+            <Link
+              to={PATHS.projectDetail(demoProjectId)}
+              onClick={() => openProjectDetailNav(demoProjectId)}
+            >
               <Button type="primary">进入项目详情</Button>
             </Link>
           </Space>

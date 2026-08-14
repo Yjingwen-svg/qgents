@@ -1,5 +1,5 @@
-import { Link, useParams } from 'react-router-dom'
-import { useCallback, useMemo, useState, type MouseEvent } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useMemo, useState } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Typography,
@@ -12,37 +12,22 @@ import {
   Alert,
   App,
   theme,
-  Checkbox,
   Input,
   List,
 } from 'antd'
-import { ArrowLeftOutlined, GithubOutlined, SearchOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, GithubOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { githubApi } from '@/api/github'
 import { projectApi } from '@/api/project'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
-import type { GithubAuthorizedRepository, GithubInstallation } from '@/types/github'
+import {
+  isGithubRepoBindable,
+  type GithubAuthorizedRepository,
+  type GithubInstallation,
+} from '@/types/github'
 
 const { Title, Paragraph, Text } = Typography
-
-function syncStatusCell(status: GithubAuthorizedRepository['syncStatus']) {
-  switch (status) {
-    case 'SYNCED':
-      return (
-        <Text style={{ color: '#3fb950' }}>
-          <span style={{ marginRight: 6 }}>●</span>已同步
-        </Text>
-      )
-    case 'SYNCING':
-      return <Text type="warning">● 同步中</Text>
-    case 'FAILED':
-      return <Text type="danger">● 同步失败</Text>
-    case 'NOT_SYNCED':
-    default:
-      return <Text type="secondary">● 未同步</Text>
-  }
-}
 
 type Row = GithubAuthorizedRepository & {
   accountLogin?: string
@@ -50,6 +35,20 @@ type Row = GithubAuthorizedRepository & {
 }
 
 type RepoBindingHit = { projectId: string; bindingId: string }
+
+function visibilityTag(visibility: GithubAuthorizedRepository['visibility']) {
+  if (visibility === 'PRIVATE') return <Tag>Private</Tag>
+  if (visibility === 'INTERNAL') return <Tag>Internal</Tag>
+  return <Tag color="blue">Public</Tag>
+}
+
+function authorizationTag(status: GithubAuthorizedRepository['authorizationStatus']) {
+  return status === 'AUTHORIZED' ? (
+    <Tag color="success">已授权</Tag>
+  ) : (
+    <Tag color="error">已撤销</Tag>
+  )
+}
 
 /**
  * 该团队已授权的所有 GitHub 仓库
@@ -76,16 +75,18 @@ type RepoBindingHit = { projectId: string; bindingId: string }
  * - 默认无勾选框；Ctrl/⌘+首次左键进入多选
  * - 多选时隐藏行内按钮与「一键绑定所有仓库」，显示「绑定到选中仓库（N）」
  * - 确认弹窗取消 → 退出多选并清空勾选
+ *
+ * 已冻结见 docs：方案 A 为团队总览 + 选择项目。本页不再把仓库绑到全部项目；
+ * 「绑定到项目」跳转 BindRepoToProjectPage。绑定 body 不再传 defaultBranch。
  */
 export function TeamAuthorizedReposPage() {
   const { token } = theme.useToken()
-  const { message, modal } = App.useApp()
+  const { message } = App.useApp()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { teamId = 'team-xinghe' } = useParams<{ teamId: string }>()
 
   const [keyword, setKeyword] = useState('')
-  const [multiSelectMode, setMultiSelectMode] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
 
   const installationsQuery = useQuery({
     queryKey: queryKeys.githubInstallations(teamId),
@@ -111,6 +112,7 @@ export function TeamAuthorizedReposPage() {
   /**
    * 每个项目的已绑定仓库（用于计算授权仓库是否已绑定）
    * TODO[后端联调] 若提供「按 repositoryId 反查绑定」批量接口，可替换 N 次 GET
+   * 已冻结见 docs：第一版不提供批量反查，仅用于总览展示，绑定跳转选项目页。
    */
   const projectRepoQueries = useQueries({
     queries: projects.map((p) => ({
@@ -137,7 +139,7 @@ export function TeamAuthorizedReposPage() {
 
   const rows: Row[] = useMemo(() => {
     const installations = installationsQuery.data ?? []
-    const byId = new Map(installations.map((i) => [i.installationId, i]))
+    const byId = new Map(installations.map((i) => [i.id, i]))
     return (reposQuery.data ?? []).map((repo) => {
       const inst = repo.installationId ? byId.get(repo.installationId) : undefined
       return {
@@ -148,6 +150,14 @@ export function TeamAuthorizedReposPage() {
     })
   }, [reposQuery.data, installationsQuery.data])
 
+  const installationById = useMemo(() => {
+    const map = new Map<string, GithubInstallation>()
+    for (const inst of installationsQuery.data ?? []) {
+      map.set(inst.id, inst)
+    }
+    return map
+  }, [installationsQuery.data])
+
   const filteredRows = useMemo(() => {
     const q = keyword.trim().toLowerCase()
     if (!q) return rows
@@ -156,210 +166,42 @@ export function TeamAuthorizedReposPage() {
         r.fullName.toLowerCase().includes(q) ||
         (r.defaultBranch ?? '').toLowerCase().includes(q) ||
         (r.accountLogin ?? '').toLowerCase().includes(q) ||
-        r.repositoryId.toLowerCase().includes(q),
+        r.id.toLowerCase().includes(q),
     )
   }, [rows, keyword])
 
-  /** 当前列表是否全部已绑定（至少绑到一个项目）→ 顶部按钮切换为解除 */
-  const allFilteredBound =
-    filteredRows.length > 0 &&
-    filteredRows.every((r) => (bindingsByRepoId.get(r.repositoryId)?.length ?? 0) > 0)
-
-  const exitMultiSelect = useCallback(() => {
-    setMultiSelectMode(false)
-    setSelectedIds([])
-  }, [])
-
-  const invalidateProjectBindings = useCallback(async () => {
-    await Promise.all(
-      projects.map((p) =>
-        queryClient.invalidateQueries({ queryKey: queryKeys.projectRepositories(p.id) }),
-      ),
-    )
-  }, [projects, queryClient])
-
-  /**
-   * 将单个授权仓库绑到「尚未绑定它的」全部团队项目
-   * POST /projects/{projectId}/repositories
-   */
-  const bindRepoToUnboundProjects = useCallback(
-    async (repo: Row) => {
-      if (projects.length === 0) {
-        throw new Error('该团队下暂无项目，请先创建项目')
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const targets = (installationsQuery.data ?? []).filter((i) => i.status !== 'DELETED')
+      if (targets.length === 0) {
+        throw new Error('没有可刷新的 Installation')
       }
-      const already = new Set(
-        (bindingsByRepoId.get(repo.repositoryId) ?? []).map((h) => h.projectId),
-      )
-      const targets = projects.filter((p) => !already.has(p.id))
-      if (targets.length === 0) return 0
-
-      const results = await Promise.allSettled(
-        targets.map((p) =>
-          githubApi.bindRepository(p.id, {
-            installationId: repo.installationId || '',
-            repositoryId: repo.repositoryId,
-            defaultBranch: repo.defaultBranch || 'main',
-            displayName: repo.fullName,
-          }),
-        ),
-      )
-      const failed = results.filter((r) => r.status === 'rejected')
-      if (failed.length > 0) {
-        throw new Error(`${repo.fullName}：${failed.length} 个项目绑定失败`)
-      }
-      return targets.length
+      await Promise.all(targets.map((i) => githubApi.syncInstallation(teamId, i.id)))
     },
-    [projects, bindingsByRepoId],
+    onSuccess: async () => {
+      message.success('已刷新授权仓库')
+      await queryClient.invalidateQueries({ queryKey: queryKeys.githubInstallations(teamId) })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.githubTeamRepositories(teamId) })
+    },
+    onError: (error) => {
+      message.error(formatApiError(error))
+    },
+  })
+
+  const goSelectProject = useCallback(
+    (repo: Row) => {
+      navigate(
+        PATHS.bindRepoToProject(teamId, {
+          installationId: repo.installationId,
+          repositoryId: repo.id,
+          fullName: repo.fullName,
+        }),
+      )
+    },
+    [navigate, teamId],
   )
 
-  /** 从所有已绑定项目上解除该仓库 */
-  const unbindRepoFromAllProjects = useCallback(async (repo: Row) => {
-    const hits = bindingsByRepoId.get(repo.repositoryId) ?? []
-    if (hits.length === 0) return 0
-    const results = await Promise.allSettled(
-      hits.map((h) => githubApi.unbindRepository(h.projectId, h.bindingId)),
-    )
-    const failed = results.filter((r) => r.status === 'rejected')
-    if (failed.length > 0) {
-      throw new Error(`${repo.fullName}：${failed.length} 处解除失败`)
-    }
-    return hits.length
-  }, [bindingsByRepoId])
-
-  type BindScope = 'single' | 'all' | 'selected'
-
-  const bindMutation = useMutation({
-    mutationFn: async ({ repos, scope }: { repos: Row[]; scope: BindScope }) => {
-      let total = 0
-      for (const repo of repos) {
-        total += await bindRepoToUnboundProjects(repo)
-      }
-      return { scope, bindOps: total }
-    },
-    onSuccess: async ({ scope, bindOps }) => {
-      if (bindOps === 0) {
-        message.success('所选仓库均已绑定，无需重复操作')
-      } else if (scope === 'all') {
-        message.success('成功绑定所有仓库')
-      } else {
-        // 单条 / 多选：统一用简短成功文案
-        message.success('已成功绑定该仓库')
-      }
-      exitMultiSelect()
-      await invalidateProjectBindings()
-    },
-    onError: (error) => {
-      message.error(formatApiError(error))
-    },
-  })
-
-  const unbindMutation = useMutation({
-    mutationFn: async ({ repos, scope }: { repos: Row[]; scope: BindScope }) => {
-      let total = 0
-      for (const repo of repos) {
-        total += await unbindRepoFromAllProjects(repo)
-      }
-      return { scope, total }
-    },
-    onSuccess: async ({ scope, total }) => {
-      if (total === 0) {
-        message.success('没有需要解除的绑定')
-      } else if (scope === 'all') {
-        message.success('成功解除绑定所有仓库')
-      } else {
-        message.success('已解除绑定')
-      }
-      exitMultiSelect()
-      await invalidateProjectBindings()
-    },
-    onError: (error) => {
-      message.error(formatApiError(error))
-    },
-  })
-
-  function onRepoRowClick(repo: Row, e: MouseEvent) {
-    const withCtrl = e.ctrlKey || e.metaKey
-    if (!withCtrl) return
-    e.preventDefault()
-
-    if (!multiSelectMode) {
-      setMultiSelectMode(true)
-      setSelectedIds([repo.repositoryId])
-      return
-    }
-    setSelectedIds((prev) =>
-      prev.includes(repo.repositoryId)
-        ? prev.filter((id) => id !== repo.repositoryId)
-        : [...prev, repo.repositoryId],
-    )
-  }
-
-  function confirmBindRepos(targetRepos: Row[], scope: BindScope) {
-    if (targetRepos.length === 0) return
-    const content =
-      scope === 'all'
-        ? '确定绑定所有仓库到该项目'
-        : scope === 'single'
-          ? `确定绑定 ${targetRepos[0].fullName} 仓库到该项目`
-          : `确定绑定所选仓库到该项目`
-
-    modal.confirm({
-      title: '确认绑定',
-      content,
-      okText: '确定',
-      cancelText: '取消',
-      onOk: () => bindMutation.mutateAsync({ repos: targetRepos, scope }),
-      onCancel: () => {
-        exitMultiSelect()
-      },
-    })
-  }
-
-  function confirmUnbindRepos(targetRepos: Row[], scope: BindScope) {
-    if (targetRepos.length === 0) return
-    const content =
-      scope === 'all'
-        ? '确定解除所有仓库的绑定'
-        : scope === 'single'
-          ? `确定在该项目中解除 ${targetRepos[0].fullName} 仓库的绑定`
-          : `确定在该项目中解除所选仓库的绑定`
-
-    modal.confirm({
-      title: '确认解除绑定',
-      content,
-      okText: '解除绑定',
-      okButtonProps: { danger: true },
-      cancelText: '取消',
-      onOk: () => unbindMutation.mutateAsync({ repos: targetRepos, scope }),
-      onCancel: () => {
-        exitMultiSelect()
-      },
-    })
-  }
-
-  function handleBindSelected() {
-    const selected = filteredRows.filter((r) => selectedIds.includes(r.repositoryId))
-    confirmBindRepos(selected, selected.length === 1 ? 'single' : 'selected')
-  }
-
-  function handleBindOrUnbindAll() {
-    if (allFilteredBound) {
-      confirmUnbindRepos(filteredRows, 'all')
-    } else {
-      confirmBindRepos(filteredRows, 'all')
-    }
-  }
-
-  function handleBindSingle(repo: Row) {
-    confirmBindRepos([repo], 'single')
-  }
-
-  function handleUnbindSingle(repo: Row) {
-    confirmUnbindRepos([repo], 'single')
-  }
-
   const bindingsLoading = projectRepoQueries.some((q) => q.isLoading)
-  const busy = bindMutation.isPending || unbindMutation.isPending
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
@@ -369,55 +211,47 @@ export function TeamAuthorizedReposPage() {
         </Button>
       </Link>
 
-      <Title level={2} style={{ marginTop: 0, marginBottom: 8 }}>
-        该团队已授权的所有github仓库
-      </Title>
-      <Paragraph type="secondary">
-        teamId: <Text code>{teamId}</Text>
-        {' · '}
-        下列仓库来自团队已安装的 GitHub App（个人或组织授权范围）
-        <br />
-        按住 <Text keyboard>Ctrl</Text>（Mac 为 <Text keyboard>⌘</Text>）再左键点击某一仓库，才会进入多选。
-      </Paragraph>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 16,
+          marginBottom: 8,
+        }}
+      >
+        <div>
+          <Title level={2} style={{ marginTop: 0, marginBottom: 8 }}>
+            该团队已授权的所有github仓库
+          </Title>
+          <Paragraph type="secondary">
+            teamId: <Text code>{teamId}</Text>
+            {' · '}
+            下列仓库来自团队已安装的 GitHub App（个人或组织授权范围）
+            <br />
+            绑定请先选择项目，不会一键绑到团队内全部项目。
+          </Paragraph>
+        </div>
+        <Button
+          icon={<ReloadOutlined />}
+          loading={syncMutation.isPending}
+          disabled={(installationsQuery.data ?? []).length === 0}
+          onClick={() => syncMutation.mutate()}
+        >
+          刷新授权仓库
+        </Button>
+      </div>
 
       <Input
         allowClear
         prefix={<SearchOutlined />}
-        placeholder="搜索仓库名、默认分支、授权账号或 repositoryId"
+        placeholder="搜索仓库名、默认分支、授权账号或仓库 id"
         value={keyword}
         onChange={(e) => setKeyword(e.target.value)}
         style={{ marginBottom: 12 }}
       />
 
-      <Card
-        extra={
-          <Space wrap>
-            {multiSelectMode ? (
-              <Button
-                disabled={selectedIds.length === 0 || busy}
-                onClick={handleBindSelected}
-              >
-                绑定到选中仓库（{selectedIds.length}）
-              </Button>
-            ) : (
-              <Button
-                type={allFilteredBound ? 'default' : 'primary'}
-                danger={allFilteredBound}
-                disabled={filteredRows.length === 0 || busy || bindingsLoading}
-                loading={busy}
-                onClick={handleBindOrUnbindAll}
-              >
-                {allFilteredBound ? '一键解除所有绑定' : '一键绑定所有仓库'}
-              </Button>
-            )}
-            {multiSelectMode ? (
-              <Button type="link" onClick={exitMultiSelect}>
-                退出多选
-              </Button>
-            ) : null}
-          </Space>
-        }
-      >
+      <Card>
         {reposQuery.isLoading || installationsQuery.isLoading || projectsQuery.isLoading ? (
           <div style={{ textAlign: 'center', padding: 24 }}>
             <Spin />
@@ -436,82 +270,50 @@ export function TeamAuthorizedReposPage() {
           <List
             dataSource={filteredRows}
             renderItem={(repo) => {
-              const checked = selectedIds.includes(repo.repositoryId)
-              const hits = bindingsByRepoId.get(repo.repositoryId) ?? []
+              const hits = bindingsByRepoId.get(repo.id) ?? []
               const alreadyBound = hits.length > 0
+              const installation = installationById.get(repo.installationId)
+              const bindable = isGithubRepoBindable(repo, installation)
               const kind =
-                repo.accountType === 'Organization'
+                repo.accountType === 'ORGANIZATION'
                   ? '组织'
-                  : repo.accountType === 'User'
+                  : repo.accountType === 'USER'
                     ? '个人'
                     : ''
 
               return (
                 <List.Item
-                  key={repo.repositoryId}
+                  key={repo.id}
                   style={{
                     borderBottom: `1px solid ${token.colorBorder}`,
-                    background: multiSelectMode && checked ? token.colorPrimaryBg : undefined,
-                    cursor: 'pointer',
                     paddingLeft: 8,
                     paddingRight: 8,
                   }}
-                  onClick={(e) => onRepoRowClick(repo, e)}
-                  actions={
-                    multiSelectMode
-                      ? []
-                      : [
-                          alreadyBound ? (
-                            <Button
-                              key="unbind"
-                              danger
-                              size="small"
-                              loading={busy}
-                              disabled={bindingsLoading}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleUnbindSingle(repo)
-                              }}
-                            >
-                              解除绑定
-                            </Button>
-                          ) : (
-                            <Button
-                              key="bind"
-                              type="primary"
-                              size="small"
-                              loading={busy}
-                              disabled={bindingsLoading}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleBindSingle(repo)
-                              }}
-                            >
-                              绑定仓库
-                            </Button>
-                          ),
-                        ]
-                  }
+                  actions={[
+                    <Button
+                      key="bind"
+                      type="primary"
+                      size="small"
+                      disabled={bindingsLoading || (!bindable && !alreadyBound)}
+                      title={
+                        bindable || alreadyBound
+                          ? undefined
+                          : '当前仓库不可绑定：需已授权、未归档、默认分支非空，且 Installation 为 ACTIVE。请刷新授权仓库信息。'
+                      }
+                      onClick={() => goSelectProject(repo)}
+                    >
+                      {alreadyBound ? '选择项目' : '绑定到项目'}
+                    </Button>,
+                  ]}
                 >
                   <Space align="start" style={{ width: '100%' }}>
-                    {multiSelectMode ? (
-                      <Checkbox
-                        checked={checked}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={() => {
-                          setSelectedIds((prev) =>
-                            prev.includes(repo.repositoryId)
-                              ? prev.filter((id) => id !== repo.repositoryId)
-                              : [...prev, repo.repositoryId],
-                          )
-                        }}
-                      />
-                    ) : null}
                     <div style={{ flex: 1 }}>
                       <Space wrap>
                         <Text strong>{repo.fullName}</Text>
-                        {repo.private ? <Tag>Private</Tag> : <Tag color="blue">Public</Tag>}
-                        {!multiSelectMode && alreadyBound ? (
+                        {visibilityTag(repo.visibility)}
+                        {repo.archived ? <Tag>已归档</Tag> : null}
+                        {authorizationTag(repo.authorizationStatus)}
+                        {alreadyBound ? (
                           <Text type="success" style={{ fontSize: 12 }}>
                             已绑定
                           </Text>
@@ -522,7 +324,9 @@ export function TeamAuthorizedReposPage() {
                           <Text type="secondary">
                             默认分支：{repo.defaultBranch || '—'}
                           </Text>
-                          {syncStatusCell(repo.syncStatus)}
+                          <Text type="secondary">
+                            元数据同步：{repo.metadataSyncedAt || '—'}
+                          </Text>
                           <Text type="secondary">
                             <GithubOutlined style={{ marginRight: 4 }} />
                             {repo.accountLogin

@@ -156,9 +156,7 @@ export function MemoryPage() {
   return <MemoryPageImpl />
 }
 
-export function CodePage() {
-  return <ProjectSectionPage section="code" title="代码与 Branch" todos={['TODO: C - 仓库绑定 / 分支列表 / Diff']} />
-}
+export { CodePage } from './CodePage'
 
 export function TestsetPage() {
   return <ProjectSectionPage section="testset" title="Testset" todos={['TODO: C - Testset 管理与执行']} />

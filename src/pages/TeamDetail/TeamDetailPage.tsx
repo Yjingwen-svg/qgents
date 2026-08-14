@@ -4,21 +4,24 @@ import {
   BranchesOutlined,
   CheckCircleFilled,
   ClockCircleOutlined,
+  DeleteOutlined,
   FolderOutlined,
+  GithubOutlined,
   PlusOutlined,
   RobotOutlined,
   SettingOutlined,
   TeamOutlined,
 } from '@ant-design/icons'
-import { Button, Spin } from 'antd'
-import { Link, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { Button, Modal, Space, Spin, message } from 'antd'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
 import { CreateProjectModal } from '@/components/CreateProjectModal'
 import { useAppUiStore } from '@/store/appUiStore'
-import type { Project, TeamMember } from '@/types'
+import { useAuth } from '@/context/AuthContext'
+import type { Project, Team, TeamMember, User } from '@/types'
 import './TeamDetailPage.css'
 
 type TeamDetailView = 'projects' | 'members'
@@ -103,8 +106,35 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
   )
 }
 
+function memberIsCurrentUser(member: TeamMember, user: User | null): boolean {
+  if (!user) return false
+  if (member.userId && member.userId === user.id) return true
+  if (member.email && user.email && member.email.toLowerCase() === user.email.toLowerCase()) {
+    return true
+  }
+  return false
+}
+
+function isCurrentUserTeamOwner(
+  team: Team | undefined,
+  members: TeamMember[],
+  user: User | null,
+  asOwnerQuery: boolean,
+): boolean {
+  if (asOwnerQuery) return true
+  if (team?.myRole === 'TEAM_OWNER') return true
+  const me = members.find((member) => memberIsCurrentUser(member, user))
+  if (me) return me.role === 'TEAM_OWNER'
+  // 公网 GET /teams/:id 经常不带 myRole；对不上成员时先显示入口，避免 Owner 按钮消失
+  return !team?.myRole
+}
+
 export function TeamDetailPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
+  const [searchParams] = useSearchParams()
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [activeView, setActiveView] = useState<TeamDetailView>('projects')
   const [createOpen, setCreateOpen] = useState(false)
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
@@ -139,6 +169,39 @@ export function TeamDetailPage() {
   const isLoading = teamLoading || membersLoading || projectsLoading
   const recentActivities = getRecentActivities(projects)
   const ownerCount = members.filter((member) => member.role === 'TEAM_OWNER').length
+  /** Owner 才展示「github集成」：接口 myRole，或「我创建的团队」带入的 as=owner */
+  const isTeamOwner = isCurrentUserTeamOwner(
+    team,
+    members,
+    user,
+    searchParams.get('as') === 'owner',
+  )
+
+  const isOwner = team?.role === 'TEAM_OWNER'
+
+  // 解散团队（仅 TEAM_OWNER 可操作）
+  const disbandTeam = useMutation({
+    mutationFn: () => teamApi.disband(teamId),
+    onSuccess: () => {
+      message.success('团队已解散')
+      queryClient.invalidateQueries({ queryKey: ['teams', 'mine'] })
+      navigate(PATHS.MY_TEAMS, { replace: true })
+    },
+    onError: (err) => {
+      message.error(err instanceof Error ? err.message : '解散失败')
+    },
+  })
+
+  function handleDisband() {
+    Modal.confirm({
+      title: '解散团队',
+      content: `确定要解散「${team?.name}」吗？解散后团队下的所有项目、群聊和成员将不可恢复。`,
+      okText: '解散',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => disbandTeam.mutate(),
+    })
+  }
 
   if (isLoading) {
     return (
@@ -197,7 +260,24 @@ export function TeamDetailPage() {
             <SettingOutlined />
             团队设置
           </span>
+          {isTeamOwner ? (
+            <Link to={PATHS.githubIntegration(teamId)} className="team-detail__nav-item">
+              <GithubOutlined />
+              GitHub 集成
+            </Link>
+          ) : null}
         </nav>
+
+        {isOwner && (
+          <button
+            type="button"
+            className="team-detail__nav-item team-detail__nav-item--danger"
+            onClick={handleDisband}
+          >
+            <DeleteOutlined />
+            解散团队
+          </button>
+        )}
       </aside>
 
       <main className="team-detail__main">
@@ -209,13 +289,20 @@ export function TeamDetailPage() {
             <h1>{team.name}</h1>
             <p>从个人中心切换团队或项目，进入项目总群继续协作。</p>
           </div>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setCreateOpen(true)}
-          >
-            创建项目
-          </Button>
+          <Space>
+            {isTeamOwner ? (
+              <Link to={PATHS.githubIntegration(teamId)}>
+                <Button icon={<GithubOutlined />}>github集成</Button>
+              </Link>
+            ) : null}
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setCreateOpen(true)}
+            >
+              创建项目
+            </Button>
+          </Space>
         </section>
 
         {activeView === 'projects' ? (

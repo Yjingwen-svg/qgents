@@ -43,8 +43,14 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
   unwrapData?: boolean
 }
 
+
 export function getStoredToken(): string | null {
   return localStorage.getItem(ACCESS_TOKEN_KEY)
+}
+
+/** 返回 API 基础地址（B 的 projectEvents 等模块需要，用于拼接 SSE 等完整 URL） */
+export function getApiBaseUrl(): string {
+  return BASE_URL
 }
 
 function getStoredRefreshToken(): string | null {
@@ -54,10 +60,6 @@ function getStoredRefreshToken(): string | null {
 /** 生成幂等键：UUID v4。后端要求写操作携带 Idempotency-Key（接口文档 §2） */
 function generateIdempotencyKey(): string {
   return crypto.randomUUID()
-}
-
-export function getApiBaseUrl(): string {
-  return BASE_URL
 }
 
 /** 需要携带 Idempotency-Key 的写方法 */
@@ -109,7 +111,7 @@ async function doFetch(
   options: RequestOptions,
   idempotencyKey: string | null,
 ): Promise<{ res: Response; json: unknown }> {
-  const { body, skipAuth, headers, ...rest } = options
+  const { body, skipAuth, headers, unwrapData: _unwrapData, ...rest } = options
   const finalHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
 
   if (!skipAuth) {

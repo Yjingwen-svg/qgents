@@ -1,16 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty } from 'antd'
-import { SendOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { Link, useParams } from 'react-router-dom'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Image, Tag } from 'antd'
+import {
+  SendOutlined,
+  ThunderboltOutlined,
+  FileOutlined,
+  BranchesOutlined,
+  CheckCircleOutlined,
+} from '@ant-design/icons'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { groupApi } from '@/api'
 import { useAuth } from '@/context/AuthContext'
+import { TaskTriggerModal } from '@/components/task-domain'
 import { PATHS } from '@/routes/paths'
 import type {
   Message,
   GroupMember,
   TextMessageContent,
   CodeMessageContent,
+  ImageMessageContent,
+  FileMessageContent,
+  QuoteMessageContent,
+  DiffMessageContent,
+  TaskStatusMessageContent,
 } from '@/types'
 import './ProjectDetailLayout.scss'
 
@@ -27,10 +39,10 @@ export function RequirementChatPage() {
   const { projectId = '', groupId = '' } = useParams<{ projectId: string; groupId: string }>()
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [mentionIds, setMentionIds] = useState<string[]>([])
+  const [triggerOpen, setTriggerOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
 
   const { data: groups = [] } = useQuery({
@@ -120,12 +132,12 @@ export function RequirementChatPage() {
             </Text>
           </div>
         </div>
-        {/* @Agent 发起任务入口 —— 跳转到 B 的任务流程（当前为占位页） */}
+        {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal */}
         <Button
           type="primary"
           ghost
           icon={<ThunderboltOutlined />}
-          onClick={() => navigate(PATHS.projectTasks(projectId))}
+          onClick={() => setTriggerOpen(true)}
         >
           发起任务
         </Button>
@@ -153,7 +165,7 @@ export function RequirementChatPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} isSelf={m.senderId === user?.id} />
+              <MessageBubble key={m.id} message={m} isSelf={m.senderId === user?.id} projectId={projectId} />
             ))}
           </div>
         )}
@@ -214,6 +226,15 @@ export function RequirementChatPage() {
           </Button>
         </Space.Compact>
       </div>
+
+      {/* @Agent 发起任务弹窗（B 的 TaskTriggerModal） */}
+      <TaskTriggerModal
+        open={triggerOpen}
+        projectId={projectId}
+        groupId={groupId}
+        initialInstruction=""
+        onClose={() => setTriggerOpen(false)}
+      />
     </Layout>
   )
 }
@@ -263,8 +284,16 @@ function MentionGroup({
   )
 }
 
-/** 单条消息气泡 —— 区分 USER / AGENT / SYSTEM */
-function MessageBubble({ message, isSelf }: { message: Message; isSelf: boolean }) {
+/** 单条消息气泡 —— 区分 USER / AGENT / SYSTEM，按类型渲染 IMAGE/FILE/QUOTE/DIFF/TASK_STATUS */
+function MessageBubble({
+  message,
+  isSelf,
+  projectId,
+}: {
+  message: Message
+  isSelf: boolean
+  projectId: string
+}) {
   const { token } = theme.useToken()
 
   // SYSTEM 消息居中弱化展示
@@ -272,7 +301,7 @@ function MessageBubble({ message, isSelf }: { message: Message; isSelf: boolean 
     return (
       <div style={{ textAlign: 'center' }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          {renderContent(message)}
+          {renderContent(message, projectId)}
         </Text>
       </div>
     )
@@ -283,6 +312,8 @@ function MessageBubble({ message, isSelf }: { message: Message; isSelf: boolean 
   const bubbleColor = isSelf ? '#fff' : token.colorText
   const bubbleBorder = isSelf ? 'none' : `1px solid ${token.colorBorder}`
   const isCode = message.type === 'CODE'
+  // 图片消息：气泡不设 padding/背景，直接展示图片本体
+  const isImage = message.type === 'IMAGE'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: alignSelf, maxWidth: '78%', alignSelf }}>
@@ -294,29 +325,169 @@ function MessageBubble({ message, isSelf }: { message: Message; isSelf: boolean 
       </div>
       <div
         style={{
-          padding: '8px 12px',
+          padding: isImage ? 0 : '8px 12px',
           borderRadius: 10,
-          background: isCode ? (isSelf ? token.colorPrimary : '#1e293b') : bubbleBg,
+          background: isImage ? 'transparent' : isCode ? (isSelf ? token.colorPrimary : '#1e293b') : bubbleBg,
           color: isCode && !isSelf ? '#e6edf3' : bubbleColor,
-          border: isCode ? 'none' : bubbleBorder,
-          whiteSpace: 'pre-wrap',
+          border: isImage ? 'none' : isCode ? 'none' : bubbleBorder,
+          whiteSpace: isCode ? 'pre-wrap' : 'normal',
           wordBreak: 'break-word',
           fontFamily: isCode ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : undefined,
           fontSize: isCode ? 13 : undefined,
+          overflow: 'hidden',
         }}
       >
-        {renderContent(message)}
+        {renderContent(message, projectId)}
       </div>
     </div>
   )
 }
 
 /** 按消息类型渲染 content */
-function renderContent(message: Message): string {
-  if (message.type === 'CODE') {
-    const c = message.content as CodeMessageContent
-    return c.code ?? ''
+function renderContent(message: Message, projectId: string): React.ReactNode {
+  switch (message.type) {
+    case 'CODE': {
+      const c = message.content as CodeMessageContent
+      return c.code ?? ''
+    }
+    case 'IMAGE': {
+      const c = message.content as ImageMessageContent
+      return (
+        <Image
+          src={c.url}
+          width={c.width ?? '100%'}
+          height={c.height}
+          style={{ borderRadius: 10, display: 'block' }}
+          fallback="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='120'%3E%3Crect width='100%25' height='100%25' fill='%231c2128'/%3E%3C/svg%3E"
+        />
+      )
+    }
+    case 'FILE': {
+      const c = message.content as FileMessageContent
+      return (
+        <a
+          href={c.url}
+          target="_blank"
+          rel="noreferrer"
+          style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'inherit', textDecoration: 'none' }}
+        >
+          <FileOutlined style={{ fontSize: 24, color: '#3b82f6' }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 600, wordBreak: 'break-all' }}>{c.name}</div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {formatFileSize(c.size)}
+            </Text>
+          </div>
+        </a>
+      )
+    }
+    case 'QUOTE': {
+      const c = message.content as QuoteMessageContent
+      return (
+        <div
+          style={{
+            borderLeft: '3px solid #3b82f6',
+            paddingLeft: 10,
+            marginBottom: 6,
+            opacity: 0.85,
+          }}
+        >
+          {c.quotedSenderName && (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {c.quotedSenderName}
+            </Text>
+          )}
+          <div style={{ fontSize: 13 }}>{c.quotedText}</div>
+        </div>
+      )
+    }
+    case 'DIFF': {
+      const c = message.content as DiffMessageContent
+      return (
+        <Link
+          to={PATHS.projectDiff(projectId, c.diffId)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            color: 'inherit',
+            textDecoration: 'none',
+            padding: '8px 10px',
+            border: '1px solid',
+            borderColor: 'rgba(59, 130, 246, 0.35)',
+            borderRadius: 8,
+            background: 'rgba(59, 130, 246, 0.06)',
+          }}
+        >
+          <BranchesOutlined style={{ fontSize: 18, color: '#3b82f6' }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{c.title ?? '代码交付'}</div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {c.additions != null || c.deletions != null ? (
+                <>
+                  <span style={{ color: '#16a34a' }}>+{c.additions ?? 0}</span>{' '}
+                  <span style={{ color: '#dc2626' }}>-{c.deletions ?? 0}</span>
+                </>
+              ) : (
+                '点击查看 Diff'
+              )}
+            </Text>
+          </div>
+        </Link>
+      )
+    }
+    case 'TASK_STATUS': {
+      const c = message.content as TaskStatusMessageContent
+      return (
+        <Link
+          to={PATHS.projectTaskDetail(projectId, c.taskId)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            color: 'inherit',
+            textDecoration: 'none',
+            padding: '8px 10px',
+            border: '1px solid',
+            borderColor: 'rgba(13, 155, 138, 0.35)',
+            borderRadius: 8,
+            background: 'rgba(13, 155, 138, 0.06)',
+          }}
+        >
+          <CheckCircleOutlined style={{ fontSize: 18, color: '#0d9b8a' }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>
+              {c.node ? `${c.node} · ` : ''}任务状态更新
+            </div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {c.message ?? c.status}
+            </Text>
+          </div>
+          <Tag color={taskStatusColor(c.status)} style={{ margin: 0 }}>
+            {c.status}
+          </Tag>
+        </Link>
+      )
+    }
+    default: {
+      const c = message.content as TextMessageContent
+      return c.text ?? ''
+    }
   }
-  const c = message.content as TextMessageContent
-  return c.text ?? ''
+}
+
+/** 文件大小格式化（字节 → 可读） */
+function formatFileSize(size: number): string {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+/** 任务状态 → 卡片 tag 颜色 */
+function taskStatusColor(status: string): string {
+  const s = status.toUpperCase()
+  if (s === 'SUCCEEDED' || s === 'COMPLETED') return 'green'
+  if (s === 'FAILED' || s === 'CANCELLED') return 'red'
+  if (s === 'RUNNING' || s === 'IN_PROGRESS') return 'blue'
+  return 'default'
 }

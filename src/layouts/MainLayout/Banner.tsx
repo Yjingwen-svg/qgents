@@ -114,14 +114,14 @@ export function Banner() {
           >
             Q
           </Avatar>
-          <Text strong style={{ color: 'var(--qg-mint)', fontSize: 18 }}>
+          <Text strong className="qg-banner__brand-text" style={{ color: 'var(--qg-mint)', fontSize: 18 }}>
             gents
           </Text>
         </NavLink>
 
         <nav
           aria-label="主导航"
-          style={{ display: 'flex', alignItems: 'stretch', gap: 4, height: 56 }}
+          style={{ display: 'flex', alignItems: 'stretch', gap: 4, height: 56, flex: 1, minWidth: 0, overflowX: 'auto' }}
         >
           {tabs.map((tab) => {
             const active = selectedKey === tab.key
@@ -158,7 +158,7 @@ export function Banner() {
         </nav>
       </div>
 
-      <Space size={4} align="center">
+      <Space size={4} align="center" style={{ flexShrink: 0 }}>
         <NotificationCenter />
 
         <Button
@@ -168,7 +168,7 @@ export function Banner() {
           style={{ color: LIGHT }}
         >
           <Space size={8}>
-            <Text style={{ color: LIGHT }}>{name}</Text>
+            <Text className="qg-banner__user-name" style={{ color: LIGHT }}>{name}</Text>
             <Avatar style={{ background: '#f97316' }}>{avatarChar}</Avatar>
           </Space>
         </Button>

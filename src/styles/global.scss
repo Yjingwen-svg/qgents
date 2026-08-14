@@ -102,6 +102,17 @@ img {
   background: rgba(255, 255, 255, 0.06) !important;
 }
 
+/* —— Banner 窄屏：隐藏次要文字（品牌名 / 用户名），避免与导航重叠 —— */
+@media (max-width: 640px) {
+  .qg-banner {
+    padding: 0 12px !important;
+  }
+  .qg-banner__brand-text,
+  .qg-banner__user-name {
+    display: none;
+  }
+}
+
 /* 屏幕阅读器专用文本，视觉上隐藏 */
 .sr-only {
   position: absolute;

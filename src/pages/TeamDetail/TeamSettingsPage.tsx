@@ -120,43 +120,36 @@ export function TeamSettingsPage() {
 
   return (
     <ConfigProvider theme={qgDarkPageTheme}>
-      <div style={{ padding: '24px 32px', maxWidth: 960, margin: '0 auto', minHeight: 'calc(100vh - var(--qg-banner-h))' }}>
-        {/* 顶部：返回 + 标题（左），操作按钮（右） */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            gap: 18,
-            marginBottom: 20,
-          }}
-        >
-          <div>
-            <Link
-              to={PATHS.teamDetail(teamId)}
-              onMouseEnter={() => setIsHover(true)}
-              onMouseLeave={() => setIsHover(false)}
-              style={{
-                color: 'var(--qg-text-on-dark-secondary)',
-                fontSize: '13px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                padding: '4px 8px',
-                borderRadius: '6px',
-                transition: 'all 0.2s ease',
-                textDecoration: 'none',
-                border: isHover ? '1px solid rgba(255,255,255,0.16)' : '1px solid rgba(255,255,255,0.1)',
-                background: isHover ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
-              }}
-            >
-              ← 返回团队
-            </Link>
-            <Title level={3} style={{ color: 'var(--qg-text-on-dark)', marginTop: 6, marginBottom: 0 }}>
-              团队设置
-            </Title>
-          </div>
-          <Space>
+      <div style={{ padding: '24px 32px', maxWidth: 720, margin: '0 auto', minHeight: 'calc(100vh - var(--qg-banner-h))' }}>
+        {/* 顶部：标题居中，返回链接 / 操作按钮分别绝对定位到左右两侧 */}
+        <div style={{ position: 'relative', marginBottom: 24, paddingTop: 4 }}>
+          <Link
+            to={PATHS.teamDetail(teamId)}
+            onMouseEnter={() => setIsHover(true)}
+            onMouseLeave={() => setIsHover(false)}
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              color: 'var(--qg-text-on-dark-secondary)',
+              fontSize: '13px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '4px 8px',
+              borderRadius: '6px',
+              transition: 'all 0.2s ease',
+              textDecoration: 'none',
+              border: isHover ? '1px solid rgba(255,255,255,0.16)' : '1px solid rgba(255,255,255,0.1)',
+              background: isHover ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+            }}
+          >
+            ← 返回团队
+          </Link>
+          <Title level={3} style={{ color: 'var(--qg-text-on-dark)', textAlign: 'center', margin: '32px 0 0' }}>
+            团队设置
+          </Title>
+          <Space style={{ position: 'absolute', right: 0, top: 0 }}>
             {isTeamOwner && (
               <Button icon={<GithubOutlined />} onClick={() => navigate(PATHS.githubIntegration(teamId))}>
                 GitHub 集成
@@ -221,7 +214,7 @@ function BasicInfoTab({ team, teamId, isOwner }: { team: Team; teamId: string; i
       layout="vertical"
       disabled={!isOwner}
       onFinish={handleFinish}
-      style={{ maxWidth: 480 }}
+      style={{ maxWidth: 480, margin: '0 auto' }}
     >
       <Form.Item
         name="name"
@@ -237,9 +230,11 @@ function BasicInfoTab({ team, teamId, isOwner }: { team: Team; teamId: string; i
         <Text type="secondary">{formatCreatedAt(team.createdAt)}</Text>
       </Form.Item>
       {isOwner && (
-        <Button type="primary" htmlType="submit" loading={updateTeam.isPending}>
-          保存修改
-        </Button>
+        <div style={{display:'flex', justifyContent:'center'}}>
+          <Button type="primary" htmlType="submit" loading={updateTeam.isPending}> 
+            保存修改
+          </Button>
+        </div>
       )}
     </Form>
   )

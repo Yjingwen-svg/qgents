@@ -60,6 +60,49 @@ export interface CodeMessageContent {
   language?: string
 }
 
+/** IMAGE 消息内容 */
+export interface ImageMessageContent {
+  url: string
+  width?: number
+  height?: number
+}
+
+/** FILE 消息内容 */
+export interface FileMessageContent {
+  url: string
+  name: string
+  size: number
+  mimeType: string
+}
+
+/** QUOTE 引用消息内容 */
+export interface QuoteMessageContent {
+  quotedMessageId: string
+  quotedText: string
+  quotedSenderName?: string
+}
+
+/** DIFF 交付卡片内容 */
+export interface DiffMessageContent {
+  diffId: string
+  title?: string
+  additions?: number
+  deletions?: number
+}
+
+/** TASK_STATUS 任务状态卡片内容 */
+export interface TaskStatusMessageContent {
+  taskId: string
+  status: string
+  node?: string
+  message?: string
+}
+
+/** SYSTEM 系统消息内容 */
+export interface SystemMessageContent {
+  text: string
+}
+
 export interface Message {
   id: string
   groupId: string

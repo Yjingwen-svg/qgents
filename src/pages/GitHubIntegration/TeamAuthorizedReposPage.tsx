@@ -21,6 +21,7 @@ import { projectApi } from '@/api/project'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
+import { DarkPage } from '@/components/DarkPage'
 import {
   isGithubRepoBindable,
   type GithubAuthorizedRepository,
@@ -204,7 +205,7 @@ export function TeamAuthorizedReposPage() {
   const bindingsLoading = projectRepoQueries.some((q) => q.isLoading)
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto' }}>
+    <DarkPage>
       <Link to={PATHS.createProject(teamId)}>
         <Button type="link" icon={<ArrowLeftOutlined />} style={{ paddingLeft: 0, marginBottom: 16 }}>
           返回创建项目
@@ -343,6 +344,6 @@ export function TeamAuthorizedReposPage() {
           />
         )}
       </Card>
-    </div>
+    </DarkPage>
   )
 }

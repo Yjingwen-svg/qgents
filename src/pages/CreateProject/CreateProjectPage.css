@@ -98,8 +98,17 @@
   background: transparent;
 }
 
+.create-project__btn--ghost:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .create-project__btn--primary {
   background: var(--qg-blue);
   color: #fff;
   cursor: pointer;
+}
+
+.create-project__btn--primary:hover:not(:disabled) {
+  background: var(--qg-blue-hover);
 }

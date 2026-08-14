@@ -42,3 +42,16 @@ export const qgLoginLightTheme: ThemeConfig = {
     borderRadius: 10,
   },
 }
+
+/**
+ * 深色页面主题 —— 用于挂在 MainLayout 深色 navy 背景下的页面
+ * （团队设置、GitHub 集成、已授权仓库、绑定项目等）。
+ * 这些页面的内容直接透出 navy 底，需要 antd 深色算法把文字/卡片/表格统一转成浅色。
+ */
+export const qgDarkPageTheme: ThemeConfig = {
+  algorithm: theme.darkAlgorithm,
+  token: {
+    colorPrimary: '#0d9b8a',
+    borderRadius: 10,
+  },
+}

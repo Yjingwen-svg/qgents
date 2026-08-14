@@ -2,6 +2,7 @@
   max-width: 560px;
   margin: 0 auto;
   padding: 28px;
+  color: var(--qg-text-on-dark);
 }
 
 .join-team__back {
@@ -73,6 +74,10 @@
   background: var(--qg-green);
   color: #fff;
   font-weight: 600;
+}
+
+.join-team__card button:hover:not(:disabled) {
+  background: var(--qg-green-hover);
 }
 
 .join-team__card button:disabled {

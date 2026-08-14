@@ -21,6 +21,7 @@ import { githubApi } from '@/api/github'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
+import { DarkPage } from '@/components/DarkPage'
 import type { Project } from '@/types'
 import { isGithubRepoBindable, type ProjectBoundRepository } from '@/types/github'
 
@@ -267,7 +268,7 @@ export function BindRepoToProjectPage() {
   const bindingsLoading = bindingQueries.some((q) => q.isLoading)
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto' }}>
+    <DarkPage>
       <Link to={backToRepos}>
         <Button type="link" icon={<ArrowLeftOutlined />} style={{ paddingLeft: 0, marginBottom: 16 }}>
           返回已授权仓库
@@ -440,6 +441,6 @@ export function BindRepoToProjectPage() {
           />
         )}
       </Card>
-    </div>
+    </DarkPage>
   )
 }

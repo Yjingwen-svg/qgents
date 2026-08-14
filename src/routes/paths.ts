@@ -28,6 +28,11 @@ export const PATHS = {
     asOwner ? `/app/teams/${teamId}?as=owner` : `/app/teams/${teamId}`,
 
   /**
+   * 团队设置页（基本信息 / 成员管理 / GitHub 集成 / 危险区域）
+   */
+  teamSettings: (teamId: string) => `/app/teams/${encodeURIComponent(teamId)}/settings`,
+
+  /**
    * 创建项目（个人中心 / 团队详情均可进入）
    * TODO[后端联调]: teamId 用于绑定项目所属团队
    */

@@ -49,6 +49,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // 第一次 restore 因 cleanup 置 cancelled 而被丢弃，第二次挂载重新恢复。
   useEffect(() => {
     let cancelled = false
+    // StrictMode 下组件会「挂载 → 卸载 → 再挂载」，cleanup 里 abort 掉首挂载发出的 /me，
+    // 避免同一次刷新真实发出两个 /me（第二个还会在连接上排队 stall）。
+    const controller = new AbortController()
 
     async function restore() {
       const token = localStorage.getItem(ACCESS_TOKEN_KEY)
@@ -58,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const me = await authApi.me()
+        const me = await authApi.me(controller.signal)
         if (cancelled) return
         const user = me.user
         if (!user?.id) throw new Error('GET /me 未返回用户')
@@ -86,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [])
 

@@ -19,6 +19,7 @@ import { githubApi } from '@/api/github'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
+import { DarkPage } from '@/components/DarkPage'
 import {
   isGithubRepoBindable,
   type GithubAuthorizedRepository,
@@ -189,7 +190,7 @@ export function GithubInstallationReposPage() {
   ]
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto' }}>
+    <DarkPage>
       <Link to={PATHS.githubIntegration(teamId)}>
         <Button type="link" icon={<ArrowLeftOutlined />} style={{ paddingLeft: 0, marginBottom: 16 }}>
           返回 GitHub 集成
@@ -250,6 +251,6 @@ export function GithubInstallationReposPage() {
           />
         )}
       </Card>
-    </div>
+    </DarkPage>
   )
 }

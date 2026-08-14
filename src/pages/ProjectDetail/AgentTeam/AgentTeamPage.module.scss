@@ -37,7 +37,8 @@
 .detailName { overflow: hidden; color: #172a59; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .detailClose { color: #415778; }
 .tabs { display: flex; padding: 0 14px; border-bottom: 1px solid #e0e7f0; overflow-x: auto; }
-.tab { padding: 9px 10px; color: #6a7da1; border: 0; border-bottom: 2px solid transparent; background: transparent; white-space: nowrap; cursor: pointer; }
+.tab { padding: 9px 10px; color: #6a7da1; border: 0; border-bottom: 2px solid transparent; background: transparent; white-space: nowrap; cursor: pointer; transition: color .15s ease, background .15s ease; }
+.tab:hover { color: #1677ff; background: #f3f8ff; }
 .tabActive { color: #1677ff; border-bottom-color: #1677ff; font-weight: 650; }
 .detailBody { padding: 20px; }
 .sectionTitle { margin: 0 0 14px; color: #172a59; font-size: 14px; }

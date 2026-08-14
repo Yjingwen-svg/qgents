@@ -59,7 +59,8 @@
 .emptyValue { color: #9aabc2; }
 .detailAlert { margin-top: 12px; }
 .historyList { display: flex; flex-direction: column; gap: 7px; margin-top: 18px; }
-.executionLink { display: flex; align-items: center; gap: 7px; margin-top: 20px; padding: 0; color: #176bd6; background: transparent; border: 0; cursor: pointer; }
+.executionLink { display: flex; align-items: center; gap: 7px; margin-top: 20px; padding: 0; color: #176bd6; background: transparent; border: 0; cursor: pointer; transition: color .15s ease; }
+.executionLink:hover { color: #0e4fb8; text-decoration: underline; }
 
 @media (max-width: 1199px) {
   .workflowLayout { grid-template-columns: 1fr; }

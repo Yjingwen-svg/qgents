@@ -184,6 +184,11 @@
   color: var(--qg-text-secondary);
   font-weight: 600;
   position: relative;
+  transition: color 0.15s ease;
+}
+
+.login-card__tabs button:hover {
+  color: var(--qg-teal);
 }
 
 .login-card__tabs button.is-active {
@@ -260,6 +265,11 @@
   color: var(--qg-text-muted);
   padding: 6px;
   display: flex;
+  transition: color 0.15s ease;
+}
+
+.login-field__eye:hover {
+  color: var(--qg-teal);
 }
 
 .login-card__meta {
@@ -283,6 +293,11 @@
   color: var(--qg-teal);
   font-weight: 600;
   padding: 0;
+  transition: color 0.15s ease;
+}
+
+.login-card__link:hover {
+  color: var(--qg-teal-dark);
 }
 
 .login-card__submit {

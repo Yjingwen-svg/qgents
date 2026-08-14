@@ -1,5 +1,9 @@
-import { StrictMode } from 'react'
+import { StrictMode, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import '@fontsource/plus-jakarta-sans/400.css'
+import '@fontsource/plus-jakarta-sans/500.css'
+import '@fontsource/plus-jakarta-sans/600.css'
+import '@fontsource/plus-jakarta-sans/700.css'
 import '@/styles/global.scss'
 import App from './App'
 import { AppProviders } from '@/providers/AppProviders'
@@ -11,13 +15,24 @@ type StartupState =
   | { status: 'error'; message: string }
 
 function StartupScreen({ state, onRetry }: { state: StartupState; onRetry: () => void }) {
+  const [hover, setHover] = useState(false)
   if (state.status === 'error') {
     return (
       <main style={startupStyles.container} role="alert">
         <section style={startupStyles.card}>
           <h1 style={startupStyles.title}>应用初始化失败</h1>
           <p style={startupStyles.message}>{state.message}</p>
-          <button type="button" style={startupStyles.button} onClick={onRetry}>
+          <button
+            type="button"
+            style={{
+              ...startupStyles.button,
+              background: hover ? '#0aa18e' : '#0d9b8a',
+              transition: 'background 0.15s ease',
+            }}
+            onMouseEnter={() => setHover(true)}
+            onMouseLeave={() => setHover(false)}
+            onClick={onRetry}
+          >
             继续启动 / 重试
           </button>
         </section>

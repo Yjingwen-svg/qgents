@@ -44,9 +44,18 @@
   color: var(--qg-text-on-dark);
 }
 
+.my-teams__btn--ghost:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .my-teams__btn--primary {
   background: var(--qg-blue);
   color: #fff;
+}
+
+.my-teams__btn--primary:hover {
+  background: var(--qg-blue-hover);
 }
 
 .my-teams__section {

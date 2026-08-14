@@ -41,6 +41,8 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
   skipAuth?: boolean
   /** 保留统一响应 envelope，用于同时包含 data/page/requestId 的分页响应 */
   unwrapData?: boolean
+  /** 取消信号；组件卸载 / StrictMode cleanup 时 abort 可中断 in-flight 请求 */
+  signal?: AbortSignal
 }
 
 

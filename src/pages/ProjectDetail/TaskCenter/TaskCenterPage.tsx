@@ -4,7 +4,7 @@ import { AppstoreOutlined, UnorderedListOutlined } from '@ant-design/icons'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/api'
 import { useInfiniteTasks } from '@/hooks/task-model'
-import type { Task } from '@/types/task-model'
+import type { TaskListItem } from '@/types/task-model'
 import { PATHS } from '@/routes/paths'
 import { TaskContextPanel } from './TaskContextPanel'
 import { TaskFilters } from './TaskFilters'
@@ -35,13 +35,13 @@ export function TaskCenterPage() {
   const query = useInfiniteTasks(projectId, { groupId, status: status === 'all' ? undefined : status, createdBy, limit: PAGE_SIZE })
 
   const tasks = useMemo(() => {
-    const seen = new Map<string, Task>()
+    const seen = new Map<string, TaskListItem>()
     query.data?.pages.flatMap((page) => page.data).forEach((task) => seen.set(task.id, task))
     return [...seen.values()]
   }, [query.data])
   const selectedTaskId = requestedTaskId ?? tasks[0]?.id
   const selectedTask = tasks.find((task) => task.id === selectedTaskId)
-  const groupOptions = useMemo(() => uniqueOptions(tasks.map((task) => ({ label: task.requirementGroupId || '暂无', value: task.requirementGroupId }))), [tasks])
+  const groupOptions = useMemo(() => uniqueOptions(tasks.map((task) => ({ label: task.requirementGroup?.name || '暂无', value: task.requirementGroup?.id ?? '' }))), [tasks])
   const hasServerItems = query.data?.pages.some((page) => page.data.length > 0) ?? false
   const isUnfiltered = status === 'all' && !createdBy && !groupId
 
@@ -87,7 +87,7 @@ export function TaskCenterPage() {
             <Title level={2} className={styles.title}>任务中心 <Text type="secondary">（按需求分组）</Text></Title>
             <Space>
               {query.isFetching && !query.isLoading ? <Spin size="small" /> : null}
-              <Button className={styles.contextButton} disabled={!selectedTask} onClick={() => selectedTask ? navigate(PATHS.projectReqChat(projectId, selectedTask.requirementGroupId)) : undefined}>返回需求群上下文</Button>
+          <Button className={styles.contextButton} disabled={!selectedTask?.requirementGroup} onClick={() => selectedTask?.requirementGroup ? navigate(PATHS.projectReqChat(projectId, selectedTask.requirementGroup.id)) : undefined}>返回需求群上下文</Button>
             </Space>
           </header>
           <TaskFilters
@@ -107,7 +107,7 @@ export function TaskCenterPage() {
           <TaskCenterContent query={query} tasks={tasks} hasServerItems={hasServerItems} isUnfiltered={isUnfiltered} view={view} selectedTaskId={selectedTaskId} onSelectTask={(taskId) => updateParam('taskId', taskId)} onViewDetails={(taskId) => navigate(PATHS.projectTaskDetail(projectId, taskId), { state: { from: `${PATHS.projectTasks(projectId)}?taskId=${encodeURIComponent(taskId)}` } })} onRetry={() => void query.refetch()} />
           {!query.isLoading && query.hasNextPage ? <div className={styles.loadMore}><Button onClick={() => void query.fetchNextPage()} loading={query.isFetchingNextPage}>加载更多</Button></div> : null}
         </main>
-        <TaskContextPanel task={selectedTask} taskId={selectedTaskId} panel={panel} onPanelChange={handlePanelChange} />
+      <TaskContextPanel task={selectedTask} taskId={selectedTaskId} panel={panel} onPanelChange={handlePanelChange} />
       </div>
     </ConfigProvider>
   )
@@ -115,7 +115,7 @@ export function TaskCenterPage() {
 
 interface TaskCenterContentProps {
   query: ReturnType<typeof useInfiniteTasks>
-  tasks: Task[]
+  tasks: TaskListItem[]
   view: TaskCenterView
   selectedTaskId?: string
   hasServerItems: boolean

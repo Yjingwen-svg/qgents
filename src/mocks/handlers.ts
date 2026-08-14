@@ -2,17 +2,13 @@ import { http, HttpResponse } from 'msw'
 import type { GithubAuthorizedRepository, GithubInstallation } from '@/types/github'
 import type { Group, GroupMember, Message } from '@/types/group'
 import type { Memory, Notification } from '@/types'
+import { MOCK_CURRENT_USER } from './currentUser'
 
 // ══════════════════════════════════════════════
 // Mock 数据
 // ══════════════════════════════════════════════
 
-const MOCK_USER = {
-  id: 'user-001',
-  email: 'demo@qgents.dev',
-  displayName: '陈同学',
-  avatarChar: '陈',
-}
+const MOCK_USER = MOCK_CURRENT_USER
 
 const MOCK_TEAMS = [
   {
@@ -43,6 +39,7 @@ const MOCK_TEAM_MEMBERS = [
 
 const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: string; description: string; createdAt: string; role: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'; repositoryCount: number }>> = {
   'team-owned-001': [
+    { id: 'demo-project', teamId: 'team-owned-001', name: 'Demo Project', description: 'Demo project for Mock acceptance', createdAt: '2026-08-13T00:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 1 },
     { id: 'proj-001', teamId: 'team-owned-001', name: 'Qgents', description: '团队多人 + 多 Agent 云端协作开发平台', createdAt: '2026-07-01T08:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 3 },
     { id: 'proj-002', teamId: 'team-owned-001', name: '宠影记', description: '宠物健康管理小程序', createdAt: '2026-07-15T08:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 1 },
   ],

@@ -53,8 +53,8 @@ export function TaskDetailPage() {
       <div className={styles.detailToolbar}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={handleBack}>返回任务中心</Button>
         <Space>
-          {canCancelTask(task.status) ? <Button danger loading={cancelMutation.isPending} disabled={cancelMutation.isPending} onClick={handleCancel}>取消任务</Button> : null}
-          <Button onClick={() => navigate(PATHS.projectReqChat(projectId, task.requirementGroupId))}>返回需求群</Button>
+          {task.capabilities.canCancel ? <Button danger loading={cancelMutation.isPending} disabled={cancelMutation.isPending} onClick={handleCancel}>取消任务</Button> : null}
+          {task.requirementGroup ? <Button onClick={() => navigate(PATHS.projectReqChat(projectId, task.requirementGroup!.id))}>返回需求群</Button> : null}
         </Space>
       </div>
       {cancelMutation.error ? <CancelError error={cancelMutation.error} onRefresh={() => void taskQuery.refetch()} /> : null}
@@ -62,7 +62,7 @@ export function TaskDetailPage() {
         <header className={styles.taskHeader}>
           <div className={styles.detailTitleRow}><Title level={2} className={styles.title}><Text className={styles.summaryId}>任务 ID：{task.id}</Text>{display(task.title)}</Title><TaskModelStatusTag status={task.status} /></div>
           <div className={styles.summaryMeta}>
-            <SummaryItem label="需求群" value={task.requirementGroupId} /><SummaryItem label="状态" value={task.status} /><SummaryItem label="发起人" value={task.createdBy} /><SummaryItem label="创建时间" value={formatDate(task.createdAt)} /><SummaryItem label="更新时间" value={formatDate(task.updatedAt)} />
+            <SummaryItem label="需求群" value={task.requirementGroup?.name ?? '暂无'} /><SummaryItem label="状态" value={task.status} /><SummaryItem label="发起人" value={task.createdByUser?.displayName ?? '暂无'} /><SummaryItem label="创建时间" value={formatDate(task.createdAt)} /><SummaryItem label="更新时间" value={formatDate(task.updatedAt)} />
           </div>
           <Paragraph>{display(task.requirement)}</Paragraph>
         </header>
@@ -129,7 +129,7 @@ function DiffReviewBatchPanel({ projectId, batch, onRefresh }: { projectId: stri
 
 function WorkspaceCard({ task }: { task: Task }) {
   return <Card title="Workspace" className={styles.section}>
-    <Space direction="vertical" size={4}><Text>状态：{display(task.workspaceStatus)}</Text><Text>Workspace：{display(task.workspaceId)}</Text>{task.repositories.length === 0 ? <Text type="secondary">仓库：暂无</Text> : task.repositories.map((repository) => <div key={repository.repositoryId}><Text strong>{display(repository.repositoryId)}</Text><Text type="secondary"> · {display(repository.sourceBranch)} · base {display(repository.baseCommit)} · head {display(repository.headCommit)}</Text></div>)}</Space>
+    <Space direction="vertical" size={4}><Text>状态：{display(task.workspace?.status)}</Text><Text>Workspace：{display(task.workspace?.id)}</Text>{task.repositories.length === 0 ? <Text type="secondary">仓库：暂无</Text> : task.repositories.map((repository) => <div key={repository.repositoryId}><Text strong>{display(repository.name)}</Text><Text type="secondary"> · {display(repository.sourceBranch)} · base {display(repository.baseCommit)} · head {display(repository.headCommit)}</Text></div>)}</Space>
   </Card>
 }
 
@@ -141,7 +141,7 @@ function TaskStepsSection({ projectId, taskId, query, steps, runsByStep }: { pro
   return <Card title="TaskStep" className={styles.section}><Space direction="vertical" style={{ width: '100%' }}>{steps.map((step) => {
     const run = runsByStep.get(step.id)
     return <Card key={step.id} size="small" title={`${step.role} · ${display(step.id)}`} extra={<Tag>{step.status}</Tag>}>
-      <Space direction="vertical" size={3}><Text>Agent：{display(step.agentId)}</Text><Text>依赖：{step.dependencies.length ? step.dependencies.join(', ') : '暂无'}</Text><Text>Testset：{step.testsetIds.length ? step.testsetIds.join(', ') : '暂无'}</Text><Text>验收说明：{display(step.acceptanceNotes)}</Text>{run ? <Button type="link" onClick={() => navigate(PATHS.projectTaskRunDetail(projectId, taskId, run.id))}>查看最新 TaskRun：{run.id}</Button> : <Text type="secondary">尚未运行</Text>}</Space>
+      <Space direction="vertical" size={3}><Text>Agent：{display(step.agent?.name)}</Text><Text>依赖：{step.dependencies.length ? step.dependencies.join(', ') : '暂无'}</Text><Text>仓库：{display(step.repository?.name)}</Text><Text>验收说明：{display(step.acceptanceNotes)}</Text>{run ? <Button type="link" onClick={() => navigate(PATHS.projectTaskRunDetail(projectId, taskId, run.id))}>查看最新 TaskRun：{run.id}</Button> : <Text type="secondary">尚未运行</Text>}</Space>
     </Card>
   })}</Space></Card>
 }
@@ -150,7 +150,7 @@ function TaskRunsSummary({ query, runs }: { query: ReturnType<typeof useTaskRuns
   if (query.isLoading) return <Card title="TaskRun"><Spin /></Card>
   if (query.isError) return <Card title="TaskRun"><SectionError resource="TaskRun" error={query.error} /></Card>
   if (runs.length === 0) return <Card title="TaskRun"><Empty description="暂无 TaskRun" /></Card>
-  return <Card title="TaskRun" className={styles.section}><Space direction="vertical" style={{ width: '100%' }}>{runs.map((run) => <div key={run.id}><Text strong>{run.id}</Text><Text> · {run.role} · {display(run.agentId)} · {run.status} · step {run.taskStepId}</Text></div>)}</Space></Card>
+  return <Card title="TaskRun" className={styles.section}><Space direction="vertical" style={{ width: '100%' }}>{runs.map((run) => <div key={run.id}><Text strong>{run.id}</Text><Text> · {run.role} · {display(run.agent?.name)} · {run.status} · step {run.taskStepId}</Text></div>)}</Space></Card>
 }
 
 function TaskDiffSummary({ projectId, taskId, query }: { projectId: string; taskId: string; query: ReturnType<typeof useDiffs> }) {
@@ -170,7 +170,6 @@ function groupLatestRuns(runs: TaskRunSummary[]): Map<string, TaskRunSummary> {
   return result
 }
 
-function canCancelTask(status: Task['status']): boolean { return status === 'PLANNING' || status === 'PENDING' || status === 'RUNNING' }
 function isDiffReviewTask(status: Task['status'] | undefined): boolean { return status === 'WAITING_DIFF_CONFIRMATION' || status === 'DELIVERING' || status === 'DELIVERY_FAILED' }
 function errorCode(error: Error | null): string | undefined {
   if (!(error instanceof ApiError) || !error.body || typeof error.body !== 'object' || !('error' in error.body)) return undefined

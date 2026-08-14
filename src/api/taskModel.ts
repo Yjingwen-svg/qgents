@@ -12,6 +12,7 @@ import type {
   InputRequestAnswer,
   InputRequestDecision,
   Task,
+  TaskListItem,
   TaskCreateInput,
   TaskListFilters,
   TaskRunDetail,
@@ -40,7 +41,7 @@ export const tasksApi = {
   },
 
   list(projectId: string, filters: TaskListFilters = {}) {
-    return requestModelPage<Task>(withModelQuery(`/projects/${projectId}/tasks`, filters))
+    return requestModelPage<TaskListItem>(withModelQuery(`/projects/${projectId}/tasks`, filters))
   },
 
   get(projectId: string, taskId: string) {

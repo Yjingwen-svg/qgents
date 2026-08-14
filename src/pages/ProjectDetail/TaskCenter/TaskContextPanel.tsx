@@ -1,5 +1,5 @@
 import { Button, Empty, Space, Tabs, Tag, Typography } from 'antd'
-import type { Task } from '@/types/task-model'
+import type { TaskListItem } from '@/types/task-model'
 import { TASK_CENTER_PANEL_OPTIONS, type TaskCenterPanel } from './taskCenterConfig'
 import { TaskModelStatusTag } from './TaskModelStatusTag'
 import { valueOrNone } from './taskDisplay'
@@ -8,7 +8,7 @@ import styles from './TaskCenterPage.module.scss'
 const { Text, Title } = Typography
 
 interface TaskContextPanelProps {
-  task?: Task
+  task?: TaskListItem
   taskId?: string
   panel: TaskCenterPanel
   onPanelChange: (panel: TaskCenterPanel) => void
@@ -39,25 +39,25 @@ export function TaskContextPanel({ task, taskId, panel, onPanelChange }: TaskCon
   )
 }
 
-function ContextSummary({ task }: { task: Task }) {
+function ContextSummary({ task }: { task: TaskListItem }) {
   return (
     <section>
       <Title level={5}>需求上下文</Title>
-      <PreviewField label="需求群" value={task.requirementGroupId} accent />
-      <PreviewField label="需求说明" value={task.requirement} paragraph />
-      <PreviewField label="工作区" value={task.workspaceId} />
+      <PreviewField label="需求群" value={task.requirementGroup?.name} accent />
+      <PreviewField label="需求摘要" value={task.requirementSummary} paragraph />
+      <PreviewField label="仓库" value={task.repositories[0]?.name} />
       <PreviewField label="仓库" value={task.repositories.map((repository) => repository.repositoryId).join(', ')} />
     </section>
   )
 }
 
-function TaskSummary({ task }: { task: Task }) {
+function TaskSummary({ task }: { task: TaskListItem }) {
   return (
     <section>
       <Title level={5}>任务详情摘要</Title>
       <PreviewField label="标题" value={task.title} />
       <PreviewField label="状态" value={<TaskModelStatusTag status={task.status} />} />
-      <PreviewField label="创建人" value={task.createdBy} />
+      <PreviewField label="创建人" value={task.createdByUser?.displayName} />
       <PreviewField label="创建时间" value={task.createdAt} />
       <PreviewField label="更新时间" value={task.updatedAt} />
     </section>

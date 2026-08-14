@@ -44,7 +44,7 @@ export function TaskRunDetailPage() {
   if (taskQuery.isError) return <PageError error={taskQuery.error} resource="任务" />
   if (runQuery.isError) return <PageError error={runQuery.error} resource="TaskRun" />
   if (!taskQuery.data || taskQuery.data.id !== taskId || taskQuery.data.projectId !== projectId) return <PageState description="任务不存在或不可见" />
-  if (!taskRun || taskRun.projectId !== projectId || taskRun.taskId !== taskId) return <PageState description="TaskRun 不属于当前任务或不可见" />
+  if (!taskRun || taskRun.taskId !== taskId) return <PageState description="TaskRun 不属于当前任务或不可见" />
   const currentTaskRun = taskRun
 
   function back() { navigate(resolveReturnPath(location.state, projectId, taskId)) }
@@ -61,7 +61,7 @@ export function TaskRunDetailPage() {
     <Breadcrumb items={[{ title: '任务中心' }, { title: taskQuery.data.title }, { title: '执行详情' }]} />
     <div className={styles.toolbar}><Button type="text" icon={<ArrowLeftOutlined />} onClick={back}>返回任务详情</Button></div>
     <header className={styles.header}><div><Text type="secondary">TaskStep：{taskRun.taskStepId}</Text><Title level={2}>{taskStep?.role ?? taskRun.role}</Title></div><Space direction="vertical" align="end"><Tag>{taskRun.status}</Tag><TaskRunActions taskRun={taskRun} retry={retry} cancel={cancel} retryPending={retryMutation.isPending} cancelPending={cancelMutation.isPending} retryError={retryMutation.error} cancelError={cancelMutation.error} onRefresh={() => void runQuery.refetch()} /></Space></header>
-    <Card className={styles.summary}><Descriptions column={{ xs: 1, sm: 2, lg: 4 }} size="small"><Descriptions.Item label="TaskRun">{taskRun.id}</Descriptions.Item><Descriptions.Item label="角色">{taskRun.role}</Descriptions.Item><Descriptions.Item label="Agent">{taskRun.agentId}</Descriptions.Item><Descriptions.Item label="耗时">{duration(taskRun.durationMs)}</Descriptions.Item><Descriptions.Item label="开始">{display(taskRun.startedAt)}</Descriptions.Item><Descriptions.Item label="结束">{display(taskRun.finishedAt)}</Descriptions.Item><Descriptions.Item label="Diff 数量">{taskRun.artifactSummary.diffs.count}</Descriptions.Item></Descriptions></Card>
+    <Card className={styles.summary}><Descriptions column={{ xs: 1, sm: 2, lg: 4 }} size="small"><Descriptions.Item label="TaskRun">{taskRun.id}</Descriptions.Item><Descriptions.Item label="角色">{taskRun.role}</Descriptions.Item><Descriptions.Item label="Agent">{display(taskRun.agent?.name)}</Descriptions.Item><Descriptions.Item label="状态原因">{display(taskRun.statusReason?.summary)}</Descriptions.Item><Descriptions.Item label="耗时">{duration(taskRun.durationMs)}</Descriptions.Item><Descriptions.Item label="开始">{display(taskRun.startedAt)}</Descriptions.Item><Descriptions.Item label="结束">{display(taskRun.finishedAt)}</Descriptions.Item><Descriptions.Item label="Diff 数量">{taskRun.artifactSummary.diffCount}</Descriptions.Item></Descriptions></Card>
     <div className={styles.content}>
       <TaskRunStepsSection steps={runSteps} />
       <TaskStepSection step={taskStep} query={stepsQuery} />
@@ -75,7 +75,7 @@ export function TaskRunDetailPage() {
 
 function TaskRunDiffSummary({ projectId, taskId, taskRun }: { projectId: string; taskId: string; taskRun: TaskRunDetail }) {
   const navigate = useNavigate()
-  const count = taskRun.artifactSummary.diffs.count
+  const count = taskRun.artifactSummary.diffCount
   return <Card title="Diff"><Space direction="vertical"><Text>Diff 数量：{count}</Text>{count > 0 ? <Button onClick={() => navigate(`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(taskId)}`)}>查看该任务 Diff</Button> : <Empty description="暂无可查看 Diff" />}</Space></Card>
 }
 
@@ -86,10 +86,10 @@ function TaskRunActions({ taskRun, retry, cancel, retryPending, cancelPending, r
   return <div className={styles.actions}><Space>{canRetry ? <Button onClick={retry} loading={retryPending} disabled={retryPending || cancelPending}>重试</Button> : null}{canCancel ? <Button danger onClick={cancel} loading={cancelPending} disabled={retryPending || cancelPending}>取消</Button> : null}</Space>{error ? <Alert type="error" showIcon title={error instanceof ApiError && error.status === 409 ? '状态已变化，请刷新' : '操作失败'} action={error instanceof ApiError && error.status === 409 ? <Button size="small" onClick={onRefresh}>刷新</Button> : undefined} /> : null}</div>
 }
 
-function TaskStepSection({ step, query }: { step?: { role: string; agentId: string | null; dependencies: string[]; testsetIds: string[]; status: string; acceptanceNotes: string | null }; query: ReturnType<typeof useTaskSteps> }) {
+function TaskStepSection({ step, query }: { step?: import('@/types/task-model').TaskStep; query: ReturnType<typeof useTaskSteps> }) {
   if (query.isLoading) return <Card title="TaskStep"><Spin /></Card>
   if (query.isError) return <Card title="TaskStep"><SectionError resource="TaskStep" error={query.error} /></Card>
-  return <Card title="关联 TaskStep">{step ? <Space direction="vertical"><Text>角色：{step.role}</Text><Text>Agent：{display(step.agentId)}</Text><Text>依赖：{step.dependencies.length ? step.dependencies.join(', ') : '暂无'}</Text><Text>Testset：{step.testsetIds.length ? step.testsetIds.join(', ') : '暂无'}</Text><Text>状态：{step.status}</Text><Text>验收说明：{display(step.acceptanceNotes)}</Text></Space> : <Empty description="关联 TaskStep 不存在" />}</Card>
+  return <Card title="关联 TaskStep">{step ? <Space direction="vertical"><Text>角色：{step.role}</Text><Text>Agent：{display(step.agent?.name)}</Text><Text>依赖：{step.dependencies.length ? step.dependencies.join(', ') : '暂无'}</Text><Text>仓库：{display(step.repository?.name)}</Text><Text>状态：{step.status}</Text><Text>验收说明：{display(step.acceptanceNotes)}</Text></Space> : <Empty description="关联 TaskStep 不存在" />}</Card>
 }
 
 function TaskRunStepsSection({ steps }: { steps: TaskRunStep[] }) {

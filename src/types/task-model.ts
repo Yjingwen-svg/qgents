@@ -37,31 +37,37 @@ export type TaskArtifactType = 'PLAN' | 'CODING' | 'TESTING' | 'REVIEWING'
 export type DiffReviewStatus = 'PENDING_CONFIRMATION' | 'ACCEPTED' | 'REJECTED'
 export type DiffReviewDeliveryStatus = 'NOT_STARTED' | 'DELIVERING' | 'DELIVERED' | 'PARTIALLY_DELIVERED' | 'FAILED'
 
-export interface WorkspaceRepository {
-  repositoryId: string
-  baseCommit: string
-  sourceBranch: string
-  headCommit: string | null
-}
+export interface TaskRequirementGroupSummary { id: string; name: string; status: string }
+export interface TaskUserSummary { id: string; displayName: string; avatarUrl: string | null }
+export interface TaskRepositorySummary { repositoryId: string; name: string; fullName: string; provider: string; defaultBranch: string; baseRef: string; baseCommit: string; sourceBranch: string; headCommit: string | null }
+export interface TaskExecutionSummary { totalSteps: number; pendingSteps: number; runningSteps: number; waitingSteps: number; blockedSteps: number; succeededSteps: number; failedSteps: number; currentStage: TaskStepRole | null; currentStageTitle: string | null; requiresUserAction: boolean }
+export type TaskAttentionKind = 'INPUT_REQUIRED' | 'APPROVAL_REQUIRED' | 'BLOCKED' | 'EXECUTION_FAILED' | 'DIFF_CONFIRMATION_REQUIRED' | 'DELIVERY_FAILED'
+export interface TaskAttention { kind: TaskAttentionKind; title: string; summary: string }
 
-export interface Task {
+export interface TaskListItem {
   id: string
+  displayCode: string
   projectId: string
-  requirementGroupId: string
-  triggerMessageId: string
   title: string
-  requirement: string
+  requirementSummary: string
   status: TaskStatus
   deliveryMode: 'DIFF_FIRST'
-  workspaceId: string
-  workspaceStatus: string
-  continuationOfTaskId: string | null
-  repositoryIds: string[]
-  repositories: WorkspaceRepository[]
-  createdBy: string
+  requirementGroup: TaskRequirementGroupSummary | null
+  createdByUser: TaskUserSummary | null
+  repositories: TaskRepositorySummary[]
+  executionSummary: TaskExecutionSummary
+  attention: TaskAttention | null
   createdAt: string
   updatedAt: string
 }
+
+export interface TaskAcceptanceCriterion { id: string; title: string; description: string | null; status: 'PENDING' | 'SATISFIED' | 'UNSATISFIED' | 'NOT_APPLICABLE' }
+export interface TaskWorkspace { id: string; status: string; repositories: TaskRepositorySummary[] }
+export interface TaskCapabilities { canCancel: boolean; canCancelDisabledReason?: string | null; canReplacePendingStepAgent: boolean; canReplacePendingStepAgentDisabledReason?: string | null; canConfirmDiffReview: boolean; canConfirmDiffReviewDisabledReason?: string | null; canRejectDiffReview: boolean; canRejectDiffReviewDisabledReason?: string | null; canRetryDelivery: boolean; canRetryDeliveryDisabledReason?: string | null }
+export interface TaskArtifactSummary { total: number; byType: Partial<Record<TaskArtifactType, number>> }
+export interface TaskDiffReviewSummary { available: boolean; reviewStatus: DiffReviewStatus | null; deliveryStatus: DiffReviewDeliveryStatus | null; repositoryCount: number; filesChanged: number; additions: number; deletions: number }
+export interface TaskSourceMessage { id: string; sender: TaskUserSummary; textExcerpt: string; createdAt: string }
+export interface Task extends TaskListItem { requirement: string; acceptanceCriteria: TaskAcceptanceCriterion[]; workspace: TaskWorkspace | null; capabilities: TaskCapabilities; artifactSummary: TaskArtifactSummary; diffReviewSummary: TaskDiffReviewSummary; sourceMessage: TaskSourceMessage | null; triggerMessageId: string | null }
 
 export interface TaskArtifact {
   id: string
@@ -70,7 +76,11 @@ export interface TaskArtifact {
   taskStepId: string | null
   sequenceNo: number
   artifactType: TaskArtifactType
+  title: string
+  description: string | null
+  status: 'SUCCEEDED' | 'FAILED' | null
   summary: Record<string, unknown>
+  resources: Array<{ resourceType: string; resourceId: string; title: string }>
   createdAt: string
 }
 
@@ -88,6 +98,7 @@ export interface TaskListFilters {
   groupId?: string
   status?: TaskStatus
   createdBy?: string
+  repositoryId?: string
   cursor?: string
   limit?: number
 }
@@ -106,18 +117,10 @@ export interface TaskModelPage<T> {
   requestId: string
 }
 
-export interface TaskStep {
-  id: string
-  taskId: string
-  role: TaskStepRole
-  agentId: string | null
-  repositoryId: string | null
-  baseRef: string | null
-  dependencies: string[]
-  testsetIds: string[]
-  status: TaskStepStatus
-  acceptanceNotes: string | null
-}
+export interface TaskStepAgentSummary { id: string; name: string; role: TaskStepRole; avatarUrl: string | null; status: string }
+export interface TaskStepRepositorySummary { repositoryId: string; name: string; sourceBranch: string }
+export interface TaskStepLatestRun { id: string; status: TaskRunStatus; startedAt: string | null; finishedAt: string | null; durationMs: number | null }
+export interface TaskStep { id: string; taskId: string; sequenceNo: number; title: string; description: string | null; role: TaskStepRole; agent: TaskStepAgentSummary | null; repository: TaskStepRepositorySummary | null; dependencies: string[]; status: TaskStepStatus; acceptanceNotes: string | null; latestRun: TaskStepLatestRun | null; runCount: number; startedAt: string | null; finishedAt: string | null; createdAt: string; updatedAt: string }
 
 export interface TaskStepCreateInput {
   role: TaskStepRole
@@ -133,18 +136,10 @@ export interface ReplaceTaskStepAgentInput {
   agentId: string
 }
 
-export interface TaskRunSummary {
-  id: string
-  projectId: string
-  taskId: string
-  taskStepId: string
-  agentId: string
-  role: TaskStepRole
-  status: TaskRunStatus
-  retryOfTaskRunId: string | null
-  createdAt: string
-  updatedAt: string
-}
+export interface TaskRunAgentSummary { id: string; name: string; role: TaskStepRole; avatarUrl: string | null }
+export interface TaskRunStatusReason { code: 'INPUT_REQUIRED' | 'APPROVAL_REQUIRED' | 'BLOCKED' | 'EXECUTION_FAILED' | 'CANCELLED'; title: string; summary: string; retryable: boolean; occurredAt: string }
+export interface TaskRunArtifactSummary { total: number; diffCount: number }
+export interface TaskRunSummary { id: string; taskId: string; taskStepId: string; taskStepTitle: string; agent: TaskRunAgentSummary | null; role: TaskStepRole; status: TaskRunStatus; retryOfTaskRunId: string | null; statusSummary: string | null; statusReason: TaskRunStatusReason | null; startedAt: string | null; finishedAt: string | null; durationMs: number | null; artifactSummary: TaskRunArtifactSummary; createdAt: string; updatedAt: string }
 
 export interface TaskRunStep {
   node: string
@@ -155,18 +150,7 @@ export interface TaskRunStep {
   errorCode?: string | null
 }
 
-export interface TaskRunDetail extends TaskRunSummary {
-  artifactSummary: {
-    diffs: {
-      count: number
-      byStatus: Record<string, number>
-    }
-  }
-  startedAt: string | null
-  finishedAt: string | null
-  durationMs: number | null
-  steps?: TaskRunStep[]
-}
+export interface TaskRunDetail extends TaskRunSummary { steps?: TaskRunStep[] }
 
 export type TaskRun = TaskRunSummary | TaskRunDetail
 
@@ -292,4 +276,5 @@ export interface DiffReviewBatch {
   aggregateHash: string
   reviewReason: string | null
   diffs: DiffListItem[]
+  repositoryDeliveries: Array<{ repositoryId: string; repositoryName: string; diffId: string | null; deliveryStatus: 'NOT_STARTED' | 'COMMITTED' | 'MR_CREATED' | 'FAILED'; failureCode: string | null; failureReason: string | null; mergeRequest: { id: string; number: number; title: string; status: string; webUrl: string | null } | null; updatedAt: string }>
 }

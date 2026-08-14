@@ -21,6 +21,7 @@ beforeEach(() => {
   useDiffMock.mockReturnValue({ data: diff, isLoading: false, isPending: false, isError: false, error: null, refetch: vi.fn() })
   useAcceptDiffMock.mockReturnValue({ mutate: vi.fn(), isPending: false, error: null })
   useRejectDiffMock.mockReturnValue({ mutate: vi.fn(), isPending: false, error: null })
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 
 describe('DiffCenterPage', () => {
@@ -60,5 +61,17 @@ describe('DiffCenterPage', () => {
     renderPage()
     expect(screen.getByText('该 Diff 已处理，只读。')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '验收 Diff' })).not.toBeInTheDocument()
+  })
+
+  it('requires confirmation before accepting and prevents cross-project detail display', async () => {
+    const accept = vi.fn()
+    useAcceptDiffMock.mockReturnValue({ mutate: accept, isPending: false, error: null })
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: 'accept-diff' }))
+    expect(accept).not.toHaveBeenCalled()
+    useDiffMock.mockReturnValue({ data: { ...diff, projectId: 'other-project' }, isLoading: false, isPending: false, isError: false, error: null, refetch: vi.fn() })
+    renderPage()
+    expect(screen.getByText('Diff 不存在或不可见')).toBeInTheDocument()
   })
 })

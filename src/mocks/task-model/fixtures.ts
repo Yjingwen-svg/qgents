@@ -53,7 +53,6 @@ function createTask(projectId: string, id: string, status: TaskStatus, index: nu
     repositoryIds: [`repository-${projectId}`],
     repositories: [{
       repositoryId: `repository-${projectId}`,
-      workspacePath: `workspaces/${id}`,
       baseCommit: 'base-commit-1',
       sourceBranch: `feat/${id}`,
       headCommit: status === 'SUCCEEDED' ? `head-${id}` : null,

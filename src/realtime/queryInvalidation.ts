@@ -4,7 +4,6 @@ import type { ProjectTaskEvent, ProjectTaskEventPayload } from './eventParser'
 
 export const TASK_MODEL_QUERY_ROOTS = (projectId: string): readonly QueryKey[] => [
   taskModelQueryKeys.tasks.all(projectId),
-  taskModelQueryKeys.taskSteps.root(projectId),
   taskModelQueryKeys.taskRuns.root(projectId),
   taskModelQueryKeys.diffs.all(projectId),
 ]
@@ -51,12 +50,12 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
       break
     case 'task-run.step.progress':
-      if (!taskRunId) return []
+      if (!taskRunId || !stringId(payload, 'stepId')) return []
       addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
       break
     case 'input-required':
     case 'approval-required':
-      if (!taskId || !taskRunId) return []
+      if (!taskId || !taskRunId || !stringId(payload, 'inputRequestId')) return []
       addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
       addKey(keys, taskModelQueryKeys.taskRuns.inputRequests.all(projectId, taskRunId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
@@ -66,7 +65,10 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.diffs.all(projectId))
       addKey(keys, taskModelQueryKeys.diffs.detail(projectId, diffId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
-      if (taskRunId) addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
+      if (taskRunId) {
+        addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
+        addKey(keys, taskModelQueryKeys.taskRuns.all(projectId, taskId))
+      }
       break
   }
 

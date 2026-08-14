@@ -6,6 +6,7 @@ import { SearchOutlined, PushpinOutlined } from '@ant-design/icons'
 import { PATHS, PROJECT_NAV } from '@/routes/paths'
 import { ApiError, groupApi, projectApi } from '@/api'
 import { useAppUiStore } from '@/store/appUiStore'
+import { useProjectTaskDomainEvents } from '@/realtime/useProjectTaskDomainEvents'
 import type { CreateGroupPayload, Group } from '@/types'
 import './ProjectDetailLayout.scss'
 
@@ -28,6 +29,7 @@ export function ProjectDetailLayout() {
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
   const setCurrentProject = useAppUiStore((state) => state.setCurrentProject)
   const openProjectDetailNav = useAppUiStore((state) => state.openProjectDetailNav)
+  useProjectTaskDomainEvents(projectId)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [groupSearch, setGroupSearch] = useState('')

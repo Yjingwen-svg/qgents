@@ -3,10 +3,21 @@ import { parseProjectTaskEvent, PROJECT_TASK_EVENT_TYPES } from './eventParser'
 
 describe('project SSE event parsing', () => {
   it.each(PROJECT_TASK_EVENT_TYPES)('parses the new event %s', (eventType) => {
+    const ids = eventType === 'task-run.step.progress'
+      ? { taskId: 'task-1', stepId: 'step-1', taskRunId: 'run-1' }
+      : eventType === 'task.updated'
+        ? { taskId: 'task-1' }
+        : eventType === 'task-step.updated'
+          ? { taskId: 'task-1', taskStepId: 'step-1' }
+          : eventType === 'task-run.updated'
+            ? { taskId: 'task-1', taskStepId: 'step-1', taskRunId: 'run-1' }
+            : eventType === 'diff.created'
+              ? { taskId: 'task-1', diffId: 'diff-1' }
+              : { taskId: 'task-1', taskStepId: 'step-1', taskRunId: 'run-1', inputRequestId: 'input-1' }
     const event = parseProjectTaskEvent({
       id: 'evt-new',
       event: eventType,
-      data: JSON.stringify({ projectId: 'project-1', taskId: 'task-1', taskStepId: 'step-1', taskRunId: 'run-1', diffId: 'diff-1' }),
+      data: JSON.stringify({ projectId: 'project-1', ...ids }),
     })
     expect(event?.type).toBe(eventType)
   })
@@ -15,13 +26,13 @@ describe('project SSE event parsing', () => {
     const event = parseProjectTaskEvent({
       id: 'evt-1',
       event: 'task-run.step.progress',
-      data: JSON.stringify({ projectId: 'project-1', taskRunId: 'run-1', taskStepId: 'step-1', sequence: 2 }),
+      data: JSON.stringify({ projectId: 'project-1', taskId: 'task-1', taskRunId: 'run-1', stepId: 'step-1', sequence: 2 }),
     })
 
     expect(event).toEqual({
       id: 'evt-1',
       type: 'task-run.step.progress',
-      payload: { projectId: 'project-1', taskRunId: 'run-1', taskStepId: 'step-1', sequence: 2 },
+      payload: { projectId: 'project-1', taskId: 'task-1', taskRunId: 'run-1', stepId: 'step-1', sequence: 2 },
     })
   })
 
@@ -51,5 +62,9 @@ describe('project SSE event parsing', () => {
       event: 'task.updated',
       data: JSON.stringify({ taskRunId: 'task-1' }),
     })).toBeNull()
+  })
+
+  it('does not silently accept taskStepId for the progress event schema', () => {
+    expect(parseProjectTaskEvent({ id: 'evt-conflict', event: 'task-run.step.progress', data: JSON.stringify({ projectId: 'project-1', taskId: 'task-1', taskRunId: 'run-1', taskStepId: 'step-1' }) })).toBeNull()
   })
 })

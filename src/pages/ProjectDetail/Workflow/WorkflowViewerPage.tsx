@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Alert, Avatar, Button, Card, Empty, Select, Spin, Tag, Typography } from 'antd'
 import {
   ApartmentOutlined,
@@ -14,11 +14,11 @@ import {
   WarningOutlined,
 } from '@ant-design/icons'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { agentApi, projectApi } from '@/api'
-import { useAgents } from '@/hooks/agents'
+import { projectApi } from '@/api'
+import { useAgent, useAgentSkillBindings, useAgents } from '@/hooks/agents'
 import { useInfiniteTasks, useTask, useTaskRuns, useTaskSteps } from '@/hooks/task-model'
 import { queryKeys } from '@/query'
-import type { AgentDetail, AgentSummary } from '@/types'
+import type { AgentSummary } from '@/types'
 import type { Task, TaskRunSummary, TaskStep } from '@/types/task-model'
 import { buildWorkflowGraph, type WorkflowGraphNode } from './runtime'
 import { mapTaskRunStatus, mapTaskStepStatus, type WorkflowDisplayStatus, workflowStatusLabels } from './status'
@@ -117,24 +117,27 @@ function NodeCard({
   )
 }
 
-function NodeDetail({ node, agent, agentDetail, projectId, taskId, onRunSelect }: {
+function NodeDetail({ node, agent, projectId, teamId, taskId, onRunSelect }: {
   node: WorkflowGraphNode
   agent: AgentSummary | undefined
-  agentDetail: AgentDetail | undefined
   projectId: string
+  teamId: string
   taskId: string
   onRunSelect: (run: TaskRunSummary) => void
 }) {
   const navigate = useNavigate()
   const status = nodeStatus(node)
+  const agentDetail = useAgent(projectId, teamId, node.step.agentId)
+  const skillBindings = useAgentSkillBindings(projectId, node.step.agentId)
+  const skillsText = skillBindings.isError ? 'Skill 模块尚未接入' : skillBindings.data?.skills.length ? skillBindings.data.skills.map((skill) => skill.name).join('、') : '暂无 Skill 数据'
   return (
     <aside className={styles.detailPane} aria-label="TaskStep 详情">
       <div className={styles.detailHeading}><div><Text className={styles.detailEyebrow}>TaskStep</Text><Title level={4} className={styles.detailTitle}>{node.step.role}</Title></div><StatusTag status={status} /></div>
       <Paragraph className={styles.detailDescription}>{node.step.acceptanceNotes ?? '暂无验收说明'}</Paragraph>
       <div className={styles.detailSection}>
         <DetailRow label="TaskStep ID">{node.step.id}</DetailRow>
-        <DetailRow label="Agent">{agent ? <span className={styles.agentValue}><Avatar size={24}>{initials(agent.name)}</Avatar>{agent.name}</span> : <EmptyValue>{node.step.agentId ?? '暂无 Agent'}</EmptyValue>}</DetailRow>
-        <DetailRow label="Skill">{agentDetail?.skillBindings?.length ? agentDetail.skillBindings.map((skill) => skill.name).join('、') : <EmptyValue>暂无 Skill</EmptyValue>}</DetailRow>
+        <DetailRow label="Agent">{agent ?? agentDetail.data ? <span className={styles.agentValue}><Avatar size={24}>{initials(agent?.name ?? agentDetail.data?.name ?? '')}</Avatar>{agent?.name ?? agentDetail.data?.name}</span> : <EmptyValue>{node.step.agentId ?? '暂无 Agent'}</EmptyValue>}</DetailRow>
+        <DetailRow label="Skill">{skillsText}</DetailRow>
         <DetailRow label="依赖">{node.step.dependencies.length ? node.step.dependencies.join('、') : <EmptyValue>无依赖</EmptyValue>}</DetailRow>
         <DetailRow label="仓库">{node.step.repositoryId ?? <EmptyValue />}</DetailRow>
         <DetailRow label="Testset">{node.step.testsetIds.length ? node.step.testsetIds.join('、') : <EmptyValue>暂无 Testset</EmptyValue>}</DetailRow>
@@ -177,11 +180,8 @@ export function WorkflowViewerPage() {
     for (const node of graph.nodes) levels.set(node.level, [...(levels.get(node.level) ?? []), node])
     return [...levels.entries()].sort(([left], [right]) => left - right).map(([, nodes]) => nodes)
   }, [graph.nodes])
-  const agentsQuery = useAgents(projectQuery.data?.teamId ?? '')
+  const agentsQuery = useAgents(projectId, projectQuery.data?.teamId ?? '')
   const agents = agentsQuery.data?.data ?? []
-  const agentIds = useMemo(() => [...new Set(steps.map((step) => step.agentId).filter((id): id is string => Boolean(id)))], [steps])
-  const agentDetails = useQueries({ queries: agentIds.map((agentId) => ({ queryKey: queryKeys.agents.detail(projectQuery.data?.teamId ?? '', agentId), queryFn: () => agentApi.get(projectQuery.data?.teamId ?? '', agentId), enabled: Boolean(projectQuery.data?.teamId) })) })
-  const agentDetailById = new Map(agentIds.map((agentId, index) => [agentId, agentDetails[index]?.data]))
 
   function selectTask(nextTaskId: string | undefined) {
     const search = nextTaskId ? `?taskId=${encodeURIComponent(nextTaskId)}` : ''
@@ -201,9 +201,10 @@ export function WorkflowViewerPage() {
     <Card className={styles.runBar} variant="borderless"><div className={styles.runLabel}><CodeOutlined /><span>任务</span></div><Select className={styles.runSelect} placeholder="选择任务" allowClear value={taskId || undefined} onChange={selectTask} options={tasks.map((task) => ({ value: task.id, label: `${task.title} · ${task.id}` }))} /><span className={styles.runHint}>{selectedTask ? <StatusTag status={taskStatus(selectedTask)} /> : '未选择任务'}</span></Card>
     {tasksQuery.isError ? <Alert className={styles.alert} type="error" showIcon message={`任务列表加载失败：${messageOf(tasksQuery.error)}`} /> : null}
     {taskId && taskQuery.isError && !taskListLoading ? <Alert className={styles.alert} type="warning" showIcon message="任务不存在或当前用户无权访问。" action={<Button size="small" onClick={() => selectTask(undefined)}>清除选择</Button>} /> : null}
+    {taskId && selectedTask && selectedTask.projectId !== projectId ? <Alert className={styles.alert} type="error" showIcon message="该任务不属于当前项目，无法展示工作流。" action={<Button size="small" onClick={() => selectTask(undefined)}>清除选择</Button>} /> : null}
     {taskId && taskQuery.isPending ? <div className={styles.inlineLoading}><Spin size="small" /> 正在加载任务…</div> : null}
     {!taskId ? <div className={styles.emptyRun}><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请选择一个任务查看实际执行计划" /></div> : null}
-    {taskId && taskQuery.data ? <>
+    {taskId && selectedTask?.projectId === projectId ? <>
       {stepsQuery.isError ? <Alert className={styles.alert} type="warning" showIcon message={`TaskStep 加载失败：${messageOf(stepsQuery.error)}`} /> : null}
       {runsQuery.isError ? <Alert className={styles.alert} type="warning" showIcon message={`TaskRun 加载失败：${messageOf(runsQuery.error)}`} /> : null}
       {graph.cycleNodeIds.length ? <Alert className={styles.alert} type="warning" showIcon message={`检测到循环依赖：${graph.cycleNodeIds.join('、')}`} /> : null}
@@ -213,7 +214,7 @@ export function WorkflowViewerPage() {
           {steps.length === 0 ? <div className={styles.emptyRun}><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该任务暂无 TaskStep" /></div> : <div className={styles.flowScroll}><div className={styles.flowLevels}>{graphLevels.map((level, levelIndex) => <div className={styles.flowLevelWrap} key={`level-${levelIndex}`}><div className={styles.flowLevel}>{level.map((node) => <div className={styles.flowItem} key={node.step.id}><NodeCard node={node} agent={agents.find((agent) => agent.id === node.step.agentId)} selected={selectedNode?.step.id === node.step.id} onSelect={() => setSelectedStepId(node.step.id)} onRunSelect={selectRun} /></div>)}</div>{levelIndex < graphLevels.length - 1 ? <span className={styles.connector} aria-hidden="true"><RightOutlined /></span> : null}</div>)}</div></div>}
           {selectedTask ? <div className={styles.runSummary}><span><InfoCircleOutlined /> 任务需求</span><Text ellipsis={{ tooltip: selectedTask.requirement }}>{selectedTask.requirement}</Text></div> : null}
         </div>
-        {selectedNode ? <NodeDetail node={selectedNode} agent={agents.find((agent) => agent.id === selectedNode.step.agentId)} agentDetail={agentDetailById.get(selectedNode.step.agentId ?? '')} projectId={projectId} taskId={taskId} onRunSelect={selectRun} /> : null}
+        {selectedNode ? <NodeDetail node={selectedNode} agent={agents.find((agent) => agent.id === selectedNode.step.agentId)} projectId={projectId} teamId={projectQuery.data?.teamId ?? ''} taskId={taskId} onRunSelect={selectRun} /> : null}
       </section>
     </> : null}
   </main>

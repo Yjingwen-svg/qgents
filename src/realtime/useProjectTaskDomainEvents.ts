@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { projectEventsEnabled } from '@/api/projectEvents'
 import { invalidateProjectTaskEvent, invalidateProjectTaskModel } from './queryInvalidation'
 import { ProjectEventConnection, type ProjectEventConnectionStatus } from './projectEventConnection'
 
@@ -61,7 +62,7 @@ export function useProjectTaskDomainEvents(projectId: string): ProjectEventConne
   const [status, setStatus] = useState<ProjectEventConnectionStatus>('idle')
 
   useEffect(() => {
-    if (!projectId) return undefined
+    if (!projectId || !projectEventsEnabled()) return undefined
     return subscribeProjectTaskDomainEvents(projectId, setStatus)
   }, [projectId])
 

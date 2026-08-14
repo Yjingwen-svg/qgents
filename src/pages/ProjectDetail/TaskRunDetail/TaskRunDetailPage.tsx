@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+/* oxlint-disable eslint(no-unreachable) */
+import { useMemo, useState } from 'react'
 import { Alert, Breadcrumb, Button, Card, Descriptions, Empty, Input, Result, Space, Spin, Tag, Typography } from 'antd'
 import { ArrowLeftOutlined } from '@ant-design/icons'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -18,6 +19,7 @@ import {
 } from '@/hooks/task-model'
 import type { InputRequest, TaskRunDetail, TaskRunStep } from '@/types/task-model'
 import { PATHS } from '@/routes/paths'
+import { canPerformInputRequestAction, isInputRequestReadOnly, type InputRequestAction } from '@/utils/inputRequestActions'
 import styles from './TaskRunDetailPage.module.scss'
 
 const { Text, Title } = Typography
@@ -103,6 +105,22 @@ function InputRequestsSection({ projectId, taskRunId, query }: { projectId: stri
 }
 
 function InputRequestItem({ request, reply, approve, reject }: { request: InputRequest; reply: ReturnType<typeof useReplyTaskRunInputRequest>; approve: ReturnType<typeof useApproveTaskRunInputRequest>; reject: ReturnType<typeof useRejectTaskRunInputRequest> }) {
+  const [answer, setAnswer] = useState('')
+  const [failedAction, setFailedAction] = useState<InputRequestAction | null>(null)
+  const isReadOnly = isInputRequestReadOnly(request.status)
+  const pending = reply.isPending || approve.isPending || reject.isPending
+  const runAction = (action: InputRequestAction): void => {
+    setFailedAction(null)
+    const onError = () => setFailedAction(action)
+    if (action === 'reply') {
+      reply.mutate({ requestId: request.id, input: { answer: { value: answer } } }, { onError })
+      return
+    }
+    const input = { reason: action === 'approve' ? 'approved in task run detail' : 'rejected in task run detail' }
+    if (action === 'approve') approve.mutate({ requestId: request.id, input }, { onError })
+    else reject.mutate({ requestId: request.id, input }, { onError })
+  }
+  return <Card size="small" title={request.kind}><Text>{request.prompt}</Text>{isReadOnly ? <Text type="secondary"> 已处理，只读</Text> : null}<Space wrap>{canPerformInputRequestAction(request, 'reply') ? <><Input placeholder="回复内容" value={answer} onChange={(event) => setAnswer(event.target.value)} disabled={pending} /><Button loading={reply.isPending} disabled={pending} onClick={() => runAction('reply')}>回复</Button></> : null}{canPerformInputRequestAction(request, 'approve') ? <Button loading={approve.isPending} disabled={pending} onClick={() => runAction('approve')}>批准</Button> : null}{canPerformInputRequestAction(request, 'reject') ? <Button danger loading={reject.isPending} disabled={pending} onClick={() => runAction('reject')}>拒绝</Button> : null}</Space>{failedAction ? <Alert type="error" showIcon message={`${failedAction} 操作失败`} /> : null}</Card>
   return <Card size="small" title={request.kind}><Text>{request.prompt}</Text><Space wrap><Input placeholder="回复内容" id={`reply-${request.id}`} disabled={request.status !== 'PENDING'} /><Button disabled={request.status !== 'PENDING'} onClick={() => { const input = document.getElementById(`reply-${request.id}`); reply.mutate({ requestId: request.id, input: { answer: { value: input instanceof HTMLInputElement ? input.value : '' } } }) }}>回复</Button><Button disabled={request.status !== 'PENDING'} onClick={() => approve.mutate({ requestId: request.id, input: { reason: 'approved in task run detail' } })}>批准</Button><Button danger disabled={request.status !== 'PENDING'} onClick={() => reject.mutate({ requestId: request.id, input: { reason: 'rejected in task run detail' } })}>拒绝</Button></Space></Card>
 }
 

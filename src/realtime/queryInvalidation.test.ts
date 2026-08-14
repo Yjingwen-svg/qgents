@@ -40,12 +40,12 @@ describe('project SSE Task model query invalidation mapping', () => {
   })
 
   it('maps progress only to TaskRun detail and never writes content', () => {
-    const keys = keysFor('task-run.step.progress', { taskRunId: 'run-1', taskStepId: 'step-1', content: 'raw event content' })
+    const keys = keysFor('task-run.step.progress', { taskId: 'task-1', taskRunId: 'run-1', stepId: 'step-1', content: 'raw event content' })
     expect(keys).toEqual([JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1'])])
   })
 
   it.each(['input-required', 'approval-required'] as const)('maps %s to run, input requests, and Task detail', (type) => {
-    const keys = keysFor(type, { taskId: 'task-1', taskRunId: 'run-1', inputRequestId: 'input-1' })
+    const keys = keysFor(type, { taskId: 'task-1', taskStepId: 'step-1', taskRunId: 'run-1', inputRequestId: 'input-1' })
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1']))
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1', 'input-requests']))
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks', 'task-1']))
@@ -69,6 +69,8 @@ describe('project SSE Task model query invalidation mapping', () => {
     expect(keysFor('task.updated', {})).toEqual([])
     expect(keysFor('task-step.updated', { taskId: 'task-1' })).toEqual([])
     expect(keysFor('task-run.updated', { taskId: 'task-1' })).toEqual([])
+    expect(keysFor('task-run.step.progress', { taskId: 'task-1', taskRunId: 'run-1' })).toEqual([])
+    expect(keysFor('input-required', { taskId: 'task-1', taskStepId: 'step-1', taskRunId: 'run-1' })).toEqual([])
     expect(keysFor('task-step.updated', { taskId: 'task-1', stepId: 'old-step-id' })).toEqual([])
     expect(keysFor('diff.created', { taskId: 'task-1' })).toEqual([])
   })
@@ -82,12 +84,11 @@ describe('project SSE Task model query invalidation mapping', () => {
     expect(queryKeysForProjectTaskEvent(projectId, retiredEvent)).not.toHaveLength(0)
   })
 
-  it('refreshes only the four new model roots after cursor expiration', () => {
+  it('refreshes the current project model roots after cursor expiration', () => {
     const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined)
     invalidateProjectTaskModel(projectId)
     expect(invalidateQueries.mock.calls.map(([options]) => JSON.stringify(options?.queryKey))).toEqual([
       JSON.stringify(['qgents', 'projects', projectId, 'tasks']),
-      JSON.stringify(['qgents', 'projects', projectId, 'task-steps']),
       JSON.stringify(['qgents', 'projects', projectId, 'task-runs']),
       JSON.stringify(['qgents', 'projects', projectId, 'diffs']),
     ])

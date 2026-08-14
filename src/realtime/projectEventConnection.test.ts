@@ -7,7 +7,7 @@ import type { ProjectEventStreamInit } from '@/api/projectEvents'
 const message = (id: string): EventSourceMessage => ({
   id,
   event: 'task-run.updated',
-  data: JSON.stringify({ projectId: 'project-1', taskRunId: 'task-1' }),
+  data: JSON.stringify({ projectId: 'project-1', taskId: 'task-1', taskStepId: 'step-1', taskRunId: 'run-1' }),
 })
 
 describe('project SSE connection lifecycle', () => {
@@ -125,6 +125,41 @@ describe('project SSE connection lifecycle', () => {
     vi.advanceTimersByTime(10)
     await Promise.resolve()
     expect(connect).toHaveBeenCalledTimes(2)
+    connection.stop()
+  })
+
+  it('clears the cursor only for the documented EVENT_CURSOR_EXPIRED response', async () => {
+    const store = new MemoryEventCursorStore()
+    store.set('project-1', 'expired')
+    const onCursorExpired = vi.fn()
+    const connect = vi.fn(async (init: ProjectEventStreamInit) => {
+      try {
+        await init.onopen(new Response(JSON.stringify({ error: { code: 'EVENT_CURSOR_EXPIRED' } }), { status: 409, headers: { 'content-type': 'application/json' } }))
+      } catch (error: unknown) {
+        try { await init.onerror(error) } catch { /* cursor expiration is handled before retry */ }
+      }
+    })
+    const connection = new ProjectEventConnection('project-1', { cursorStore: store, connect, retryDelaysMs: [10], onEvent: vi.fn(), onCursorExpired })
+    connection.start()
+    await vi.waitFor(() => expect(store.get('project-1')).toBeNull())
+    expect(onCursorExpired).toHaveBeenCalledOnce()
+    connection.stop()
+  })
+
+  it.each([401, 403, 409])('does not reconnect after terminal HTTP %s', async (status) => {
+    const connect = vi.fn(async (init: ProjectEventStreamInit) => {
+      try {
+        await init.onopen(new Response(JSON.stringify({ error: { code: 'OTHER_ERROR' } }), { status, headers: { 'content-type': 'application/json' } }))
+      } catch (error: unknown) {
+        try { await init.onerror(error) } catch { /* terminal errors stop the connection */ }
+      }
+    })
+    const connection = new ProjectEventConnection('project-1', { connect, retryDelaysMs: [10], onEvent: vi.fn(), onCursorExpired: vi.fn() })
+    connection.start()
+    await Promise.resolve()
+    await Promise.resolve()
+    vi.advanceTimersByTime(100)
+    expect(connect).toHaveBeenCalledOnce()
     connection.stop()
   })
 

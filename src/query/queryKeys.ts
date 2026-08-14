@@ -2,11 +2,16 @@ export const queryKeys = {
   all: ['qgents'] as const,
   projects: (projectId: string) => ['qgents', 'projects', projectId] as const,
   agents: {
-    all: (teamId: string) => ['qgents', 'teams', teamId, 'agents'] as const,
-    list: (teamId: string, scenario?: string) =>
-      ['qgents', 'teams', teamId, 'agents', 'list', scenario ?? null] as const,
-    detail: (teamId: string, agentId: string) =>
-      ['qgents', 'teams', teamId, 'agents', agentId] as const,
+    all: (projectId: string, teamId = '') => ['qgents', 'projects', projectId, 'teams', teamId, 'agents'] as const,
+    list: (projectId: string, teamId = '', scenario?: string) =>
+      ['qgents', 'projects', projectId, 'teams', teamId, 'agents', 'list', scenario ?? null] as const,
+    detail: (projectId: string, teamId: string, agentId?: string) =>
+      agentId === undefined
+        ? ['qgents', 'projects', '', 'teams', projectId, 'agents', teamId] as const
+        :
+      ['qgents', 'projects', projectId, 'teams', teamId, 'agents', agentId] as const,
+    skillBindings: (projectId: string, agentId: string) =>
+      ['qgents', 'projects', projectId, 'agent-skill-bindings', agentId] as const,
   },
   projectSkills: (projectId: string) => ['qgents', 'projects', projectId, 'skills'] as const,
   // 标记「这个团队的 GitHub App 安装列表」这份接口数据的缓存地址

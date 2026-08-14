@@ -11,6 +11,10 @@ export interface ProjectEventStreamInit {
   onerror: NonNullable<FetchEventSourceInit['onerror']>
 }
 
+export function projectEventsEnabled(): boolean {
+  return import.meta.env.VITE_USE_MOCK !== 'true'
+}
+
 export function projectEventsUrl(projectId: string): string {
   return `${getApiBaseUrl()}/projects/${encodeURIComponent(projectId)}/events`
 }

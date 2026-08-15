@@ -1,6 +1,5 @@
 .page {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 374px;
+  display: block;
   height: calc(100dvh - var(--qg-banner-h, 56px));
   min-height: 0;
   width: 100%;
@@ -48,12 +47,6 @@
 .title :global(.ant-typography-secondary) {
   font-size: 18px;
   font-weight: 500;
-}
-
-.contextButton {
-  border-color: #0d9b9b;
-  color: #0d8d91;
-  background: #ffffff;
 }
 
 .filters {
@@ -135,13 +128,12 @@
 
 .taskCard :global(.ant-card-body) {
   display: flex;
-  min-height: 390px;
+  min-height: 320px;
   flex-direction: column;
   padding: 18px;
 }
 
-.taskCard:hover,
-.taskCardSelected {
+.taskCard:hover {
   border-color: #0d9b9b;
   box-shadow: 0 4px 18px rgba(13, 155, 155, 0.14);
 }
@@ -373,8 +365,7 @@
   padding-top: 12px;
 }
 
-.cardDetailsButton,
-.previewDetailsButton {
+.cardDetailsButton {
   padding-inline: 0;
   color: #1269c7;
 }
@@ -412,8 +403,7 @@
   border-bottom-color: #eef2f7;
 }
 
-.table :global(.ant-table-tbody > tr.ant-table-row:hover > td),
-.tableRowSelected :global(td) {
+.table :global(.ant-table-tbody > tr.ant-table-row:hover > td) {
   background: #f1fbfa;
 }
 
@@ -442,228 +432,10 @@
   margin-top: 24px;
 }
 
-.contextPanel {
-  min-width: 0;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 26px 24px 36px;
-  border-left: 1px solid #edf1f5;
-  background: #ffffff;
-}
-
-.contextHeader {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 42px;
-  margin-bottom: 14px;
-}
-
-.contextHeaderTitle {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-
-.contextTaskId {
-  display: block;
-  margin-top: 2px;
-  font-size: 11px;
-}
-
-.contextTabs {
-  margin: 0 -4px 18px;
-}
-
-.contextTabs :global(.ant-tabs-nav) {
-  margin-bottom: 18px;
-}
-
-.contextTabs :global(.ant-tabs-tab) {
-  padding: 8px 4px;
-  color: #52627b;
-}
-
-.contextTabs :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
-  color: #0d8d91;
-  font-weight: 600;
-}
-
-.contextId {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  color: #52627b;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.contextContent h5 {
-  margin: 0 0 18px;
-  color: #12213d;
-}
-
-.contextLabel,
-.contextValue,
-.contextDescription,
-.contextNote {
-  display: block;
-}
-
-.contextLabel {
-  margin-top: 12px;
-  font-size: 12px;
-}
-
-.contextValue {
-  margin-top: 4px;
-  color: #243855;
-  font-weight: 600;
-}
-
-.contextAccent {
-  color: #0d8d91;
-}
-
-.previewField {
-  margin-bottom: 14px;
-}
-
-.previewStatGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.previewStat {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid #edf1f5;
-  border-radius: 6px;
-}
-
-.previewAlert {
-  margin: 12px 0;
-}
-
-.repositoryList,
-.capabilityList {
-  display: grid;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.capabilityRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: #52627b;
-  font-size: 12px;
-}
-
-.previewStatGrid .previewField {
-  min-width: 0;
-  margin-bottom: 0;
-  padding: 8px;
-  border: 1px solid #edf1f5;
-  border-radius: 6px;
-}
-
-.criteriaList,
-.executionPreviewList {
-  padding: 0;
-  margin: 4px 0 14px;
-  list-style: none;
-}
-
-.executionStep {
-  display: grid;
-  gap: 6px;
-  padding: 12px 0;
-  border-bottom: 1px solid #edf1f5;
-}
-
-.executionStepHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.criteriaList li,
-.executionPreviewList li {
-  padding: 7px 0;
-  border-bottom-color: #edf1f5;
-  border-bottom: 1px solid #edf1f5;
-  color: #52627b;
-  font-size: 12px;
-}
-
-.checkMark {
-  display: inline-grid;
-  width: 16px;
-  height: 16px;
-  margin-right: 6px;
-  place-items: center;
-  border: 1px solid #24a9ad;
-  border-radius: 50%;
-  color: #0d8d91;
-  font-size: 10px;
-}
-
-.previewStep {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.contextDescription {
-  margin: 6px 0 0;
-  color: #52627b;
-  line-height: 1.65;
-}
-
-.contextNote {
-  margin-top: 16px;
-  line-height: 1.6;
-}
-
-.roleTag {
-  margin: 0;
-  border-color: #dce6ef;
-  color: #243855;
-  background: #ffffff;
-}
-
-.previewDetailsButton {
-  margin-top: 18px;
-}
-
-.panelState {
-  display: grid;
-  min-height: 220px;
-  place-items: center;
-}
-
-.panelResult {
-  padding: 48px 0;
-}
-
 @media (max-width: 1320px) {
   .page {
-    grid-template-columns: minmax(0, 1fr) 330px;
+    display: block;
   }
-
 }
 
 @container (max-width: 620px) {
@@ -678,7 +450,7 @@
 
 @media (max-width: 1080px) {
   .page {
-    grid-template-columns: minmax(0, 1fr) 320px;
+    display: block;
   }
 
   .main {
@@ -691,12 +463,6 @@
     display: block;
     height: auto;
     min-height: calc(100dvh - var(--qg-banner-h, 56px));
-  }
-
-  .contextPanel {
-    overflow: visible;
-    border-top: 1px solid #edf1f5;
-    border-left: 0;
   }
 
   .main {

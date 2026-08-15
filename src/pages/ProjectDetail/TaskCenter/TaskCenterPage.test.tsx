@@ -3,59 +3,67 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/api'
-import type { Task, TaskListItem, TaskModelPage } from '@/types/task-model'
+import type { TaskListItem, TaskModelPage } from '@/types/task-model'
 
 const useInfiniteTasksMock = vi.hoisted(() => vi.fn())
 const useTaskMock = vi.hoisted(() => vi.fn())
 const useTaskStepsMock = vi.hoisted(() => vi.fn())
 const useTaskRunsMock = vi.hoisted(() => vi.fn())
+
 vi.mock('@/hooks/task-model', () => ({ useInfiniteTasks: useInfiniteTasksMock, useTask: useTaskMock, useTaskSteps: useTaskStepsMock, useTaskRuns: useTaskRunsMock }))
 
 import { TaskCenterPage } from './TaskCenterPage'
 
-const task: TaskListItem = { id: 'task-1', displayCode: 'T-1', projectId: 'project-test', title: '新任务', requirementSummary: '实现功能', status: 'RUNNING', deliveryMode: 'DIFF_FIRST', requirementGroup: { id: 'group-1', name: '登录', status: 'ACTIVE' }, createdByUser: { id: 'creator-1', displayName: 'Creator', avatarUrl: null }, repositories: [], executionSummary: { totalSteps: 0, pendingSteps: 0, runningSteps: 1, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: null, currentStageTitle: null, requiresUserAction: false }, attention: null, createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z' }
-const detail: Task = { ...task, requirement: '完整需求内容', acceptanceCriteria: [], workspace: null, capabilities: { canCancel: false, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false }, artifactSummary: { total: 0, byType: {} }, diffReviewSummary: { available: false, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 }, sourceMessage: null, triggerMessageId: null }
-function page(data: TaskListItem[]): TaskModelPage<TaskListItem> { return { data, page: { nextCursor: null, hasMore: false }, requestId: 'request-1' } }
-function renderPage(entry = '/app/projects/project-test/tasks') {
-  return render(<MemoryRouter initialEntries={[entry]}><Routes><Route path="/app/projects/:projectId/tasks" element={<><TaskCenterPage /><LocationProbe /></>} /><Route path="/app/projects/:projectId/tasks/:taskId" element={<><output data-testid="detail-route">detail</output><LocationProbe /></>} /></Routes></MemoryRouter>)
+const task: TaskListItem = {
+  id: 'task-1', displayCode: 'T-1', projectId: 'project-test', title: '新任务', requirementSummary: '实现功能', status: 'RUNNING', deliveryMode: 'DIFF_FIRST',
+  requirementGroup: { id: 'group-1', name: '登录', status: 'ACTIVE' }, createdByUser: { id: 'creator-1', displayName: 'Creator', avatarUrl: null }, repositories: [],
+  executionSummary: { totalSteps: 0, pendingSteps: 0, runningSteps: 1, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: null, currentStageTitle: null, requiresUserAction: false }, attention: null,
+  createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z',
 }
-function LocationProbe() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}</output> }
-function result(overrides: Record<string, unknown> = {}) { return { data: { pages: [page([task])], pageParams: [undefined] }, error: null, isError: false, isFetching: false, isLoading: false, hasNextPage: false, isFetchNextPageError: false, refetch: vi.fn(), fetchNextPage: vi.fn(), ...overrides } }
 
-beforeEach(() => { useInfiniteTasksMock.mockReset(); useInfiniteTasksMock.mockReturnValue(result()); useTaskMock.mockReturnValue({ data: detail, error: null, isError: false, isLoading: false, refetch: vi.fn() }); useTaskStepsMock.mockReturnValue({ data: page([]), error: null, isError: false, isLoading: false, refetch: vi.fn() }); useTaskRunsMock.mockReturnValue({ data: page([]), error: null, isError: false, isLoading: false, refetch: vi.fn() }) })
+function page(data: TaskListItem[]): TaskModelPage<TaskListItem> { return { data, page: { nextCursor: null, hasMore: false }, requestId: 'request-1' } }
+function result(overrides: Record<string, unknown> = {}) { return { data: { pages: [page([task])], pageParams: [undefined] }, error: null, isError: false, isFetching: false, isLoading: false, hasNextPage: false, isFetchNextPageError: false, refetch: vi.fn(), fetchNextPage: vi.fn(), ...overrides } }
+function renderPage(entry = '/app/projects/project-test/tasks') { return render(<MemoryRouter initialEntries={[entry]}><Routes><Route path="/app/projects/:projectId/tasks" element={<><TaskCenterPage /><LocationProbe /></>} /><Route path="/app/projects/:projectId/tasks/:taskId" element={<><output data-testid="detail-route">detail</output><LocationProbe /></>} /></Routes></MemoryRouter>) }
+function LocationProbe() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}</output> }
+
+beforeEach(() => {
+  useInfiniteTasksMock.mockReset()
+  useInfiniteTasksMock.mockReturnValue(result())
+  useTaskMock.mockReset()
+  useTaskStepsMock.mockReset()
+  useTaskRunsMock.mockReset()
+})
 
 describe('TaskCenterPage', () => {
-  it('uses the Task query with official filters', () => {
+  it('requests only the Task list with official filters', () => {
     renderPage('/app/projects/project-test/tasks?groupId=group-1&status=RUNNING&createdBy=creator-1')
     expect(useInfiniteTasksMock).toHaveBeenCalledWith('project-test', { groupId: 'group-1', status: 'RUNNING', createdBy: 'creator-1', repositoryId: undefined, limit: 20 })
+    expect(useTaskMock).not.toHaveBeenCalled()
+    expect(useTaskStepsMock).not.toHaveBeenCalled()
+    expect(useTaskRunsMock).not.toHaveBeenCalled()
     expect(screen.getByText('新任务')).toBeInTheDocument()
   })
 
-  it('restores and updates taskId selection', async () => {
-    const user = userEvent.setup(); renderPage('/app/projects/project-test/tasks?taskId=task-1')
-    expect(screen.getByText('任务 ID：task-1')).toBeInTheDocument()
-    await user.click(screen.getByText('新任务'))
-    expect(screen.getByTestId('location')).toHaveTextContent('taskId=task-1')
+  it('opens TaskDetail from a card and preserves filter parameters for return', async () => {
+    const user = userEvent.setup()
+    renderPage('/app/projects/project-test/tasks?groupId=group-1&status=RUNNING')
+    await user.click(screen.getByRole('button', { name: /新任务/ }))
+    expect(screen.getByTestId('detail-route')).toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent('/app/projects/project-test/tasks/task-1?groupId=group-1&status=RUNNING')
   })
 
-  it('restores the new Task detail entry without navigating to old detail', async () => {
-    const user = userEvent.setup(); renderPage()
-    expect(screen.queryByText(/executionPreview/)).not.toBeInTheDocument()
-    const detailButton = screen.getAllByText('查看完整任务详情')[0]
-    await user.click(detailButton)
-    expect(screen.getByTestId('location')).toHaveTextContent('/app/projects/project-test/tasks/task-1')
+  it('redirects legacy taskId links to TaskDetail and preserves filters', async () => {
+    renderPage('/app/projects/project-test/tasks?taskId=task-1&status=RUNNING&groupId=group-1')
+    await waitFor(() => expect(screen.getByTestId('detail-route')).toBeInTheDocument())
+    expect(screen.getByTestId('location')).toHaveTextContent('/app/projects/project-test/tasks/task-1?status=RUNNING&groupId=group-1')
   })
 
   it('shows loading and permission states', () => {
     useInfiniteTasksMock.mockReturnValue(result({ data: undefined, isLoading: true, isFetching: true }))
-    const { rerender } = renderPage(); expect(screen.getByText('正在加载任务')).toBeInTheDocument()
+    const { rerender } = renderPage()
+    expect(screen.getByText('正在加载任务')).toBeInTheDocument()
     useInfiniteTasksMock.mockReturnValue(result({ data: undefined, isLoading: false, isError: true, error: new ApiError('forbidden', 403) }))
     rerender(<MemoryRouter initialEntries={['/app/projects/project-test/tasks']}><Routes><Route path="/app/projects/:projectId/tasks" element={<TaskCenterPage />} /></Routes></MemoryRouter>)
     expect(screen.getByText('暂无权限查看任务')).toBeInTheDocument()
-  })
-
-  it('does not use orchestration run hooks', async () => {
-    renderPage(); await waitFor(() => expect(useInfiniteTasksMock).toHaveBeenCalled())
-    expect(useInfiniteTasksMock).toHaveBeenCalledTimes(1)
   })
 })

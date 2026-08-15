@@ -6,8 +6,8 @@
  * Skill 不是 Memory，不能承载未经确认的客观事实。
  */
 
-/** Skill 状态：DRAFT -> PENDING_REVIEW -> APPROVED / REJECTED / ARCHIVED */
-export type SkillStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'ARCHIVED'
+/** Skill 状态：DRAFT -> PENDING_REVIEW -> PUBLISHED / REJECTED / ARCHIVED */
+export type SkillStatus = 'DRAFT' | 'PENDING_REVIEW' | 'PUBLISHED' | 'REJECTED' | 'ARCHIVED'
 
 /** Skill 可见性：PRIVATE（个人草稿）/ PROJECT_SHARED（已发布给项目） */
 export type SkillVisibility = 'PRIVATE' | 'PROJECT_SHARED'

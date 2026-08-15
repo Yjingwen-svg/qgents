@@ -1,4 +1,4 @@
-import { request } from './client'
+import { request, requestPage } from './client'
 import type {
   CreateTeamPayload,
   CreateInvitationPayload,
@@ -39,9 +39,9 @@ export const teamApi = {
     return request<Team[]>('/teams').then((teams) => teams.map(normalizeTeam))
   },
 
-  /** GET /teams/{teamId}/activities — 团队最近动态（见「前端待接接口清单.md」） */
+  /** GET /teams/{teamId}/activities — 团队最近动态（分页，见后端1对接文档） */
   activities(teamId: string) {
-    return request<Activity[]>(`/teams/${teamId}/activities`)
+    return requestPage<Activity>(`/teams/${teamId}/activities`)
   },
 
   /** POST /teams — 创建团队，创建者成为 TEAM_OWNER */
@@ -78,16 +78,16 @@ export const teamApi = {
     return request<TeamInvitation[]>(`/teams/${teamId}/invitations`)
   },
 
-  /** POST /team-invitations/:token/accept — 接受团队邀请 */
-  acceptInvitation(token: string) {
-    return request<AcceptInvitationResponse>(`/team-invitations/${token}/accept`, {
+  /** POST /team-invitations/:reference/accept — 接受团队邀请（reference = 邀请 id 或明文 token） */
+  acceptInvitation(reference: string) {
+    return request<AcceptInvitationResponse>(`/team-invitations/${reference}/accept`, {
       method: 'POST',
     })
   },
 
-  /** GET /team-invitations — 当前用户收到的待处理团队邀请（收件人视角） */
+  /** GET /team-invitations — 当前用户收到的待处理团队邀请（收件人视角，分页） */
   listMyInvitations() {
-    return request<MyTeamInvitation[]>('/team-invitations')
+    return requestPage<MyTeamInvitation>('/team-invitations')
   },
 
 

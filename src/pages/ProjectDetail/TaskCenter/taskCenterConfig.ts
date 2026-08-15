@@ -2,13 +2,6 @@ import type { TaskStatus } from '@/types/task-model'
 
 export type TaskCenterStatusFilter = 'all' | TaskStatus
 export type TaskCenterView = 'board' | 'table'
-export type TaskCenterPanel = 'context' | 'detail' | 'executions'
-
-export const TASK_CENTER_PANEL_OPTIONS: Array<{ key: TaskCenterPanel; label: string }> = [
-  { key: 'context', label: '需求上下文' },
-  { key: 'detail', label: '任务详情' },
-  { key: 'executions', label: '执行记录' },
-]
 
 export const TASK_CENTER_STATUS_OPTIONS: Array<{ value: TaskCenterStatusFilter; label: string }> = [
   { value: 'all', label: '全部' },
@@ -23,8 +16,3 @@ export const TASK_CENTER_STATUS_OPTIONS: Array<{ value: TaskCenterStatusFilter; 
   { value: 'CANCELLING', label: '取消中' },
   { value: 'CANCELLED', label: '已取消' },
 ]
-
-export function parseTaskCenterPanel(value: string | null): TaskCenterPanel {
-  if (value === 'detail' || value === 'executions') return value
-  return 'context'
-}

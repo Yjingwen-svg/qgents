@@ -11,7 +11,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons'
 import { Button, Space, Spin } from 'antd'
-import { Link, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi } from '@/api'
@@ -125,6 +125,7 @@ export function TeamDetailPage() {
     queryFn: () => teamApi.getById(teamId),
     enabled: !!teamId,
   })
+  const isOwner=team?.role==='TEAM_OWNER';
 
   // 团队资料加载后，把角色同步进 store，供 Banner「团队首页」跳转时带 as=owner
   useEffect(() => {
@@ -143,12 +144,14 @@ export function TeamDetailPage() {
     enabled: !!teamId,
   })
 
-  // 团队最近动态（真实接口，见「前端待接接口清单.md」；后端未实现时走 mock）
-  const { data: activities = [] } = useQuery({
+  // 团队最近动态（分页响应取 data）
+  const { data: activitiesData } = useQuery({
     queryKey: ['teams', teamId, 'activities'],
     queryFn: () => teamApi.activities(teamId),
     enabled: !!teamId,
+    refetchInterval: 15_000,
   })
+  const activities = activitiesData?.data ?? []
 
   const isLoading = teamLoading || membersLoading || projectsLoading
   const ownerCount = members.filter((member) => member.role === 'TEAM_OWNER').length
@@ -161,12 +164,16 @@ export function TeamDetailPage() {
     )
   }
 
-  if (teamError || !team) {
+  if (teamError) {
     return (
       <div className="team-detail team-detail--centered">
         <EmptyState icon="🔎" title="团队未找到" description="该团队不存在，或你暂无访问权限" />
       </div>
     )
+  }
+  if (!team) {
+    // 查不到该团队（接口成功但数据为空，或已被移除权限）→ 回欢迎页
+    return <Navigate to={PATHS.WELCOME} replace />
   }
 
   return (
@@ -223,13 +230,15 @@ export function TeamDetailPage() {
             <p>从个人中心切换团队或项目，进入项目总群继续协作。</p>
           </div>
           <Space>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setCreateOpen(true)}
-            >
-              创建项目
-            </Button>
+            {isOwner&&(
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setCreateOpen(true)}
+              >
+                创建项目
+              </Button>
+            )}
           </Space>
         </section>
 
@@ -295,7 +304,7 @@ export function TeamDetailPage() {
                   <CheckCircleFilled />
                   <div>
                     <strong>{activity.title}</strong>
-                    <span>{activity.summary || activity.actor.displayName}</span>
+                    <span>{activity.summary || activity.actor?.displayName || '系统'}</span>
                   </div>
                   <time>{formatRelativeTime(activity.createdAt)}</time>
                 </li>

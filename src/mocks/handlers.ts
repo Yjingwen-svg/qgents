@@ -3,6 +3,7 @@ import type { GithubAuthorizedRepository, GithubInstallation } from '@/types/git
 import type { Group, GroupMember, Message } from '@/types/group'
 import type { Activity, Memory, Notification, MyTeamInvitation } from '@/types'
 import { MOCK_CURRENT_USER } from './currentUser'
+import { deliveryCenterHandlers } from './delivery-center/handlers'
 
 // ══════════════════════════════════════════════
 // Mock 数据
@@ -52,11 +53,10 @@ const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: st
 let nextTeamId = 10
 let nextProjectId = 10
 
-// 当前用户收到的待处理团队邀请（演示用样例）
+// 当前用户收到的待处理团队邀请（演示用样例，对齐后端1对接文档：无 token）
 const MOCK_MY_INVITATIONS: MyTeamInvitation[] = [
   {
     id: 'my-inv-001',
-    token: 'inv-token-demo-001',
     teamId: 'team-joined-001',
     teamName: '广工创新团队',
     role: 'TEAM_MEMBER',
@@ -411,19 +411,10 @@ const MOCK_NOTIFICATIONS: Notification[] = [
 
 const MOCK_ACTIVITIES: Activity[] = [
   {
-    id: 'act-001',
-    type: 'GROUP_CREATED',
-    title: '陈同学 创建了需求群 登录功能',
-    summary: null,
-    actor: { id: 'user-001', displayName: '陈同学' },
-    target: { type: 'GROUP', id: 'group-login-proj-001', title: '登录功能' },
-    createdAt: '2026-08-14T09:00:00Z',
-  },
-  {
     id: 'act-002',
     type: 'TASK_COMPLETED',
     title: '任务「实现登录功能」已完成',
-    summary: '由 Developer Agent 完成',
+    summary: null,
     actor: { id: 'agent-developer', displayName: 'Developer' },
     target: { type: 'TASK', id: 'task-001', title: '实现登录功能' },
     createdAt: '2026-08-14T08:30:00Z',
@@ -432,17 +423,17 @@ const MOCK_ACTIVITIES: Activity[] = [
     id: 'act-003',
     type: 'MR_CREATED',
     title: '登录功能 MR #42 已创建',
-    summary: '等待合并',
+    summary: null,
     actor: { id: 'agent-developer', displayName: 'Developer' },
     target: { type: 'MR', id: 'mr-001', title: '#42 登录功能' },
     createdAt: '2026-08-14T08:00:00Z',
   },
   {
-    id: 'act-004',
-    type: 'MEMBER_JOINED',
-    title: '张工 加入了项目',
+    id: 'act-005',
+    type: 'TEST_RUN_FAILED',
+    title: '测试运行失败',
     summary: null,
-    actor: { id: 'user-002', displayName: '张工' },
+    actor: null,
     target: { type: 'PROJECT', id: 'proj-001', title: 'Qgents Web' },
     createdAt: '2026-08-13T18:00:00Z',
   },
@@ -781,6 +772,7 @@ function createRepoBindingHandlers() {
 // ══════════════════════════════════════════════
 
 export const handlers = [
+  ...deliveryCenterHandlers,
   // ── health ──
   http.get('/api/health', () => HttpResponse.json({ status: 'ok', source: 'msw' })),
 
@@ -871,8 +863,10 @@ export const handlers = [
     return HttpResponse.json({ data: team })
   }),
 
-  // GET /teams/:teamId/activities —— 团队最近动态（演示样例）
-  http.get('/api/teams/:teamId/activities', () => HttpResponse.json({ data: MOCK_ACTIVITIES })),
+  // GET /teams/:teamId/activities —— 团队最近动态（演示样例，分页包装）
+  http.get('/api/teams/:teamId/activities', () =>
+    HttpResponse.json({ data: MOCK_ACTIVITIES, page: { nextCursor: null, hasMore: false } }),
+  ),
 
   http.patch('/api/teams/:teamId', async ({ params, request }) => {
     const body = (await request.json()) as { name?: string; description?: string }
@@ -897,11 +891,15 @@ export const handlers = [
 
   http.get('/api/teams/:teamId/invitations', () => HttpResponse.json({ data: [] })),
 
-  // GET /team-invitations —— 当前用户收到的待处理邀请（收件人视角）
-  http.get('/api/team-invitations', () => HttpResponse.json({ data: MOCK_MY_INVITATIONS })),
+  // GET /team-invitations —— 当前用户收到的待处理邀请（收件人视角，分页包装）
+  http.get('/api/team-invitations', () =>
+    HttpResponse.json({ data: MOCK_MY_INVITATIONS, page: { nextCursor: null, hasMore: false } }),
+  ),
 
-  http.post('/api/team-invitations/:token/accept', () =>
-    HttpResponse.json({ data: { teamId: 'team-joined-001', teamName: '广工创新团队' } }),
+  http.post('/api/team-invitations/:reference/accept', () =>
+    HttpResponse.json({
+      data: { userId: 'user-001', displayName: '陈同学', role: 'TEAM_MEMBER', joinedAt: '2026-08-15T10:00:00Z' },
+    }),
   ),
 
   // ── GitHub 集成 ──

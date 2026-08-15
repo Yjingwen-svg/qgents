@@ -1,4 +1,4 @@
-import { Button, Card, Col, Divider, Space, Tag, Typography } from 'antd'
+import { Button, Card, Space, Tag, Tooltip, Typography } from 'antd'
 import type { TaskListItem } from '@/types/task-model'
 import { TaskModelStatusTag } from './TaskModelStatusTag'
 import { valueOrNone } from './taskDisplay'
@@ -8,68 +8,69 @@ const { Text, Paragraph } = Typography
 
 interface TaskCardProps {
   task: TaskListItem
-  selected: boolean
-  onSelect: (taskId: string) => void
   onViewDetails: (taskId: string) => void
 }
 
-export function TaskCard({ task, selected, onSelect, onViewDetails }: TaskCardProps) {
+export function TaskCard({ task, onViewDetails }: TaskCardProps) {
   return (
-    <Col xs={24} sm={12} lg={8} xl={6}>
-      <Card
-        className={`${styles.taskCard} ${selected ? styles.taskCardSelected : ''}`}
-        variant="outlined"
-        role="button"
-        tabIndex={0}
-        aria-pressed={selected}
-        onClick={() => onSelect(task.id)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') onSelect(task.id)
-        }}
-      >
-        <div className={styles.taskCardHeading}>
+    <Card
+      className={styles.taskCard}
+      variant="outlined"
+      role="button"
+      tabIndex={0}
+      onClick={() => onViewDetails(task.id)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') onViewDetails(task.id)
+      }}
+    >
+      <div className={styles.taskCardHeading}>
+        <Text className={styles.taskCode}>#{valueOrNone(task.displayCode)}</Text>
+        <div className={styles.taskCardTitleLine}>
           <Typography.Title level={5} ellipsis={{ tooltip: valueOrNone(task.title) }}>{valueOrNone(task.title)}</Typography.Title>
           <TaskModelStatusTag status={task.status} />
         </div>
-        <Space wrap size={[6, 6]} className={styles.taskCardTags}>
-          <Tag className={styles.groupTag}>{valueOrNone(task.requirementGroup?.name)}</Tag>
-          <Tag>{valueOrNone(task.createdByUser?.displayName)}</Tag>
-        </Space>
-        <Paragraph ellipsis={{ rows: 2 }} className={styles.taskCardCopy}>{valueOrNone(task.requirementSummary)}</Paragraph>
-        <div className={styles.taskCardTarget}>
-          <Text type="secondary">工作区 / 仓库</Text>
-          <Text strong>{workspaceSummary(task)}</Text>
+      </div>
+      <Space wrap size={[6, 6]} className={styles.taskCardTags}>
+        <Tag className={styles.groupTag}>{valueOrNone(task.requirementGroup?.name)}</Tag>
+        <Tag className={styles.deliveryTag}>{task.deliveryMode}</Tag>
+      </Space>
+      <Paragraph ellipsis={{ rows: 2, tooltip: valueOrNone(task.requirementSummary) }} className={styles.taskCardCopy}>{valueOrNone(task.requirementSummary)}</Paragraph>
+      <div className={styles.taskCardInfoGrid}>
+        <div>
+          <Text type="secondary">任务执行位置</Text>
+          <RepositoryLocation task={task} />
         </div>
-        <Divider />
-        <div className={styles.taskCardTarget}>
-          <Text type="secondary">创建时间</Text>
-          <Text>{formatDate(task.createdAt)}</Text>
-          <Text type="secondary">更新时间</Text>
-          <Text>{formatDate(task.updatedAt)}</Text>
+        <div>
+          <Text type="secondary">发起人</Text>
+          <Tooltip title={valueOrNone(task.createdByUser?.displayName)}>
+            <Text className={styles.taskInfoEllipsis}>{valueOrNone(task.createdByUser?.displayName)}</Text>
+          </Tooltip>
         </div>
-        <Button
-          type="link"
-          disabled={false}
-          title="任务详情迁移中"
-          className={styles.cardDetailsButton}
-          onClick={(event) => { event.stopPropagation(); onViewDetails(task.id) }}
-        >
+        <div>
+          <Text type="secondary">执行概览</Text>
+          <Text className={styles.taskInfoEllipsis}>{valueOrNone(task.executionSummary.currentStageTitle ?? task.executionSummary.currentStage)} · {task.executionSummary.succeededSteps}/{task.executionSummary.totalSteps}</Text>
+        </div>
+      </div>
+      <div className={`${styles.taskCardAttention} ${task.attention ? '' : styles.taskCardAttentionPlaceholder}`} title={task.attention ? `${task.attention.title}：${task.attention.summary}` : undefined}>
+        {task.attention ? `${task.attention.title}：${task.attention.summary}` : null}
+      </div>
+      <div className={styles.taskCardDates}><Text type="secondary">更新时间：{valueOrNone(task.updatedAt)}</Text></div>
+      <div className={styles.taskCardActions}>
+        <Button type="link" className={styles.cardDetailsButton} onClick={(event) => { event.stopPropagation(); onViewDetails(task.id) }}>
           查看完整任务详情
         </Button>
-      </Card>
-    </Col>
+      </div>
+    </Card>
   )
 }
 
-function workspaceSummary(task: TaskListItem): string {
-  const repositories = task.repositories.map((repository) => repository.repositoryId).filter(Boolean)
-  const workspace = valueOrNone(task.repositories[0]?.repositoryId)
-  return repositories.length > 0 ? `${workspace} / ${repositories.join(', ')}` : workspace
+function RepositoryLocation({ task }: { task: TaskListItem }) {
+  const repository = task.repositories[0]
+  if (!repository) return <Text className={styles.taskInfoEllipsis}>暂无</Text>
+  return <Tooltip title={repositorySummary(task)}><div className={styles.repositoryLocationValue}><Tag className={styles.repositoryName}>{repository.name}</Tag><Text className={styles.repositoryBranch}>{repository.sourceBranch}</Text>{task.repositories.length > 1 ? <Text className={styles.repositoryMore}>+{task.repositories.length - 1}</Text> : null}</div></Tooltip>
 }
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '暂无'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return valueOrNone(value)
-  return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+function repositorySummary(task: TaskListItem): string {
+  if (task.repositories.length === 0) return '暂无'
+  return task.repositories.map((repository) => `${repository.name} / ${repository.baseRef} → ${repository.sourceBranch}`).join('、')
 }

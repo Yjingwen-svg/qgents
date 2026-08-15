@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { MainLayout } from '@/layouts/MainLayout'
 import { PATHS } from '@/routes/paths'
-import { RedirectIfAuthed, RequireAuth } from '@/routes/guards'
+import { RedirectIfAuthed, RequireAuth, RequireTeam } from '@/routes/guards'
 
 import { LoginPage } from '@/pages/Login/LoginPage'
 import { WelcomePage } from '@/pages/Welcome/WelcomePage'
@@ -27,6 +27,7 @@ import { TaskDetailPage } from '../pages/ProjectDetail/TaskDetail/TaskDetailPage
 import { TaskRunDetailPage } from '../pages/ProjectDetail/TaskRunDetail/TaskRunDetailPage'
 import { TaskCenterPage } from '../pages/ProjectDetail/TaskCenter/TaskCenterPage'
 import { DiffCenterPage } from '../pages/ProjectDetail/DiffCenter/DiffCenterPage'
+import { DeliveryCenterPage } from '../pages/ProjectDetail/DeliveryCenter/DeliveryCenterPage'
 import { WorkflowViewerPage } from '../pages/ProjectDetail/Workflow/WorkflowViewerPage'
 import { AgentTeamPage } from '../pages/ProjectDetail/AgentTeam/AgentTeamPage'
 import {
@@ -63,52 +64,56 @@ export function AppRouter() {
               <Route path="teams" element={<MyTeamsPage />} />
               <Route path="teams/create" element={<CreateTeamPage />} />
               <Route path="teams/join" element={<JoinTeamPage />} />
-              <Route path="teams/:teamId" element={<TeamDetailPage />} />
-              <Route path="teams/:teamId/settings" element={<TeamSettingsPage />} />
-              <Route path="teams/:teamId/activities" element={<TeamActivitiesPage />} />
-              <Route path="teams/:teamId/projects/create" element={<CreateProjectPage />} />
-              <Route
-                path="teams/:teamId/github/authorized-repos"
-                element={<TeamAuthorizedReposPage />}
-              />
-              <Route path="chat" element={<ChatWorkspacePage />} />
-              <Route path="integrations/github" element={<GitHubIntegrationPage />} />
-              <Route
-                path="integrations/github/installations/:installationId/repositories"
-                element={<GithubInstallationReposPage />}
-              />
-              <Route path="integrations/github/bind-repo" element={<BindRepoToProjectPage />} />
 
-              <Route path="projects/:projectId" element={<ProjectDetailLayout />}>
-                {/* 默认进入项目总群（由 ProjectDetailLayout 根据群列表跳转） */}
-                <Route index element={<Navigate to="req-chat" replace />} />
-                <Route path="overview" element={<OverviewPage />} />
+              {/* 需已加入至少一个团队才能访问的业务路由（无团队时拦回欢迎页） */}
+              <Route element={<RequireTeam />}>
+                <Route path="teams/:teamId" element={<TeamDetailPage />} />
+                <Route path="teams/:teamId/settings" element={<TeamSettingsPage />} />
+                <Route path="teams/:teamId/activities" element={<TeamActivitiesPage />} />
+                <Route path="teams/:teamId/projects/create" element={<CreateProjectPage />} />
+                <Route
+                  path="teams/:teamId/github/authorized-repos"
+                  element={<TeamAuthorizedReposPage />}
+                />
+                <Route path="chat" element={<ChatWorkspacePage />} />
+                <Route path="integrations/github" element={<GitHubIntegrationPage />} />
+                <Route
+                  path="integrations/github/installations/:installationId/repositories"
+                  element={<GithubInstallationReposPage />}
+                />
+                <Route path="integrations/github/bind-repo" element={<BindRepoToProjectPage />} />
 
-                {/*
-                  群聊：每个群独立路由，IM 外壳相同、会话按 groupId 隔离
-                  req-chat 无参数时由 ProjectDetailLayout 重定向到项目总群
-                */}
-                <Route path="req-chat/:groupId" element={<RequirementChatPage />} />
-                <Route path="req-chat" element={<RequirementChatPage />} />
+                <Route path="projects/:projectId" element={<ProjectDetailLayout />}>
+                  {/* 默认进入项目总群（由 ProjectDetailLayout 根据群列表跳转） */}
+                  <Route index element={<Navigate to="req-chat" replace />} />
+                  <Route path="overview" element={<OverviewPage />} />
 
-                {/* B 的任务模块 */}
-                <Route path="tasks" element={<TaskCenterPage />} />
-                <Route path="tasks/:taskId/executions/:taskRunId" element={<TaskRunDetailPage />} />
-                <Route path="tasks/:taskId" element={<TaskDetailPage />} />
-                <Route path="diffs" element={<DiffCenterPage />} />
-                <Route path="diffs/:diffId" element={<DiffCenterPage />} />
-                <Route path="workflow" element={<WorkflowViewerPage />} />
-                <Route path="agents" element={<AgentTeamPage />} />
+                  {/*
+                    群聊：每个群独立路由，IM 外壳相同、会话按 groupId 隔离
+                    req-chat 无参数时由 ProjectDetailLayout 重定向到项目总群
+                  */}
+                  <Route path="req-chat/:groupId" element={<RequirementChatPage />} />
+                  <Route path="req-chat" element={<RequirementChatPage />} />
 
-                {/* 其他子页 */}
-                <Route path="skills" element={<SkillsPage />} />
-                <Route path="memory" element={<MemoryPage />} />
-                <Route path="code/mr/:mergeRequestId" element={<MergeRequestDetailPage />} />
-                <Route path="code/diff/:diffId" element={<DiffReviewPage />} />
-                <Route path="code" element={<CodePage />} />
-                <Route path="testset" element={<TestsetPage />} />
-                <Route path="members" element={<MembersPage />} />
-                <Route path="settings" element={<SettingsPage />} />
+                  {/* B 的任务模块 */}
+                  <Route path="tasks" element={<TaskCenterPage />} />
+                  <Route path="tasks/:taskId/executions/:taskRunId" element={<TaskRunDetailPage />} />
+                  <Route path="tasks/:taskId" element={<TaskDetailPage />} />
+                  <Route path="diffs" element={<DeliveryCenterPage />} />
+                  <Route path="diffs/:diffId" element={<DiffCenterPage />} />
+                  <Route path="workflow" element={<WorkflowViewerPage />} />
+                  <Route path="agents" element={<AgentTeamPage />} />
+
+                  {/* 其他子页 */}
+                  <Route path="skills" element={<SkillsPage />} />
+                  <Route path="memory" element={<MemoryPage />} />
+                  <Route path="code/mr/:mergeRequestId" element={<MergeRequestDetailPage />} />
+                  <Route path="code/diff/:diffId" element={<DiffReviewPage />} />
+                  <Route path="code" element={<CodePage />} />
+                  <Route path="testset" element={<TestsetPage />} />
+                  <Route path="members" element={<MembersPage />} />
+                  <Route path="settings" element={<SettingsPage />} />
+                </Route>
               </Route>
 
               {/* 已登录用户 → 404 */}

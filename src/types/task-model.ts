@@ -233,21 +233,48 @@ export interface DiffDetail extends DiffListItem {
   updatedAt: string
 }
 
+export type DiffFileStatus = 'ADDED' | 'MODIFIED' | 'DELETED'
+export type DiffLineKind = 'CONTEXT' | 'ADD' | 'DEL'
+
+export interface DiffLine {
+  kind: DiffLineKind
+  oldLine: number | null
+  newLine: number | null
+  text: string
+}
+
+export interface DiffHunk {
+  id: string
+  header: string
+  lines: DiffLine[]
+}
+
+/** GET /diffs/{diffId}/files：DiffFileResponse。hunks 本轮可能为空。 */
 export interface DiffFile {
+  id: string
+  sequence: number
   path: string
-  side?: string
-  line?: number
-  hunkId?: string
-  body?: string
+  changeType: DiffFileStatus
+  /** 与 changeType 相同，页面继续用 status 画 A/M/D */
+  status: DiffFileStatus
+  additions: number
+  deletions: number
+  binary: boolean
+  hunks: DiffHunk[]
 }
 
 export interface DiffComment {
   id: string
+  diffId?: string | null
   path: string | null
   side: string | null
   line: number | null
   hunkId: string | null
+  commitSha?: string | null
   body: string
+  authorUserId?: string | null
+  authorName?: string | null
+  createdAt?: string | null
 }
 
 export interface DiffListFilters {
@@ -266,6 +293,57 @@ export interface DiffCommentInput {
 
 export interface DiffRejectInput {
   reason: string
+}
+
+/** POST /projects/{projectId}/merge-requests */
+export interface MergeRequestCreateInput {
+  taskId: string
+  repositoryId: string
+  targetBranch: string
+  title: string
+}
+
+export type MergeRequestStatus = 'OPEN' | 'MERGED' | 'CLOSED'
+
+export interface MergeRequestListFilters {
+  repositoryId?: string
+  groupId?: string
+  status?: MergeRequestStatus
+  cursor?: string
+  limit?: number
+}
+
+/** GET/POST /projects/{projectId}/merge-requests */
+export interface MergeRequestSummary {
+  id: string
+  repositoryId: string
+  groupIds: string[]
+  provider: string
+  number: number
+  title?: string | null
+  description?: string | null
+  sourceBranch: string
+  targetBranch: string
+  status: MergeRequestStatus
+  headCommit: string | null
+  webUrl?: string | null
+  taskId?: string | null
+  qualityGate?: { status: string; requiredChecks: string[] }
+}
+
+export type MergeRequestCheckName = 'TESTSET' | 'AI_REVIEW' | 'DRY_RUN' | 'CQ_PLUS_ONE'
+
+/** GET /merge-requests/{id}/checks 扁平数组项 MergeRequestCheckResponse */
+export interface MergeRequestCheck {
+  id: string
+  type: MergeRequestCheckName
+  status: 'PENDING' | 'PASSED' | 'FAILED'
+  attemptNo?: number | null
+  testsetId?: string | null
+  commitSha?: string | null
+  source?: string | null
+  startedAt?: string | null
+  completedAt?: string | null
 }
 
 export interface DiffReviewBatch {

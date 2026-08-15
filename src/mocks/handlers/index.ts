@@ -1,6 +1,7 @@
 ﻿import { http, HttpResponse } from 'msw'
 import { taskModelHandlers } from '../task-model/handlers'
 import { agentHandlers } from '../agent/handlers'
+import { testsetHandlers } from '../testset/handlers'
 
 // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 // Mock 鏁版嵁
@@ -216,6 +217,7 @@ const handlers: ReturnType<typeof http.get>[] = [
   // 鈹€鈹€ B 鐨勪换鍔″煙锛坱ask-domain + agent锛夆攢鈹€
   ...taskModelHandlers,
   ...agentHandlers,
+  ...testsetHandlers,
 ]
 
 export { handlers }

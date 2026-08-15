@@ -136,6 +136,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: true,
       port: 5173,
+      allowedHosts: ['qgents.dpdns.org', 'mobile.qgents.dpdns.org'],
       proxy: useMock
         ? undefined
         : {

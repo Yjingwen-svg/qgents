@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Typography,
@@ -14,6 +14,7 @@ import {
   Empty,
   Spin,
   Select,
+  Tabs,
   App,
   theme,
 } from 'antd'
@@ -27,6 +28,7 @@ import {
   CheckCircleOutlined,
 } from '@ant-design/icons'
 import { githubApi } from '@/api/github'
+import { useDiffs } from '@/hooks/task-model'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
@@ -41,54 +43,51 @@ import {
 import { PROJECT_REQUIREMENTS } from './requirements'
 import {
   branchesForBoundRepo,
-  demoBoundReposForProject,
   repoAlias,
 } from './codeBranchDemo'
+import { MergeRequestTab } from './MergeRequestTab'
 
 const { Title, Paragraph, Text } = Typography
-
+// 按照仓库绑定 + 分支名对上一条 diffId,对不上就只显示数字，不跳转
 /**
  * 代码与 Branch
  * TODO: 仓库绑定 / 分支列表
- * TODO: Diff 预览、手动创建 MR
  *
  * 仓库列表：GET /projects/{projectId}/repositories（绑定记录 id）。
  * 分支行：文档暂无分支查询接口，当前为页面演示数据。
+ * MR 列表：GET /projects/{projectId}/merge-requests；创建入口在 Diff 评审页。
  */
 export function CodePage() {
   const { token } = theme.useToken()
   const { message } = App.useApp()
   const { projectId = 'demo-project' } = useParams<{ projectId: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = searchParams.get('tab') === 'mr' ? 'mr' : 'branches'
 
   const [requirementId, setRequirementId] = useState<string | undefined>()
   const [drawer, setDrawer] = useState<{
     repo: ProjectBoundRepository//项目绑定到仓库的选择,主要涵盖的是仓库的信息
     branch: ProjectBranchRow//?
   } | null>(null)
-
+  //  向后端要数据 写法
+  // 组件一挂上就去拉仓库列表数据
   const reposQuery = useQuery({
-    queryKey: queryKeys.projectRepositories(projectId),
+    queryKey: queryKeys.projectRepositories(projectId),//拉到的数据的名字,相同也页面可以用缓存
     queryFn: () => githubApi.listProjectRepositories(projectId),
-    enabled: Boolean(projectId),
+    enabled: Boolean(projectId),//只有projectId有值才执行
   })
-
-  const repos = useMemo(() => {
-    const fromApi = reposQuery.data ?? []
-    if (fromApi.length > 0) return fromApi
-    return demoBoundReposForProject(projectId)//用到mock数据,模拟返回仓库列表,在请求数据没有的时候
-  }, [reposQuery.data, projectId])
-//改变项目,或者后端数据变化才会重新执行
 
 // 筛选逻辑
   const repoCards = useMemo(() => {
-    return repos.map((repo) => {
-      const allBranches = branchesForBoundRepo(repo)
+    const list = reposQuery.data ?? []
+    return list.map((repo) => {
+      const allBranches = branchesForBoundRepo(repo)//一个仓库的分支列表
       const branches = requirementId
         ? allBranches.filter((b) => b.requirementGroupId === requirementId)
         : allBranches//如果没有筛选条件,就返回该仓库下所有分支
       return { repo, branches }
     })
-  }, [repos, requirementId])
+  }, [reposQuery.data, requirementId])
 
   const visibleCards = requirementId//有没有暂无数据
     ? repoCards.filter((c) => c.branches.length > 0)
@@ -103,13 +102,17 @@ export function CodePage() {
     }
   }
   // navigator.clipboard.writeText(name)：浏览器原生剪贴板 API，把分支名写入剪贴板
-  function openCreateMrPlaceholder() {
-    // TODO: Diff 预览、手动创建 MR
-    message.info('创建 MR 需要已接受的 Diff；本页第一版先占位，不新开页面')
+
+  function setTab(next: string) {
+    const nextParams = new URLSearchParams(searchParams)
+    if (next === 'mr') nextParams.set('tab', 'mr')
+    else nextParams.delete('tab')
+    if (next !== 'mr') {
+      nextParams.delete('repositoryId')
+      nextParams.delete('status')
+    }
+    setSearchParams(nextParams, { replace: true })
   }
-  // 当前正在使用演示兜底数据
-  const usingDemoFallback =
-    (reposQuery.data?.length ?? 0) === 0 && demoBoundReposForProject(projectId).length > 0
 
   return (
     <div style={{ padding: 24 }}>
@@ -118,9 +121,22 @@ export function CodePage() {
       </Title>
       <Paragraph type="secondary" style={{ marginBottom: 16 }}>
         projectId: <Text code>{projectId}</Text>
-        {usingDemoFallback ? ' · 当前为演示仓库（接口暂无绑定时）' : null}
       </Paragraph>
 
+      <Tabs
+        activeKey={tab}
+        onChange={setTab}
+        items={[
+          { key: 'branches', label: '分支' },
+          { key: 'mr', label: 'MR' },
+        ]}
+        style={{ marginBottom: 8 }}
+      />
+
+      {tab === 'mr' ? (
+        <MergeRequestTab projectId={projectId} repositories={reposQuery.data ?? []} />
+      ) : (
+        <>
       <Space wrap style={{ marginBottom: 16 }}>
         <Text type="secondary">需求过滤</Text>
         <Select
@@ -148,8 +164,17 @@ export function CodePage() {
         <div style={{ textAlign: 'center', padding: 48 }}>
           <Spin />
         </div>
-      ) : reposQuery.isError && repos.length === 0 ? (
-        <Alert type="error" showIcon message={formatApiError(reposQuery.error)} />
+      ) : reposQuery.isError ? (
+        <Alert
+          type="error"
+          showIcon
+          message={formatApiError(reposQuery.error)}
+          action={
+            <Button size="small" onClick={() => void reposQuery.refetch()}>
+              重试
+            </Button>
+          }
+        />
       ) : visibleCards.length === 0 ? (
         <Card>
           <Empty
@@ -185,9 +210,6 @@ export function CodePage() {
               <Button onClick={() => void copyBranchName(drawer.branch.name)}>
                 复制 Branch 名称
               </Button>
-              <Button type="primary" onClick={openCreateMrPlaceholder}>
-                创建 MR
-              </Button>
             </Space>
           ) : null
         }
@@ -200,6 +222,8 @@ export function CodePage() {
           />
         ) : null}
       </Drawer>
+        </>
+      )}
     </div>
   )
 }
@@ -215,11 +239,19 @@ function RepoBranchCard({
   repo: ProjectBoundRepository
   branches: ProjectBranchRow[]
   tokenColorBorder: string
-  onOpenDrawer: (branch: ProjectBranchRow) => void
+  onOpenDrawer: (branch: ProjectBranchRow) => void//子向父通信：子组件不维护抽屉状态，只触发回调，状态交给父组件管理
 }) {
   const alias = repoAlias(repo)
   const titleName = repo.displayName || repo.fullName.split('/').pop() || repo.fullName
 
+
+
+
+
+
+
+
+//type:类型
   const columns: ColumnsType<ProjectBranchRow> = [
     {
       title: 'Branch',
@@ -415,6 +447,11 @@ function DiffStatLink({
   projectId: string
   branch: ProjectBranchRow
 }) {
+  const diffsQuery = useDiffs(projectId, { limit: 100 })
+  const diffId = (diffsQuery.data?.data ?? []).find(
+    (item) => item.repositoryId === branch.projectRepositoryId && item.sourceBranch === branch.name,
+  )?.id
+    ?? (diffsQuery.data?.data ?? []).find((item) => item.sourceBranch === branch.name)?.id
   const inner = (
     <>
       <Text type="success">+{branch.diffAdditions}</Text>
@@ -426,9 +463,12 @@ function DiffStatLink({
   if (!hasDiff) {
     return <Text type="secondary">{inner}</Text>
   }
+  if (!diffId) {
+    return <Text type="secondary" title="后端尚未生成该分支的 Diff 快照">{inner}</Text>
+  }
   return (
     <Link
-      to={PATHS.projectCodeDiff(projectId, branch.id)}
+      to={PATHS.projectCodeDiff(projectId, diffId)}
       title="查看该分支 Diff"
       style={{ display: 'inline-block', padding: '2px 4px', borderRadius: 4 }}
     >

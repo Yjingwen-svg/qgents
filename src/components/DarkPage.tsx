@@ -12,7 +12,9 @@ import { qgDarkPageTheme } from '@/theme/antdTheme'
 export function DarkPage({ children }: { children: ReactNode }) {
   return (
     <ConfigProvider theme={qgDarkPageTheme}>
-      <div style={{ maxWidth: 960, margin: '0 auto' }}>{children}</div>
+      <div className="qg-dark-page-content" style={{ maxWidth: 960, margin: '0 auto' }}>
+        {children}
+      </div>
     </ConfigProvider>
   )
 }

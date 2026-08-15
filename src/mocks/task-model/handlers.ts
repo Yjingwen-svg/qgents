@@ -520,11 +520,16 @@ export const taskModelDiffHandlers: HttpHandler[] = [
     if (!isNonEmptyString(body.body)) return errorResponse(422, 'VALIDATION_FAILED', 'Comment body is required', 'body')
     const comment: DiffComment = {
       id: `comment-${diff.id}-${(store.diffComments.get(diff.id) ?? []).length + 1}`,
+      diffId: diff.id,
       path: typeof body.path === 'string' ? body.path : null,
       side: typeof body.side === 'string' ? body.side : null,
       line: typeof body.line === 'number' ? body.line : null,
       hunkId: typeof body.hunkId === 'string' ? body.hunkId : null,
+      commitSha: diff.headCommit ?? null,
       body: body.body,
+      authorUserId: 'user-001',
+      authorName: null,
+      createdAt: new Date().toISOString(),
     }
     store.diffComments.set(diff.id, [...(store.diffComments.get(diff.id) ?? []), comment])
     return response(comment, 201)
@@ -543,6 +548,7 @@ export const taskModelDiffHandlers: HttpHandler[] = [
       diff.reviewedBy = 'mock-reviewer'
       diff.reviewedAt = new Date().toISOString()
       diff.updatedAt = diff.reviewedAt
+      if (!diff.headCommit) diff.headCommit = `head-${diff.id}`
       return response(diff, 202)
     } catch (error: unknown) {
       return transitionError(error)
@@ -649,6 +655,137 @@ const taskArtifactAndDiffReviewHandlers: HttpHandler[] = [
   }),
 ]
 
+function mergeRequestChecks(item: import('@/types/task-model').MergeRequestSummary): import('@/types/task-model').MergeRequestCheck[] {
+  const requiredChecks = item.qualityGate?.requiredChecks ?? ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE']
+  const overall = item.qualityGate?.status ?? 'PENDING'
+  return requiredChecks.flatMap((type, index) => {
+    if (type !== 'TESTSET' && type !== 'AI_REVIEW' && type !== 'DRY_RUN' && type !== 'CQ_PLUS_ONE') return []
+    let status: 'PENDING' | 'PASSED' | 'FAILED' = 'PENDING'
+    if (overall === 'PASSED') status = 'PASSED'
+    else if (overall === 'FAILED') status = type === 'CQ_PLUS_ONE' ? 'FAILED' : 'PASSED'
+    else if (type === 'TESTSET' || type === 'DRY_RUN') status = 'PASSED'
+    return [{
+      id: `check-${item.id}-${index + 1}`,
+      type,
+      status,
+      attemptNo: 1,
+      testsetId: type === 'TESTSET' ? 'testset-mock' : null,
+      commitSha: item.headCommit,
+      source: 'MOCK',
+      startedAt: '2026-08-12T08:00:00Z',
+      completedAt: status === 'PENDING' ? null : '2026-08-12T08:01:00Z',
+    }]
+  })
+}
+
+const taskModelMergeRequestHandlers: HttpHandler[] = [
+  http.get('*/api/projects/:projectId/merge-requests', ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const store = getStore(projectId, request)
+    const search = new URL(request.url).searchParams
+    const repositoryId = search.get('repositoryId')
+    const groupId = search.get('groupId')
+    const status = search.get('status')
+    const items = [...store.mergeRequests.values()].filter((item) =>
+      (!repositoryId || item.repositoryId === repositoryId)
+      && (!groupId || item.groupIds.includes(groupId))
+      && (!status || item.status === status)
+    )
+    return page(items, request)
+  }),
+
+  http.get('*/api/projects/:projectId/merge-requests/:mergeRequestId/checks', ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const store = getStore(projectId, request)
+    const item = store.mergeRequests.get(pathParam(params, 'mergeRequestId'))
+    return item ? response(mergeRequestChecks(item)) : missing('Merge request')
+  }),
+
+  http.get('*/api/projects/:projectId/merge-requests/:mergeRequestId', ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const store = getStore(projectId, request)
+    const item = store.mergeRequests.get(pathParam(params, 'mergeRequestId'))
+    return item ? response(item) : missing('Merge request')
+  }),
+
+  http.post('*/api/projects/:projectId/merge-requests/:mergeRequestId/merge', ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const store = getStore(projectId, request)
+    const item = store.mergeRequests.get(pathParam(params, 'mergeRequestId'))
+    if (!item) return missing('Merge request')
+    if (item.status !== 'OPEN') return errorResponse(409, 'MERGE_REQUEST_NOT_OPEN', 'Only an open MR can be merged')
+    if (item.qualityGate?.status !== 'PASSED') {
+      return errorResponse(409, 'QUALITY_GATE_NOT_PASSED', 'Quality gate has not passed')
+    }
+    item.status = 'MERGED'
+    return response(item)
+  }),
+
+  http.post('*/api/projects/:projectId/merge-requests', async ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const store = getStore(projectId, request)
+    const body = await jsonObject(request)
+    const taskId = body.taskId
+    const repositoryId = body.repositoryId
+    const targetBranch = body.targetBranch
+    const title = body.title
+    if (
+      !isNonEmptyString(taskId)
+      || !isNonEmptyString(repositoryId)
+      || !isNonEmptyString(targetBranch)
+      || !isNonEmptyString(title)
+    ) {
+      return errorResponse(422, 'VALIDATION_FAILED', 'taskId, repositoryId, targetBranch and title are required')
+    }
+    const task = findTask(store, taskId)
+    if (!task) return missing('Task')
+    const diff = [...store.diffs.values()].find(
+      (item) => item.taskId === taskId && item.repositoryId === repositoryId && item.status === 'ACCEPTED',
+    )
+    if (!diff || diff.status !== 'ACCEPTED') {
+      return errorResponse(409, 'DIFF_NOT_ACCEPTED', 'Create MR requires an accepted Diff')
+    }
+    if (!diff.headCommit) {
+      return errorResponse(409, 'REMOTE_NOT_VERIFIED', 'Source commit has not been verified on the remote')
+    }
+    const existing = [...store.mergeRequests.values()].find(
+      (item) => item.repositoryId === repositoryId && item.sourceBranch === diff.sourceBranch && item.status === 'OPEN',
+    )
+    if (existing) return response(existing)
+    const created: import('@/types/task-model').MergeRequestSummary = {
+      id: `mr-${projectId}-${store.mergeRequests.size + 1}`,
+      repositoryId,
+      groupIds: [],
+      provider: 'GITHUB',
+      number: store.mergeRequests.size + 1,
+      title,
+      description: null,
+      sourceBranch: diff.sourceBranch,
+      targetBranch,
+      status: 'OPEN',
+      headCommit: diff.headCommit,
+      webUrl: null,
+      taskId,
+      qualityGate: {
+        status: 'PENDING',
+        requiredChecks: ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE'],
+      },
+    }
+    store.mergeRequests.set(created.id, created)
+    return response(created, 201)
+  }),
+]
+
 const taskModelRepositoryHandlers: HttpHandler[] = [
   http.get('*/api/projects/:projectId/repositories', ({ params }) => {
     const projectId = pathParam(params, 'projectId')
@@ -679,4 +816,5 @@ export const taskModelHandlers: HttpHandler[] = [
   ...taskModelTaskHandlers,
   ...taskModelTaskRunHandlers,
   ...taskModelDiffHandlers,
+  ...taskModelMergeRequestHandlers,
 ]

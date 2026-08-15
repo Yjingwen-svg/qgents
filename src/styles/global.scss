@@ -7,7 +7,7 @@
   --qg-blue: #3b82f6; --qg-blue-hover: #2563eb; --qg-green: #22c55e; --qg-green-hover: #16a34a;
   --qg-danger: #ef4444; --qg-avatar-orange: #f97316;
   --qg-banner-h: 56px; --qg-radius: 10px; --qg-radius-sm: 8px;
-  --qg-font: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+  --qg-font: 'Plus Jakarta Sans', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
   --qg-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -50,6 +50,22 @@ select {
   font: inherit;
 }
 
+/* Ant Design 组件自带 font-family，不含中文时 Windows 会用宋体画汉字 */
+.ant-card,
+.ant-btn,
+.ant-tag,
+.ant-typography,
+.ant-alert,
+.ant-empty,
+.ant-table,
+.ant-modal,
+.ant-input,
+.ant-select,
+.ant-form,
+.ant-space {
+  font-family: var(--qg-font);
+}
+
 button {
   cursor: pointer;
 }
@@ -57,6 +73,10 @@ button {
 img {
   max-width: 100%;
   display: block;
+}
+
+.qg-dark-page-content {
+  font-family: var(--qg-font);
 }
 
 .qg-full-height {

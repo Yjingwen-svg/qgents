@@ -1,0 +1,300 @@
+import { render, screen } from '@testing-library/react'
+import { App } from 'antd'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { githubApi } from '@/api/github'
+import type { DiffComment, DiffDetail, DiffFile } from '@/types/task-model'
+import { projectApi } from '@/api/project'
+import { DiffReviewPage } from './DiffReviewPage'
+
+const useDiffMock = vi.hoisted(() => vi.fn())
+const useDiffFilesMock = vi.hoisted(() => vi.fn())
+const useDiffCommentsMock = vi.hoisted(() => vi.fn())
+const useAddDiffCommentMock = vi.hoisted(() => vi.fn())
+const useAcceptDiffMock = vi.hoisted(() => vi.fn())
+const useRejectDiffMock = vi.hoisted(() => vi.fn())
+const useTaskMock = vi.hoisted(() => vi.fn())
+const useCreateMergeRequestMock = vi.hoisted(() => vi.fn())
+const authState = vi.hoisted(() => ({
+  user: { id: 'user-1', email: 'demo@qgents.dev', displayName: '陈同学' },
+}))
+
+vi.mock('@/hooks/task-model', () => ({
+  useDiff: useDiffMock,
+  useDiffFiles: useDiffFilesMock,
+  useDiffComments: useDiffCommentsMock,
+  useAddDiffComment: useAddDiffCommentMock,
+  useAcceptDiff: useAcceptDiffMock,
+  useRejectDiff: useRejectDiffMock,
+  useTask: useTaskMock,
+  useCreateMergeRequest: useCreateMergeRequestMock,
+}))
+
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: () => ({ user: authState.user }),
+}))
+
+vi.mock('@/api/project', () => ({
+  projectApi: {
+    getById: vi.fn(),
+    listMembers: vi.fn(),
+  },
+}))
+
+vi.mock('@/api/github', () => ({
+  githubApi: {
+    listProjectRepositories: vi.fn(),
+  },
+}))
+
+const diff: DiffDetail = {
+  id: 'diff-1',
+  projectId: 'project-1',
+  taskId: 'task-1',
+  taskRunId: 'run-1',
+  taskStepId: 'step-1',
+  requirementGroupId: 'group-1',
+  workspaceId: 'workspace-1',
+  repositoryId: 'bound-demo-auth-service',
+  baseCommit: 'base-1',
+  sourceBranch: 'feat/login-api',
+  headCommit: 'a1b2c3d',
+  status: 'PENDING_REVIEW',
+  changeStats: { files: 1, additions: 2, deletions: 1 },
+  createdAt: '2026-08-12T08:00:00Z',
+  workingTreeHash: null,
+  snapshotKey: null,
+  reviewedBy: null,
+  reviewReason: null,
+  reviewedAt: null,
+  updatedAt: '2026-08-12T08:01:00Z',
+}
+
+const file: DiffFile = {
+  id: 'file-1',
+  sequence: 1,
+  path: 'src/auth/AuthController.ts',
+  changeType: 'MODIFIED',
+  status: 'MODIFIED',
+  additions: 2,
+  deletions: 1,
+  binary: false,
+  hunks: [
+    {
+      id: 'hunk-login',
+      header: '@@ -17,3 +17,4 @@',
+      lines: [
+        { kind: 'DEL', oldLine: 20, newLine: null, text: '    return this.authService.loginByPhone(dto)' },
+        { kind: 'ADD', oldLine: null, newLine: 20, text: '    return this.authService.loginByEmail(dto)' },
+      ],
+    },
+  ],
+}
+
+const comment: DiffComment = {
+  id: 'comment-1',
+  diffId: 'diff-1',
+  path: 'src/auth/AuthController.ts',
+  side: 'RIGHT',
+  line: 20,
+  hunkId: 'hunk-login',
+  body: '密码有做哈希吗？',
+  authorUserId: 'user-002',
+  authorName: null,
+  createdAt: '2026-05-16T11:20:00Z',
+}
+
+function idleMutation() {
+  return { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }
+}
+
+function renderPage(path = '/app/projects/project-1/code/diff/diff-1') {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <App>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/app/projects/:projectId/code/diff/:diffId" element={<DiffReviewPage />} />
+          </Routes>
+        </MemoryRouter>
+      </App>
+    </QueryClientProvider>,
+  )
+}
+
+beforeEach(() => {
+  authState.user = { id: 'user-1', email: 'demo@qgents.dev', displayName: '陈同学' }
+  vi.mocked(projectApi.getById).mockResolvedValue({
+    id: 'project-1',
+    teamId: 'team-1',
+    name: 'Demo',
+    role: 'PROJECT_ADMIN',
+  })
+  vi.mocked(projectApi.listMembers).mockResolvedValue([
+    { userId: 'user-002', displayName: '李同学', email: 'li@example.com', role: 'PROJECT_MEMBER' },
+  ])
+  vi.mocked(githubApi.listProjectRepositories).mockResolvedValue([
+    {
+      id: 'bound-demo-auth-service',
+      repositoryId: 'repo-2',
+      installationId: 'install-1',
+      providerRepositoryId: 1,
+      fullName: 'mock/auth-service',
+      githubUrl: 'https://github.com/mock/auth-service',
+      displayName: 'auth-service',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-15T00:00:00Z',
+      boundAt: '2026-08-15T00:00:00Z',
+    },
+  ])
+  useDiffMock.mockReturnValue({
+    data: diff,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  })
+  useDiffFilesMock.mockReturnValue({
+    data: { data: [file], page: { nextCursor: null, hasMore: false }, requestId: 'r1' },
+    isLoading: false,
+    isError: false,
+    error: null,
+  })
+  useDiffCommentsMock.mockReturnValue({
+    data: { data: [comment], page: { nextCursor: null, hasMore: false }, requestId: 'r2' },
+    isLoading: false,
+    isError: false,
+    error: null,
+  })
+  useAddDiffCommentMock.mockReturnValue(idleMutation())
+  useAcceptDiffMock.mockReturnValue(idleMutation())
+  useRejectDiffMock.mockReturnValue(idleMutation())
+  useCreateMergeRequestMock.mockReturnValue(idleMutation())
+  useTaskMock.mockReturnValue({
+    data: {
+      id: 'task-1',
+      title: '登录任务',
+      createdByUser: { id: 'user-1', displayName: 'Mock User', avatarUrl: null },
+      repositories: [{ repositoryId: 'bound-demo-auth-service', defaultBranch: 'main', baseRef: 'main' }],
+    },
+    isLoading: false,
+  })
+})
+
+describe('DiffReviewPage', () => {
+  it('loads Diff detail, files and comments through the documented hooks', async () => {
+    renderPage()
+    expect(useDiffMock).toHaveBeenCalledWith('project-1', 'diff-1')
+    expect(useDiffFilesMock).toHaveBeenCalledWith('project-1', 'diff-1', { limit: 100 })
+    expect(useDiffCommentsMock).toHaveBeenCalledWith('project-1', 'diff-1', { limit: 100 })
+    expect(screen.getByText('AuthController.ts')).toBeInTheDocument()
+    expect(screen.getByText(/loginByEmail/)).toBeInTheDocument()
+    expect(screen.getByText('密码有做哈希吗？')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'accept-diff' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'create-merge-request' })).toBeDisabled()
+  })
+
+  it('opens the file from the file query string', async () => {
+    const extra: DiffFile = {
+      ...file,
+      id: 'file-a',
+      path: 'a.ts',
+      hunks: [{ id: 'hunk-a', header: '@@ -1,1 +1,1 @@', lines: [{ kind: 'ADD', oldLine: null, newLine: 1, text: 'x' }] }],
+    }
+    useDiffFilesMock.mockReturnValue({
+      data: { data: [file, extra], page: { nextCursor: null, hasMore: false }, requestId: 'r1' },
+      isLoading: false,
+      isError: false,
+      error: null,
+    })
+    renderPage('/app/projects/project-1/code/diff/diff-1?file=a.ts')
+    expect(await screen.findByText('2/2 个文件')).toBeInTheDocument()
+  })
+
+  it('does not import demo fixtures when the API returns no Diff', () => {
+    useDiffMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error('Diff 不存在'),
+      refetch: vi.fn(),
+    })
+    renderPage()
+    expect(screen.getByText('Diff 不存在')).toBeInTheDocument()
+    expect(screen.queryByText('loginByPhone')).not.toBeInTheDocument()
+  })
+
+  it('hides accept and reject for a project member who is not the initiator', async () => {
+    vi.mocked(projectApi.getById).mockResolvedValue({
+      id: 'project-1',
+      teamId: 'team-1',
+      name: 'Demo',
+      role: 'PROJECT_MEMBER',
+    })
+    authState.user = { id: 'user-2', email: 'member@qgents.dev', displayName: '成员' }
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'create-merge-request' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'accept-diff' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'reject-diff' })).not.toBeInTheDocument()
+    expect(screen.getByText('请先通过该 Diff')).toBeInTheDocument()
+  })
+
+  it('shows accept and reject for the task initiator who is only a project member', async () => {
+    vi.mocked(projectApi.getById).mockResolvedValue({
+      id: 'project-1',
+      teamId: 'team-1',
+      name: 'Demo',
+      role: 'PROJECT_MEMBER',
+    })
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'accept-diff' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'reject-diff' })).toBeEnabled()
+  })
+
+  it('enables create MR after the Diff is accepted and remotely verified', async () => {
+    useDiffMock.mockReturnValue({
+      data: { ...diff, status: 'ACCEPTED' },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'create-merge-request' })).toBeEnabled()
+    expect(await screen.findByRole('button', { name: 'accept-diff' })).toBeDisabled()
+    expect(screen.getByText('创建 MR 会发起合并请求，不会直接合入目标分支')).toBeInTheDocument()
+  })
+
+  it('keeps create MR disabled until the accepted Diff has a remote head commit', async () => {
+    useDiffMock.mockReturnValue({
+      data: { ...diff, status: 'ACCEPTED', headCommit: null },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'create-merge-request' })).toBeDisabled()
+    expect(screen.getByText('等待远端提交核验完成')).toBeInTheDocument()
+  })
+
+  it('shows an empty hunk state when files have no structured lines', async () => {
+    useDiffFilesMock.mockReturnValue({
+      data: {
+        data: [{ ...file, hunks: [] }],
+        page: { nextCursor: null, hasMore: false },
+        requestId: 'r1',
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    })
+    renderPage()
+    expect(await screen.findByText(/本轮未返回结构化 hunk/)).toBeInTheDocument()
+  })
+})

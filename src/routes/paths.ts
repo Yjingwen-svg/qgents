@@ -80,9 +80,12 @@ export const PATHS = {
   projectSkills: (projectId: string) => `/app/projects/${projectId}/skills`,
   projectMemory: (projectId: string) => `/app/projects/${projectId}/memory`,
   projectCode: (projectId: string) => `/app/projects/${projectId}/code`,
-  /** 某条分支的 Diff / CR 详情（入口：代码与 Branch 表格 Diff 列 +/-） */
-  projectCodeDiff: (projectId: string, branchId: string) =>
-    `/app/projects/${projectId}/code/diff/${encodeURIComponent(branchId)}`,
+  /** 单条 Diff / CR 详情（入口：代码与 Branch 表格 Diff 列 +/-） */
+  projectCodeDiff: (projectId: string, diffId: string) =>
+    `/app/projects/${projectId}/code/diff/${encodeURIComponent(diffId)}`,
+  /** 单条 MR 详情（入口：代码与 Branch → MR Tab） */
+  projectCodeMr: (projectId: string, mergeRequestId: string) =>
+    `/app/projects/${projectId}/code/mr/${encodeURIComponent(mergeRequestId)}`,
   projectTestset: (projectId: string) => `/app/projects/${projectId}/testset`,
   projectMembers: (projectId: string) => `/app/projects/${projectId}/members`,
   projectSettings: (projectId: string) => `/app/projects/${projectId}/settings`,

@@ -18,6 +18,9 @@ export const PROJECT_TASK_EVENT_TYPES = [
   'delivery.completed',
   'delivery.failed',
   'task.diff-review.failed',
+  'merge-request.updated',
+  'test-run.updated',
+  'dry-run.updated',
 ] as const
 
 export type ProjectTaskEventType = (typeof PROJECT_TASK_EVENT_TYPES)[number]
@@ -62,6 +65,9 @@ function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPay
     'delivery.completed': ['taskId', 'reviewBatchId', 'deliveryStatus'],
     'delivery.failed': ['taskId', 'reviewBatchId', 'deliveryStatus'],
     'task.diff-review.failed': ['taskId', 'reason'],
+    'merge-request.updated': ['mergeRequestId'],
+    'test-run.updated': ['testRunId'],
+    'dry-run.updated': ['dryRunId'],
   }
   const stringsValid = required[type].every((key) => typeof payload[key] === 'string' && (payload[key] as string).length > 0)
   if (!stringsValid) return false

@@ -8,7 +8,7 @@ import type {
   DeliveryItem,
   DeliveryItemsFilters,
   DeliveryItemsResponse,
-  DeliverySummary,
+  DeliverySummaryResponse,
   DeliverySummaryFilters,
   MemoryDeliveryItem,
   SkillDeliveryItem,
@@ -21,10 +21,10 @@ function resourceId(item: DeliveryItem): string {
 }
 
 function taskIdForCode(item: DeliveryItem): string {
-  if (item.resourceType !== 'CODE' || !item.source.taskId) {
-    throw new Error('CODE delivery item is missing source.taskId')
+  if (item.resourceType !== 'CODE' || item.openTarget.kind !== 'TASK_DIFF_REVIEW') {
+    throw new Error('CODE delivery item is missing TASK_DIFF_REVIEW openTarget')
   }
-  return item.source.taskId
+  return item.openTarget.taskId
 }
 
 export const deliveryCenterApi = {
@@ -36,10 +36,10 @@ export const deliveryCenterApi = {
   },
 
   summary(projectId: string, filters: DeliverySummaryFilters = {}) {
-    return request<{ data: DeliverySummary; requestId: string }>(
+    return request<DeliverySummaryResponse>(
       withQuery(`/projects/${projectId}/delivery-summary`, filters),
       { unwrapData: false },
-    ).then((response) => response.data)
+    ).then((response) => ({ ...response.data, requestId: response.requestId }))
   },
 
   perform(input: DeliveryActionInput): Promise<Memory | Skill | DiffReviewBatch> {

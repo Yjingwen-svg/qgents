@@ -1,7 +1,7 @@
 import { useMutation, useQuery, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query'
 import { agentApi } from '@/api'
 import { queryClient, queryKeys } from '@/query'
-import type { AgentAssignmentSummary, AgentAssignmentType, AgentDetail, AgentSkillBindingResponse, AgentSummary, AgentTaskRunSummary, CreateAgentPayload, UpdateAgentPayload } from '@/types'
+import type { AgentAssignmentSummary, AgentAssignmentType, AgentAssignmentsFilters, AgentDetail, AgentRuntimeSummary, AgentSkillBindingResponse, AgentSummary, AgentTaskRunSummary, CreateAgentPayload, UpdateAgentPayload } from '@/types'
 import type { CursorPage } from '@/types/api'
 
 export function useAgents(projectId: string, teamId?: string, scenario?: string): UseQueryResult<{ data: AgentSummary[] }> {
@@ -18,11 +18,16 @@ export function useAgent(projectId: string, teamId: string, agentId: string | nu
 export function useAgentSkillBindings(projectId: string, agentId: string | null, enabled = true): UseQueryResult<AgentSkillBindingResponse> {
   return useQuery({ queryKey: queryKeys.agents.skillBindings(projectId, agentId ?? ''), queryFn: () => agentApi.skillBindings(projectId, agentId ?? ''), enabled: Boolean(projectId && agentId && enabled) })
 }
-export function useAgentAssignments(projectId: string, agentId: string | null, type: AgentAssignmentType, enabled = true): UseQueryResult<CursorPage<AgentAssignmentSummary>> {
-  return useQuery({ queryKey: queryKeys.agents.assignments(projectId, agentId ?? '', type), queryFn: () => agentApi.assignments(projectId, agentId ?? '', type), enabled: Boolean(projectId && agentId && enabled) })
+export function useAgentAssignments(projectId: string, agentId: string | null, filters: AgentAssignmentsFilters | AgentAssignmentType = {}, enabled = true): UseQueryResult<CursorPage<AgentAssignmentSummary>> {
+  const resolvedFilters: AgentAssignmentsFilters = typeof filters === 'string' ? { type: filters } : filters
+  return useQuery({ queryKey: queryKeys.agents.assignments(projectId, agentId ?? '', resolvedFilters), queryFn: () => agentApi.assignments(projectId, agentId ?? '', resolvedFilters), enabled: Boolean(projectId && agentId && enabled) })
+}
+export function useAgentRuntime(projectId: string, agentId: string | null, enabled = true): UseQueryResult<AgentRuntimeSummary> {
+  return useQuery({ queryKey: queryKeys.agents.runtime(projectId, agentId ?? ''), queryFn: () => agentApi.runtime(projectId, agentId ?? ''), enabled: Boolean(projectId && agentId && enabled) })
 }
 export function useAgentTaskRuns(projectId: string, agentId: string | null, status?: AgentTaskRunSummary['status'], enabled = true): UseQueryResult<CursorPage<AgentTaskRunSummary>> {
-  return useQuery({ queryKey: queryKeys.agents.taskRuns(projectId, agentId ?? '', status), queryFn: () => agentApi.taskRuns(projectId, { agentId: agentId ?? '', status, limit: 20 }), enabled: Boolean(projectId && agentId && enabled) })
+  const filters = { status, limit: 20 }
+  return useQuery({ queryKey: queryKeys.agents.taskRuns(projectId, agentId ?? '', filters), queryFn: () => agentApi.taskRuns(projectId, { agentId: agentId ?? '', ...filters }), enabled: Boolean(projectId && agentId && enabled) })
 }
 type Variables = { agentId: string }
 function invalidate(projectId: string, teamId: string, agentId?: string): void {

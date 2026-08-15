@@ -55,7 +55,7 @@ describe('TaskDetailPage final information architecture', () => {
 
   it('shows attention only when present and uses a real taskRun association', async () => {
     const user = userEvent.setup()
-    const attention = { kind: 'BLOCKED' as const, title: '执行受阻', summary: '查看关联运行', taskRunId: 'run-1' } as unknown as Task['attention']
+    const attention = { kind: 'BLOCKED' as const, title: '执行受阻', summary: '查看关联运行', taskRunId: 'run-1', inputRequestId: null, diffReviewBatchId: null, repositoryId: null, createdAt: '2026-08-15T00:00:00Z' } as Task['attention']
     useTaskMock.mockReturnValue({ data: { ...task, attention }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
     renderPage()
     expect(screen.getByTestId('task-attention-banner')).toBeInTheDocument()
@@ -65,7 +65,7 @@ describe('TaskDetailPage final information architecture', () => {
 
   it('uses an in-page target when attention has no formal run id', async () => {
     const user = userEvent.setup()
-    useTaskMock.mockReturnValue({ data: { ...task, attention: { kind: 'DIFF_CONFIRMATION_REQUIRED', title: '待确认', summary: '请确认 Diff' } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskMock.mockReturnValue({ data: { ...task, attention: { kind: 'DIFF_CONFIRMATION_REQUIRED', title: '待确认', summary: '请确认 Diff', taskRunId: null, inputRequestId: null, diffReviewBatchId: 'batch-1', repositoryId: 'repo-1', createdAt: '2026-08-15T00:00:00Z' } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
     renderPage()
     await user.click(screen.getByRole('button', { name: '查看产出与交付' }))
     expect(screen.getByTestId('output-delivery-row')).toBeInTheDocument()

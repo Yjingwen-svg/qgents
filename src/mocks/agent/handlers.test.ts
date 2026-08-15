@@ -1,6 +1,6 @@
 import { setupServer } from 'msw/node'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import type { AgentDetail } from '@/types'
+import type { AgentRuntimeSummary } from '@/types'
 import { agentHandlers, resetAgentStores } from './handlers'
 
 const server = setupServer(...agentHandlers)
@@ -13,7 +13,9 @@ const json = async <T,>(response: Response): Promise<T> => response.json() as Pr
 describe('Agent team MSW API', () => {
   it('returns only the current user DTOs without Prompt', async () => {
     const result = await json<{ data: Array<Record<string, unknown>>; page: { nextCursor: string | null; hasMore: boolean }; requestId: string }>(await fetch(`${baseUrl}/teams/team-a/agents`))
-    expect(result.data[0]).toMatchObject({ id: 'agent-private-backend', createdBy: 'user-001', visibility: 'PRIVATE', status: 'ACTIVE', runtime: { status: 'RUNNING', activeRunCount: 1, concurrencyLimit: 3 } })
+    expect(result.data[0]).toMatchObject({ id: 'agent-private-backend', createdBy: 'user-001', visibility: 'PRIVATE', status: 'ACTIVE' })
+    expect(result.data[0]).not.toHaveProperty('runtime')
+    expect(result.data[0]).not.toHaveProperty('skillAccessScope')
     expect(result.data.every((agent) => agent.createdBy === 'user-001')).toBe(true)
     expect(result.data.every((agent) => agent.prompt === undefined && agent.availability === undefined && agent.permissions === undefined)).toBe(true)
     expect(result.page).toEqual({ nextCursor: null, hasMore: false })
@@ -49,39 +51,44 @@ describe('Agent team MSW API', () => {
     const runs = await json<{ data: Array<{ id: string; projectId: string; agentId: string; statusReason: unknown }>; page: { nextCursor: string | null; hasMore: boolean } }>(runsResponse)
     expect(runs.data).toHaveLength(1)
     expect(runs.data[0]).toMatchObject({ projectId: 'demo-project', agentId: 'agent-private-backend' })
-    expect(runs.data[0]?.statusReason).toBeNull()
     expect(runs.page).toEqual({ nextCursor: '1', hasMore: true })
-    const otherProject = await fetch(`${baseUrl}/teams/team-a/agents?projectId=other-project`)
-    const otherProjectData = await json<{ data: Array<{ runtime: { activeRunCount: number; assignmentUsage: { requirementGroups: { assignedCount: number } } } }> }>(otherProject)
-    expect(otherProjectData.data[0]?.runtime).toMatchObject({ activeRunCount: 0, assignmentUsage: { requirementGroups: { assignedCount: 0 } } })
+    const otherProject = await fetch(`${baseUrl}/projects/other-project/agents/agent-private-backend/runtime`)
+    const otherProjectData = await json<{ data: { activeRunCount: number; assignmentUsage: { requirementGroups: { assignedCount: number } } } }>(otherProject)
+    expect(otherProjectData.data).toMatchObject({ activeRunCount: 0, assignmentUsage: { requirementGroups: { assignedCount: 0 } } })
   })
 
-  it('filters TaskRuns by status and keeps statusReason redacted to the summary contract', async () => {
+  it('filters TaskRuns by status and keeps sensitive execution fields out of the summary contract', async () => {
     const response = await fetch(`${baseUrl}/projects/demo-project/task-runs?agentId=agent-private-backend&status=FAILED`)
-    const result = await json<{ data: Array<{ status: string; statusReason: Record<string, unknown> | null }> }>(response)
+    const result = await json<{ data: Array<{ status: string }> }>(response)
     expect(result.data).toHaveLength(1)
-    expect(result.data[0]).toMatchObject({ status: 'FAILED', statusReason: { code: 'MOCK_TEST_FAILED' } })
-    expect(Object.keys(result.data[0]?.statusReason ?? {}).sort()).toEqual(['code', 'summary'])
+    expect(result.data[0]).toMatchObject({ status: 'FAILED', taskDisplayCode: 'TASK-002', taskStepRole: 'DEVELOPER' })
     expect(JSON.stringify(result.data)).not.toMatch(/stack|prompt|credential|host|path|log/i)
   })
 
   it('derives runtime status and active count from the project TaskRun relation', async () => {
-    const [agentsResponse, runsResponse] = await Promise.all([
-      fetch(`${baseUrl}/teams/team-a/agents?projectId=demo-project`),
+    const [runtimeResponse, runsResponse] = await Promise.all([
+      fetch(`${baseUrl}/projects/demo-project/agents/agent-private-backend/runtime`),
       fetch(`${baseUrl}/projects/demo-project/task-runs?agentId=agent-private-backend`),
     ])
-    const agents = await json<{ data: Array<Pick<AgentDetail, 'id' | 'runtime'>> }>(agentsResponse)
+    const runtime = await json<{ data: AgentRuntimeSummary }>(runtimeResponse)
     const runs = await json<{ data: Array<{ status: string }> }>(runsResponse)
     const active = runs.data.filter((run) => ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED', 'CANCELLING'].includes(run.status)).length
-    const backend = agents.data.find((item) => item.id === 'agent-private-backend')
-    expect(backend?.runtime.activeRunCount).toBe(active)
-    expect(backend?.runtime.activeRunCount).toBeLessThanOrEqual(backend?.runtime.concurrencyLimit ?? 0)
-    expect(backend?.runtime.status).toBe(active > 0 ? 'RUNNING' : 'IDLE')
-    const tester = agents.data.find((item) => item.id === 'agent-team-tester')
-    expect(tester?.runtime).toMatchObject({ status: 'IDLE', activeRunCount: 0 })
+    expect(runtime.data.activeRunCount).toBe(active)
+    expect(runtime.data.concurrencyLimit).toBeNull()
+    expect(runtime.data.status).toBe(active > 0 ? 'RUNNING' : 'IDLE')
+    const tester = await fetch(`${baseUrl}/projects/demo-project/agents/agent-team-tester/runtime`)
+    await expect(tester.json()).resolves.toMatchObject({ data: { status: 'IDLE', activeRunCount: 0 } })
     const assignments = await json<{ data: Array<unknown> }>(await fetch(`${baseUrl}/projects/demo-project/agents/agent-private-backend/assignments?type=REQUIREMENT_GROUP`))
-    expect(backend?.runtime.assignmentUsage.requirementGroups.assignedCount).toBe(assignments.data.length)
+    expect(runtime.data.assignmentUsage.requirementGroups.assignedCount).toBe(assignments.data.length)
     const workflows = await json<{ data: Array<unknown> }>(await fetch(`${baseUrl}/projects/demo-project/agents/agent-private-backend/assignments?type=WORKFLOW`))
-    expect(backend?.runtime.assignmentUsage.workflows.assignedCount).toBe(workflows.data.length)
+    expect(runtime.data.assignmentUsage.workflows.assignedCount).toBe(0)
+    expect(workflows.data).toEqual([])
+  })
+
+  it('returns the formal runtime envelope independently from the Agent card', async () => {
+    const response = await fetch(`${baseUrl}/projects/demo-project/agents/agent-private-backend/runtime`)
+    const result = await json<{ data: AgentRuntimeSummary; requestId: string }>(response)
+    expect(result.data).toMatchObject({ concurrencyLimit: null, skillAccessScope: 'PROJECT', memoryAccessScope: 'PROJECT' })
+    expect(result.requestId).toBeTruthy()
   })
 })

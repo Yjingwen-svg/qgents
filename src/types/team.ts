@@ -52,21 +52,28 @@ export interface TeamInvitation {
   expiresAt: string
 }
 
-/** POST /team-invitations/{token}/accept 响应 */
+/** POST /team-invitations/{reference}/accept 响应（= TeamMemberResponse） */
 export interface AcceptInvitationResponse {
-  teamId: string
-  teamName: string
+  userId: string
+  displayName: string
+  role: TeamRole
+  joinedAt: string
 }
 
-/** 当前用户收到的待处理团队邀请（GET /team-invitations，收件人视角） */
+/**
+ * 当前用户收到的待处理团队邀请（GET /team-invitations，收件人视角）
+ * 对齐「前端对接文档_团队邀请收件人视角与最近动态_后端1.md」：
+ * - 不返回 token（后端只存哈希），接受用 id
+ * - role 恒为 TEAM_MEMBER
+ * - status 含 EXPIRED（PENDING 但已过期按 EXPIRED 展示）
+ */
 export interface MyTeamInvitation {
   id: string
-  token: string
   teamId: string
   teamName: string
   role: TeamRole
   inviterDisplayName: string
-  status: 'PENDING'
+  status: 'PENDING' | 'EXPIRED'
   expiresAt: string
   createdAt: string
 }

@@ -32,3 +32,17 @@ export function RedirectIfAuthed({ children }: { children: ReactNode }) {
   }
   return children
 }
+
+/**
+ * 需已加入至少一个团队才能访问的路由守卫（团队详情 / 项目 / 群聊 / GitHub 集成等）。
+ * 无团队时（如注册新用户、被移出所有团队）拦回欢迎页，避免直接通过 URL 进入团队详情页。
+ */
+export function RequireTeam() {
+  const { hasTeam } = useAuth()
+
+  if (!hasTeam) {
+    return <Navigate to={PATHS.WELCOME} replace />
+  }
+
+  return <Outlet />
+}

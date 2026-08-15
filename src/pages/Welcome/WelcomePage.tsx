@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { Typography, Row, Col, Card, Button, Space } from 'antd'
 import { PlusOutlined, LoginOutlined } from '@ant-design/icons'
 import { PATHS } from '@/routes/paths'
@@ -88,12 +88,6 @@ export function WelcomePage() {
             </Card>
           </Col>
         </Row>
-
-        <div style={{ textAlign: 'center', marginTop: 32 }}>
-          <Link to={PATHS.CHAT}>
-            <Button type="link">稍后再说</Button>
-          </Link>
-        </div>
       </div>
     </div>
   )

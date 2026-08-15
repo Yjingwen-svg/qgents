@@ -1,6 +1,4 @@
-import {
-  Button, Card, Divider, Space, Tag, Tooltip, Typography,
-} from 'antd'
+import { Button, Card, Space, Tag, Tooltip, Typography } from 'antd'
 import type { TaskListItem } from '@/types/task-model'
 import { TaskModelStatusTag } from './TaskModelStatusTag'
 import { valueOrNone } from './taskDisplay'
@@ -10,22 +8,19 @@ const { Text, Paragraph } = Typography
 
 interface TaskCardProps {
   task: TaskListItem
-  selected: boolean
-  onSelect: (taskId: string) => void
   onViewDetails: (taskId: string) => void
 }
 
-export function TaskCard({ task, selected, onSelect, onViewDetails }: TaskCardProps) {
+export function TaskCard({ task, onViewDetails }: TaskCardProps) {
   return (
     <Card
-      className={`${styles.taskCard} ${selected ? styles.taskCardSelected : ''}`}
+      className={styles.taskCard}
       variant="outlined"
       role="button"
       tabIndex={0}
-      aria-pressed={selected}
-      onClick={() => onSelect(task.id)}
+      onClick={() => onViewDetails(task.id)}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') onSelect(task.id)
+        if (event.key === 'Enter' || event.key === ' ') onViewDetails(task.id)
       }}
     >
       <div className={styles.taskCardHeading}>
@@ -51,21 +46,15 @@ export function TaskCard({ task, selected, onSelect, onViewDetails }: TaskCardPr
             <Text className={styles.taskInfoEllipsis}>{valueOrNone(task.createdByUser?.displayName)}</Text>
           </Tooltip>
         </div>
+        <div>
+          <Text type="secondary">执行概览</Text>
+          <Text className={styles.taskInfoEllipsis}>{valueOrNone(task.executionSummary.currentStageTitle ?? task.executionSummary.currentStage)} · {task.executionSummary.succeededSteps}/{task.executionSummary.totalSteps}</Text>
+        </div>
       </div>
-      <Divider className={styles.taskCardDivider} />
-      <div className={styles.taskCardStats} aria-label="步骤统计">
-        <Stat label="运行中" value={task.executionSummary.runningSteps} />
-        <Stat label="等待" value={task.executionSummary.waitingSteps} />
-        <Stat label="阻塞" value={task.executionSummary.blockedSteps} />
-        <Stat label="已完成" value={task.executionSummary.succeededSteps} />
-        <Stat label="失败" value={task.executionSummary.failedSteps} />
-      </div>
-      <div
-        className={`${styles.taskCardAttention} ${task.attention ? '' : styles.taskCardAttentionPlaceholder}`}
-        title={task.attention ? `${task.attention.title}：${task.attention.summary}` : undefined}
-      >
+      <div className={`${styles.taskCardAttention} ${task.attention ? '' : styles.taskCardAttentionPlaceholder}`} title={task.attention ? `${task.attention.title}：${task.attention.summary}` : undefined}>
         {task.attention ? `${task.attention.title}：${task.attention.summary}` : null}
       </div>
+      <div className={styles.taskCardDates}><Text type="secondary">更新时间：{valueOrNone(task.updatedAt)}</Text></div>
       <div className={styles.taskCardActions}>
         <Button type="link" className={styles.cardDetailsButton} onClick={(event) => { event.stopPropagation(); onViewDetails(task.id) }}>
           查看完整任务详情
@@ -75,20 +64,10 @@ export function TaskCard({ task, selected, onSelect, onViewDetails }: TaskCardPr
   )
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return <div className={styles.statusCount}><span>{label}</span><strong>{value}</strong></div>
-}
-
 function RepositoryLocation({ task }: { task: TaskListItem }) {
   const repository = task.repositories[0]
   if (!repository) return <Text className={styles.taskInfoEllipsis}>暂无</Text>
-  return <Tooltip title={repositorySummary(task)}>
-    <div className={styles.repositoryLocationValue}>
-      <Tag className={styles.repositoryName}>{repository.name}</Tag>
-      <Text className={styles.repositoryBranch}>{repository.sourceBranch}</Text>
-      {task.repositories.length > 1 ? <Text className={styles.repositoryMore}>+{task.repositories.length - 1}</Text> : null}
-    </div>
-  </Tooltip>
+  return <Tooltip title={repositorySummary(task)}><div className={styles.repositoryLocationValue}><Tag className={styles.repositoryName}>{repository.name}</Tag><Text className={styles.repositoryBranch}>{repository.sourceBranch}</Text>{task.repositories.length > 1 ? <Text className={styles.repositoryMore}>+{task.repositories.length - 1}</Text> : null}</div></Tooltip>
 }
 
 function repositorySummary(task: TaskListItem): string {

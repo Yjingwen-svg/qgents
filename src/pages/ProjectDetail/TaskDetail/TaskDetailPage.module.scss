@@ -1,800 +1,526 @@
 .page {
-  min-height: 100vh;
-  width: 100%;
-  overflow-x: hidden;
-  padding: 0 24px 40px;
-  background: #ffffff;
-  color: #12213d;
-}
-
-.topBar,
-.summaryHeader,
-.sectionHeading,
-.executionHeader,
-.executionSectionHeading,
-.taskRunItemHeader,
-.stepItemHeader,
-.sideHeader {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  min-height: 100%;
+  width: 100%;
+  flex-direction: column;
+  overflow-x: hidden;
+  padding: 0 24px 20px;
+  color: #12213d;
+  background: #fff;
 }
 
 .topBar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 58px;
-  margin-bottom: 0;
-  border-bottom: 1px solid #edf1f5;
-}
-
-.detailToolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   min-height: 42px;
-  padding: 8px 0;
-  margin-bottom: 4px;
+  align-items: center;
   border-bottom: 1px solid #edf1f5;
-}
-
-.breadcrumb {
-  color: #52627b;
-}
-
-.topBarActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.detailToolbar button {
-  color: #12213d;
-}
-
-.detailToolbar .topBarActions button {
-  border-color: #d7e0eb;
-  background: #ffffff;
-  color: #12213d;
-}
-
-.detailToolbar .topBarActions button.ant-btn-primary {
-  border-color: #1269c7;
-  background: #1269c7;
-  color: #ffffff;
 }
 
 .taskHeader {
-  padding: 20px 8px 22px;
-  border-bottom: 1px solid #edf1f5;
+  flex: 0 0 auto;
+  padding: 10px 0 9px;
+  border-bottom: 1px solid #e9eef4;
 }
 
-.detailTitleRow {
+.headerPrimary,
+.headerActions,
+.headerMeta,
+.rowHeading,
+.stepHeading,
+.stepFooter,
+.cardHeading,
+.deliverySummaryRow {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
 }
 
-.titleGroup {
-  display: flex;
+.headerPrimary {
   min-width: 0;
-  align-items: baseline;
-  gap: 12px;
+  gap: 8px;
 }
 
-.titleGroup .title {
-  min-width: 0;
+.headerActions {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-left: auto;
 }
 
-.headerAttention {
-  margin-top: 16px;
-}
-
-.summaryHeader {
-  align-items: flex-start;
-  margin-bottom: 18px;
-}
-
-.title {
-  margin: 0;
-  color: #12213d;
-  font-weight: 700;
-}
-
-.title:global(.ant-typography) {
-  color: #12213d;
-}
-
-.title :global(.ant-typography) {
-  color: #6d7d95;
-}
-
-.summaryId {
+.taskCode {
+  flex: 0 0 auto;
   color: #6d7d95;
   font-family: 'Cascadia Mono', Consolas, monospace;
   font-size: 12px;
 }
 
-.summaryMeta,
-.summaryGrid,
-.flowGrid,
-.contextGrid,
-.developmentGrid,
-.checklist {
-  display: grid;
-  gap: 12px;
-}
-
-.summaryMeta {
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 18px;
-  margin-bottom: 0;
-}
-
-.summaryMetaItem {
-  display: grid;
-  gap: 5px;
+.taskTitle {
   min-width: 0;
-}
-
-.infoCard,
-.flowCard,
-.checklistItem {
-  min-width: 0;
-  padding: 14px;
-  border: 1px solid #e4eaf2;
-  border-radius: 8px;
-  background: #ffffff;
-}
-
-.label {
-  color: #6d7d95;
-  font-size: 12px;
-}
-
-.value {
-  color: #243855;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.contentGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 252px;
-  gap: 24px;
-  align-items: start;
-  padding-top: 12px;
-}
-
-.mainContent,
-.sideContent {
-  min-width: 0;
-}
-
-.section {
-  margin-bottom: 16px;
-  padding: 18px;
-  border: 1px solid #e4eaf2;
-  border-radius: 7px;
-  background: #ffffff;
-}
-
-.flowSection {
-  padding: 20px 8px;
-  border-bottom: 1px solid #edf1f5;
-}
-
-.compactSection {
-  margin-bottom: 10px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 0;
-}
-
-.compactSection .sectionHeading {
-  margin-bottom: 8px;
-}
-
-.sectionHeading {
-  margin-bottom: 14px;
-}
-
-.sectionHeading h4,
-.sectionHeading h5,
-.executionHeader h5,
-.executionSectionHeading h5,
-.sideHeader h5 {
   margin: 0;
-  color: #12213d;
-}
-
-.flowGrid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 28px;
-  padding: 4px 2px 8px;
-}
-
-.flowGrid > .flowCard:not(:last-child)::after {
-  position: absolute;
-  top: 50%;
-  right: -20px;
-  width: 16px;
-  height: 16px;
-  border-top: 1px solid #7890ad;
-  border-right: 1px solid #7890ad;
-  background: #ffffff;
-  transform: translateY(-50%) rotate(45deg);
-  content: '';
-}
-
-.flowCard {
-  position: relative;
-  display: grid;
-  min-height: 260px;
-  gap: 10px;
-  align-content: space-between;
-}
-
-.flowSequence {
-  display: inline-block;
-  margin-right: 5px;
-  color: #1269c7;
-  font-size: 12px;
-}
-
-.flowDetails {
-  display: grid;
-  gap: 6px;
-  color: #52627b;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.flowDependency {
-  overflow-wrap: anywhere;
-  font-size: 11px;
-}
-
-.flowCardButton {
-  width: 100%;
-  border: 1px solid #e4eaf2;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.flowCardButton:hover {
-  border-color: #0d9b9b;
-}
-
-.flowCardHeading {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-}
-
-.flowIcon {
-  flex: 0 0 auto;
-  color: #12213d;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 24px;
-}
-
-.flowStepList {
-  display: grid;
-  gap: 7px;
-}
-
-.flowStep {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: #52627b;
-  font-size: 12px;
-}
-
-.flowStep > :global(.ant-typography) {
-  color: #52627b;
-}
-
-.flowStepStatus {
-  color: #0d8d91;
-  font-size: 11px;
+  overflow: hidden;
+  color: #12213d !important;
+  font-size: 20px !important;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.flowFooter {
+.copyButton {
+  flex: 0 0 auto;
+  color: #6d7d95;
+}
+
+.headerMeta {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px 18px;
+  padding: 8px 0 0 40px;
+}
+
+.headerMetaItem {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  font-size: 11px;
+}
+
+.headerMetaItem > :last-child {
+  min-width: 0;
+  overflow: hidden;
+  color: #243855;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.executionAlert {
+  flex: 0 0 auto;
+  margin: 7px 0 0;
+}
+
+.attentionBanner {
+  flex: 0 0 auto;
+  padding: 8px 0 0;
+}
+
+.attentionBanner :global(.ant-alert) {
+  padding: 7px 10px;
+}
+
+.attentionBanner :global(.ant-alert-description) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  grid-template-rows: minmax(190px, 210px) minmax(110px, 125px) minmax(130px, 1fr);
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.executionFlowRow,
+.requirementRow,
+.outputRow {
+  min-width: 0;
+  min-height: 0;
+}
+
+.executionFlowRow,
+.outputRow {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+}
+
+.rowHeading {
+  flex: 0 0 auto;
   justify-content: space-between;
-  gap: 8px;
-  padding-top: 9px;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.rowHeading h4 {
+  margin: 0;
+  color: #12213d;
+  font-size: 15px;
+}
+
+.flowScroller {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.flowGrid {
+  display: grid;
+  min-width: max-content;
+  height: 164px;
+  grid-template-columns: repeat(4, minmax(205px, 1fr));
+  gap: 9px;
+}
+
+.stepCard {
+  display: grid;
+  min-width: 205px;
+  gap: 6px;
+  align-content: space-between;
+  padding: 9px 10px;
+  border: 1px solid #e4eaf2;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.stepCardCurrent {
+  border-color: #1269c7;
+  box-shadow: 0 0 0 2px rgb(18 105 199 / 10%);
+}
+
+.stepHeading {
+  min-width: 0;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.stepNumber {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #1269c7;
+  border-radius: 50%;
+  color: #1269c7;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.stepTitle {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #12213d !important;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepDetails {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  overflow: hidden;
+  color: #52627b;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.stepDetails > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepFooter {
+  min-height: 22px;
+  justify-content: space-between;
+  padding-top: 4px;
   border-top: 1px solid #edf1f5;
 }
 
-.flowFooter > :global(.ant-typography) {
-  color: #6d7d95;
+.workspaceNotice {
+  display: block;
+  flex: 0 0 auto;
+  padding-top: 3px;
   font-size: 11px;
 }
 
-.flowCardCurrent {
-  border-color: #1269c7;
-  box-shadow: 0 0 0 2px rgba(18, 105, 199, 0.1);
-}
-
-.flowTitle {
-  color: #12213d;
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-
-.flowTitle:global(.ant-typography) {
-  color: #12213d;
-}
-
-.contextGrid,
-.developmentGrid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-.developmentGrid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-.infoCard {
+.requirementRow {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.contextCard,
+.outputCard {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-color: #e4eaf2;
+  border-radius: 7px;
+}
+
+.contextCard :global(.ant-card-body),
+.outputCard :global(.ant-card-body) {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 10px;
+}
+
+.cardHeading {
+  min-width: 0;
+  justify-content: space-between;
   gap: 6px;
-  min-height: 112px;
-}
-
-.infoValue {
-  overflow-wrap: anywhere;
-  line-height: 1.55;
-}
-
-.contextGrid .infoCard {
-  position: relative;
-  height: 112px;
-  min-height: 112px;
-  padding: 11px 12px;
-  gap: 4px;
-}
-
-.contextGrid .infoCard .value {
-  padding-right: 28px;
+  color: #243855;
   font-size: 12px;
+  font-weight: 600;
+}
+
+.cardHeading > :first-child {
+  flex: 0 0 auto;
+  color: #1269c7;
+}
+
+.requirementSummary {
+  display: -webkit-box;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #52627b;
   line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
 }
 
-.contextGrid .infoAction {
-  position: absolute;
-  right: 12px;
-  bottom: 10px;
-}
-
-.developmentGrid .infoCard {
-  height: 74px;
-  min-height: 74px;
-  padding: 10px 12px;
+.criteriaPreview,
+.criteriaModal {
+  display: grid;
+  min-width: 0;
   gap: 3px;
 }
 
-.infoIcon {
-  color: #1269c7;
-  font-size: 20px;
-  line-height: 1;
-}
-
-.infoAction {
-  color: #1269c7;
-  font-size: 12px;
-  text-align: right;
-}
-
-.emptyCard {
-  padding: 18px 0;
-  color: #6d7d95;
-  text-align: center;
-}
-
-.sideContent {
-  position: sticky;
-  top: 12px;
-}
-
-.agentRow {
+.criteriaPreview > div,
+.criteriaModal > div {
   display: flex;
+  min-width: 0;
   align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-  color: #243855;
-  font-size: 12px;
+  gap: 5px;
 }
 
-.agentRow span {
+.criteriaPreview > div > :last-child {
   min-width: 0;
-  flex: 1;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.sideCard {
-  margin-bottom: 16px;
-  padding: 14px;
-  border: 1px solid #e4eaf2;
-  border-radius: 10px;
-  background: #ffffff;
+.criteriaPreview :global(.ant-tag),
+.criteriaModal :global(.ant-tag) {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 10px;
 }
 
-.noteCard {
-  margin-bottom: 16px;
-  padding: 14px;
-  border-radius: 8px;
-  background: #f8fafc;
-}
-
-.noteCard :global(.ant-typography) {
+.sourceExcerpt {
+  min-width: 0;
+  overflow: hidden;
   color: #52627b;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.noteCard h5 {
-  margin: 0 0 10px;
-  color: #12213d;
+.outputRow {
+  overflow: hidden;
 }
 
-.sideTaskId {
-  padding: 6px 2px;
-  color: #52627b;
-  font-family: 'Cascadia Mono', Consolas, monospace;
-  font-size: 11px;
-  text-align: right;
-}
-
-.sideHeader {
-  margin-bottom: 14px;
-}
-
-.sideDescription {
-  color: #52627b;
-  line-height: 1.65;
-}
-
-.checklistItem {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px;
-}
-
-.checklistLabel {
+.outputGrid {
+  display: grid;
   min-width: 0;
-  color: #243855;
-  overflow-wrap: anywhere;
-}
-
-.executionPanel {
-  min-width: 0;
-}
-
-.artifactTimeline {
-  display: grid;
-  gap: 14px;
-}
-
-.artifactRow {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-}
-
-.artifactMarker {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border: 1px solid #0d9b9b;
-  border-radius: 50%;
-  color: #0d8d91;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.artifactBody {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #edf1f5;
-}
-
-.artifactHeader,
-.deliveryRow,
-.reviewSummary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  min-height: 0;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.outputCard {
+  height: 100%;
+}
+
+.artifactSummaryGrid,
+.diffSummaryList,
+.deliverySummaryList {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  overflow: auto;
+}
+
+.artifactSummaryGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.artifactSummary,
+.diffSummaryRow,
+.deliverySummaryRow {
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid #edf1f5;
+  border-radius: 5px;
 }
 
 .artifactSummary {
   display: grid;
   gap: 3px;
-  color: #52627b;
-  font-size: 12px;
 }
 
-.reviewSummary {
-  align-items: stretch;
-  margin-bottom: 14px;
+.artifactSummary > div,
+.diffSummaryRow,
+.deliverySummaryRow {
+  gap: 5px;
 }
 
-.repositoryDeliveries {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-.deliveryRow {
-  padding: 10px 12px;
-  border: 1px solid #edf1f5;
-  border-radius: 7px;
-  color: #243855;
-}
-
-.deliveryRow > div:last-child {
+.artifactSummary > div:first-child {
   display: flex;
+  min-width: 0;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.diffLinks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  margin-bottom: 10px;
-}
-
-.executionHeader {
-  align-items: flex-start;
-  margin-bottom: 18px;
-}
-
-.executionHeader > div {
-  display: grid;
   gap: 4px;
+}
+
+.artifactSummary > div:first-child :last-child,
+.diffSummaryRow > :first-child,
+.deliverySummaryRow > :first-child {
   min-width: 0;
-}
-
-.executionSection {
-  margin-bottom: 18px;
-  padding-top: 16px;
-  border-top: 1px solid #edf1f5;
-}
-
-.executionSectionHeading {
-  margin-bottom: 10px;
-}
-
-.executionSelect {
-  width: 100%;
-}
-
-.executionAlert {
-  margin-top: 10px;
-}
-
-.taskRunList,
-.stepList {
-  display: grid;
-  gap: 8px;
-}
-
-.taskRunItem {
-  display: grid;
-  width: 100%;
-  gap: 5px;
-  padding: 10px;
-  border: 1px solid #e4eaf2;
-  border-radius: 8px;
-  color: #243855;
-  background: #ffffff;
-  text-align: left;
-  cursor: pointer;
-}
-
-.taskRunItem:hover,
-.taskRunItemSelected {
-  border-color: #0d9b9b;
-  background: #f1fbfa;
-}
-
-.taskRunItemHeader {
-  min-width: 0;
-}
-
-.taskRunItemHeader > span:first-child {
-  min-width: 0;
-}
-
-.taskRunItemMeta,
-.retryLine {
-  overflow-wrap: anywhere;
-  color: #6d7d95;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.retryLine {
-  color: #8a5a00;
-}
-
-.stepItem,
-.inputRequestItem {
-  display: grid;
-  gap: 5px;
-  padding: 10px;
-  border: 1px solid #e4eaf2;
-  border-radius: 8px;
-  background: #ffffff;
-}
-
-.stepItemHeader {
-  color: #243855;
-}
-
-.logList {
-  display: grid;
-  max-height: 360px;
-  gap: 8px;
-  overflow: auto;
-  padding: 10px;
-  border: 1px solid #1f2d43;
-  border-radius: 8px;
-  background: #111b2b;
-  color: #e4edf8;
-  font-family: 'Cascadia Mono', 'SFMono-Regular', Consolas, monospace;
-  font-size: 11px;
-}
-
-.logLine {
-  display: grid;
-  grid-template-columns: max-content max-content max-content minmax(0, 1fr);
-  align-items: baseline;
-  gap: 7px;
-  min-width: 0;
-  line-height: 1.6;
-}
-
-.logTimestamp {
-  color: #91a4c1;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.logContent {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+.artifactSummary :global(.ant-tag) {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 10px;
 }
 
-.inputPrompt {
-  color: #243855;
-  line-height: 1.55;
+.diffSummaryRow,
+.deliverySummaryRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  color: #52627b;
+  font-size: 11px;
 }
 
-.executionLoadMore {
+.diffSummaryRow > :last-child {
+  grid-column: 1 / -1;
+}
+
+.deliverySummaryRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.deliverySummaryRow > :nth-child(3) {
+  grid-column: 1 / -1;
+}
+
+.reviewActions {
+  display: grid;
+  gap: 5px;
+  margin-top: auto;
+}
+
+.reviewActions form {
+  display: grid;
+  gap: 2px;
+}
+
+.reviewActions :global(.ant-form-item) {
+  margin-bottom: 3px;
+}
+
+.compactEmpty,
+.inlineState {
+  color: #6d7d95;
+  font-size: 11px;
+}
+
+.inlineState {
   display: flex;
-  justify-content: center;
-  margin-top: 10px;
+  min-height: 28px;
+  align-items: center;
+  gap: 7px;
 }
 
-.executionEmpty,
 .panelState {
   display: grid;
-  min-height: 180px;
+  min-height: 120px;
   place-items: center;
 }
 
-@media (max-width: 1100px) {
-  .summaryMeta {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .contentGrid {
-    grid-template-columns: minmax(0, 1fr) 260px;
-  }
-
-  .contextGrid,
-  .developmentGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 1279px) {
-  .flowGrid {
-    grid-template-columns: repeat(4, minmax(210px, 1fr));
-    overflow-x: auto;
-    padding-bottom: 8px;
-  }
-
-  .flowCard {
-    min-width: 220px;
-  }
-
-  .flowGrid > .flowCard:not(:last-child)::after {
-    display: none;
-  }
-}
-
-@media (max-width: 1023px) {
+@media (min-width: 1200px) and (min-height: 760px) {
   .page {
-    padding: 0 14px 28px;
+    height: calc(100vh - var(--qg-banner-h, 0px));
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 1199px) {
+  .headerMeta {
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 999px), (max-height: 759px) {
+  .page {
+    min-height: 100vh;
   }
 
-  .contentGrid {
-    grid-template-columns: minmax(0, 1fr);
+  .content {
+    grid-template-rows: auto auto auto;
   }
 
-  .sideContent {
-    position: static;
+  .executionFlowRow,
+  .outputRow {
+    overflow: visible;
   }
 
-  .contextGrid,
-  .developmentGrid {
+  .flowGrid {
+    height: 164px;
+  }
+
+  .outputGrid {
+    min-height: 150px;
+  }
+}
+
+@media (max-width: 760px) {
+  .page {
+    padding: 0 14px 26px;
+  }
+
+  .headerPrimary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .headerActions {
+    width: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .headerMeta {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .sideContent {
-    padding-top: 8px;
-  }
-}
-
-@media (max-width: 767px) {
-  .summaryMeta,
-  .contextGrid,
-  .developmentGrid {
+  .requirementRow,
+  .outputGrid {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .page {
-    padding-inline: 14px;
+  .outputRow {
+    overflow: visible;
   }
 
-  .contentGrid {
-    gap: 12px;
-  }
-
-  .flowGrid {
-    grid-template-columns: repeat(4, minmax(220px, 1fr));
-  }
-
-  .artifactHeader,
-  .deliveryRow,
-  .reviewSummary {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .topBar,
-  .detailTitleRow {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .topBar {
-    padding: 8px 0;
-  }
-
-  .topBarActions {
-    width: 100%;
+  .outputCard {
+    height: auto;
+    min-height: 150px;
   }
 }

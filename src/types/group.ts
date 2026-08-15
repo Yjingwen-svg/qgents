@@ -34,6 +34,8 @@ export interface Group {
   title: string
   description?: string
   status: GroupStatus
+  /** 创建者 userId（后端 DTO 补充，用于归档权限判断） */
+  createdBy?: string
   memberCount?: number
   latestActivityAt?: string
   latestMessage?: MessageSummary

@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty, Image, Tag } from 'antd'
+import { Link, useNavigate } from 'react-router-dom'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Image, Tag, Popconfirm } from 'antd'
 import {
   SendOutlined,
   ThunderboltOutlined,
   FileOutlined,
   BranchesOutlined,
   CheckCircleOutlined,
+  InboxOutlined,
 } from '@ant-design/icons'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { groupApi } from '@/api'
 import { useAuth } from '@/context/AuthContext'
 import { TaskTriggerModal } from '@/components/task-domain'
@@ -35,6 +36,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const { token } = theme.useToken()
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [mentionIds, setMentionIds] = useState<string[]>([])
@@ -47,6 +49,16 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     enabled: !!projectId,
   })
   const group = groups.find((g) => g.id === groupId)
+  const mainGroup = groups.find((g) => g.type === 'PROJECT_MAIN')
+
+  // 归档需求群（仅创建者可见，Project Admin 兜底后端校验）
+  const archiveGroup = useMutation({
+    mutationFn: () => groupApi.archive(projectId, groupId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+      if (mainGroup) navigate(PATHS.projectReqChat(projectId, mainGroup.id))
+    },
+  })
 
   // 群成员（项目成员 + Agent），用于 @提及
   const { data: members = [] } = useQuery({
@@ -140,15 +152,36 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             </Text>
           </div>
         </div>
-        {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal */}
-        <Button
-          type="primary"
-          ghost
-          icon={<ThunderboltOutlined />}
-          onClick={() => setTriggerOpen(true)}
-        >
-          发起任务
-        </Button>
+        <Space size={8}>
+          {/* 归档需求群 —— 仅需求群 + 创建者可见 */}
+          {group?.type === 'REQUIREMENT' && group.createdBy === user?.id && !group.isArchived && (
+            <Popconfirm
+              title="归档需求群"
+              description="归档后该群将移入「已归档」，不可恢复。确定归档？"
+              okText="归档"
+              cancelText="取消"
+              onConfirm={() => archiveGroup.mutate()}
+            >
+              <Button
+                danger
+                ghost
+                icon={<InboxOutlined />}
+                loading={archiveGroup.isPending}
+              >
+                归档需求群
+              </Button>
+            </Popconfirm>
+          )}
+          {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal */}
+          <Button
+            type="primary"
+            ghost
+            icon={<ThunderboltOutlined />}
+            onClick={() => setTriggerOpen(true)}
+          >
+            发起任务
+          </Button>
+        </Space>
       </div>
 
       {/* 消息列表 */}

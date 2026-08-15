@@ -92,6 +92,7 @@ const MOCK_GROUPS: Record<string, Group[]> = {
       title: '登录功能',
       description: '账号与登录体验',
       status: 'ACTIVE',
+      createdBy: 'user-001',
       latestActivityAt: '2026-08-12T10:03:00Z',
       unreadCount: 2,
       isPinned: true,
@@ -104,6 +105,7 @@ const MOCK_GROUPS: Record<string, Group[]> = {
       title: '支付回调',
       description: '支付回调与对账',
       status: 'ACTIVE',
+      createdBy: 'user-001',
       latestActivityAt: '2026-08-11T18:00:00Z',
       unreadCount: 0,
       isPinned: false,
@@ -116,6 +118,7 @@ const MOCK_GROUPS: Record<string, Group[]> = {
       title: '首页改版',
       description: '旧版首页重构，已完成并归档',
       status: 'ARCHIVED',
+      createdBy: 'user-002',
       latestActivityAt: '2026-08-01T09:00:00Z',
       unreadCount: 0,
       isPinned: false,
@@ -1087,6 +1090,7 @@ export const handlers = [
       title: body.title || '未命名需求群',
       description: body.description || '',
       status: 'ACTIVE',
+      createdBy: MOCK_CURRENT_USER.id,
       // 新需求群默认只有项目成员，无 Agent 参与
       memberCount: getGroupMembers(projectId, groupId).length,
       latestActivityAt: new Date().toISOString(),
@@ -1097,6 +1101,19 @@ export const handlers = [
     const list = MOCK_GROUPS[projectId] ?? (MOCK_GROUPS[projectId] = [])
     list.push(group)
     return HttpResponse.json({ data: group }, { status: 201 })
+  }),
+
+  http.post('/api/projects/:projectId/groups/:groupId/archive', ({ params }) => {
+    const groupId = params.groupId as string
+    const projectId = params.projectId as string
+    const group = (MOCK_GROUPS[projectId] ?? []).find((g) => g.id === groupId)
+    if (!group) return HttpResponse.json({ error: { code: 'NOT_FOUND', message: '群不存在' } }, { status: 404 })
+    if (group.type === 'PROJECT_MAIN') {
+      return HttpResponse.json({ error: { code: 'SYSTEM_GROUP_MANAGED', message: '项目总群不可归档' } }, { status: 422 })
+    }
+    group.status = 'ARCHIVED'
+    group.isArchived = true
+    return HttpResponse.json({ data: null })
   }),
 
   http.get('/api/projects/:projectId/groups/:groupId/members', ({ params }) => {

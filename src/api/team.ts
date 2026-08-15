@@ -7,6 +7,8 @@ import type {
   TeamInvitation,
   AcceptInvitationResponse,
   TeamRole,
+  Activity,
+  MyTeamInvitation,
 } from '@/types'
 
 function isTeamRole(value: unknown): value is TeamRole {
@@ -35,6 +37,11 @@ export const teamApi = {
   /** GET /teams — 当前用户加入的团队列表 */
   listMine() {
     return request<Team[]>('/teams').then((teams) => teams.map(normalizeTeam))
+  },
+
+  /** GET /teams/{teamId}/activities — 团队最近动态（见「前端待接接口清单.md」） */
+  activities(teamId: string) {
+    return request<Activity[]>(`/teams/${teamId}/activities`)
   },
 
   /** POST /teams — 创建团队，创建者成为 TEAM_OWNER */
@@ -76,6 +83,11 @@ export const teamApi = {
     return request<AcceptInvitationResponse>(`/team-invitations/${token}/accept`, {
       method: 'POST',
     })
+  },
+
+  /** GET /team-invitations — 当前用户收到的待处理团队邀请（收件人视角） */
+  listMyInvitations() {
+    return request<MyTeamInvitation[]>('/team-invitations')
   },
 
 

@@ -155,7 +155,7 @@ function TeamProjectGroup({
       <Button
         type="link"
         style={{ padding: 0, height: 'auto', marginBottom: 6 }}
-        onClick={() => onNav(PATHS.teamDetail(team.id))}
+        onClick={() => onNav(PATHS.teamDetail(team.id, team.role === 'TEAM_OWNER'))}
       >
         <Space size={6}>
           <TeamOutlined style={{ color: token.colorTextSecondary }} />

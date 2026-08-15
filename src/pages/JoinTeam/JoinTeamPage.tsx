@@ -1,8 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { Button, Tag } from 'antd'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
 import { useAuth } from '@/context/AuthContext'
 import { teamApi } from '@/api'
+import type { MyTeamInvitation } from '@/types'
 import './JoinTeamPage.css'
 
 /**
@@ -13,10 +16,31 @@ import './JoinTeamPage.css'
 export function JoinTeamPage() {
   const navigate = useNavigate()
   const { setHasTeam } = useAuth()
+  const queryClient = useQueryClient()
   const [token, setToken] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+
+  // 待处理邀请列表（收件人视角）
+  const { data: myInvitations = [] } = useQuery({
+    queryKey: ['team-invitations', 'mine'],
+    queryFn: () => teamApi.listMyInvitations(),
+  })
+
+  const acceptMutation = useMutation({
+    mutationFn: (inv: MyTeamInvitation) => teamApi.acceptInvitation(inv.token),
+    onSuccess: (result) => {
+      setHasTeam(true)
+      setSuccess(`已成功加入「${result.teamName}」`)
+      queryClient.invalidateQueries({ queryKey: ['team-invitations', 'mine'] })
+      queryClient.invalidateQueries({ queryKey: ['teams', 'mine'] })
+      setTimeout(() => {
+        navigate(PATHS.teamDetail(result.teamId), { replace: true })
+      }, 1000)
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : '接受邀请失败'),
+  })
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -76,12 +100,36 @@ export function JoinTeamPage() {
         </button>
       </form>
 
-      {/* 待处理邀请列表 —— 后续批次 */}
+      {/* 待处理邀请列表 */}
       <section className="join-team__pending">
         <h2>待处理邀请</h2>
-        <p className="join-team__placeholder">
-          暂无待处理邀请（后续版本支持从站内直接查看和处理邀请）
-        </p>
+        {myInvitations.length === 0 ? (
+          <p className="join-team__placeholder">暂无待处理邀请</p>
+        ) : (
+          <ul className="join-team__invite-list">
+            {myInvitations.map((inv) => (
+              <li key={inv.id} className="join-team__invite-item">
+                <div className="join-team__invite-info">
+                  <strong>{inv.teamName}</strong>
+                  <span>
+                    邀请人：{inv.inviterDisplayName} · 角色：
+                    <Tag color={inv.role === 'TEAM_OWNER' ? 'gold' : 'default'} style={{ margin: 0 }}>
+                      {inv.role === 'TEAM_OWNER' ? 'Owner' : 'Member'}
+                    </Tag>
+                  </span>
+                </div>
+                <Button
+                  type="primary"
+                  size="small"
+                  loading={acceptMutation.isPending}
+                  onClick={() => acceptMutation.mutate(inv)}
+                >
+                  接受
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   )

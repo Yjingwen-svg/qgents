@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import type { GithubAuthorizedRepository, GithubInstallation } from '@/types/github'
 import type { Group, GroupMember, Message } from '@/types/group'
-import type { Memory, Notification } from '@/types'
+import type { Activity, Memory, Notification, MyTeamInvitation } from '@/types'
 import { MOCK_CURRENT_USER } from './currentUser'
 import { deliveryCenterHandlers } from './delivery-center/handlers'
 
@@ -52,6 +52,21 @@ const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: st
 
 let nextTeamId = 10
 let nextProjectId = 10
+
+// 当前用户收到的待处理团队邀请（演示用样例）
+const MOCK_MY_INVITATIONS: MyTeamInvitation[] = [
+  {
+    id: 'my-inv-001',
+    token: 'inv-token-demo-001',
+    teamId: 'team-joined-001',
+    teamName: '广工创新团队',
+    role: 'TEAM_MEMBER',
+    inviterDisplayName: '陈同学',
+    status: 'PENDING',
+    expiresAt: '2026-08-21T00:00:00Z',
+    createdAt: '2026-08-14T10:00:00Z',
+  },
+]
 
 // ══════════════════════════════════════════════
 // 群聊（Group / Message）Mock 数据 —— 对齐接口文档 v1.1.8 §7
@@ -187,6 +202,88 @@ const MOCK_MESSAGES: Record<string, Message[]> = {
       createdAt: '2026-08-12T10:03:00Z',
       replyToId: null,
     },
+    // ── 演示用样例：验证多类型消息渲染（content 结构对齐「A-联调约定」第三节）──
+    {
+      id: 'msg-login-005',
+      groupId: 'group-login-proj-001',
+      type: 'IMAGE',
+      content: {
+        url: 'https://picsum.photos/seed/qgents/400/240',
+        width: 400,
+        height: 240,
+      },
+      senderType: 'USER',
+      senderId: 'user-002',
+      senderName: '张工',
+      sequence: 5,
+      createdAt: '2026-08-12T10:10:00Z',
+      replyToId: null,
+    },
+    {
+      id: 'msg-login-006',
+      groupId: 'group-login-proj-001',
+      type: 'FILE',
+      content: {
+        url: 'https://example.com/files/api-design.pdf',
+        name: '登录接口设计.pdf',
+        size: 524288,
+        mimeType: 'application/pdf',
+      },
+      senderType: 'USER',
+      senderId: 'user-001',
+      senderName: '陈同学',
+      sequence: 6,
+      createdAt: '2026-08-12T10:12:00Z',
+      replyToId: null,
+    },
+    {
+      id: 'msg-login-007',
+      groupId: 'group-login-proj-001',
+      type: 'QUOTE',
+      content: {
+        quotedMessageId: 'msg-login-004',
+        quotedText: '密码要用 RSA 加密后传输，别发明文。',
+        quotedSenderName: '张工',
+      },
+      senderType: 'AGENT',
+      senderId: 'agent-developer',
+      senderName: 'Developer',
+      sequence: 7,
+      createdAt: '2026-08-12T10:15:00Z',
+      replyToId: null,
+    },
+    {
+      id: 'msg-login-008',
+      groupId: 'group-login-proj-001',
+      type: 'DIFF',
+      content: {
+        diffId: 'diff-001',
+        title: '实现邮箱登录',
+        additions: 128,
+        deletions: 12,
+      },
+      senderType: 'AGENT',
+      senderId: 'agent-developer',
+      senderName: 'Developer',
+      sequence: 8,
+      createdAt: '2026-08-12T10:30:00Z',
+      replyToId: null,
+    },
+    {
+      id: 'msg-login-009',
+      groupId: 'group-login-proj-001',
+      type: 'TASK_STATUS',
+      content: {
+        taskId: 'task-001',
+        status: 'SUCCEEDED',
+        node: 'Developer',
+        message: '任务已完成，代码已交付待验收',
+      },
+      senderType: 'SYSTEM',
+      sequence: 9,
+      createdAt: '2026-08-12T10:35:00Z',
+      replyToId: null,
+    },
   ],
 }
 
@@ -306,6 +403,49 @@ const MOCK_NOTIFICATIONS: Notification[] = [
     projectId: 'proj-001',
     groupId: 'group-login-proj-001',
     resourceId: 'task-001',
+  },
+]
+
+// ══════════════════════════════════════════════
+// 团队最近动态（演示用样例，对齐「前端待接接口清单.md」的 activities 接口设计）
+// ══════════════════════════════════════════════
+
+const MOCK_ACTIVITIES: Activity[] = [
+  {
+    id: 'act-001',
+    type: 'GROUP_CREATED',
+    title: '陈同学 创建了需求群 登录功能',
+    summary: null,
+    actor: { id: 'user-001', displayName: '陈同学' },
+    target: { type: 'GROUP', id: 'group-login-proj-001', title: '登录功能' },
+    createdAt: '2026-08-14T09:00:00Z',
+  },
+  {
+    id: 'act-002',
+    type: 'TASK_COMPLETED',
+    title: '任务「实现登录功能」已完成',
+    summary: '由 Developer Agent 完成',
+    actor: { id: 'agent-developer', displayName: 'Developer' },
+    target: { type: 'TASK', id: 'task-001', title: '实现登录功能' },
+    createdAt: '2026-08-14T08:30:00Z',
+  },
+  {
+    id: 'act-003',
+    type: 'MR_CREATED',
+    title: '登录功能 MR #42 已创建',
+    summary: '等待合并',
+    actor: { id: 'agent-developer', displayName: 'Developer' },
+    target: { type: 'MR', id: 'mr-001', title: '#42 登录功能' },
+    createdAt: '2026-08-14T08:00:00Z',
+  },
+  {
+    id: 'act-004',
+    type: 'MEMBER_JOINED',
+    title: '张工 加入了项目',
+    summary: null,
+    actor: { id: 'user-002', displayName: '张工' },
+    target: { type: 'PROJECT', id: 'proj-001', title: 'Qgents Web' },
+    createdAt: '2026-08-13T18:00:00Z',
   },
 ]
 
@@ -504,6 +644,47 @@ function createRepoBindingHandlers() {
       boundAt: '2026-08-10T12:00:00Z',
     },
   ])
+  bindings.set('proj-001', [
+    {
+      id: 'bound-demo-auth-service',
+      repositoryId: 'repo-2',
+      installationId: 'gh-install-1001',
+      providerRepositoryId: 987654322,
+      fullName: 'Yjingwen-svg/qgents-server',
+      githubUrl: 'https://github.com/Yjingwen-svg/qgents-server',
+      displayName: 'auth-service',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T10:00:00Z',
+      boundAt: '2026-08-10T12:00:00Z',
+    },
+    {
+      id: 'bound-demo-web-console',
+      repositoryId: 'repo-1',
+      installationId: 'gh-install-1001',
+      providerRepositoryId: 987654321,
+      fullName: 'Yjingwen-svg/qgents-web',
+      githubUrl: 'https://github.com/Yjingwen-svg/qgents-web',
+      displayName: 'web-console',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T10:00:00Z',
+      boundAt: '2026-08-10T12:00:00Z',
+    },
+    {
+      id: 'bound-demo-shared-sdk',
+      repositoryId: 'repo-3',
+      installationId: 'gh-install-1002',
+      providerRepositoryId: 987654323,
+      fullName: 'qgents-lab/pet-app',
+      githubUrl: 'https://github.com/qgents-lab/pet-app',
+      displayName: 'shared-sdk',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T09:00:00Z',
+      boundAt: '2026-08-11T09:00:00Z',
+    },
+  ])
   bindings.set('demo-project', [
     {
       id: 'bound-demo-auth-service',
@@ -692,6 +873,9 @@ export const handlers = [
     return HttpResponse.json({ data: team })
   }),
 
+  // GET /teams/:teamId/activities —— 团队最近动态（演示样例）
+  http.get('/api/teams/:teamId/activities', () => HttpResponse.json({ data: MOCK_ACTIVITIES })),
+
   http.patch('/api/teams/:teamId', async ({ params, request }) => {
     const body = (await request.json()) as { name?: string; description?: string }
     const team = MOCK_TEAMS.find((t) => t.id === params.teamId)
@@ -714,6 +898,9 @@ export const handlers = [
   }),
 
   http.get('/api/teams/:teamId/invitations', () => HttpResponse.json({ data: [] })),
+
+  // GET /team-invitations —— 当前用户收到的待处理邀请（收件人视角）
+  http.get('/api/team-invitations', () => HttpResponse.json({ data: MOCK_MY_INVITATIONS })),
 
   http.post('/api/team-invitations/:token/accept', () =>
     HttpResponse.json({ data: { teamId: 'team-joined-001', teamName: '广工创新团队' } }),
@@ -739,13 +926,23 @@ export const handlers = [
       requestId: 'req_mock_authorized_repos',
     })
   }),
-
-  http.post('/api/teams/:teamId/integrations/github/installations', ({ params, request }) => {
+// 来自 MSW 内部，在【拦截成功、路由匹配上之后】，MSW 自动组装、生成这个info上下文对象，再调用你的回调函数，把它塞进来。
+//info 对象;const params = info.params
+    // const request = info.request
+    // const cookies = info.cookies
+    // const requestId = info.requestId
+// 拦截,匹配路由,执行回调函数
+//匹配路由:只要是 POST 请求，并且 URL 路径符合 /api/teams/【任意值】/integrations/github/installations 这个格式，就触发后面这个回调，不要发到真实后端。
+//拦截 = MSW 在浏览器发出真实网络请求、发给后端之前，把这个请求 “半路截住”，不走真实后端，直接用你写的 mock 函数返回假数据。
+//request.url 不是对象！是字符串！
+  http.post('/api/teams/:teamId/integrations/github/installations', ({ params, request }) => {//路径参数对象params,就是路径当中用:进行占位的都赋值给params
     const teamId = String(params.teamId)
     const idempotencyKey = request.headers.get('Idempotency-Key')
-    console.info('[MSW] createInstallation', { teamId, idempotencyKey })
+    const clientParam = new URL(request.url).searchParams.get('client')
+    const client = clientParam === 'MOBILE' ? 'MOBILE' : 'WEB'
+    console.info('[MSW] createInstallation', { teamId, client, idempotencyKey })
 
-    const state = encodeURIComponent(`mock:${teamId}:${Date.now()}`)
+    const state = encodeURIComponent(`mock:${teamId}:${Date.now()}`)//模拟的state,真实的不会这样写.进行url编码,encodeURIComponent 只是传输包装，不是 state 本身的业务内容。
     const installationUrl = `https://github.com/apps/qgents/installations/new?state=${state}`
 
     return HttpResponse.json({

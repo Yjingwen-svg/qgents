@@ -23,7 +23,7 @@ import {
 } from '@ant-design/icons'
 import { groupApi, memoryApi, projectApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
-import type { CreateMemoryPayload, Memory, MemoryStatus } from '@/types'
+import type { CreateMemoryPayload, Memory, MemoryStatus, Message } from '@/types'
 
 const { Text, Paragraph } = Typography
 
@@ -355,13 +355,23 @@ function CreateMemoryModal({
 }) {
   const [form] = Form.useForm<CreateMemoryPayload>()
   const [mode, setMode] = useState<'manual' | 'generate'>('manual')
-  const [genForm] = Form.useForm<{ groupId?: string; instruction?: string }>()
+  const [genForm] = Form.useForm<{ groupId?: string; messageIds?: string[]; instruction?: string }>()
+  // 当前选中的群，用于拉取该群消息列表供勾选
+  const [genGroupId, setGenGroupId] = useState<string | undefined>()
 
   const { data: groups = [] } = useQuery({
     queryKey: ['groups', projectId],
     queryFn: () => groupApi.listByProject(projectId),
     enabled: !!projectId,
   })
+
+  // 选中群后拉取该群消息，供勾选具体消息（对齐接口文档 §9 sourceMessages，精确到 messageId）
+  const { data: messagePage } = useQuery({
+    queryKey: ['groups', projectId, genGroupId, 'messages'],
+    queryFn: () => groupApi.listMessages(projectId, genGroupId ?? ''),
+    enabled: !!genGroupId && mode === 'generate',
+  })
+  const groupMessages = messagePage?.data ?? []
 
   const create = useMutation({
     mutationFn: (payload: CreateMemoryPayload) => memoryApi.create(projectId, payload),
@@ -371,15 +381,18 @@ function CreateMemoryModal({
     },
   })
   const generate = useMutation({
-    mutationFn: (v: { groupId?: string; instruction?: string }) =>
+    mutationFn: (v: { groupId?: string; messageIds?: string[]; instruction?: string }) =>
       memoryApi.generateDraft(projectId, {
-        sourceMessages: v.groupId
-          ? [{ groupId: v.groupId, messageId: 'latest' }]
-          : [],
+        // 精确到 messageId 数组，不再用 'latest' 兜底
+        sourceMessages: (v.messageIds ?? []).map((messageId) => ({
+          groupId: v.groupId ?? '',
+          messageId,
+        })),
         instruction: v.instruction,
       }),
     onSuccess: () => {
       genForm.resetFields()
+      setGenGroupId(undefined)
       onCreated()
     },
   })
@@ -455,6 +468,26 @@ function CreateMemoryModal({
               options={groups
                 .filter((g) => g.type === 'REQUIREMENT')
                 .map((g) => ({ value: g.id, label: g.title }))}
+              onChange={(v) => {
+                setGenGroupId(v)
+                genForm.setFieldValue('messageIds', [])
+              }}
+            />
+          </Form.Item>
+          <Form.Item
+            name="messageIds"
+            label="选择消息"
+            rules={[{ required: true, message: '请至少选择一条消息' }]}
+          >
+            <Select
+              mode="multiple"
+              placeholder={genGroupId ? '勾选要沉淀的消息' : '先选择来源群聊'}
+              disabled={!genGroupId}
+              options={groupMessages.map((m) => ({
+                value: m.id,
+                label: formatMessagePreview(m),
+              }))}
+              optionFilterProp="label"
             />
           </Form.Item>
           <Form.Item name="instruction" label="沉淀说明（可选）">
@@ -469,4 +502,12 @@ function CreateMemoryModal({
 function formatDate(iso: string): string {
   const d = new Date(iso)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** 把消息 content 转成下拉选项里的可读摘要（TEXT/CODE 取文本，其余显示类型） */
+function formatMessagePreview(message: Message): string {
+  const c = message.content as { text?: string; code?: string }
+  if (c && typeof c.text === 'string' && c.text) return c.text
+  if (c && typeof c.code === 'string' && c.code) return `[代码] ${c.code.slice(0, 40)}`
+  return `[${message.type}]`
 }

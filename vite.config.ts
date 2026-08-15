@@ -134,12 +134,14 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
+      host: true,
       port: 5173,
       proxy: useMock
         ? undefined
         : {
             '/api': {
-              target: 'https://api.qgents.dpdns.org',
+              // target: 'https://api.qgents.dpdns.org',
+              target: 'http://47.113.224.195:32500',//内网
               changeOrigin: true,
               rewrite: (path) => path.replace(/^\/api/, '/api/v1'),
             },

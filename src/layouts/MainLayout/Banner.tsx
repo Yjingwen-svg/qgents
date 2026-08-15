@@ -8,7 +8,7 @@ import {
 import { useState, type ReactNode } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { usePersonalCenter } from '@/context/PersonalCenterContext'
-import { useAppUiStore, useCurrentTeamId } from '@/store/appUiStore'
+import { useAppUiStore, useCurrentTeamId, useCurrentTeamRole } from '@/store/appUiStore'
 import { NotificationCenter } from './NotificationCenter'
 import { PATHS } from '@/routes/paths'
 
@@ -38,6 +38,7 @@ export function Banner() {
   const projectDetailNav = useAppUiStore((s) => s.projectDetailNav)
   const clearProjectDetailNav = useAppUiStore((s) => s.clearProjectDetailNav)
   const currentTeamId = useCurrentTeamId()
+  const currentTeamRole = useCurrentTeamRole()
   const name = user?.displayName ?? '用户'
   const avatarChar = user?.avatarChar ?? name.slice(0, 1)
   const [hoverTab, setHoverTab] = useState<BannerTab['key'] | null>(null)
@@ -69,7 +70,11 @@ export function Banner() {
     if (key === 'teams') {
       clearProjectDetailNav()
       // 「团队首页」：若已进入某个团队则回到该团队详情，否则回到团队列表
-      navigate(currentTeamId ? PATHS.teamDetail(currentTeamId) : PATHS.MY_TEAMS)
+      navigate(
+        currentTeamId
+          ? PATHS.teamDetail(currentTeamId, currentTeamRole === 'TEAM_OWNER')
+          : PATHS.MY_TEAMS,
+      )
       return
     }
     if (key === 'chat') {

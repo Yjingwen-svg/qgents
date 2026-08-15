@@ -14,6 +14,7 @@ import { GithubInstallationReposPage } from '@/pages/GitHubIntegration/GithubIns
 import { BindRepoToProjectPage } from '@/pages/GitHubIntegration/BindRepoToProjectPage'
 import { TeamDetailPage } from '@/pages/TeamDetail/TeamDetailPage'
 import { TeamSettingsPage } from '@/pages/TeamDetail/TeamSettingsPage'
+import { TeamActivitiesPage } from '@/pages/TeamDetail/TeamActivitiesPage'
 import { CreateProjectPage } from '@/pages/CreateProject/CreateProjectPage'
 import { TeamAuthorizedReposPage } from '@/pages/GitHubIntegration/TeamAuthorizedReposPage'
 import { ProjectDetailLayout } from '@/pages/ProjectDetail/ProjectDetailLayout'
@@ -64,6 +65,7 @@ export function AppRouter() {
               <Route path="teams/join" element={<JoinTeamPage />} />
               <Route path="teams/:teamId" element={<TeamDetailPage />} />
               <Route path="teams/:teamId/settings" element={<TeamSettingsPage />} />
+              <Route path="teams/:teamId/activities" element={<TeamActivitiesPage />} />
               <Route path="teams/:teamId/projects/create" element={<CreateProjectPage />} />
               <Route
                 path="teams/:teamId/github/authorized-repos"

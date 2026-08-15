@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { TeamRole } from '@/types'
 
 const PROJECT_DETAIL_NAV_KEY = 'qgents_banner_project_detail'
 
@@ -33,9 +34,11 @@ interface AppUiStore {
   // ──── 全局上下文 ────
   /** 当前所在团队 ID，null = 尚未进入任何团队 */
   currentTeamId: string | null
+  /** 当前所在团队角色（用于 Banner「团队首页」跳转时带 as=owner），null = 未知 */
+  currentTeamRole: TeamRole | null
   /** 当前所在项目 ID，null = 尚未进入任何项目 */
   currentProjectId: string | null
-  setCurrentTeam: (teamId: string) => void
+  setCurrentTeam: (teamId: string, role?: TeamRole) => void
   setCurrentProject: (projectId: string) => void
   /** 退出登录或切换团队时清空 */
   clearContext: () => void
@@ -62,8 +65,10 @@ export const useAppUiStore = create<AppUiStore>((set) => ({
 
   // ──── 全局上下文 ────
   currentTeamId: null,
+  currentTeamRole: null,
   currentProjectId: null,
-  setCurrentTeam: (teamId) => set({ currentTeamId: teamId, currentProjectId: null }),
+  setCurrentTeam: (teamId, role) =>
+    set({ currentTeamId: teamId, currentTeamRole: role ?? null, currentProjectId: null }),
   setCurrentProject: (projectId) => set({ currentProjectId: projectId }),
   clearContext: () => set({ currentTeamId: null, currentProjectId: null }),
 }))
@@ -72,4 +77,5 @@ export const useSidebarCollapsed = () => useAppUiStore((state) => state.sidebarC
 export const useTaskPanelOpen = () => useAppUiStore((state) => state.taskPanelOpen)
 export const useProjectDetailNav = () => useAppUiStore((state) => state.projectDetailNav)
 export const useCurrentTeamId = () => useAppUiStore((state) => state.currentTeamId)
+export const useCurrentTeamRole = () => useAppUiStore((state) => state.currentTeamRole)
 export const useCurrentProjectId = () => useAppUiStore((state) => state.currentProjectId)

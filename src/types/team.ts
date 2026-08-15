@@ -57,3 +57,16 @@ export interface AcceptInvitationResponse {
   teamId: string
   teamName: string
 }
+
+/** 当前用户收到的待处理团队邀请（GET /team-invitations，收件人视角） */
+export interface MyTeamInvitation {
+  id: string
+  token: string
+  teamId: string
+  teamName: string
+  role: TeamRole
+  inviterDisplayName: string
+  status: 'PENDING'
+  expiresAt: string
+  createdAt: string
+}

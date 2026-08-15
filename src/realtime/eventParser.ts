@@ -14,10 +14,20 @@ export const PROJECT_TASK_EVENT_TYPES = [
   'task.awaiting-diff-confirmation',
   'diff-review.confirmed',
   'diff-review.rejected',
+  'diff-review.skipped',
   'delivery.repository.updated',
   'delivery.completed',
   'delivery.failed',
   'task.diff-review.failed',
+  'merge-request.updated',
+  'memory.submit-review',
+  'memory.approved',
+  'memory.rejected',
+  'memory.archived',
+  'skill.submit-review',
+  'skill.published',
+  'skill.rejected',
+  'skill.archived',
 ] as const
 
 export type ProjectTaskEventType = (typeof PROJECT_TASK_EVENT_TYPES)[number]
@@ -58,13 +68,29 @@ function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPay
     'task.awaiting-diff-confirmation': ['taskId', 'reviewBatchId'],
     'diff-review.confirmed': ['taskId', 'reviewBatchId'],
     'diff-review.rejected': ['taskId', 'reviewBatchId'],
+    'diff-review.skipped': ['taskId', 'reason'],
     'delivery.repository.updated': ['taskId', 'diffId', 'deliveryStatus'],
     'delivery.completed': ['taskId', 'reviewBatchId', 'deliveryStatus'],
     'delivery.failed': ['taskId', 'reviewBatchId', 'deliveryStatus'],
     'task.diff-review.failed': ['taskId', 'reason'],
+    'merge-request.updated': ['mergeRequestId'],
+    'memory.submit-review': ['resourceId', 'updatedAt'],
+    'memory.approved': ['resourceId', 'updatedAt'],
+    'memory.rejected': ['resourceId', 'updatedAt'],
+    'memory.archived': ['resourceId', 'updatedAt'],
+    'skill.submit-review': ['resourceId', 'updatedAt'],
+    'skill.published': ['resourceId', 'updatedAt'],
+    'skill.rejected': ['resourceId', 'updatedAt'],
+    'skill.archived': ['resourceId', 'updatedAt'],
   }
   const stringsValid = required[type].every((key) => typeof payload[key] === 'string' && (payload[key] as string).length > 0)
   if (!stringsValid) return false
+  if (type.startsWith('memory.')) {
+    return payload.resourceType === 'MEMORY' && payload.eventVersion === 1
+  }
+  if (type.startsWith('skill.')) {
+    return payload.resourceType === 'SKILL' && payload.eventVersion === 1
+  }
   if (type === 'task.artifact.created' || type === 'task-run.artifact.created') {
     return typeof payload.sequenceNo === 'number' && Number.isInteger(payload.sequenceNo) && payload.sequenceNo >= 0
   }

@@ -38,6 +38,17 @@ describe('independent Task model mock chain', () => {
     expect(runs.data.length).toBeGreaterThanOrEqual(2)
     expect(runs.data.every((run) => run.taskId === task.id)).toBe(true)
     expect(runs.data[0]).toHaveProperty('artifactSummary')
+    expect(runs.data[0]?.artifactSummary).toEqual({ total: expect.any(Number), diffCount: expect.any(Number) })
+    const firstStepPage = await tasksApi.listSteps('project-create', task.id, { limit: 1 })
+    expect(firstStepPage.page.hasMore).toBe(true)
+    expect(firstStepPage.page.nextCursor).toBe('1')
+  })
+
+  it('returns formal Task attention associations without inference fields', async () => {
+    const main = await tasksApi.get('project-attention', 'task-project-attention-main')
+    expect(main.attention).toMatchObject({ kind: 'INPUT_REQUIRED', taskRunId: 'run-step-task-project-attention-main-developer', inputRequestId: 'input-run-step-task-project-attention-main-developer', diffReviewBatchId: null, repositoryId: null })
+    const waiting = await tasksApi.get('project-attention', 'task-project-attention-waiting_diff_confirmation')
+    expect(waiting.attention).toMatchObject({ kind: 'DIFF_CONFIRMATION_REQUIRED', diffReviewBatchId: 'review-task-project-attention-waiting_diff_confirmation', repositoryId: 'repository-project-attention' })
   })
 
   it('walks one newly-created resource chain through input, retry, Diff review, and Task cancel', async () => {

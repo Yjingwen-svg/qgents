@@ -1,8 +1,8 @@
-Qgents接口文档v1.7.1
+Qgents接口文档v1.8.0
 
-版本：v1.7.1
+版本：v1.8.0
 
-状态：第 6 节 GitHub 集成接口已冻结；通知中心（§7.1）与群列表/消息字段按 A 联调约定补全；团队邀请收件人视角与团队最近动态已落地（§19，接口表见 §5.1）
+状态：第 6 节 GitHub 集成接口已冻结；通知中心（§7.1）与群列表/消息字段按 A 联调约定补全；团队邀请收件人视角与团队最近动态已落地（§19，接口表见 §5.1）；新增两个SSE事件
 
 更新日期：2026-08-15
 
@@ -654,12 +654,90 @@ GET/PUT
 
 requiredTestsetIds 是不可被普通成员绕过的强制测试集。门禁规则定义期望条件，检查的实际运行和回写由后续执行/同步服务处理。
 
+6.10 GitHub Webhook 接收（公开接口，无 JWT）
+新增公开接口，供 GitHub App 事件投递。接口不携带 Qgents JWT，安全依据为 X-Hub-Signature-256、X-GitHub-Event、X-GitHub-Delivery 和 Webhook Secret。
+方法
+路径
+认证
+说明
+POST
+/api/v1/integrations/github/webhook
+X-Hub-Signature-256 验签（无 Qgents JWT）
+接收 ping/installation/installation_repositories/pull_request 事件，同步本地仓库/MR 镜像并发布项目级 SSE
+安全与幂等约定：
+
+
+
+- Secret 由 GITHUB_WEBHOOK_SECRET 环境变量注入；未配置时接口 fail-closed 返回 503，不得为联调提供空 Secret 或固定默认值。
+- 验签使用 HMAC-SHA256 与常量时间比较，输入为原始 body 字节；Secret 不出现在日志、异常、SSE 或响应中。
+- 以 X-GitHub-Delivery 作为唯一键防重复处理：相同 delivery 已处理返回 200 幂等；FAILED 的重投必须重新通过原始 body 验签后才允许再次处理；处理中并发请求返回 503 让 GitHub 重试。
+- 本轮采用同步处理：业务同步完成后才返回 200；不引入 202、消息队列或未定义的后台消费者。
+- 事务内不得调用 GitHub、Worker 或其他外部 HTTP；仓库详情补齐在事务外通过受控 GitHub 客户端完成，补齐失败记录 FAILED 等待重投，不把半成品标记为 AUTHORIZED。
+返回策略：
+情况
+HTTP
+说明
+签名正确并已处理
+200
+已完成本次同步并记录 PROCESSED/IGNORED
+相同 X-GitHub-Delivery 已处理
+200
+幂等返回，不重复写入
+签名缺失或不匹配
+401
+不落业务数据
+Header/body 不完整或 JSON 非法
+400
+不落业务数据
+Secret 未配置
+503
+fail-closed，不当作验签失败
+请求体超过上限
+413
+不落投递业务数据
+暂时无法处理（仓库详情补齐失败等）
+500
+本次不标记为成功，允许 GitHub 重投
+第一版事件白名单：
+
+
+GitHub 事件
+处理内容
+SSE
+---
+---
+---
+ping
+校验配置可用性，记录成功投递
+否
+installation
+created/unsuspend/new_permissions_accepted → ACTIVE，suspend → SUSPENDED，deleted → DELETED
+仅能确定团队/项目归属时
+installation_repositories
+added/removed 按 provider repository id upsert 或标记 REVOKED，校验 installation 一致
+按受影响项目分别发布
+pull_request
+opened/reopened/synchronize → OPEN，closed+merged → MERGED，closed+未 merged → CLOSED；按 provider repository + PR number 幂等更新全部项目绑定 MR 镜像
+每个成功更新的项目一次
+投递审计表 github_webhook_deliveries：以 provider_delivery_id 唯一，状态 RECEIVED → PROCESSED/IGNORED/FAILED，只存原始 body 的 SHA-256 摘要；attempt_count 记录同一 delivery 实际处理次数；已完成记录保留 30 天后由定时任务清理，RECEIVED 不清理。
+
+
+SSE 事件契约补充：
+
+
+github-installation.updated  -> { installationId, status }
+github-repository.updated    -> { installationId, repositoryId, authorizationStatus, archived }
+merge-request.updated        -> { projectId, mergeRequestId, repositoryId, number, status, headCommit, providerUpdatedAt, qualityGateStatus, timestamp }
+上述 installationId/repositoryId/mergeRequestId 均为 Qgents 本地 UUID；事件只发送给能通过本地绑定关系确定的 Project。merge-request.updated 使用 number（不另造 providerNumber），headCommit 为真实完整 SHA；SSE 事件 id 仍使用项目内 sequenceNo，payload 不伪造 sequence。客户端收到事件后重新拉取 MR 详情或列表，不把 SSE payload 当作完整 DTO。
 
 ---
-
 7. 统一 Group 与消息
 
+
+
 项目可有一个项目主讨论群和多个需求群，统一建模为 Group。创建项目时服务端自动创建唯一的 PROJECT_MAIN Group；它不可归档或删除。REQUIREMENT Group 是上下文与协作边界，可引用多个仓库；它不代表 Git main，也不天然生成或绑定分支。
+
+
 
 方法
 路径
@@ -706,6 +784,8 @@ GET
 项目成员
 组装群聊上下文（需求 + 近期消息 + 关联仓库 + 已发布 Skill + 已批准 Memory），供 Agent 作为输入；limit 参数控制近期消息条数（默认 50，上限 200）
 
+
+
 群详情说明：
 
 - 群详情与改名已由 GET/PATCH /projects/{projectId}/groups/{groupId} 覆盖。
@@ -718,7 +798,14 @@ GET
   
 - POST .../leave（退出群聊）即当前用户移出本项目成员，移出后失去对该项目全部群/消息/资源的访问权限；最后一名 Project Admin 不可退群（与 §3.1 一致）。
   
+  
+
+
+
 创建需求群请求示例：
+
+
+
 {
   "title": "登录功能",
   "description": "讨论账号与登录体验",
@@ -726,11 +813,40 @@ GET
   "type": "REQUIREMENT"
 }
 
+
+
 POST /groups 只接受 REQUIREMENT 或省略 type；传入 PROJECT_MAIN 返回 422 SYSTEM_GROUP_MANAGED。
+
+
+
+
+
+
+
+
+
+
+
+
 
 项目总群可收发消息，但仅用于项目级讨论和结构化动态；执行任务请求中的 groupId 必须指向同一项目下状态为 ACTIVE 的 REQUIREMENT Group。
 
+
+
+
+
+
+
+
+
+
+
+
+
 发送消息请求示例：
+
+
+
 {
   "type": "TEXT",
   "content": {"text": "登录接口需要支持邮箱和密码。"},
@@ -739,45 +855,86 @@ POST /groups 只接受 REQUIREMENT 或省略 type；传入 PROJECT_MAIN 返回 4
   "clientMessageId": "cmsg_01J..."
 }
 
+
+
 消息类型说明：
+
+
 
 - type 为 TEXT、CODE、IMAGE、FILE、DIFF、TASK_STATUS、SYSTEM 或 QUOTE。
   
+    
+  
 - 服务端写入单调递增 sequence；clientMessageId 在同一需求群内唯一，断线重试返回原消息。
+  
+    
   
 - DIFF（Diff 卡片）content 至少含 diffId，如 {"diffId":"...","title":"实现邮箱登录","additions":12,"deletions":3}。
   
+    
+  
 - TASK_STATUS（任务状态卡片）content 至少含 taskId、status，如 {"taskId":"...","status":"RUNNING","node":"DEVELOPER","message":"正在执行测试"}。
+  
+    
   
 - IMAGE/FILE（图片/文件消息）content 至少含 url（展示/下载地址），如 {"url":"/projects/{projectId}/attachments/{attachmentId}/content"}。url 填附件稳定展示地址（服务端强校验 url 必填），获取方式见 §18.5。
   
+  
+  
 - 消息响应 senderType 为 USER/AGENT/SYSTEM：用户发送为 USER，Agent 通过服务端内部 sendAsAgent 回群为 AGENT，系统消息为 SYSTEM。
+  
+    
   
 - Agent 可参与项目群聊（回群消息），但私聊与 Agent 好友不在本期范围。
   
+    
+  
 群列表 DTO 补充（GET /projects/{id}/groups，A 联调约定 §2）：
+
+
 
 - latestActivityAt：后端返回，ISO8601 UTC 字符串，作为列表排序依据；从未发言时以创建时间兜底。
   
+    
+  
 - latestMessage：后端返回，列表摘要对象 { "senderName": string|null, "text": string|null, "type": string|null }；senderName 为用户昵称或 Agent 名称（SYSTEM 消息为空），text 为最新消息文本（仅 TEXT/QUOTE 等含 $.text 的类型可取到，其余为空），type 为最新消息类型，取值与消息类型枚举一致（TEXT/CODE/IMAGE/FILE/SYSTEM/QUOTE/DIFF/TASK_STATUS），客户端可据此对 IMAGE/FILE 等无文本消息展示 [图片]/[文件] 摘要。
+  
+    
   
 - unreadCount、isPinned：本轮后端不返回，由前端 localStorage 兜底（会话个人偏好不在本轮）。
   
+    
+  
 - 归档判断：使用 status（ACTIVE/ARCHIVED），不设独立 isArchived 字段。
+  
+    
   
 消息 DTO 补充（GET/POST .../messages，A 联调约定 §3）：
 
+
+
 - senderId：后端返回；USER 消息 = userId，AGENT 消息 = agentId，前端据此判断是否本人发送。
+  
+    
   
 - senderName：后端不返回，前端用 senderId 反查群成员列表（GET .../members）获取 displayName。
   
+    
+  
 - sequence：后端返回，单调递增，作为分页游标。
+  
+    
   
 - clientMessageId：前端发送时携带，服务端在同一需求群内幂等去重，断线重试返回原消息。
   
+
 7.1 通知中心
 
-通知中心按用户维度持久化已读状态与历史列表；SSE（§12.1）只负责「实时提醒」（新事件铃铛提醒），不承担历史列表与已读状态。通知由事件触发写入，接收人为任务发起人。
+
+
+通知中心按用户维度持久化已读状态与历史列表；SSE（§12.1）只负责「实时提醒」（新事件铃铛提醒），不承担历史列表与已读状态。任务类通知由事件触发写入，接收人为任务发起人；团队/项目成员类通知（INVITED/TEAM_JOINED/PROJECT_ADDED）由对应业务接口直接写入，接收人为被邀请用户 / 邀请者 / 被加入项目的成员。
+
+
 
 方法
 路径
@@ -796,7 +953,11 @@ POST
 登录用户
 全部已读（幂等）
 
+
+
 通知字段（Notification）：
+
+
 
 字段
 类型
@@ -806,7 +967,7 @@ string
 通知 id
 kind
 string
-TASK_COMPLETED / TASK_FAILED / AGENT_INPUT_REQUIRED / DELIVERABLE_PENDING / MR_PENDING
+TASK_COMPLETED / TASK_FAILED / AGENT_INPUT_REQUIRED / DELIVERABLE_PENDING / MR_PENDING / INVITED / TEAM_JOINED / PROJECT_ADDED
 title
 string
 一行标题
@@ -829,9 +990,11 @@ resourceId
 string?
 关联资源 id（taskId / mrId / diffId），跳转定位用
 
-通知数据来源（后端在对应事件发生时写入通知表）：
 
-触发事件（§12.1）
+
+通知数据来源（后端在对应事件或业务路径发生时写入通知表）：
+
+触发来源
 通知 kind
 task.updated（SUCCEEDED / FAILED）
 TASK_COMPLETED / TASK_FAILED
@@ -845,17 +1008,30 @@ diff.created
 DELIVERABLE_PENDING
 merge-request.updated
 MR_PENDING
+团队邀请创建 POST /teams/{teamId}/invitations（被邀请邮箱已注册）
+INVITED
+团队邀请接受 POST /team-invitations/{reference}/accept
+TEAM_JOINED
+项目加成员 POST /projects/{projectId}/members
+PROJECT_ADDED
+
+成员类通知无对应 SSE 事件，由业务接口直接写入：INVITED 接收人为被邀请用户（未注册邮箱无 userId，仅走邮件邀请）；TEAM_JOINED 接收人为邀请者；PROJECT_ADDED 接收人为被加入项目的成员。标题示例：「你被邀请加入团队 {团队名}」「{用户} 已加入团队 {团队名}」「你被加入项目 {项目名}」，resourceId 分别为团队 ID / 团队 ID / 项目 ID。
 
 7.2 群搜索（第三批，暂不实现）
+
+
 
 方法
 路径
 权限
 说明
 GET
+
 /search?q={q}&type=groups
 登录用户
 按关键字搜索当前用户可访问的群（群名匹配），返回群摘要列表；该能力属于后续批次，本期不实现
+
+
 
 
 ---
@@ -1257,7 +1433,6 @@ Workspace 是 Project 内持久化的 Git 工作目录，Workspace repository �
 所有本节 POST 接口均要求 Idempotency-Key，成功受理时返回 202 Accepted 和资源摘要；列表接口复用第 2 节的 cursor 与 limit。服务端必须校验路径中的 projectId、关联资源与当前用户在同一项目中，禁止仅通过 UUID 查询资源。
 
 12.1 实时事件流
-
 方法
 路径
 权限
@@ -1266,64 +1441,39 @@ GET
 /projects/{projectId}/events
 Project Member
 建立项目级 SSE 连接，接收状态和产物事件
-
 该接口的 Content-Type 为 text/event-stream，不套用 JSON 成功响应。客户端可通过 Last-Event-ID 断线续传；服务端每 15 秒发送心跳，并至少保留 24 小时事件。续传点过期时返回 409 EVENT_CURSOR_EXPIRED，客户端应重新拉取相关资源。
+
+
 
 SSE 事件示例：
 id: evt_01J...
 event: task-run.step.progress
 data: {"projectId":"project-uuid","taskId":"task-uuid","stepId":"step-uuid","taskRunId":"task-run-uuid","node":"DEVELOPER","sequence":12,"content":"正在执行测试","timestamp":"2026-08-10T12:00:00Z"}
-
 事件类型：
-
 - task.updated
-  
 - task-step.updated
-  
 - task-run.updated
-  
 - task-run.step.progress
-  
 - input-required
-  
 - approval-required
-  
 - test-run.updated
-  
 - dry-run.updated
-  
 - diff.created
-  
 - task.artifact.created
-  
 - task-run.artifact.created
-  
 - diff-review.created
-  
 - task.awaiting-diff-confirmation
-  
 - diff-review.confirmed
-  
 - diff-review.rejected
-  
 - delivery.repository.updated
-  
 - delivery.failed
-  
 - delivery.completed
-  
 - task.diff-review.failed
-  
 - diff-review.skipped
-  
 - merge-request.updated
-  
 事件仅用于刷新界面；客户端恢复连接或收到乱序事件后必须以相应的查询接口为准。受控日志不得包含 Token、密码、GitHub 安装令牌、私钥或未脱敏的环境变量。
-
 SSE 事件 id 即项目内单调递增 sequenceNo，作为 Last-Event-ID 续传游标；输入与审批事件必须包含 inputRequestId。
-
 各事件 Payload 示例：
-
 task.updated（Task 状态变化）：
 {
   "projectId": "project-uuid",
@@ -1333,7 +1483,6 @@ task.updated（Task 状态变化）：
   "workspaceId": "workspace-uuid",
   "timestamp": "2026-08-12T10:00:00Z"
 }
-
 task-step.updated（TaskStep 状态变化）：
 {
   "projectId": "project-uuid",
@@ -1343,7 +1492,6 @@ task-step.updated（TaskStep 状态变化）：
   "status": "RUNNING",
   "timestamp": "2026-08-12T10:00:00Z"
 }
-
 task-run.updated（TaskRun 状态变化）：
 {
   "projectId": "project-uuid",
@@ -1354,7 +1502,6 @@ task-run.updated（TaskRun 状态变化）：
   "sequence": 0,
   "timestamp": "2026-08-12T10:00:00Z"
 }
-
 input-required / approval-required（人机输入/审批）：
 {
   "projectId": "project-uuid",
@@ -1367,9 +1514,7 @@ input-required / approval-required（人机输入/审批）：
   "prompt": "请补充验收说明",
   "timestamp": "2026-08-12T10:00:00Z"
 }
-
 其中 kind 为 INPUT（input-required）或 APPROVAL（approval-required）；inputRequestId 即事件 resourceId。
-
 diff.created（Diff 快照创建）：
 {
   "projectId": "project-uuid",
@@ -1381,10 +1526,8 @@ diff.created（Diff 快照创建）：
   "status": "PENDING_REVIEW",
   "timestamp": "2026-08-12T10:00:00Z"
 }
-
 Diff 尚未产生真实提交时 headCommit 键省略（payload 中不出现该键）。
 12.2 任务运行与执行上下文
-
 方法
 路径
 权限
@@ -1429,14 +1572,22 @@ POST
 /projects/{projectId}/task-runs/{taskRunId}/input-requests/{requestId}/reject
 Project Admin
 拒绝 WAITING_APPROVAL 请求
-
 retry 只接受状态为 FAILED、CANCELLED 或 BLOCKED 的运行；原运行不可重置。响应中的新运行应包含 retryOfTaskRunId。
+
+
 
 输入请求最小响应包含 id、taskRunId、kind、status、prompt、可选 options 与 createdAt；回复请求为 {"answer":{"value":"main"}}，批准或拒绝请求为 {"reason":"允许在受控 Sandbox 内执行测试"}。回复或批准后服务端才可恢复 RUNNING；拒绝后服务端进入 BLOCKED 或安全取消，客户端不得直接改写运行状态。
 
+
+
 execution-context 仅返回 workspaceId、sandboxStatus、repositoryId、baseRef、headRef、startedAt 与 expiresAt，不得返回宿主机路径、容器控制入口或任何凭据。
 
+
+
 TaskRun 响应示例（GET /tasks/{taskId}/task-runs 列表项 / GET /task-runs/{taskRunId} 详情）：
+
+
+
 {
   "id": "task-run-uuid",
   "projectId": "project-uuid",
@@ -1453,15 +1604,10 @@ TaskRun 响应示例（GET /tasks/{taskId}/task-runs 列表项 / GET /task-runs/
   "createdAt": "2026-08-12T10:00:00Z",
   "updatedAt": "2026-08-12T10:00:00Z"
 }
-
 GET /tasks/{taskId}/task-runs 列表项只含摘要字段（id/projectId/taskId/taskStepId/agentId/role/status/retryOfTaskRunId/createdAt/updatedAt），不含执行时序与产物；详情（GET /task-runs/{taskRunId}）才含 startedAt/finishedAt/durationMs/artifactSummary。durationMs 由 finishedAt-startedAt 派生，任一端为空时为 null（未开始运行勿用 0 兜底）。
-
 TaskRun 执行步骤查询方式：
-
 - 实时进度：通过 SSE task-run.step.progress 事件（§12.1，含 node/sequence/content）推送。
-  
 - 历史步骤：通过 GET /task-runs/{taskRunId}/logs 游标读取脱敏日志。
-  
 日志条目（LogEntryResponse）示例：
 {
   "id": "log-uuid",
@@ -1470,13 +1616,9 @@ TaskRun 执行步骤查询方式：
   "content": "checkout base",
   "timestamp": "2026-08-12T10:00:00Z"
 }
-
 日志分页游标取上页最后一条的 sequence；node 为产生日志的执行节点名，单节点运行为空。如需步骤级清单回看，TaskRun 详情可附 steps 数组（节点状态 PENDING/RUNNING/PASSED/FAILED/SKIPPED/CANCELLED，含 node/status/startedAt/finishedAt/durationMs/可选 errorCode），由执行服务提供。
-
 步骤响应中的节点状态为 PENDING、RUNNING、PASSED、FAILED、SKIPPED 或 CANCELLED，并至少包含 node、status、startedAt、finishedAt、durationMs 与可选的 errorCode。运行中的 Task 收到取消请求时，服务端仅在安全检查点停止；不可中断步骤结束前状态保持 RUNNING 或 CANCELLING。
-
 12.3 Diff 与审查意见
-
 方法
 路径
 权限
@@ -1525,21 +1667,13 @@ POST
 /projects/{projectId}/tasks/{taskId}/diff-review/retry-delivery
 Task 发起人或 Project Admin
 重试尚未成功交付的仓库
-
 最终 Diff 使用 Task 级 Diff Review Batch 作为审核入口。
-
 属于批次的 Diff 不得调用单 Diff 的 accept/reject 接口。
-
 三个批次写接口都要求携带 Idempotency-Key。
-
 创建 Diff 由受控执行服务完成，客户端不得伪造其关联的测试结果或文件状态。
-
 reject 请求为 {"reason":"请补充错误密码场景测试"}。
-
 行级评论应包含 path、side、line 或 hunkId、body，并绑定 Diff 快照，避免 Diff 更新后评论指向错误代码。
-
 accept 接受 Diff 时由受控 Git 执行器基于被审查快照创建真实 Git 提交，不绕过目标分支的质量门禁，也不等同于合并。
-
 Diff 列表项（GET /diffs，DiffListItemResponse）：
 {
   "id": "diff-uuid",
@@ -1557,11 +1691,8 @@ Diff 列表项（GET /diffs，DiffListItemResponse）：
   "changeStats": {"files": 2, "additions": 10, "deletions": 2},
   "createdAt": "2026-08-12T10:00:00Z"
 }
-
 Diff 详情（GET /diffs/{diffId}，DiffResponse）在列表项基础上增加 workingTreeHash、snapshotKey、reviewedBy、reviewReason、reviewedAt、updatedAt。taskRunId/taskStepId 记录产出该 Diff 的运行与步骤，requirementGroupId 由其所属 Task 派生。
-
 12.4 Test Run 与 Dry Run
-
 方法
 路径
 权限
@@ -1582,13 +1713,9 @@ GET
 /projects/{projectId}/dry-runs/{dryRunId}/report
 Project Member
 获取试运行报告和冲突、测试摘要
-
 test-runs 请求必须提供 repositoryId，并且提供 taskId 或 ref 之一；testsetIds 必须属于该仓库且为 ENABLED。
-
 dry-runs 请求必须提供 repositoryId、sourceRef、targetBranch，可选关联 taskId。
-
 受保护分支所需的 Testset 由第 6.1 节质量门禁决定，调用方不能通过传入较少的 testsetIds 跳过它们。
-
 
 ---
 
@@ -2464,3 +2591,378 @@ ISO8601 UTC，按此倒序
 - 只覆盖最近 24 小时（events 保留期），超窗数据会消失。
 - MESSAGE / GROUP_CREATED / MEMBER_JOINED / TASK_CREATED 无事件发布源，本期不产出，type 传它们返回空 data。
 - 错误：404 NOT_FOUND（团队不存在）、403 FORBIDDEN（非团队成员）、400 INVALID_CURSOR / 400 INVALID_PAGE_LIMIT。
+
+20. v1.8.0 更新：DeliveryCenter 聚合接口与 Agent 展示摘要
+
+基线 v1.7.0。本小节落地前端成员 B 的 DeliveryCenter 聚合、Agent 展示摘要需求，并冻结 6 项契约歧义（N01–N06）与权限映射。所有新接口均为只读展示，写操作继续复用对应正式资源接口。
+
+20.1 DeliveryCenter 聚合列表 GET /api/v1/projects/{projectId}/delivery-items
+
+查询参数：
+
+参数
+类型
+必填
+说明
+groupId
+UUID
+否
+CODE 按 Task 的需求群来源匹配；
+ MEMORY 按来源消息所属需求群匹配；
+ SKILL 当前无来源数据，不匹配 groupId。
+type
+string
+否
+资源类型：CODE / MEMORY / SKILL；省略返回全部三类
+status
+string
+否
+按展示状态 displayStatus 筛选（枚举见 §20.3）
+repositoryId
+UUID
+否
+按项目仓库绑定 ID 筛选（仅 CODE 匹配）
+createdBy
+UUID
+否
+按创建者筛选
+cursor
+string
+否
+游标分页（上一页 nextCursor）
+limit
+int
+否
+每页条数，默认 30，最大 100
+
+响应：统一 cursor envelope { data, page: { nextCursor, hasMore }, requestId }。
+
+DeliveryItem union：以 resourceType 为 discriminator，CODE / MEMORY / SKILL 三类各自携带专属字段，不把三类字段堆叠为公共可选字段。公共字段：
+
+字段
+类型
+说明
+id / resourceId
+string
+资源 ID：CODE=批次 ID、MEMORY=memoryId、SKILL=skillId
+projectId
+string
+项目 ID
+resourceType
+string
+CODE / MEMORY / SKILL
+title
+string
+展示标题
+summary
+string?
+脱敏摘要（≤200 字符）
+version
+string?
+当前恒为 null
+displayStatus
+string
+后端统一派生的展示状态（前端不维护映射）
+resourceStatus
+string
+真实资源状态（reviewStatus / Memory.status / Skill.status）
+requirementGroup
+object?
+{id, name}；无群来源时 null
+source
+object
+{taskId, taskDisplayCode, taskTitle, taskRunId, taskStepId, messageId, artifactId}；无对应关联时字段为 null
+creator / submitter / reviewer
+object?
+UserSummary{id, displayName, avatarUrl}；
+reviewReason
+string?
+驳回/拒绝原因
+createdAt / submittedAt / reviewedAt / updatedAt
+string?
+ISO8601 UTC；
+capabilities
+object
+服务端派生的操作能力（§20.3）
+openTarget
+object
+显式打开目标（§20.3）
+
+CODE 专属字段：repositories[]（{repositoryId, name, branch}）、diffReviewId、reviewStatus、deliveryStatus、filesChanged、additions、deletions、repositoryDeliveries[]（{repositoryId, repositoryName, deliveryStatus, failureCode, failureReason, mergeRequest, updatedAt}）、mergeRequest（{id, number, title, status, webUrl}，无 MR 时 null）。
+
+MEMORY 专属字段：category、tags[]、visibility（当前统一返回 PROJECT_SHARED）、sources[]、contentExcerpt。
+
+SKILL 专属字段：tags[]、visibility（PRIVATE/PROJECT_SHARED）、capabilitySummary（当前恒为 null）、contentExcerpt。
+
+约束：集合无数据返回 [] 不返回 null；真实不存在的关联返回 null，不得用空字符串或 Mock ID 代替；聚合列表不返回完整 Memory/Skill 内容、Prompt、Token、凭据、环境变量或代码 Patch。
+
+20.2 DeliveryCenter 聚合统计 GET /api/v1/projects/{projectId}/delivery-summary
+
+查询参数（与 delivery-items 一致，用户切换筛选后统计同步变化）：
+
+参数
+类型
+必填
+说明
+groupId
+UUID
+否
+按需求群筛选（CODE 按 Task 群来源、MEMORY 按来源消息群匹配；SKILL 无来源不匹配）
+type
+string
+否
+资源类型：CODE / MEMORY / SKILL；省略统计全部三类
+status
+string
+否
+按展示状态 displayStatus 筛选
+repositoryId
+UUID
+否
+按项目仓库绑定 ID 筛选（仅 CODE 匹配）
+createdBy
+UUID
+否
+按创建者筛选
+
+响应：
+
+{
+  "data": {
+    "total": 12,
+    "countsByType": { "CODE": 4, "MEMORY": 5, "SKILL": 3 },
+    "countsByStatus": { "DRAFT": 2, "PENDING_REVIEW": 2, "PROCESSING": 1, "ACCEPTED": 3,
+      "REJECTED": 0, "DELIVERED": 3, "FAILED": 1, "ARCHIVED": 0 },
+    "pendingForCurrentUser": 2,
+    "repositorySummaries": [ { "repositoryId": "...", "repositoryName": "...", "total": 2,
+      "accepted": 1, "pending": 1, "failed": 0, "deliveryStatus": "MR_CREATED",
+      "mergeRequest": { "id": "...", "number": 128, "title": "...", "status": "OPEN", "webUrl": "..." } } ],
+    "requirementGroupSummaries": [ { "requirementGroupId": "...", "name": "...", "total": 3, "pending": 1 } ],
+    "updatedAt": "2026-08-15T08:00:00Z"
+  },
+  "requestId": "req-uuid"
+}
+
+规则：
+- 统计针对完整筛选数据集计算，不由当前分页推导；
+- countsByType 恒含 CODE/MEMORY/SKILL 三 key（值为 0 也返回）；countsByStatus 恒含 8 个正式大写枚举 key（DRAFT/PENDING_REVIEW/PROCESSING/ACCEPTED/REJECTED/DELIVERED/FAILED/ARCHIVED）；
+- 统计 key 统一使用正式大写枚举，不使用 code/memory/pendingReview 等小写或 camelCase key；
+- pendingForCurrentUser 由后端按「当前用户 + capabilities」计算；
+- 不返回 pendingItems[]（N06 结论），前端只消费数量；
+- repositorySummaries / requirementGroupSummaries 无数据时返回 []。
+  
+20.3 Delivery DTO 语义冻结（N04/N05）
+
+openTarget 四态（resourceId 不再被多义解释为 Diff 或批次）：
+
+type DeliveryOpenTarget =
+  | { kind: "TASK_DIFF_REVIEW"; taskId: string; diffReviewBatchId: string }
+  | { kind: "DIFF"; taskId: string; diffId: string }
+  | { kind: "MEMORY"; memoryId: string }
+  | { kind: "SKILL"; skillId: string };
+
+displayStatus 映射（后端派生）：
+
+resourceType
+真实状态
+displayStatus
+CODE
+reviewStatus=PENDING_CONFIRMATION
+PROCESSING
+CODE
+reviewStatus=ACCEPTED 且 deliveryStatus=DELIVERED
+DELIVERED
+CODE
+reviewStatus=ACCEPTED 且 deliveryStatus=PARTIALLY_DELIVERED/FAILED
+FAILED
+CODE
+reviewStatus=ACCEPTED 且其他交付状态
+PROCESSING
+CODE
+reviewStatus=REJECTED
+REJECTED
+MEMORY
+status=DRAFT / PENDING_REVIEW / APPROVED / REJECTED / ARCHIVED
+DRAFT / PENDING_REVIEW / ACCEPTED / REJECTED / ARCHIVED
+SKILL
+status=DRAFT / PENDING_REVIEW / PUBLISHED / REJECTED / ARCHIVED
+DRAFT / PENDING_REVIEW / ACCEPTED / REJECTED / ARCHIVED
+
+capabilities（后端派生）：canSubmitReview / canApprove / canReject / canArchive / canRetryDelivery / canOpenResource + 对应的 disabledReasons（稳定错误码，可操作时为 null）。规则与正式资源接口一致：
+- CODE：approve/reject 仅任务发起人或 Project Admin 且批次 PENDING_CONFIRMATION；retry-delivery 仅接受后交付未完成（PARTIALLY_DELIVERED/FAILED）；
+- MEMORY/SKILL：submit 仅创建者或 Admin 且 DRAFT/REJECTED；approve/reject 仅 Admin 且 PENDING_REVIEW；archive 仅 Admin 且 APPROVED（MEMORY）/PUBLISHED（SKILL）。
+  
+写操作复用：聚合页不新建写接口——CODE 走 POST /tasks/{taskId}/diff-review/confirm | reject | retry-delivery（需 Idempotency-Key）；MEMORY/SKILL 走各自 submit-review | approve | reject | archive。
+
+Memory/Skill 提交审核信息（成员B 最终契约 §三）：
+
+- 普通项目成员可创建 Memory/Skill 并提交审核；Project Admin/TEAM_OWNER 批准或拒绝；通过后成为项目共享资源。
+- 进入过审核流程的聚合项必须返回 submitter（UserSummary）与 submittedAt（ISO8601 UTC）：
+  - 从未提交审核的 DRAFT：允许为 null；
+  - PENDING_REVIEW：submitter、submittedAt 必须非空；
+  - APPROVED/PUBLISHED/REJECTED/ARCHIVED：保留最后一次提交审核的申请人和时间；
+  - creator 与 submitter 语义不同，不可相互替代（创建者本人提交时两者相同，但仍同时返回）；
+  - reviewer、reviewedAt 在审批完成后按真实审核记录返回。
+- 数据来源：memories/skills 表新增 submitted_by、submitted_at 列（迁移 V20260815_02__memory_skill_submission_fields.sql），submit-review 时写入。
+  
+Memory/Skill 来源关系（成员B 最终契约 §四）：
+
+- Memory 由需求群消息产生（memory_message_sources）：source.messageId 返回真实来源消息 ID；存在消息来源时同时返回 requirementGroup {id, name}（由来源消息的群派生）；sources[] 返回全部来源消息引用 {groupId, messageId}；
+- Skill 当前无来源数据源：source 各字段与 requirementGroup 返回 null；
+- groupId 筛选匹配所有具有该需求群来源的资源：CODE 按 Task 群来源匹配、MEMORY 按来源消息群匹配；SKILL 无来源不匹配；
+- 没有来源关系时返回 null，不得填充 Mock ID 或展示文案。
+  
+CODE openTarget 固定（成员B 最终契约 §五）：
+
+- CODE 是 Task 级多仓库总 Diff 聚合项，列表项固定返回 openTarget = { kind: "TASK_DIFF_REVIEW", taskId, diffReviewBatchId }；
+- 固定 resourceId = diffReviewBatchId、diffReviewId = diffReviewBatchId；
+- diffId 只表示单个仓库 Diff，不得与批次 ID 混用；当前聚合列表不返回 openTarget.kind = "DIFF"；
+- 单 Diff 入口由 Task 级 DiffReview 详情中的仓库明细提供；DIFF openTarget 类型保留给其他页面/未来能力。
+
+20.4 Delivery 相关 SSE 冻结
+
+新增事件（沿用 §12.1 项目级单连接 / Bearer / Last-Event-ID / EVENT_CURSOR_EXPIRED；前端收到事件只失效 Query，不写入实体缓存）：
+
+事件
+覆盖场景
+memory.submit-review / memory.approved / memory.rejected / memory.archived
+MEMORY 审批流转
+skill.submit-review / skill.published / skill.rejected / skill.archived
+SKILL 审批流转
+
+统一 payload 基座（CODE 事件保持 §15.6.4 现有 payload 不动）：
+
+interface DeliveryEventPayload {
+  projectId: string;
+  resourceType: "CODE" | "MEMORY" | "SKILL";
+  resourceId: string;          // memoryId / skillId / diffReviewBatchId
+  taskId?: string;
+  diffId?: string;
+  diffReviewBatchId?: string;
+  repositoryId?: string;
+  eventVersion: number;        // 首版为 1
+  updatedAt: string;           // RFC 3339 UTC
+}
+
+merge-request.updated：payload 含 projectId、mergeRequestId、number、status、webUrl（触发点：MR 创建/状态同步）；diff-review.skipped：reason 固定为 FINAL_DIFF_EMPTY（§15.6.4）。
+
+20.5 Agent 分配列表与运行时摘要
+
+GET /api/v1/projects/{projectId}/agents/{agentId}/assignments（B04）
+
+参数
+类型
+必填
+说明
+type
+string
+否
+REQUIREMENT_GROUP / WORKFLOW；省略返回全部
+cursor / limit
+string/int
+否
+统一 cursor envelope，默认 30 最大 100
+
+响应项：{ type, resourceId, resourceName, status: "ACTIVE"|"INACTIVE" }。REQUIREMENT_GROUP 数据源为 group_agents（Agent 参与的需求群，按项目隔离）；WORKFLOW 当前无数据源（团队工作流模板非本版本范围，§14），返回空列表不伪造。
+
+GET /api/v1/projects/{projectId}/agents/{agentId}/runtime（B06）
+
+{
+  "data": {
+    "status": "IDLE",
+    "activeRunCount": 0,
+    "concurrencyLimit": null,
+    "assignmentUsage": {
+      "requirementGroups": { "assignedCount": 2, "assignableCount": 5 },
+      "workflows": { "assignedCount": 0, "assignableCount": 0 }
+    },
+    "skillAccessScope": "PROJECT",
+    "memoryAccessScope": "PROJECT"
+  },
+  "requestId": "req-uuid"
+}
+
+说明：status 由 activeRunCount > 0 派生；concurrencyLimit 当前无配置恒为 null；skillAccessScope/memoryAccessScope 当前均为项目维度隔离，返回 PROJECT。不返回 Prompt、工具凭据或 Memory 完整内容。
+
+20.6 项目级按 Agent 查询 TaskRun（B05）
+
+GET /api/v1/projects/{projectId}/task-runs
+
+参数
+类型
+必填
+说明
+agentId
+UUID
+是
+执行 Agent ID
+status
+string
+否
+TaskRun 状态过滤
+cursor / limit
+string/int
+否
+统一 cursor envelope，默认 20 最大 100
+
+列表项在 §12.2 TaskRunListItemResponse 基础上补充：taskDisplayCode、taskTitle、taskStepRole、requirementGroup（{id, name, status}）、repository（RepositorySummary，取任务首个 worktree 对应仓库，无则 null）。
+
+20.7 Task attention 扩展（B07）
+
+attention 增加正式关联字段（无对应关联返回 null，前端不按标题/数组位置/Mock ID 推断跳转）：
+
+interface TaskAttention {
+  kind: string;
+  title: string;
+  summary: string | null;
+  taskRunId: string | null;
+  inputRequestId: string | null;
+  diffReviewBatchId: string | null;   // DIFF_CONFIRMATION_REQUIRED/DELIVERY_FAILED 时非 null
+  repositoryId: string | null;        // DELIVERY_FAILED 时为首个失败仓库绑定 ID
+  createdAt: string | null;
+}
+
+20.8 N01–N06 契约歧义冻结结论
+
+编号
+待确认项
+结论
+N01
+TaskStep 列表响应
+统一为 cursor envelope {data, page:{nextCursor, hasMore}, requestId}（已实现，单页返回全部）
+N02
+TaskRun artifactSummary
+正式 shape 为 {total, diffCount}；旧 {diffs:{count,byStatus}} 废弃，不保留兼容
+N03
+DiffReview nullable
+批次不存在时查询返回 404 DIFF_REVIEW_NOT_FOUND；批次内 diffId 恒非空；requirementGroupId 由 Task 派生（防御性允许 null）；reviewReason 仅 REJECTED 时非 null
+N04
+Delivery 资源 ID
+采纳显式 openTarget（§20.3）；resourceId = 批次 ID / memoryId / skillId，与 diffId 严格区分
+N05
+displayStatus 归属
+后端统一派生并返回（映射见 §20.3），前端不维护映射
+N06
+待处理统计
+只返回 pendingForCurrentUser 数量，不返回 pendingItems[]
+
+20.9 权限与状态规则确认
+
+产品术语
+后端结论
+"Owner 批准 Memory/Skill"
+= PROJECT_ADMIN（requireProjectAdmin）
+TEAM_OWNER 是否自动继承项目审批权
+是：ProjectAccessService 对 canonical Team Owner 做项目内 Admin 兜底（isOwnerOrAdmin / requireProjectAdmin 已覆盖）
+普通项目成员
+只能创建/提交审核，不能 approve/reject/archive；可见性遵循 PRIVATE / 已发布可见规则
+Memory 审批后共享状态
+APPROVED（项目共享，无独立 visibility 字段，聚合项统一返回 PROJECT_SHARED）
+Skill 审批后正式状态
+PUBLISHED（前端按 PUBLISHED 消费；旧 APPROVED 不作为 Skill 状态）
+前端如何判断操作权
+不解析成员角色，统一消费后端返回的 capabilities
+
+20.10 P2：DeliveryCenter 导出（延期）
+
+GET /delivery-items/export（CSV + Content-Disposition）不阻塞首轮联调，待 P0/P1 稳定后实现；导出范围仍限列表摘要，不含完整内容/Prompt/凭据/Patch。

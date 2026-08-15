@@ -105,12 +105,16 @@ export function DeliveryCenterPage() {
     type: readType(searchParams.get('type')),
     repositoryId: searchParams.get('repositoryId') || undefined,
     status: readStatus(searchParams.get('status')),
+    createdBy: searchParams.get('createdBy') || undefined,
   }), [searchParams])
 
   const itemQuery = useInfiniteDeliveryItems(projectId, { ...filters, limit: PAGE_SIZE })
   const summaryQuery = useDeliverySummary(projectId, {
     groupId: filters.groupId,
+    type: filters.type,
+    status: filters.status,
     repositoryId: filters.repositoryId,
+    createdBy: filters.createdBy,
   })
   const actionMutation = useDeliveryActionMutation()
 
@@ -160,10 +164,6 @@ export function DeliveryCenterPage() {
     setSearchParams({}, { replace: true })
   }
 
-  function focusItem(itemId: string) {
-    document.getElementById(`delivery-item-${itemId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
-
   async function performAction(item: DeliveryItem, action: DeliveryAction, reason?: string) {
     if (actionMutation.isPending) return
     if (action === 'reject' && !reason?.trim()) {
@@ -193,12 +193,19 @@ export function DeliveryCenterPage() {
 
   function openResource(item: DeliveryItem) {
     if (!item.capabilities.canOpenResource) return
-    if (item.resourceType === 'CODE') {
-      navigate(PATHS.projectDiff(projectId, item.diffReviewId ?? item.resourceId))
-    } else if (item.resourceType === 'MEMORY') {
-      navigate(PATHS.projectMemory(projectId))
-    } else {
-      navigate(PATHS.projectSkills(projectId))
+    switch (item.openTarget.kind) {
+      case 'TASK_DIFF_REVIEW':
+        navigate(`${PATHS.projectTaskDetail(projectId, item.openTarget.taskId)}?diffReviewBatchId=${encodeURIComponent(item.openTarget.diffReviewBatchId)}`)
+        break
+      case 'DIFF':
+        navigate(PATHS.projectDiff(projectId, item.openTarget.diffId))
+        break
+      case 'MEMORY':
+        navigate(`${PATHS.projectMemory(projectId)}?memoryId=${encodeURIComponent(item.openTarget.memoryId)}`)
+        break
+      case 'SKILL':
+        navigate(`${PATHS.projectSkills(projectId)}?skillId=${encodeURIComponent(item.openTarget.skillId)}`)
+        break
     }
   }
 
@@ -278,7 +285,7 @@ export function DeliveryCenterPage() {
           </main>
         </section>
 
-        <DeliveryOverview summaryQuery={summaryQuery} items={items} total={total} groupId={filters.groupId} onFocus={focusItem} />
+        <DeliveryOverview summaryQuery={summaryQuery} total={total} groupId={filters.groupId} />
       </div>
 
       <Modal
@@ -377,12 +384,11 @@ function CodeActions({ item, active, onAction, onReject, onOpenResource }: { ite
   </>
 }
 
-function DeliveryOverview({ summaryQuery, items, total, groupId, onFocus }: { summaryQuery: ReturnType<typeof useDeliverySummary>; items: DeliveryItem[]; total: number; groupId?: string; onFocus: (itemId: string) => void }) {
+function DeliveryOverview({ summaryQuery, total, groupId }: { summaryQuery: ReturnType<typeof useDeliverySummary>; total: number; groupId?: string }) {
   if (summaryQuery.isLoading) return <aside className={styles.sidebar}><Card className={styles.overviewCard}><Skeleton active /></Card><Card className={styles.overviewCard}><Skeleton active /></Card></aside>
   if (summaryQuery.isError || !summaryQuery.data) return <aside className={styles.sidebar}><Card className={styles.overviewCard}><Alert type="error" showIcon message="交付概览加载失败" description={errorText(summaryQuery.error)} action={<Button size="small" onClick={() => void summaryQuery.refetch()}>重试</Button>} /></Card><Card className={styles.overviewCard}><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="仓库数据不可用" /></Card></aside>
 
-  const { countsByStatus, repositorySummaries, requirementGroupSummary } = summaryQuery.data
-  const pendingItems = items.filter((item) => item.capabilities.canApprove || item.capabilities.canReject || item.capabilities.canRetryDelivery).slice(0, 5)
+  const { countsByStatus, repositorySummaries, requirementGroupSummaries } = summaryQuery.data
   const accepted = (countsByStatus.ACCEPTED ?? 0) + (countsByStatus.DELIVERED ?? 0)
   const processing = countsByStatus.PROCESSING ?? 0
   const failed = countsByStatus.FAILED ?? 0
@@ -401,10 +407,10 @@ function DeliveryOverview({ summaryQuery, items, total, groupId, onFocus }: { su
       {repositorySummaries.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无仓库交付" /> : <div className={styles.repositoryList}>{repositorySummaries.map((repository) => <div className={styles.repositoryRow} key={repository.repositoryId}><div><strong>{repository.name}</strong><span>{repository.accepted}/{repository.total} 已交付</span></div><div><Tag color={repository.failed > 0 ? 'red' : repository.pending > 0 ? 'orange' : 'green'}>{repository.deliveryStatus ?? '暂无'}</Tag>{repository.mergeRequestSummary ? <small>MR #{repository.mergeRequestSummary.number}</small> : null}</div></div>)}</div>}
     </Card>
     <Card className={styles.overviewCard} title={<span>待我处理 <Text type="secondary">{summaryQuery.data.pendingForCurrentUser}</Text></span>}>
-      {pendingItems.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待处理交付" /> : <div className={styles.pendingList}>{pendingItems.map((item) => <button type="button" key={item.id} onClick={() => onFocus(item.id)}><span className={styles.pendingDot} style={{ background: TYPE_COLORS[item.resourceType] }} /> <span>{item.title}</span><small>{STATUS_LABELS[item.displayStatus]}</small></button>)}</div>}
+      <div className={styles.projectInfo}><SettingOutlined /><span>{summaryQuery.data.pendingForCurrentUser > 0 ? '当前筛选数据集中有待处理交付。' : '当前没有待处理交付。'}</span></div>
     </Card>
     <Card className={styles.overviewCard} title="需求信息">
-      {groupId ? <GroupSummary summary={requirementGroupSummary.find((group) => group.requirementGroupId === groupId)} /> : <div className={styles.projectInfo}><SettingOutlined /><span>当前展示项目级交付概览，可通过需求群筛选查看单组统计。</span></div>}
+      {groupId ? <GroupSummary summary={requirementGroupSummaries.find((group) => group.requirementGroupId === groupId)} /> : <div className={styles.projectInfo}><SettingOutlined /><span>当前展示项目级交付概览，可通过需求群筛选查看单组统计。</span></div>}
     </Card>
   </aside>
 }

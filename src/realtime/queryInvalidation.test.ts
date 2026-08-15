@@ -76,6 +76,21 @@ describe('project SSE Task model query invalidation mapping', () => {
     expect(repositoryKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'diffs', 'diff-1']))
   })
 
+  it('invalidates DeliveryCenter and resource queries for frozen Memory and Skill events', () => {
+    const memoryKeys = keysFor('memory.approved', { resourceType: 'MEMORY', resourceId: 'memory-1', eventVersion: 1, updatedAt: '2026-08-15T00:00:00Z' })
+    expect(memoryKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']))
+    expect(memoryKeys).toContain(JSON.stringify(['memories', projectId]))
+    const skillKeys = keysFor('skill.published', { resourceType: 'SKILL', resourceId: 'skill-1', eventVersion: 1, updatedAt: '2026-08-15T00:00:00Z' })
+    expect(skillKeys).toContain(JSON.stringify(['skills', projectId]))
+  })
+
+  it('maps skipped Diff and MR updates without writing entity cache', () => {
+    const skipped = keysFor('diff-review.skipped', { taskId: 'task-1', reason: 'FINAL_DIFF_EMPTY' })
+    expect(skipped).toContain(JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']))
+    const mergeRequest = keysFor('merge-request.updated', { mergeRequestId: 'mr-1' })
+    expect(mergeRequest).toEqual([JSON.stringify(['qgents', 'projects', projectId, 'delivery-center'])])
+  })
+
   it('ignores mismatched projects and missing required IDs without broad invalidation', () => {
     expect(queryKeysForProjectTaskEvent(projectId, {
       id: 'evt-2',
@@ -109,6 +124,7 @@ describe('project SSE Task model query invalidation mapping', () => {
       JSON.stringify(['qgents', 'projects', projectId, 'diffs']),
       JSON.stringify(['qgents', 'projects', projectId, 'task-artifacts']),
       JSON.stringify(['qgents', 'projects', projectId, 'task-diff-review']),
+      JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']),
     ])
   })
 })

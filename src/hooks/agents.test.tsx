@@ -22,7 +22,9 @@ const agent: AgentSummary = {
   status: 'ACTIVE',
   createdBy: 'user-one',
   description: null,
-  runtime: { status: 'IDLE', activeRunCount: 0, concurrencyLimit: 1, assignmentUsage: { requirementGroups: { assignedCount: 0, assignableCount: 0 }, workflows: { assignedCount: 0, assignableCount: 0 } } },
+  skillAccessScope: 'PROJECT',
+  memoryAccessScope: 'PROJECT',
+runtime: { status: 'IDLE', activeRunCount: 0, concurrencyLimit: null, assignmentUsage: { requirementGroups: { assignedCount: 0, assignableCount: 0 }, workflows: { assignedCount: 0, assignableCount: 0 } } },
 }
 
 const detail = (id: string): AgentDetail => ({ ...agent, id, description: id, prompt: `${id} prompt`, tools: [], memoryAccess: [] })

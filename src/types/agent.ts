@@ -5,6 +5,7 @@ export type AgentVisibility = 'PRIVATE' | 'TEAM' | 'SYSTEM'
 export type AgentStatus = 'ACTIVE' | 'ARCHIVED'
 export type AgentDetailTab = 'overview' | 'assignments' | 'config' | 'capabilities' | 'runs'
 export type AgentRuntimeStatus = 'IDLE' | 'RUNNING'
+export type AgentAccessScope = 'PROJECT'
 
 export interface AgentAssignmentUsage {
   assignedCount: number
@@ -14,7 +15,7 @@ export interface AgentAssignmentUsage {
 export interface AgentRuntimeSummary {
   status: AgentRuntimeStatus
   activeRunCount: number
-  concurrencyLimit: number
+  concurrencyLimit: number | null
   assignmentUsage: {
     requirementGroups: AgentAssignmentUsage
     workflows: AgentAssignmentUsage
@@ -32,8 +33,8 @@ export interface AgentSummary {
   createdBy: string | null
   description: string | null
   runtime: AgentRuntimeSummary
-  skillAccessScope?: string
-  memoryAccessScope?: string
+  skillAccessScope: AgentAccessScope
+  memoryAccessScope: AgentAccessScope
 }
 
 export interface AgentDetail extends AgentSummary {
@@ -76,7 +77,7 @@ export interface AgentTaskRunSummary {
   startedAt: string | null
   finishedAt: string | null
   durationMs: number | null
-  task: { id: string; displayId: string | null; title: string }
+  task: { id: string; displayCode: string | null; title: string }
   taskStep: { id: string; title: string; role: string }
   requirementGroup: { id: string; name: string }
   repository: { id: string; displayName: string } | null

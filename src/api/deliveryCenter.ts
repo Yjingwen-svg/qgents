@@ -8,7 +8,7 @@ import type {
   DeliveryItem,
   DeliveryItemsFilters,
   DeliveryItemsResponse,
-  DeliverySummary,
+  DeliverySummaryResponse,
   DeliverySummaryFilters,
   MemoryDeliveryItem,
   SkillDeliveryItem,
@@ -36,10 +36,10 @@ export const deliveryCenterApi = {
   },
 
   summary(projectId: string, filters: DeliverySummaryFilters = {}) {
-    return request<{ data: DeliverySummary; requestId: string }>(
+    return request<DeliverySummaryResponse>(
       withQuery(`/projects/${projectId}/delivery-summary`, filters),
       { unwrapData: false },
-    ).then((response) => response.data)
+    ).then((response) => ({ ...response.data, requestId: response.requestId }))
   },
 
   perform(input: DeliveryActionInput): Promise<Memory | Skill | DiffReviewBatch> {

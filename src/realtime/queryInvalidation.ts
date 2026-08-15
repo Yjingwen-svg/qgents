@@ -1,5 +1,5 @@
 import type { QueryKey } from '@tanstack/react-query'
-import { queryClient, taskModelQueryKeys } from '@/query'
+import { deliveryCenterKeys, queryClient, taskModelQueryKeys } from '@/query'
 import type { ProjectTaskEvent, ProjectTaskEventPayload } from './eventParser'
 
 export const TASK_MODEL_QUERY_ROOTS = (projectId: string): readonly QueryKey[] => [
@@ -8,6 +8,7 @@ export const TASK_MODEL_QUERY_ROOTS = (projectId: string): readonly QueryKey[] =
   taskModelQueryKeys.diffs.all(projectId),
   taskModelQueryKeys.taskArtifacts.root(projectId),
   taskModelQueryKeys.taskDiffReview.root(projectId),
+  deliveryCenterKeys.all(projectId),
 ]
 
 function stringId(payload: ProjectTaskEventPayload, name: string): string | null {
@@ -32,7 +33,15 @@ export function queryKeysForProjectTaskEvent(
   const taskRunId = stringId(payload, 'taskRunId')
   const diffId = stringId(payload, 'diffId')
   const artifactId = stringId(payload, 'artifactId')
+  const resourceType = stringId(payload, 'resourceType')
+  const resourceId = stringId(payload, 'resourceId')
   const keys: QueryKey[] = []
+
+  const addDeliveryQueries = (): void => {
+    addKey(keys, deliveryCenterKeys.all(projectId))
+    if (resourceType === 'MEMORY') addKey(keys, ['memories', projectId])
+    if (resourceType === 'SKILL') addKey(keys, ['skills', projectId])
+  }
 
   switch (event.type) {
     case 'task.updated':
@@ -73,6 +82,7 @@ export function queryKeysForProjectTaskEvent(
         addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
         addKey(keys, taskModelQueryKeys.taskRuns.all(projectId, taskId))
       }
+      addKey(keys, deliveryCenterKeys.all(projectId))
       break
     case 'task.artifact.created':
       if (!taskId || !artifactId) return []
@@ -94,6 +104,14 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.tasks.all(projectId))
       addKey(keys, taskModelQueryKeys.taskDiffReview.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      addDeliveryQueries()
+      break
+    case 'diff-review.skipped':
+      if (!taskId) return []
+      addKey(keys, taskModelQueryKeys.tasks.all(projectId))
+      addKey(keys, taskModelQueryKeys.taskDiffReview.detail(projectId, taskId))
+      addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      addDeliveryQueries()
       break
     case 'delivery.repository.updated':
       if (!taskId || !diffId) return []
@@ -101,6 +119,7 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.taskDiffReview.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.diffs.detail(projectId, diffId))
+      addDeliveryQueries()
       break
     case 'delivery.completed':
     case 'delivery.failed':
@@ -108,6 +127,30 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.tasks.all(projectId))
       addKey(keys, taskModelQueryKeys.taskDiffReview.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      addDeliveryQueries()
+      break
+    case 'merge-request.updated':
+      addDeliveryQueries()
+      if (taskId) {
+        addKey(keys, taskModelQueryKeys.tasks.all(projectId))
+        addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+        addKey(keys, taskModelQueryKeys.taskDiffReview.detail(projectId, taskId))
+      }
+      break
+    case 'memory.submit-review':
+    case 'memory.approved':
+    case 'memory.rejected':
+    case 'memory.archived':
+    case 'skill.submit-review':
+    case 'skill.published':
+    case 'skill.rejected':
+    case 'skill.archived':
+      if (!resourceId || !resourceType) return []
+      addDeliveryQueries()
+      if (taskId) {
+        addKey(keys, taskModelQueryKeys.tasks.all(projectId))
+        addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      }
       break
   }
 

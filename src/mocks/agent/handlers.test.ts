@@ -13,7 +13,7 @@ const json = async <T,>(response: Response): Promise<T> => response.json() as Pr
 describe('Agent team MSW API', () => {
   it('returns only the current user DTOs without Prompt', async () => {
     const result = await json<{ data: Array<Record<string, unknown>>; page: { nextCursor: string | null; hasMore: boolean }; requestId: string }>(await fetch(`${baseUrl}/teams/team-a/agents`))
-    expect(result.data[0]).toMatchObject({ id: 'agent-private-backend', createdBy: 'user-001', visibility: 'PRIVATE', status: 'ACTIVE', runtime: { status: 'RUNNING', activeRunCount: 1, concurrencyLimit: 3 } })
+    expect(result.data[0]).toMatchObject({ id: 'agent-private-backend', createdBy: 'user-001', visibility: 'PRIVATE', status: 'ACTIVE', skillAccessScope: 'PROJECT', memoryAccessScope: 'PROJECT', runtime: { status: 'RUNNING', activeRunCount: 1, concurrencyLimit: null } })
     expect(result.data.every((agent) => agent.createdBy === 'user-001')).toBe(true)
     expect(result.data.every((agent) => agent.prompt === undefined && agent.availability === undefined && agent.permissions === undefined)).toBe(true)
     expect(result.page).toEqual({ nextCursor: null, hasMore: false })
@@ -75,13 +75,14 @@ describe('Agent team MSW API', () => {
     const active = runs.data.filter((run) => ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED', 'CANCELLING'].includes(run.status)).length
     const backend = agents.data.find((item) => item.id === 'agent-private-backend')
     expect(backend?.runtime.activeRunCount).toBe(active)
-    expect(backend?.runtime.activeRunCount).toBeLessThanOrEqual(backend?.runtime.concurrencyLimit ?? 0)
+    if (backend && backend.runtime.concurrencyLimit !== null) expect(backend.runtime.activeRunCount).toBeLessThanOrEqual(backend.runtime.concurrencyLimit)
     expect(backend?.runtime.status).toBe(active > 0 ? 'RUNNING' : 'IDLE')
     const tester = agents.data.find((item) => item.id === 'agent-team-tester')
     expect(tester?.runtime).toMatchObject({ status: 'IDLE', activeRunCount: 0 })
     const assignments = await json<{ data: Array<unknown> }>(await fetch(`${baseUrl}/projects/demo-project/agents/agent-private-backend/assignments?type=REQUIREMENT_GROUP`))
     expect(backend?.runtime.assignmentUsage.requirementGroups.assignedCount).toBe(assignments.data.length)
     const workflows = await json<{ data: Array<unknown> }>(await fetch(`${baseUrl}/projects/demo-project/agents/agent-private-backend/assignments?type=WORKFLOW`))
-    expect(backend?.runtime.assignmentUsage.workflows.assignedCount).toBe(workflows.data.length)
+    expect(backend?.runtime.assignmentUsage.workflows.assignedCount).toBe(0)
+    expect(workflows.data).toEqual([])
   })
 })

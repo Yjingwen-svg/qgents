@@ -34,6 +34,7 @@ function renderPage(initialEntry: string) {
         <Routes>
           <Route path="/app/projects/:projectId/diffs" element={<DeliveryCenterPage />} />
           <Route path="/app/projects/:projectId/diffs/:diffId" element={<div>Diff Center</div>} />
+          <Route path="/app/projects/:projectId/tasks/:taskId" element={<div>Task Detail</div>} />
         </Routes>
         <LocationProbe />
       </MemoryRouter>
@@ -59,7 +60,7 @@ describe('DeliveryCenterPage', () => {
     expect(screen.getAllByText('CODE').length).toBeGreaterThan(0)
   })
 
-  it('routes code details to Diff Center and enforces capabilities plus rejection reason validation', async () => {
+  it('routes code details through the formal openTarget and enforces capabilities plus rejection reason validation', async () => {
     const firstRender = renderPage('/app/projects/project-delivery-center/diffs')
     await screen.findByText('Draft memory')
     fireEvent.click(await screen.findByRole('button', { name: '加载更多' }))
@@ -67,9 +68,18 @@ describe('DeliveryCenterPage', () => {
     const codeCard = codeTitle?.closest('article')
     if (!codeCard) throw new Error('code card not rendered')
     fireEvent.click(within(codeCard).getByRole('button', { name: /查看 Diff/ }))
-    expect(await screen.findByText('Diff Center')).toBeInTheDocument()
+    expect(await screen.findByText('Task Detail')).toBeInTheDocument()
 
     firstRender.unmount()
+    const diffRender = renderPage('/app/projects/project-delivery-center/diffs')
+    await screen.findByText('Draft memory')
+    fireEvent.click(await screen.findByRole('button', { name: '加载更多' }))
+    const partialTitle = (await screen.findAllByText('Code delivery partially failed')).find((element) => element.closest('article'))
+    const partialCard = partialTitle?.closest('article')
+    if (!partialCard) throw new Error('partial code card not rendered')
+    fireEvent.click(within(partialCard).getByRole('button', { name: /查看 Diff/ }))
+    expect(await screen.findByText('Diff Center')).toBeInTheDocument()
+    diffRender.unmount()
     const secondRender = renderPage('/app/projects/project-delivery-center/diffs')
     await screen.findByText('Draft memory')
     fireEvent.click(screen.getByRole('button', { name: '加载更多' }))

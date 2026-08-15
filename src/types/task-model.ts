@@ -42,7 +42,15 @@ export interface TaskUserSummary { id: string; displayName: string; avatarUrl: s
 export interface TaskRepositorySummary { repositoryId: string; name: string; fullName: string; provider: string; defaultBranch: string; baseRef: string; baseCommit: string; sourceBranch: string; headCommit: string | null }
 export interface TaskExecutionSummary { totalSteps: number; pendingSteps: number; runningSteps: number; waitingSteps: number; blockedSteps: number; succeededSteps: number; failedSteps: number; currentStage: TaskStepRole | null; currentStageTitle: string | null; requiresUserAction: boolean }
 export type TaskAttentionKind = 'INPUT_REQUIRED' | 'APPROVAL_REQUIRED' | 'BLOCKED' | 'EXECUTION_FAILED' | 'DIFF_CONFIRMATION_REQUIRED' | 'DELIVERY_FAILED'
-export interface TaskAttention { kind: TaskAttentionKind; title: string; summary: string }
+export interface TaskAttention {
+  kind: TaskAttentionKind
+  title: string
+  summary: string | null
+  taskRunId: string | null
+  inputRequestId: string | null
+  diffReviewBatchId: string | null
+  repositoryId: string | null
+}
 
 export interface TaskListItem {
   id: string
@@ -276,5 +284,5 @@ export interface DiffReviewBatch {
   aggregateHash: string
   reviewReason: string | null
   diffs: DiffListItem[]
-  repositoryDeliveries: Array<{ repositoryId: string; repositoryName: string; diffId: string | null; deliveryStatus: 'NOT_STARTED' | 'COMMITTED' | 'MR_CREATED' | 'FAILED'; failureCode: string | null; failureReason: string | null; mergeRequest: { id: string; number: number; title: string; status: string; webUrl: string | null } | null; updatedAt: string }>
+  repositoryDeliveries: Array<{ repositoryId: string; repositoryName: string; diffId: string; deliveryStatus: 'NOT_STARTED' | 'COMMITTED' | 'MR_CREATED' | 'FAILED'; failureCode: string | null; failureReason: string | null; mergeRequest: { id: string; number: number; title: string; status: string; webUrl: string | null } | null; updatedAt: string }>
 }

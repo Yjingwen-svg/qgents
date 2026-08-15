@@ -30,6 +30,18 @@ describe('Delivery Center aggregate mock', () => {
     expect(response.data.every((item) => item.projectId === 'proj-001')).toBe(true)
   })
 
+  it('returns frozen openTarget variants and does not expose pendingItems', async () => {
+    const response = await deliveryCenterApi.list('project-delivery-center', { type: 'CODE', limit: 20 })
+    const taskReview = response.data.find((item) => item.id === 'delivery-code-processing')
+    const diffTarget = response.data.find((item) => item.id === 'delivery-code-partial')
+    expect(taskReview?.openTarget).toEqual({ kind: 'TASK_DIFF_REVIEW', taskId: 'task-delivery-001', diffReviewBatchId: 'diff-review-processing' })
+    expect(diffTarget?.openTarget).toEqual({ kind: 'DIFF', taskId: 'task-delivery-001', diffId: 'diff-delivery-code-partial' })
+    const summary = await deliveryCenterApi.summary('project-delivery-center', { type: 'SKILL', status: 'ACCEPTED' })
+    expect(summary.requestId).toBe('delivery-summary-project-delivery-center')
+    expect(summary).not.toHaveProperty('pendingItems')
+    expect(summary.requirementGroupSummaries.every((group) => group.requirementGroupId)).toBe(true)
+  })
+
   it('covers filters, null source/group fields, multi-repository code and server capabilities', async () => {
     const code = await deliveryCenterApi.list('project-delivery-center', { type: 'CODE', repositoryId: 'repo-docs' })
     expect(code.data).toHaveLength(1)

@@ -82,7 +82,7 @@ function statusTag(status: GithubInstallation['status']) {
 }
 
 // 给当前团队安装 GitHub App
-export function GitHubIntegrationPage() {
+export default function GitHubIntegrationPage() {
   const { token } = theme.useToken()
   const { message } = App.useApp() //toast
   const navigate = useNavigate()

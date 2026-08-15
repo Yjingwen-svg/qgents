@@ -21,7 +21,7 @@ interface MainGroupSession {
  * 项目群聊工作台 —— 左边聚合「所有项目的主群」，右边内嵌聊天面板。
  * 数据：teamApi.listMine → 各 team 的 projectApi.listByTeam → 各 project 的 groupApi.listByProject（取 PROJECT_MAIN）。
  */
-export function ChatWorkspacePage() {
+export default function ChatWorkspacePage() {
   const { token } = theme.useToken()
   const [selected, setSelected] = useState<MainGroupSession | null>(null)
   const [keyword, setKeyword] = useState('')

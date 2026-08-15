@@ -12,7 +12,7 @@ import styles from './TaskDetailPage.module.scss'
 const { Text, Title } = Typography
 const ARTIFACT_TYPES: TaskArtifactType[] = ['PLAN', 'CODING', 'TESTING', 'REVIEWING']
 
-export function TaskDetailPage() {
+export default function TaskDetailPage() {
   const { projectId = '', taskId = '' } = useParams<{ projectId: string; taskId: string }>()
   const location = useLocation()
   const taskQuery = useTask(projectId, taskId)

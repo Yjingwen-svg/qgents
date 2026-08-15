@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DiffDetail, DiffListItem } from '@/types/task-model'
-import { DiffCenterPage } from './DiffCenterPage'
+import DiffCenterPage from './DiffCenterPage'
 
 const useInfiniteDiffsMock = vi.hoisted(() => vi.fn())
 const useDiffMock = vi.hoisted(() => vi.fn())

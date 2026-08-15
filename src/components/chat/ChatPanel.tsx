@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Layout, Button, Input, Space, Typography, theme, Empty, Image, Tag } from 'antd'
 import {
@@ -69,7 +69,16 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     queryFn: () => groupApi.listMessages(projectId, groupId),
     enabled: !!projectId && !!groupId,
   })
-  const messages = page?.data ?? []
+  // 后端消息列表不保证顺序，按 sequence（缺则退回 createdAt）升序排，保证新消息在下方
+  const messages = useMemo(() => {
+    const list = page?.data ?? []
+    return [...list].sort((a, b) => {
+      const as = a.sequence ?? Number.MAX_SAFE_INTEGER
+      const bs = b.sequence ?? Number.MAX_SAFE_INTEGER
+      if (as !== bs) return as - bs
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    })
+  }, [page])
 
   // 新消息自动滚动到底部
   useEffect(() => {

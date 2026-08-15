@@ -20,7 +20,7 @@ const taskCenterTheme: ThemeConfig = {
   token: { colorPrimary: '#0d9b9b', colorBgBase: '#ffffff', colorBgContainer: '#ffffff', colorBgElevated: '#ffffff', colorText: '#12213d', colorTextSecondary: '#6d7d95', colorBorder: '#e4eaf2', colorFillAlter: '#f7f9fc', borderRadius: 8 },
 }
 
-export function TaskCenterPage() {
+export default function TaskCenterPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()

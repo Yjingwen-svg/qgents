@@ -28,7 +28,7 @@ function statusColor(status: DiffListItem['status']): string {
   return status === 'PENDING_REVIEW' ? 'gold' : status === 'ACCEPTED' ? 'green' : 'red'
 }
 
-export function DiffCenterPage() {
+export default function DiffCenterPage() {
   const { projectId = '', diffId = '' } = useParams<{ projectId: string; diffId?: string }>()
   const [searchParams] = useSearchParams()
   const taskId = searchParams.get('taskId')?.trim() || undefined

@@ -105,7 +105,7 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
   )
 }
 
-export function TeamDetailPage() {
+export default function TeamDetailPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
   const [activeView, setActiveView] = useState<TeamDetailView>('projects')
   const [createOpen, setCreateOpen] = useState(false)

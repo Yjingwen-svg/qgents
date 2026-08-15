@@ -5,7 +5,7 @@ import { PATHS } from '@/routes/paths'
 /**
  * 404 页面 —— 路由未匹配时展示
  */
-export function NotFoundPage() {
+export default function NotFoundPage() {
   const navigate = useNavigate()
   const [hover, setHover] = useState(false)
 

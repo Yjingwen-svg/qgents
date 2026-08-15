@@ -39,7 +39,7 @@ const { Text } = Typography
  * TODO[后端联调] GET/POST /projects/{projectId}/diffs/{diffId}/comments
  * 本期指定 Reviewer / Reviewer 管理不做。
  */
-export function DiffReviewPage() {
+export default function DiffReviewPage() {
   const { message } = App.useApp()
   const { projectId = '', branchId = '' } = useParams<{
     projectId: string

@@ -11,7 +11,7 @@ import styles from './TaskRunDetailPage.module.scss'
 
 const { Text, Title } = Typography
 
-export function TaskRunDetailPage() {
+export default function TaskRunDetailPage() {
   const { projectId = '', taskId = '', taskRunId = '' } = useParams<{ projectId: string; taskId: string; taskRunId: string }>()
   const navigate = useNavigate()
   const location = useLocation()

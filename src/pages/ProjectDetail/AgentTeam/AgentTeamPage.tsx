@@ -21,7 +21,7 @@ function agentLoadErrorMessage(error: unknown): string {
   return 'Agent 数据加载失败'
 }
 
-export function AgentTeamPage() {
+export default function AgentTeamPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const location = useLocation()
   const navigate = useNavigate()

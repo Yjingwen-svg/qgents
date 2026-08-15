@@ -100,3 +100,67 @@
   border: 1px dashed var(--qg-border-dark);
   border-radius: 10px;
 }
+/* ===== 邀请列表 ===== */
+.join-team__invite-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.join-team__invite-item {
+  background: var(--qg-navy-card);
+  border: 1px solid var(--qg-border-dark);
+  border-radius: 12px;
+  padding: 16px 18px;
+  transition: border-color 0.2s;
+}
+
+.join-team__invite-item:hover {
+  border-color: var(--qg-green);
+}
+
+.join-team__invite-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.join-team__invite-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.join-team__invite-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.join-team__invite-title strong {
+  font-size: 15px;
+  color: var(--qg-text-on-dark);
+}
+
+.join-team__invite-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--qg-text-on-dark-secondary);
+  flex-wrap: wrap;
+}
+
+.join-team__invite-dot {
+  color: var(--qg-border-dark);
+}
+
+.join-team__invite-item .ant-btn {
+  flex-shrink: 0;
+}

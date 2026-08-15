@@ -331,7 +331,7 @@ function DeliveryItemCard({
       <div className={styles.itemBody}>
         <div className={styles.itemTitleRow}><div><strong>{item.title}</strong>{item.version ? <Tag className={styles.versionTag}>{item.version}</Tag> : null}</div><Tag color={STATUS_COLORS[item.displayStatus]}>{STATUS_LABELS[item.displayStatus]}</Tag></div>
         <div className={styles.itemSummary}>{item.resourceType === 'CODE' ? <CodeDetails item={item} /> : item.resourceType === 'MEMORY' ? <MemoryDetails item={item} /> : <SkillDetails item={item} />}</div>
-        <div className={styles.itemFooter}><span><UserOutlined /> {item.creator.displayName}</span><span>创建于 {formatDate(item.createdAt)}</span>{item.submittedAt ? <span>提交于 {formatDate(item.submittedAt)}</span> : null}{item.reviewer ? <span>审核者 {item.reviewer.displayName}</span> : null}</div>
+        <div className={styles.itemFooter}><span><UserOutlined /> {item.creator?.displayName ?? '未知'}</span><span>创建于 {formatDate(item.createdAt)}</span>{item.submittedAt ? <span>提交于 {formatDate(item.submittedAt)}</span> : null}{item.reviewer ? <span>审核者 {item.reviewer.displayName}</span> : null}</div>
         {item.reviewReason ? <div className={styles.reviewReason}><WarningOutlined /> {item.reviewReason}</div> : null}
         <div className={styles.itemActions}>
           {item.resourceType === 'CODE' ? <CodeActions item={item} active={active} onAction={onAction} onReject={onReject} onOpenResource={onOpenResource} /> : <ResourceActions item={item} active={active} onAction={onAction} onReject={onReject} onOpenResource={onOpenResource} />}
@@ -347,7 +347,7 @@ function CodeDetails({ item }: { item: CodeDeliveryItem }) {
 }
 
 function MemoryDetails({ item }: { item: MemoryDeliveryItem }) {
-  return <><div className={styles.detailLine}><span><FileTextOutlined /> {item.category} · {item.visibility} · {item.resourceStatus}</span><span>{item.sources.length > 0 ? `来源消息 ${item.sources.map((source) => display(source.messageId)).join('、')}` : '无关联来源'}</span></div><div className={styles.excerpt}>{display(item.contentExcerpt)}</div><Tags tags={item.tags} /></>
+  return <><div className={styles.detailLine}><span><FileTextOutlined /> {item.category} · {item.visibility} · {item.resourceStatus}</span><span>{(item.sources ?? []).length > 0 ? `来源消息 ${(item.sources ?? []).map((source) => display(source.messageId)).join('、')}` : '无关联来源'}</span></div><div className={styles.excerpt}>{display(item.contentExcerpt)}</div><Tags tags={item.tags} /></>
 }
 
 function SkillDetails({ item }: { item: SkillDeliveryItem }) {
@@ -355,7 +355,7 @@ function SkillDetails({ item }: { item: SkillDeliveryItem }) {
 }
 
 function Tags({ tags }: { tags: string[] }) {
-  return <span className={styles.tags}>{tags.map((tag) => <Tag key={tag} icon={<TagsOutlined />}>{tag}</Tag>)}</span>
+  return <span className={styles.tags}>{(tags ?? []).map((tag) => <Tag key={tag} icon={<TagsOutlined />}>{tag}</Tag>)}</span>
 }
 
 function ResourceActions({ item, active, onAction, onReject, onOpenResource }: { item: MemoryDeliveryItem | SkillDeliveryItem; active: boolean; onAction: (item: DeliveryItem, action: DeliveryAction) => Promise<void>; onReject: (item: DeliveryItem) => void; onOpenResource: (item: DeliveryItem) => void }) {

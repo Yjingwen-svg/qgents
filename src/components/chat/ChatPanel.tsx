@@ -363,7 +363,7 @@ function MessageBubble({
   }
 
   const alignSelf = isSelf ? 'flex-end' : 'flex-start'
-  const bubbleBg = isSelf ? token.colorPrimary : token.colorBgContainer
+  const bubbleBg = isSelf ? token.colorPrimary : token.colorFillSecondary
   const bubbleColor = isSelf ? '#fff' : token.colorText
   const bubbleBorder = isSelf ? 'none' : `1px solid ${token.colorBorder}`
   const isCode = message.type === 'CODE'

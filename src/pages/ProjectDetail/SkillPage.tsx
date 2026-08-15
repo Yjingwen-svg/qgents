@@ -28,7 +28,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'ALL', label: '全部' },
   { key: 'DRAFT', label: '草稿' },
   { key: 'PENDING_REVIEW', label: '待审核' },
-  { key: 'APPROVED', label: '已发布' },
+  { key: 'PUBLISHED', label: '已发布' },
   { key: 'REJECTED', label: '已拒绝' },
   { key: 'ARCHIVED', label: '已归档' },
 ]
@@ -36,7 +36,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 const STATUS_META: Record<SkillStatus, { color: string; label: string }> = {
   DRAFT: { color: 'default', label: '草稿' },
   PENDING_REVIEW: { color: 'orange', label: '待审核' },
-  APPROVED: { color: 'green', label: '已发布' },
+  PUBLISHED: { color: 'green', label: '已发布' },
   REJECTED: { color: 'red', label: '已拒绝' },
   ARCHIVED: { color: 'default', label: '已归档' },
 }
@@ -179,8 +179,8 @@ export function SkillPage() {
 
 /** 列表卡片 */
 function SkillCard({ skill, onClick }: { skill: Skill; onClick: () => void }) {
-  const meta = STATUS_META[skill.status]
-  const vis = VISIBILITY_META[skill.visibility]
+  const meta = STATUS_META[skill.status] ?? { color: 'default', label: skill.status }
+  const vis = VISIBILITY_META[skill.visibility] ?? { color: 'default', label: skill.visibility }
   return (
     <div
       onClick={onClick}
@@ -219,14 +219,14 @@ function SkillCard({ skill, onClick }: { skill: Skill; onClick: () => void }) {
         {skill.content}
       </Paragraph>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        {skill.tags.map((t) => (
+        {(skill.tags ?? []).map((t) => (
           <Tag key={t} icon={<TagsOutlined />} bordered={false} style={{ color: '#9aa3b5' }}>
             {t}
           </Tag>
         ))}
         <Space size={4} style={{ marginLeft: 'auto' }}>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            {skill.creator.displayName}
+            {skill.creator?.displayName ?? '未知'}
           </Text>
         </Space>
       </div>
@@ -249,8 +249,8 @@ function SkillDetail({
   onAction: (type: 'submit' | 'approve' | 'reject' | 'archive') => Promise<void>
 }) {
   if (!skill) return <Drawer open={false} onClose={onClose} />
-  const meta = STATUS_META[skill.status]
-  const vis = VISIBILITY_META[skill.visibility]
+  const meta = STATUS_META[skill.status] ?? { color: 'default', label: skill.status }
+  const vis = VISIBILITY_META[skill.visibility] ?? { color: 'default', label: skill.visibility }
 
   return (
     <Drawer
@@ -264,9 +264,9 @@ function SkillDetail({
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <div>
           <Tag color={vis.color}>{vis.label}</Tag>
-          {skill.tags.length > 0 && (
+          {(skill.tags ?? []).length > 0 && (
             <div style={{ marginTop: 8 }}>
-              {skill.tags.map((t) => (
+              {(skill.tags ?? []).map((t) => (
                 <Tag key={t} icon={<TagsOutlined />} style={{ marginBottom: 4 }}>
                   {t}
                 </Tag>
@@ -281,7 +281,7 @@ function SkillDetail({
 
         <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.8 }}>
           <div>
-            <UserOutlined /> 创建者：{skill.creator.displayName}
+            <UserOutlined /> 创建者：{skill.creator?.displayName ?? '未知'}
           </div>
           {skill.reviewer && (
             <div>
@@ -315,7 +315,7 @@ function SkillDetail({
               </Button>
             </>
           )}
-          {skill.status === 'APPROVED' && isAdmin && (
+          {skill.status === 'PUBLISHED' && isAdmin && (
             <Button onClick={() => onAction('archive')}>归档</Button>
           )}
           {skill.status === 'PENDING_REVIEW' && !isAdmin && (

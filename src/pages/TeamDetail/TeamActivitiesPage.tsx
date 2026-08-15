@@ -51,6 +51,7 @@ export function TeamActivitiesPage() {
     queryKey: ['teams', teamId, 'activities'],
     queryFn: () => teamApi.activities(teamId),
     enabled: !!teamId,
+    refetchInterval: 15_000,
   })
   const activities = activitiesData?.data ?? []
 

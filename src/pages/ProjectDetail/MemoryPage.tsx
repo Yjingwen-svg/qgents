@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Button,
   Drawer,
@@ -56,6 +56,7 @@ export function MemoryPage() {
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState<FilterKey>('ALL')
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [editId, setEditId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
 
   // 当前用户项目角色（判断是否可批准/拒绝/归档）
@@ -81,6 +82,7 @@ export function MemoryPage() {
   }, [memories, filter])
 
   const detail = memories.find((m) => m.id === detailId) ?? null
+  const editTarget = memories.find((m) => m.id === editId) ?? null
 
   const actions = {
     submit: useMutation({
@@ -158,6 +160,7 @@ export function MemoryPage() {
         isAdmin={isAdmin}
         onClose={() => setDetailId(null)}
         onEdit={() => {
+          setEditId(detail?.id ?? null)
           setDetailId(null)
           setCreateOpen(true)
         }}
@@ -171,11 +174,15 @@ export function MemoryPage() {
       <CreateMemoryModal
         projectId={projectId}
         open={createOpen}
-        editTarget={detail}
-        onClose={() => setCreateOpen(false)}
+        editTarget={editTarget}
+        onClose={() => {
+          setCreateOpen(false)
+          setEditId(null)
+        }}
         onCreated={() => {
           invalidate()
           setCreateOpen(false)
+          setEditId(null)
         }}
       />
     </div>
@@ -222,7 +229,7 @@ function MemoryCard({ memory, onClick }: { memory: Memory; onClick: () => void }
         <Tag bordered={false} style={{ color: token.colorTextSecondary }}>
           {memory.category}
         </Tag>
-        {memory.tags.map((t) => (
+        {(memory.tags ?? []).map((t) => (
           <Tag key={t} icon={<TagsOutlined />} bordered={false} style={{ color: '#9aa3b5' }}>
             {t}
           </Tag>
@@ -230,7 +237,7 @@ function MemoryCard({ memory, onClick }: { memory: Memory; onClick: () => void }
         <Space size={4} style={{ marginLeft: 'auto' }}>
           {memory.source === 'MESSAGE' && <MessageOutlined style={{ color: '#94a3b8', fontSize: 12 }} />}
           <Text type="secondary" style={{ fontSize: 12 }}>
-            {memory.creator.displayName}
+            {memory.creator?.displayName ?? '未知'}
           </Text>
         </Space>
       </div>
@@ -269,9 +276,9 @@ function MemoryDetail({
           <Text type="secondary" style={{ fontSize: 12 }}>
             分类：{memory.category}
           </Text>
-          {memory.tags.length > 0 && (
+          {(memory.tags ?? []).length > 0 && (
             <div style={{ marginTop: 8 }}>
-              {memory.tags.map((t) => (
+              {(memory.tags ?? []).map((t) => (
                 <Tag key={t} icon={<TagsOutlined />} style={{ marginBottom: 4 }}>
                   {t}
                 </Tag>
@@ -286,7 +293,7 @@ function MemoryDetail({
 
         <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.8 }}>
           <div>
-            <UserOutlined /> 创建者：{memory.creator.displayName}
+            <UserOutlined /> 创建者：{memory.creator?.displayName ?? '未知'}
           </div>
           {memory.reviewer && (
             <div>
@@ -294,9 +301,9 @@ function MemoryDetail({
               {memory.reviewedAt ? ` · ${formatDate(memory.reviewedAt)}` : ''}
             </div>
           )}
-          {memory.source === 'MESSAGE' && memory.sources.length > 0 && (
+          {memory.source === 'MESSAGE' && (memory.sources ?? []).length > 0 && (
             <div>
-              <MessageOutlined /> 来源：{memory.sources.length} 条群消息
+              <MessageOutlined /> 来源：{(memory.sources ?? []).length} 条群消息
             </div>
           )}
         </div>
@@ -366,15 +373,30 @@ function CreateMemoryModal({
   })
 
   // 选中群后拉取该群消息，供勾选具体消息（对齐接口文档 §9 sourceMessages，精确到 messageId）
-  const { data: messagePage } = useQuery({
+  // 游标分页：下拉滚动到底部自动加载下一页
+  const {
+    data: messagePages,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['groups', projectId, genGroupId, 'messages'],
-    queryFn: () => groupApi.listMessages(projectId, genGroupId ?? ''),
+    queryFn: ({ pageParam }) => groupApi.listMessages(projectId, genGroupId ?? '', pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.page.hasMore ? (lastPage.page.nextCursor ?? undefined) : undefined,
     enabled: !!genGroupId && mode === 'generate',
   })
-  const groupMessages = messagePage?.data ?? []
+  const groupMessages = useMemo(
+    () => messagePages?.pages.flatMap((p) => p.data) ?? [],
+    [messagePages],
+  )
 
-  const create = useMutation({
-    mutationFn: (payload: CreateMemoryPayload) => memoryApi.create(projectId, payload),
+  const save = useMutation({
+    mutationFn: (payload: CreateMemoryPayload) =>
+      editTarget
+        ? memoryApi.patch(projectId, editTarget.id, payload)
+        : memoryApi.create(projectId, payload),
     onSuccess: () => {
       form.resetFields()
       onCreated()
@@ -402,26 +424,28 @@ function CreateMemoryModal({
       title={editTarget ? '编辑 Memory' : '新建 Memory'}
       open={open}
       onCancel={onClose}
-      onOk={() => (mode === 'manual' ? form.submit() : genForm.submit())}
+      onOk={() => (editTarget || mode === 'manual' ? form.submit() : genForm.submit())}
       okText={editTarget ? '保存' : '创建'}
-      confirmLoading={create.isPending || generate.isPending}
+      confirmLoading={save.isPending || generate.isPending}
       destroyOnClose
     >
-      <Segmented
-        options={[
-          { label: '手动创建', value: 'manual' },
-          { label: '从群消息生成', value: 'generate' },
-        ]}
-        value={mode}
-        onChange={(v) => setMode(v as 'manual' | 'generate')}
-        style={{ marginBottom: 16 }}
-      />
+      {!editTarget && (
+        <Segmented
+          options={[
+            { label: '手动创建', value: 'manual' },
+            { label: '从群消息生成', value: 'generate' },
+          ]}
+          value={mode}
+          onChange={(v) => setMode(v as 'manual' | 'generate')}
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
-      {mode === 'manual' ? (
+      {editTarget || mode === 'manual' ? (
         <Form
           form={form}
           layout="vertical"
-          onFinish={(v) => create.mutate(v)}
+          onFinish={(v) => save.mutate(v)}
           initialValues={
             editTarget
               ? {
@@ -488,6 +512,33 @@ function CreateMemoryModal({
                 label: formatMessagePreview(m),
               }))}
               optionFilterProp="label"
+              onPopupScroll={(e) => {
+                const el = e.target as HTMLElement
+                if (
+                  el.scrollTop + el.clientHeight >= el.scrollHeight - 12 &&
+                  hasNextPage &&
+                  !isFetchingNextPage
+                ) {
+                  fetchNextPage()
+                }
+              }}
+              dropdownRender={(menu) => (
+                <>
+                  {menu}
+                  {hasNextPage && (
+                    <div
+                      style={{
+                        padding: '6px 12px',
+                        textAlign: 'center',
+                        color: '#94a3b8',
+                        fontSize: 12,
+                      }}
+                    >
+                      {isFetchingNextPage ? '加载中…' : '滚动加载更多'}
+                    </div>
+                  )}
+                </>
+              )}
             />
           </Form.Item>
           <Form.Item name="instruction" label="沉淀说明（可选）">
@@ -504,10 +555,52 @@ function formatDate(iso: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-/** 把消息 content 转成下拉选项里的可读摘要（TEXT/CODE 取文本，其余显示类型） */
+/** 把消息转成下拉选项里的可读摘要（带发送者 + 时间，各类型可辨认） */
 function formatMessagePreview(message: Message): string {
-  const c = message.content as { text?: string; code?: string }
-  if (c && typeof c.text === 'string' && c.text) return c.text
-  if (c && typeof c.code === 'string' && c.code) return `[代码] ${c.code.slice(0, 40)}`
-  return `[${message.type}]`
+  const time = formatTime(message.createdAt)
+  const sender =
+    message.senderType === 'SYSTEM'
+      ? '系统'
+      : (message.senderName ?? (message.senderType === 'AGENT' ? 'Agent' : '成员'))
+  return `${time} ${sender}｜${messageBody(message)}`
+}
+
+/** 各类型消息的可读正文 */
+function messageBody(message: Message): string {
+  const c = message.content as Record<string, unknown>
+  switch (message.type) {
+    case 'TEXT':
+    case 'SYSTEM':
+      return typeof c.text === 'string' ? c.text : ''
+    case 'CODE':
+      return `[代码] ${typeof c.code === 'string' ? c.code.slice(0, 40) : ''}`
+    case 'IMAGE':
+      return '[图片]'
+    case 'FILE':
+      return `[文件] ${typeof c.name === 'string' ? c.name : ''}`
+    case 'DIFF':
+      return `[交付] ${typeof c.title === 'string' && c.title ? c.title : ''}`
+    case 'TASK_STATUS':
+      return `[任务] ${
+        typeof c.message === 'string' && c.message
+          ? c.message
+          : typeof c.status === 'string'
+            ? c.status
+            : ''
+      }`
+    case 'QUOTE':
+      return `[引用] ${typeof c.quotedText === 'string' ? c.quotedText : ''}`
+    default:
+      return `[${message.type}]`
+  }
+}
+
+/** ISO 时间 → MM-DD HH:mm（用于消息选项摘要） */
+function formatTime(iso: string): string {
+  const d = new Date(iso)
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mi = String(d.getMinutes()).padStart(2, '0')
+  return `${mm}-${dd} ${hh}:${mi}`
 }

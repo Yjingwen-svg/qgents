@@ -45,7 +45,7 @@ const { Title, Paragraph, Text } = Typography
  *   隐藏行内绑定/解绑按钮，并显示「绑定到选中项目（N）」
  * - 确认框取消：退出多选并清空勾选
  */
-export function BindRepoToProjectPage() {
+export default function BindRepoToProjectPage() {
   const { token } = theme.useToken()
   const { message, modal } = App.useApp()
   const queryClient = useQueryClient()

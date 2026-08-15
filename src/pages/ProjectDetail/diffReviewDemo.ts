@@ -1,3 +1,4 @@
+// 中间显示的代码内容（AuthController.ts 那些行就写在这里）
 import type { DiffFile, DiffLine, DiffReviewView } from '@/types/diff'
 import { findDemoBranchById } from './codeBranchDemo'
 
@@ -14,7 +15,10 @@ function del(oldLine: number, text: string): DiffLine {
 }
 
 const AUTH_CONTROLLER: DiffFile = {
+  id: 'file-auth-controller',
+  sequence: 1,
   path: 'src/auth/AuthController.ts',
+  changeType: 'MODIFIED',
   status: 'MODIFIED',
   additions: 8,
   deletions: 2,
@@ -54,7 +58,10 @@ const AUTH_CONTROLLER: DiffFile = {
 }
 
 const JWT_MIDDLEWARE: DiffFile = {
+  id: 'file-jwt-middleware',
+  sequence: 2,
   path: 'src/auth/JwtMiddleware.ts',
+  changeType: 'ADDED',
   status: 'ADDED',
   additions: 18,
   deletions: 0,
@@ -83,7 +90,10 @@ const JWT_MIDDLEWARE: DiffFile = {
 }
 
 const AUTH_TYPES: DiffFile = {
+  id: 'file-auth-types',
+  sequence: 3,
   path: 'src/auth/types.ts',
+  changeType: 'ADDED',
   status: 'ADDED',
   additions: 12,
   deletions: 0,
@@ -108,7 +118,10 @@ const AUTH_TYPES: DiffFile = {
 }
 
 const AUTH_TEST: DiffFile = {
+  id: 'file-auth-test',
+  sequence: 4,
   path: 'test/auth/AuthController.test.ts',
+  changeType: 'ADDED',
   status: 'ADDED',
   additions: 16,
   deletions: 0,
@@ -131,7 +144,10 @@ const AUTH_TEST: DiffFile = {
 }
 
 const LOGIN_FLOW_PNG: DiffFile = {
+  id: 'file-login-flow',
+  sequence: 5,
   path: 'docs/login-flow.png',
+  changeType: 'ADDED',
   status: 'ADDED',
   additions: 0,
   deletions: 0,
@@ -212,7 +228,10 @@ function genericDiff(branchId: string): DiffReviewView {
     changeStats: { files: 2, additions, deletions },
     files: [
       {
+        id: 'file-index',
+        sequence: 1,
         path: 'src/index.ts',
+        changeType: 'MODIFIED',
         status: 'MODIFIED',
         additions,
         deletions,
@@ -232,7 +251,10 @@ function genericDiff(branchId: string): DiffReviewView {
         ],
       },
       {
+        id: 'file-readme',
+        sequence: 2,
         path: 'README.md',
+        changeType: 'ADDED',
         status: 'ADDED',
         additions: 3,
         deletions: 0,

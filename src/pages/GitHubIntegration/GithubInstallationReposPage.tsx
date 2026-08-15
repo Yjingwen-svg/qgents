@@ -65,7 +65,7 @@ function authorizationTag(status: GithubAuthorizedRepository['authorizationStatu
  * 列表列：已授权仓库 | 默认分支 | 同步状态 | 操作
  * 数据来自 GET /teams/{teamId}/integrations/github/repositories
  */
-export function GithubInstallationReposPage() {
+export default function GithubInstallationReposPage() {
   const navigate = useNavigate()
   const { message } = App.useApp()
   const queryClient = useQueryClient()

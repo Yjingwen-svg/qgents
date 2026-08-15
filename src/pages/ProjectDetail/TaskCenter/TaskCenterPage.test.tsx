@@ -12,7 +12,7 @@ const useTaskRunsMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/task-model', () => ({ useInfiniteTasks: useInfiniteTasksMock, useTask: useTaskMock, useTaskSteps: useTaskStepsMock, useTaskRuns: useTaskRunsMock }))
 
-import { TaskCenterPage } from './TaskCenterPage'
+import TaskCenterPage from './TaskCenterPage'
 
 const task: TaskListItem = {
   id: 'task-1', displayCode: 'T-1', projectId: 'project-test', title: '新任务', requirementSummary: '实现功能', status: 'RUNNING', deliveryMode: 'DIFF_FIRST',

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
-import { ProjectDetailLayout } from './ProjectDetailLayout'
+import ProjectDetailLayout from './ProjectDetailLayout'
 
 vi.mock('@/pages/ProjectDetail/requirements', () => ({ PROJECT_REQUIREMENTS: [] }))
 

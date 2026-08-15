@@ -13,7 +13,7 @@ import './MyTeamsPage.css'
  * - 按 myRole 拆成「我创建的」和「我参与的」
  * - 加载中显示 Spin，加载失败显示错误，无团队显示空状态
  */
-export function MyTeamsPage() {
+export default function MyTeamsPage() {
   const {
     data: teams,
     isLoading,

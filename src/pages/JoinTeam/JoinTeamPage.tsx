@@ -13,7 +13,7 @@ import './JoinTeamPage.css'
  *
  * 用户粘贴邮件邀请中的邀请令牌，调 POST /team-invitations/{token}/accept
  */
-export function JoinTeamPage() {
+export default function JoinTeamPage() {
   const navigate = useNavigate()
   const { setHasTeam } = useAuth()
   const queryClient = useQueryClient()

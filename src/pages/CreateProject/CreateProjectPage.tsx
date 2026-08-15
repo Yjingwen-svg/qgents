@@ -12,7 +12,7 @@ import './CreateProjectPage.css'
  * POST /teams/{teamId}/projects
  * 入口：团队详情页 →「创建项目」、个人中心 →「创建项目」
  */
-export function CreateProjectPage() {
+export default function CreateProjectPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
   const navigate = useNavigate()
 

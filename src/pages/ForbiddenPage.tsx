@@ -5,7 +5,7 @@ import { PATHS } from '@/routes/paths'
 /**
  * 403 页面 —— 权限不足时展示
  */
-export function ForbiddenPage() {
+export default function ForbiddenPage() {
   const navigate = useNavigate()
   const [hover, setHover] = useState(false)
 

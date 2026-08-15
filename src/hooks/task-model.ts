@@ -7,10 +7,11 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query'
-import { diffsApi, tasksApi, taskRunsApi } from '@/api/taskModel'
+import { diffsApi, mergeRequestsApi, tasksApi, taskRunsApi } from '@/api/taskModel'
 import { queryClient, taskModelQueryKeys } from '@/query'
 import type {
   DiffComment,
+  DiffCommentInput,
   DiffDetail,
   DiffFile,
   DiffListFilters,
@@ -35,6 +36,10 @@ import type {
   TaskModelPage,
   TaskArtifact,
   DiffReviewBatch,
+  MergeRequestCheck,
+  MergeRequestCreateInput,
+  MergeRequestListFilters,
+  MergeRequestSummary,
 } from '@/types/task-model'
 
 type Page<T> = TaskModelPage<T>
@@ -284,6 +289,18 @@ export function useRejectTaskRunInputRequest(projectId: string, taskRunId: strin
   return useInputRequestMutation(projectId, taskRunId, ({ requestId, input }) => taskRunsApi.rejectInputRequest(projectId, taskRunId, requestId, input))
 }
 
+export function useAddDiffComment(
+  projectId: string,
+  diffId: string,
+): UseMutationResult<DiffComment, Error, DiffCommentInput> {
+  return useMutation({
+    mutationFn: (input) => diffsApi.addComment(projectId, diffId, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.diffs.detail(projectId, diffId) })
+    },
+  })
+}
+
 export function useAcceptDiff(projectId: string): UseMutationResult<DiffDetail, Error, string> {
   return useMutation({
     mutationFn: (diffId) => diffsApi.accept(projectId, diffId),
@@ -295,6 +312,62 @@ export function useRejectDiff(projectId: string): UseMutationResult<DiffDetail, 
   return useMutation({
     mutationFn: ({ diffId, input }) => diffsApi.reject(projectId, diffId, input),
     onSuccess: (diff) => invalidateDiffQueries(projectId, diff),
+  })
+}
+
+export function useCreateMergeRequest(
+  projectId: string,
+): UseMutationResult<MergeRequestSummary, Error, MergeRequestCreateInput> {
+  return useMutation({
+    mutationFn: (input) => mergeRequestsApi.create(projectId, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.all(projectId) })
+    },
+  })
+}
+
+export function useMergeRequests(
+  projectId: string,
+  filters: MergeRequestListFilters = {},
+): UseQueryResult<Page<MergeRequestSummary>> {
+  return useQuery({
+    queryKey: taskModelQueryKeys.mergeRequests.list(projectId, filters),
+    queryFn: () => mergeRequestsApi.list(projectId, filters),
+    enabled: Boolean(projectId),
+  })
+}
+
+export function useMergeRequest(
+  projectId: string,
+  mergeRequestId: string,
+): UseQueryResult<MergeRequestSummary> {
+  return useQuery({
+    queryKey: taskModelQueryKeys.mergeRequests.detail(projectId, mergeRequestId),
+    queryFn: () => mergeRequestsApi.get(projectId, mergeRequestId),
+    enabled: Boolean(projectId && mergeRequestId),
+  })
+}
+
+export function useMergeRequestChecks(
+  projectId: string,
+  mergeRequestId: string,
+): UseQueryResult<MergeRequestCheck[]> {
+  return useQuery({
+    queryKey: taskModelQueryKeys.mergeRequests.checks(projectId, mergeRequestId),
+    queryFn: () => mergeRequestsApi.checks(projectId, mergeRequestId),
+    enabled: Boolean(projectId && mergeRequestId),
+  })
+}
+
+export function useMergeMergeRequest(
+  projectId: string,
+): UseMutationResult<MergeRequestSummary, Error, string> {
+  return useMutation({
+    mutationFn: (mergeRequestId) => mergeRequestsApi.merge(projectId, mergeRequestId),
+    onSuccess: (mr) => {
+      queryClient.setQueryData(taskModelQueryKeys.mergeRequests.detail(projectId, mr.id), mr)
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.all(projectId) })
+    },
   })
 }
 

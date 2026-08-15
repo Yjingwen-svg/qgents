@@ -13,7 +13,7 @@ import './CreateTeamPage.css'
  * 创建者自动成为 TEAM_OWNER
  * 邀请成员是后续操作（POST /teams/{teamId}/invitations），创建后跳团队详情再操作
  */
-export function CreateTeamPage() {
+export default function CreateTeamPage() {
   const navigate = useNavigate()
   const { setHasTeam } = useAuth()
   const [name, setName] = useState('')

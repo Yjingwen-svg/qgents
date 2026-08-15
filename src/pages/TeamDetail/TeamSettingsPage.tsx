@@ -50,7 +50,7 @@ function formatCreatedAt(iso?: string): string {
  * 下方 Tab：基本信息 / 成员管理
  * 路由：/app/teams/:teamId/settings
  */
-export function TeamSettingsPage() {
+export default function TeamSettingsPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
   const { user } = useAuth()
   const [searchParams] = useSearchParams()

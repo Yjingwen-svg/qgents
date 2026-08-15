@@ -76,6 +76,26 @@ describe('project SSE Task model query invalidation mapping', () => {
     const repositoryKeys = keysFor('delivery.repository.updated', { taskId: 'task-1', diffId: 'diff-1', deliveryStatus: 'DELIVERED' })
     expect(repositoryKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks']))
     expect(repositoryKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'diffs', 'diff-1']))
+    expect(repositoryKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'merge-requests']))
+  })
+
+  it('maps merge-request.updated to the project MR list', () => {
+    expect(keysFor('merge-request.updated', { mergeRequestId: 'mr-1' })).toEqual([
+      JSON.stringify(['qgents', 'projects', projectId, 'merge-requests']),
+    ])
+    expect(keysFor('merge-request.updated', {})).toEqual([])
+  })
+
+  it('maps test-run.updated and dry-run.updated to the matching run queries', () => {
+    expect(keysFor('test-run.updated', { testRunId: 'testrun-1' })).toEqual([
+      JSON.stringify(['qgents', 'projects', projectId, 'test-runs']),
+      JSON.stringify(['qgents', 'projects', projectId, 'test-runs', 'testrun-1']),
+    ])
+    expect(keysFor('dry-run.updated', { dryRunId: 'dryrun-1' })).toEqual([
+      JSON.stringify(['qgents', 'projects', projectId, 'dry-runs']),
+      JSON.stringify(['qgents', 'projects', projectId, 'dry-runs', 'dryrun-1', 'report']),
+    ])
+    expect(keysFor('test-run.updated', {})).toEqual([])
   })
 
   it('invalidates DeliveryCenter and resource queries for frozen Memory and Skill events', () => {
@@ -126,7 +146,7 @@ describe('project SSE Task model query invalidation mapping', () => {
       JSON.stringify(['qgents', 'projects', projectId, 'diffs']),
       JSON.stringify(['qgents', 'projects', projectId, 'task-artifacts']),
       JSON.stringify(['qgents', 'projects', projectId, 'task-diff-review']),
-      JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']),
+      JSON.stringify(['qgents', 'projects', projectId, 'merge-requests']),
     ])
   })
 })

@@ -90,7 +90,7 @@ function errorText(error: unknown): string {
   return error.message || '操作失败，请稍后重试'
 }
 
-export function DeliveryCenterPage() {
+export default function DeliveryCenterPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()

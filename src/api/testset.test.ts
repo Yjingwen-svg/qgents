@@ -1,0 +1,183 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { isTestsetEnabled, mapDryRunReport, mapTestRun, mapTestset, testsetApi } from './testset'
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+describe('testset API mapping', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse({ data: {}, requestId: 'req' }))
+    vi.stubGlobal('crypto', { randomUUID: () => 'idempotency-key' })
+  })
+
+  it('treats status ENABLED as enabled and does not require an enabled boolean', () => {
+    const testset = mapTestset({
+      id: 'ts-1',
+      projectId: 'p-1',
+      name: '后端单元测试',
+      repositoryId: 'bound-1',
+      scopeTags: ['backend'],
+      command: './mvnw test',
+      timeoutSeconds: 900,
+      passRule: { type: 'EXIT_CODE', expected: 0 },
+      acceptanceNotes: 'cover login',
+      status: 'ENABLED',
+      createdAt: '2026-08-15T00:00:00Z',
+      updatedAt: '2026-08-15T00:00:00Z',
+    })
+    expect(testset.status).toBe('ENABLED')
+    expect(isTestsetEnabled(testset)).toBe(true)
+    expect('enabled' in testset).toBe(false)
+  })
+
+  it('maps missing scopeTags to an empty array and flattens definition when present', () => {
+    expect(mapTestset({ id: 'ts-4', name: 'x', command: './mvnw test' }).scopeTags).toEqual([])
+    expect(
+      mapTestset({
+        id: 'ts-5',
+        name: 'from-definition',
+        definition: { command: './gradlew test', timeoutSeconds: 30, passRule: { type: 'EXIT_CODE', expected: 0 } },
+      }).command,
+    ).toBe('./gradlew test')
+  })
+
+  it('falls back to status when backend only sends enabled boolean', () => {
+    expect(mapTestset({ id: 'ts-2', name: 'x', enabled: false }).status).toBe('DISABLED')
+    expect(isTestsetEnabled(mapTestset({ id: 'ts-3', name: 'y', enabled: true }))).toBe(true)
+  })
+
+  it('lists testsets with repositoryId and status query params, not enabled', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        data: [{ id: 'ts-1', name: '登录接口测试', status: 'ENABLED', repositoryId: 'bound-1' }],
+      }),
+    )
+    const list = await testsetApi.list('project-1', { repositoryId: 'bound-1', status: 'ENABLED' })
+    expect(list[0]?.status).toBe('ENABLED')
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      '/api/projects/project-1/testsets?repositoryId=bound-1&status=ENABLED',
+      expect.objectContaining({ body: undefined }),
+    )
+  })
+
+  it('creates a testset with the documented request body', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ data: { id: 'ts-new', status: 'DISABLED' } }))
+    await testsetApi.create('project-1', {
+      name: '后端单元测试',
+      repositoryId: 'bound-1',
+      scopeTags: ['backend', 'unit'],
+      command: './mvnw test',
+      timeoutSeconds: 900,
+      passRule: { type: 'EXIT_CODE', expected: 0 },
+      acceptanceNotes: '登录成功、错误密码和不存在用户均需覆盖。',
+    })
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      '/api/projects/project-1/testsets',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          name: '后端单元测试',
+          repositoryId: 'bound-1',
+          scopeTags: ['backend', 'unit'],
+          command: './mvnw test',
+          timeoutSeconds: 900,
+          passRule: { type: 'EXIT_CODE', expected: 0 },
+          acceptanceNotes: '登录成功、错误密码和不存在用户均需覆盖。',
+        }),
+      }),
+    )
+  })
+
+  it('posts enable/disable and creates test-runs / dry-runs on documented paths', async () => {
+    const fetchMock = vi.mocked(fetch)
+    fetchMock.mockResolvedValueOnce(jsonResponse({ data: { id: 'ts-1', status: 'ENABLED' } }))
+    await testsetApi.enable('project-1', 'ts-1')
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      '/api/projects/project-1/testsets/ts-1/enable',
+      expect.objectContaining({ method: 'POST' }),
+    )
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ data: { id: 'run-1', status: 'PASSED' } }))
+    await testsetApi.createTestRun('project-1', {
+      repositoryId: 'bound-1',
+      testsetIds: ['ts-1'],
+      ref: 'feat/login-api',
+    })
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      '/api/projects/project-1/test-runs',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          repositoryId: 'bound-1',
+          testsetIds: ['ts-1'],
+          ref: 'feat/login-api',
+        }),
+      }),
+    )
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ data: { id: 'dry-1', status: 'PASSED', conflicts: [] } }))
+    await testsetApi.createDryRun('project-1', {
+      repositoryId: 'bound-1',
+      sourceRef: 'feat/login-api',
+      targetBranch: 'main',
+    })
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      '/api/projects/project-1/dry-runs',
+      expect.objectContaining({ method: 'POST' }),
+    )
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ data: { id: 'dry-1', conflicts: [{ path: 'a.ts', message: 'conflict' }] } }))
+    const report = await testsetApi.getDryRunReport('project-1', 'dry-1')
+    expect(report.conflicts).toEqual([{ path: 'a.ts', message: 'conflict' }])
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      '/api/projects/project-1/dry-runs/dry-1/report',
+      expect.objectContaining({ body: undefined }),
+    )
+  })
+
+  it('maps optional sandboxId from sandboxId or sandbox.id', () => {
+    expect(mapTestRun({ id: 'r1', sandboxId: 'sbx-1' }).sandboxId).toBe('sbx-1')
+    expect(mapTestRun({ id: 'r2', sandbox: { id: 'sbx-2' } }).sandboxId).toBe('sbx-2')
+    expect(mapTestRun({ id: 'r3' }).sandboxId).toBeNull()
+    expect(mapDryRunReport({ id: 'd1', sandboxId: 'sbx-3', testsetIds: ['ts-1'] }).sandboxId).toBe('sbx-3')
+    expect(mapDryRunReport({ id: 'd1', sandboxId: 'sbx-3', testsetIds: ['ts-1'] }).testsetIds).toEqual(['ts-1'])
+  })
+
+  it('maps case details and pdfUrl from optional backend fields', () => {
+    const run = mapTestRun({
+      id: 'r1',
+      cases: [
+        {
+          id: 'c1',
+          name: 'login ok',
+          testsetId: 'ts-1',
+          suite: 'LoginApiTest',
+          status: 'FAILED',
+          durationMs: 1200,
+          message: 'assert failed',
+          filePath: 'LoginApiTest.java',
+        },
+      ],
+      pdfUrl: 'https://files.example/run.pdf',
+    })
+    expect(run.cases).toEqual([
+      {
+        id: 'c1',
+        name: 'login ok',
+        testsetId: 'ts-1',
+        suite: 'LoginApiTest',
+        status: 'FAILED',
+        durationMs: 1200,
+        message: 'assert failed',
+        filePath: 'LoginApiTest.java',
+      },
+    ])
+    expect(run.pdfUrl).toBe('https://files.example/run.pdf')
+    expect(mapTestRun({ id: 'r2', artifacts: [{ name: 'report.pdf', url: '/a.pdf' }] }).pdfUrl).toBe('/a.pdf')
+  })
+})

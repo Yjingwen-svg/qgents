@@ -8,7 +8,7 @@ const { Title, Paragraph } = Typography
 /**
  * 登录后引导页 —— 需在 MainLayout 外单独铺深色背景
  */
-export function WelcomePage() {
+export default function WelcomePage() {
   const navigate = useNavigate()
 
   return (

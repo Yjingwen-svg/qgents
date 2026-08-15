@@ -3,7 +3,9 @@ import { parseProjectTaskEvent, PROJECT_TASK_EVENT_TYPES } from './eventParser'
 
 describe('project SSE event parsing', () => {
   it.each(PROJECT_TASK_EVENT_TYPES)('parses the new event %s', (eventType) => {
-    const ids = eventType === 'task-run.step.progress'
+    const ids = eventType === 'merge-request.updated'
+    ? { dryRunId: 'dryrun-1' }
+    : eventType === 'task-run.step.progress'
       ? { taskId: 'task-1', stepId: 'step-1', taskRunId: 'run-1' }
       : eventType === 'task.updated'
         ? { taskId: 'task-1' }
@@ -28,8 +30,6 @@ describe('project SSE event parsing', () => {
                           : eventType === 'task.diff-review.failed'
                             ? { taskId: 'task-1', reviewBatchId: 'batch-1', reason: 'delivery failed' }
                             : eventType === 'diff-review.skipped'
-                              ? { taskId: 'task-1', reason: 'FINAL_DIFF_EMPTY' }
-                              : eventType === 'merge-request.updated'
                                 ? { mergeRequestId: 'mr-1', number: 10, status: 'OPEN', webUrl: 'https://example.test/mr/10' }
                                 : eventType.startsWith('memory.')
                                   ? { resourceType: 'MEMORY', resourceId: 'memory-1', eventVersion: 1, updatedAt: '2026-08-15T00:00:00Z' }

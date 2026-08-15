@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { githubApi } from './github'
-import { diffsApi, taskRunsApi, tasksApi } from './taskModel'
+import { diffsApi, mergeRequestsApi, taskRunsApi, tasksApi } from './taskModel'
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -96,6 +96,65 @@ describe('new task model API', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/projects/project-1/diffs/diff-1/reject', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ reason: 'Please address the failing test' }),
+    }))
+  })
+
+  it('creates a merge request with the documented body and idempotency header', async () => {
+    const fetchMock = vi.mocked(fetch)
+    await mergeRequestsApi.create('project-1', {
+      taskId: 'task-1',
+      repositoryId: 'repo-1',
+      targetBranch: 'main',
+      title: '实现邮箱登录',
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/projects/project-1/merge-requests', expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ 'Idempotency-Key': 'idempotency-key' }),
+      body: JSON.stringify({
+        taskId: 'task-1',
+        repositoryId: 'repo-1',
+        targetBranch: 'main',
+        title: '实现邮箱登录',
+      }),
+    }))
+  })
+
+  it('lists merge requests with the documented filters', async () => {
+    const fetchMock = vi.mocked(fetch)
+    await mergeRequestsApi.list('project-1', {
+      repositoryId: 'repo-1',
+      groupId: 'group-1',
+      status: 'OPEN',
+      cursor: 'c1',
+      limit: 20,
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/project-1/merge-requests?repositoryId=repo-1&groupId=group-1&status=OPEN&cursor=c1&limit=20',
+      expect.objectContaining({ body: undefined }),
+    )
+  })
+
+  it('loads MR detail, checks and merge through the documented paths', async () => {
+    const fetchMock = vi.mocked(fetch)
+    await mergeRequestsApi.get('project-1', 'mr-1')
+    await mergeRequestsApi.checks('project-1', 'mr-1')
+    await mergeRequestsApi.merge('project-1', 'mr-1')
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/projects/project-1/merge-requests/mr-1',
+      expect.objectContaining({ body: undefined }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/projects/project-1/merge-requests/mr-1/checks',
+      expect.objectContaining({ body: undefined }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/projects/project-1/merge-requests/mr-1/merge', expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ 'Idempotency-Key': 'idempotency-key' }),
     }))
   })
 })

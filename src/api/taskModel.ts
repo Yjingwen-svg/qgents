@@ -1,9 +1,15 @@
 import { requestModelData, requestModelPage, withModelQuery, writeModelHeaders } from './modelClient'
+import {
+  mapDiffComment,
+  mapDiffCommentPage,
+  mapDiffFilePage,
+  mapMergeRequest,
+  mapMergeRequestChecks,
+  mapMergeRequestPage,
+} from './taskModelMap'
 import type {
-  DiffComment,
   DiffCommentInput,
   DiffDetail,
-  DiffFile,
   DiffListFilters,
   DiffListItem,
   DiffRejectInput,
@@ -25,6 +31,8 @@ import type {
   PageFilters,
   TaskArtifact,
   DiffReviewBatch,
+  MergeRequestCreateInput,
+  MergeRequestListFilters,
 } from '@/types/task-model'
 
 const taskPath = (projectId: string, taskId: string) => `/projects/${projectId}/tasks/${taskId}`
@@ -181,19 +189,23 @@ export const diffsApi = {
   },
 
   files(projectId: string, diffId: string, filters: PageFilters = {}) {
-    return requestModelPage<DiffFile>(withModelQuery(`${diffPath(projectId, diffId)}/files`, filters))
+    return requestModelPage<unknown>(withModelQuery(`${diffPath(projectId, diffId)}/files`, filters)).then(
+      mapDiffFilePage,
+    )
   },
 
   comments(projectId: string, diffId: string, filters: PageFilters = {}) {
-    return requestModelPage<DiffComment>(withModelQuery(`${diffPath(projectId, diffId)}/comments`, filters))
+    return requestModelPage<unknown>(withModelQuery(`${diffPath(projectId, diffId)}/comments`, filters)).then(
+      mapDiffCommentPage,
+    )
   },
 
   addComment(projectId: string, diffId: string, input: DiffCommentInput) {
-    return requestModelData<DiffComment>(`${diffPath(projectId, diffId)}/comments`, {
+    return requestModelData<unknown>(`${diffPath(projectId, diffId)}/comments`, {
       method: 'POST',
       headers: writeModelHeaders(),
       body: input,
-    })
+    }).then(mapDiffComment)
   },
 
   accept(projectId: string, diffId: string) {
@@ -209,5 +221,40 @@ export const diffsApi = {
       headers: writeModelHeaders(),
       body: input,
     })
+  },
+}
+
+export const mergeRequestsApi = {
+  list(projectId: string, filters: MergeRequestListFilters = {}) {
+    return requestModelPage<unknown>(withModelQuery(`/projects/${projectId}/merge-requests`, filters)).then(
+      mapMergeRequestPage,
+    )
+  },
+
+  get(projectId: string, mergeRequestId: string) {
+    return requestModelData<unknown>(`/projects/${projectId}/merge-requests/${mergeRequestId}`).then(
+      mapMergeRequest,
+    )
+  },
+
+  checks(projectId: string, mergeRequestId: string) {
+    return requestModelData<unknown>(
+      `/projects/${projectId}/merge-requests/${mergeRequestId}/checks`,
+    ).then(mapMergeRequestChecks)
+  },
+
+  create(projectId: string, input: MergeRequestCreateInput) {
+    return requestModelData<unknown>(`/projects/${projectId}/merge-requests`, {
+      method: 'POST',
+      headers: writeModelHeaders(),
+      body: input,
+    }).then(mapMergeRequest)
+  },
+
+  merge(projectId: string, mergeRequestId: string) {
+    return requestModelData<unknown>(`/projects/${projectId}/merge-requests/${mergeRequestId}/merge`, {
+      method: 'POST',
+      headers: writeModelHeaders(),
+    }).then(mapMergeRequest)
   },
 }

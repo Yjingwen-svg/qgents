@@ -1,6 +1,6 @@
 import { setupServer } from 'msw/node'
 import { beforeAll, beforeEach, afterAll, describe, expect, it } from 'vitest'
-import { diffsApi, taskRunsApi, tasksApi } from '@/api/taskModel'
+import { diffsApi, mergeRequestsApi, taskRunsApi, tasksApi } from '@/api/taskModel'
 import type { TaskRunDetail } from '@/types/task-model'
 import { resetTaskModelStore, taskModelHandlers } from './handlers'
 
@@ -312,5 +312,86 @@ describe('independent Task model mock chain', () => {
     resetTaskModelStore()
     const tasks = await tasksApi.list('project-reset', { groupId: 'group-reset' })
     expect(tasks.data).toEqual([])
+  })
+
+  it('creates an MR only after the matching Diff is accepted and remotely verified', async () => {
+    const projectId = 'project-create-mr'
+    const task = await tasksApi.create(projectId, {
+      requirementGroupId: 'group-create-mr',
+      title: '实现邮箱登录',
+      requirement: 'Support email login',
+      repositoryIds: ['repository-create-mr'],
+      baseRef: 'main',
+    })
+    const diffs = await diffsApi.list(projectId, { taskId: task.id })
+    const pending = diffs.data[0]!
+    await expect(mergeRequestsApi.create(projectId, {
+      taskId: task.id,
+      repositoryId: pending.repositoryId,
+      targetBranch: 'main',
+      title: '实现邮箱登录',
+    })).rejects.toMatchObject({ status: 409 })
+
+    const accepted = await diffsApi.accept(projectId, pending.id)
+    expect(accepted.headCommit).toBeTruthy()
+    const created = await mergeRequestsApi.create(projectId, {
+      taskId: task.id,
+      repositoryId: pending.repositoryId,
+      targetBranch: 'main',
+      title: '实现邮箱登录',
+    })
+    expect(created).toMatchObject({
+      repositoryId: pending.repositoryId,
+      sourceBranch: pending.sourceBranch,
+      targetBranch: 'main',
+      status: 'OPEN',
+      headCommit: accepted.headCommit,
+    })
+    expect(created.number).toBe(1)
+
+    const again = await mergeRequestsApi.create(projectId, {
+      taskId: task.id,
+      repositoryId: pending.repositoryId,
+      targetBranch: 'main',
+      title: '实现邮箱登录',
+    })
+    expect(again.id).toBe(created.id)
+    await expect(mergeRequestsApi.create('forbidden', {
+      taskId: task.id,
+      repositoryId: pending.repositoryId,
+      targetBranch: 'main',
+      title: '实现邮箱登录',
+    })).rejects.toMatchObject({ status: 403 })
+  })
+
+  it('lists merge requests and applies repository and status filters', async () => {
+    const listed = await mergeRequestsApi.list('demo-project')
+    expect(listed.data.length).toBeGreaterThan(0)
+    expect(listed.data.every((item) => item.number > 0 && item.sourceBranch && item.repositoryId)).toBe(true)
+    const open = await mergeRequestsApi.list('demo-project', { status: 'OPEN' })
+    expect(open.data.length).toBeGreaterThan(0)
+    expect(open.data.every((item) => item.status === 'OPEN')).toBe(true)
+    const byRepo = await mergeRequestsApi.list('demo-project', { repositoryId: 'bound-demo-auth-service' })
+    expect(byRepo.data.every((item) => item.repositoryId === 'bound-demo-auth-service')).toBe(true)
+  })
+
+  it('returns MR detail and checks, and rejects merge until the quality gate passes', async () => {
+    const listed = await mergeRequestsApi.list('demo-project')
+    const pending = listed.data.find((item) => item.qualityGate?.status === 'PENDING')
+    const ready = listed.data.find((item) => item.status === 'OPEN' && item.qualityGate?.status === 'PASSED')
+    expect(pending).toBeDefined()
+    expect(ready).toBeDefined()
+
+    const detail = await mergeRequestsApi.get('demo-project', pending!.id)
+    expect(detail.id).toBe(pending!.id)
+    const checks = await mergeRequestsApi.checks('demo-project', pending!.id)
+    expect(checks.map((item) => item.type)).toEqual(['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE'])
+    expect(checks.every((item) => item.status === 'PENDING' || item.status === 'PASSED' || item.status === 'FAILED')).toBe(true)
+
+    await expect(mergeRequestsApi.merge('demo-project', pending!.id)).rejects.toMatchObject({ status: 409 })
+    const merged = await mergeRequestsApi.merge('demo-project', ready!.id)
+    expect(merged.status).toBe('MERGED')
+    await expect(mergeRequestsApi.merge('demo-project', ready!.id)).rejects.toMatchObject({ status: 409 })
+    await expect(mergeRequestsApi.get('demo-project', 'missing-mr')).rejects.toMatchObject({ status: 404 })
   })
 })

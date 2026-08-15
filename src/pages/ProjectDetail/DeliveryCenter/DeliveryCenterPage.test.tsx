@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { DeliveryCenterPage } from './DeliveryCenterPage'
+import DeliveryCenterPage from './DeliveryCenterPage'
 import { deliveryCenterHandlers } from '@/mocks/delivery-center/handlers'
 import { resetDeliveryCenterStore } from '@/mocks/delivery-center/store'
 

@@ -20,7 +20,8 @@ function agentLoadErrorMessage(error: unknown): string {
   if (typeof status === 'number' && status >= 500) return 'Agent 服务暂时不可用'
   return 'Agent 数据加载失败'
 }
-export function AgentTeamPage() {
+
+export default function AgentTeamPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const location = useLocation()
   const navigate = useNavigate()

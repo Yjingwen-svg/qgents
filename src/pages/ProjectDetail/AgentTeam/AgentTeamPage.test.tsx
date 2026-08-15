@@ -8,7 +8,7 @@ const hooks = vi.hoisted(() => ({ useAgents: vi.fn(), useAgent: vi.fn(), useAgen
 const projectGet = vi.hoisted(() => vi.fn())
 vi.mock('@/hooks', () => hooks)
 vi.mock('@/api', () => ({ projectApi: { getById: projectGet } }))
-import { AgentTeamPage } from './AgentTeamPage'
+import AgentTeamPage from './AgentTeamPage'
 
 const agent: AgentDetail = { id: 'agent-one', name: 'Agent One', avatar: null, role: 'DEVELOPER', capabilities: ['TypeScript'], visibility: 'PRIVATE', status: 'ACTIVE', createdBy: 'user-001', description: '负责接口实现', prompt: 'private prompt', tools: ['测试运行'], memoryAccess: ['当前项目共享 Memory'] }
 const mutation = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false, error: null }

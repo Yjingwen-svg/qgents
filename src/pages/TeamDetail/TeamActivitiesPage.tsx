@@ -44,7 +44,7 @@ function formatRelativeTime(iso: string): string {
  * 入口：团队详情右侧「最近动态」面板「查看全部」。
  * 路由：/app/teams/:teamId/activities
  */
-export function TeamActivitiesPage() {
+export default function TeamActivitiesPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
 
   const { data: activitiesData, isLoading } = useQuery({

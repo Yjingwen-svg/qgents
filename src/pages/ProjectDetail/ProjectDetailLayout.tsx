@@ -17,7 +17,7 @@ import './ProjectDetailLayout.scss'
  * 左侧「群聊」列表：项目总群 + 需求群，数据来自 GET /groups
  *   /app/projects/:projectId/req-chat/:groupId
  */
-export function ProjectDetailLayout() {
+export default function ProjectDetailLayout() {
   const { projectId = '', groupId } = useParams<{
     projectId: string
     groupId?: string

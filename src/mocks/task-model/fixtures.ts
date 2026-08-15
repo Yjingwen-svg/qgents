@@ -1,4 +1,5 @@
 import type { DiffDetail, ExecutionContext, InputRequest, Task, TaskArtifact, TaskAttention, TaskRunDetail, TaskRunLog, TaskRunStep, TaskStatus, TaskStep, TaskStepRole, DiffReviewBatch } from '@/types/task-model'
+import { defaultMockDiffFiles, loginApiDiffComments, loginApiDiffFiles } from './diffFileFixtures'
 import { createTaskModelStore, type TaskModelStore } from './store'
 const timestamp = '2026-08-12T08:00:00Z'; const laterTimestamp = '2026-08-12T08:01:00Z'
 const taskStatuses: readonly TaskStatus[] = ['PLANNING','PENDING','RUNNING','WAITING_DIFF_CONFIRMATION','DELIVERING','DELIVERY_FAILED','SUCCEEDED','FAILED','CANCELLING','CANCELLED']
@@ -10,7 +11,112 @@ function runReason(status: TaskRunDetail['status']): TaskRunDetail['statusReason
 function run(value: Task, s: TaskStep, status: TaskRunDetail['status']): TaskRunDetail { const startedAt = status === 'QUEUED' ? null : timestamp; const statusReason = runReason(status); return { id: `run-${s.id}`, taskId: value.id, taskStepId: s.id, taskStepTitle: s.title, agent: null, role: s.role, status, retryOfTaskRunId: null, statusSummary: statusReason?.summary ?? null, statusReason, startedAt, finishedAt: status === 'SUCCEEDED' ? laterTimestamp : null, durationMs: status === 'SUCCEEDED' ? 60000 : null, artifactSummary: { total: 0, diffCount: 0 }, createdAt: timestamp, updatedAt: laterTimestamp, steps: [] } }
 function resources(store: TaskModelStore, r: TaskRunDetail) { const log: TaskRunLog = { id: `log-${r.id}`, sequence: 1, node: r.role, content: `${r.role} started`, timestamp }; store.taskRunLogs.set(r.id,[log]); const context: ExecutionContext = { workspaceId: `workspace-${r.taskId}`, sandboxStatus: 'RUNNING', repositoryId: 'repository-mock', baseRef: 'main', headRef: `feat/${r.taskId}`, startedAt: r.startedAt, expiresAt: null }; store.executionContexts.set(r.id,context); const stepValue: TaskRunStep = { node: r.role, status: r.status === 'SUCCEEDED' ? 'PASSED' : 'PENDING', startedAt: r.startedAt, finishedAt: r.finishedAt, durationMs: r.durationMs }; store.taskRunSteps.set(r.id,[stepValue]) }
 function input(store: TaskModelStore, r: TaskRunDetail, kind: InputRequest['kind']) { store.inputRequests.set(`input-${r.id}`, { id:`input-${r.id}`, taskRunId:r.id, kind, status:'PENDING', prompt:kind === 'INPUT' ? 'Choose a base branch' : 'Approve the run', options:kind === 'INPUT' ? [{value:'main',label:'main'}] : undefined, createdAt:timestamp }) }
-export function addDiff(store: TaskModelStore, value: Task, s: TaskStep, status: DiffDetail['status'], suffix: string): DiffDetail { const d: DiffDetail = { id:`diff-${value.projectId}-${suffix}`, projectId:value.projectId, taskId:value.id, taskRunId:`run-${s.id}`, taskStepId:s.id, requirementGroupId:value.requirementGroup?.id ?? '', workspaceId:value.workspace?.id ?? '', repositoryId:value.repositories[0]?.repositoryId ?? '', baseCommit:'base-commit-1', sourceBranch:s.repository?.sourceBranch ?? 'main', headCommit:status === 'PENDING_REVIEW' ? null : `head-${value.id}`, status, changeStats:{files:2,additions:10,deletions:2}, createdAt:timestamp, workingTreeHash:null, snapshotKey:null, reviewedBy:null, reviewReason:null, reviewedAt:null, updatedAt:laterTimestamp }; store.diffs.set(d.id,d); return d }
+export function addDiff(store: TaskModelStore, value: Task, s: TaskStep, status: DiffDetail['status'], suffix: string): DiffDetail { const d: DiffDetail = { id:`diff-${value.projectId}-${suffix}`, projectId:value.projectId, taskId:value.id, taskRunId:`run-${s.id}`, taskStepId:s.id, requirementGroupId:value.requirementGroup?.id ?? '', workspaceId:value.workspace?.id ?? '', repositoryId:value.repositories[0]?.repositoryId ?? '', baseCommit:'base-commit-1', sourceBranch:s.repository?.sourceBranch ?? 'main', headCommit:status === 'PENDING_REVIEW' ? null : `head-${value.id}`, status, changeStats:{files:2,additions:10,deletions:2}, createdAt:timestamp, workingTreeHash:null, snapshotKey:null, reviewedBy:null, reviewReason:null, reviewedAt:null, updatedAt:laterTimestamp }; store.diffs.set(d.id,d); store.diffFiles.set(d.id, defaultMockDiffFiles()); return d }
+
+export function seedCodeBranchDiffs(store: TaskModelStore, projectId: string): void {
+  if (projectId !== 'demo-project' && projectId !== 'proj-001') return
+  const main = [...store.tasks.values()].find((task) => task.id === `task-${projectId}-main`)
+  if (!main) return
+  const developer = [...store.taskSteps.values()].find((step) => step.taskId === main.id && step.role === 'DEVELOPER')
+  if (!developer) return
+  const files = loginApiDiffFiles()
+  const entries: Array<{ id: string; repositoryId: string; sourceBranch: string }> = [
+    { id: `diff-${projectId}-login-api`, repositoryId: 'bound-demo-auth-service', sourceBranch: 'feat/login-api' },
+    { id: `diff-${projectId}-web-login`, repositoryId: 'bound-demo-web-console', sourceBranch: 'feat/login-api' },
+    { id: `diff-${projectId}-sdk-login`, repositoryId: 'bound-demo-shared-sdk', sourceBranch: 'feat/login-api' },
+    { id: `diff-${projectId}-pay`, repositoryId: 'bound-demo-auth-service', sourceBranch: 'feat/payment-hook' },
+    { id: `diff-${projectId}-dash`, repositoryId: 'bound-demo-web-console', sourceBranch: 'feat/dashboard' },
+  ]
+  for (const entry of entries) {
+    const diff: DiffDetail = {
+      id: entry.id,
+      projectId,
+      taskId: main.id,
+      taskRunId: `run-${developer.id}`,
+      taskStepId: developer.id,
+      requirementGroupId: main.requirementGroup?.id ?? '',
+      workspaceId: main.workspace?.id ?? '',
+      repositoryId: entry.repositoryId,
+      baseCommit: 'base-commit-1',
+      sourceBranch: entry.sourceBranch,
+      headCommit: 'a1b2c3d',
+      status: 'PENDING_REVIEW',
+      changeStats: { files: files.length, additions: 54, deletions: 2 },
+      createdAt: timestamp,
+      workingTreeHash: null,
+      snapshotKey: null,
+      reviewedBy: null,
+      reviewReason: null,
+      reviewedAt: null,
+      updatedAt: laterTimestamp,
+    }
+    store.diffs.set(diff.id, diff)
+    store.diffFiles.set(diff.id, files)
+    store.diffComments.set(diff.id, loginApiDiffComments(diff.id))
+  }
+}
+
+export function seedMergeRequests(store: TaskModelStore, projectId: string): void {
+  if (projectId !== 'demo-project' && projectId !== 'proj-001') return
+  const items: Array<{
+    id: string
+    repositoryId: string
+    number: number
+    title: string
+    sourceBranch: string
+    status: 'OPEN' | 'MERGED' | 'CLOSED'
+    qualityGateStatus: string
+  }> = [
+    {
+      id: `mr-${projectId}-login-api`,
+      repositoryId: 'bound-demo-auth-service',
+      number: 42,
+      title: '实现邮箱登录',
+      sourceBranch: 'feat/login-api',
+      status: 'OPEN',
+      qualityGateStatus: 'PENDING',
+    },
+    {
+      id: `mr-${projectId}-web-login`,
+      repositoryId: 'bound-demo-web-console',
+      number: 18,
+      title: '登录页接入邮箱登录',
+      sourceBranch: 'feat/login-api',
+      status: 'OPEN',
+      qualityGateStatus: 'PASSED',
+    },
+    {
+      id: `mr-${projectId}-pay`,
+      repositoryId: 'bound-demo-auth-service',
+      number: 7,
+      title: '支付回调',
+      sourceBranch: 'feat/payment-hook',
+      status: 'MERGED',
+      qualityGateStatus: 'PASSED',
+    },
+  ]
+  for (const item of items) {
+    store.mergeRequests.set(item.id, {
+      id: item.id,
+      repositoryId: item.repositoryId,
+      groupIds: [],
+      provider: 'GITHUB',
+      number: item.number,
+      title: item.title,
+      description: null,
+      sourceBranch: item.sourceBranch,
+      targetBranch: 'main',
+      status: item.status,
+      headCommit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+      webUrl: null,
+      taskId: `task-${projectId}-main`,
+      qualityGate: {
+        status: item.qualityGateStatus,
+        requiredChecks: ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE'],
+      },
+    })
+  }
+}
 function artifacts(store: TaskModelStore, value: Task, r: TaskRunDetail | undefined) { const a: TaskArtifact[] = [{id:`artifact-${value.id}-plan`,taskId:value.id,taskRunId:null,taskStepId:null,sequenceNo:1,artifactType:'PLAN',title:'计划',description:null,status:null,summary:{},resources:[],createdAt:timestamp}]; if(r) for(const [n,type,title] of [[2,'CODING','代码编写'],[3,'REVIEWING','代码审查']] as const) a.push({id:`artifact-${value.id}-${type.toLowerCase()}`,taskId:value.id,taskRunId:r.id,taskStepId:r.taskStepId,sequenceNo:n,artifactType:type,title,description:null,status:r.status === 'SUCCEEDED' ? 'SUCCEEDED' : null,summary:{},resources:[],createdAt:laterTimestamp}); store.taskArtifacts.set(value.id,a) }
 function review(store: TaskModelStore, value: Task, d: DiffDetail, delivery: DiffReviewBatch['deliveryStatus'] = 'NOT_STARTED', status: DiffReviewBatch['reviewStatus'] = 'PENDING_CONFIRMATION') { store.diffReviews.set(value.id,{id:`review-${value.id}`,taskId:value.id,reviewStatus:status,deliveryStatus:delivery,aggregateHash:`hash-${value.id}`,reviewReason:null,diffs:[d],repositoryDeliveries:value.repositories.map((repository,index)=>({repositoryId:repository.repositoryId,repositoryName:repository.name,diffId:d.id,deliveryStatus:delivery === 'FAILED' ? 'FAILED' : delivery === 'PARTIALLY_DELIVERED' && index > 0 ? 'FAILED' : delivery === 'PARTIALLY_DELIVERED' ? 'MR_CREATED' : 'NOT_STARTED',failureCode:delivery === 'FAILED' || delivery === 'PARTIALLY_DELIVERED' && index > 0 ? 'DELIVERY_FAILED' : null,failureReason:delivery === 'FAILED' || delivery === 'PARTIALLY_DELIVERED' && index > 0 ? 'Mock delivery failed' : null,mergeRequest:null,updatedAt:laterTimestamp}))}) }
 export function createTaskModelScenario(projectId: string): TaskModelStore {

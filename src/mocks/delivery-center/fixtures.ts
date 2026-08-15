@@ -1,0 +1,163 @@
+import type {
+  CodeDeliveryItem,
+  DeliveryActor,
+  DeliveryCapabilities,
+  DeliveryItem,
+  DeliverySource,
+  MemoryDeliveryItem,
+  SkillDeliveryItem,
+} from '@/types/delivery-center'
+
+const member: DeliveryActor = { id: 'user-002', displayName: 'Demo Member', avatarUrl: null }
+const reviewer: DeliveryActor = { id: 'user-003', displayName: 'Project Admin', avatarUrl: null }
+const sourceWithTask: DeliverySource = {
+  taskId: 'task-delivery-001',
+  taskDisplayCode: 'TASK-001',
+  taskTitle: 'Repository sync task',
+  taskRunId: 'run-delivery-001',
+  taskStepId: 'step-delivery-001',
+  messageId: null,
+  artifactId: 'artifact-delivery-001',
+}
+const sourceWithoutTask: DeliverySource = {
+  taskId: null,
+  taskDisplayCode: null,
+  taskTitle: null,
+  taskRunId: null,
+  taskStepId: null,
+  messageId: 'message-memory-001',
+  artifactId: null,
+}
+
+function capabilities(canApprove: boolean, canSubmitReview: boolean, canRetryDelivery = false): DeliveryCapabilities {
+  const noApproval = 'Project Admin approval required'
+  const notDraft = 'Only draft resources can be submitted'
+  const noRetry = 'Delivery is not retryable'
+  return {
+    canSubmitReview,
+    canApprove,
+    canReject: canApprove,
+    canArchive: canApprove,
+    canRetryDelivery,
+    canOpenResource: true,
+    disabledReasons: {
+      canSubmitReview: canSubmitReview ? null : notDraft,
+      canApprove: canApprove ? null : noApproval,
+      canReject: canApprove ? null : noApproval,
+      canArchive: canApprove ? null : noApproval,
+      canRetryDelivery: canRetryDelivery ? null : noRetry,
+      canOpenResource: null,
+    },
+  }
+}
+
+function codeItem(overrides: Partial<CodeDeliveryItem> & Pick<CodeDeliveryItem, 'id' | 'resourceId' | 'title' | 'displayStatus' | 'resourceStatus' | 'reviewStatus' | 'deliveryStatus'>): CodeDeliveryItem {
+  return {
+    id: overrides.id,
+    projectId: overrides.projectId ?? 'project-delivery-center',
+    resourceType: 'CODE',
+    resourceId: overrides.resourceId,
+    title: overrides.title,
+    summary: 'Code delivery aggregation summary',
+    version: '1.0.0',
+    displayStatus: overrides.displayStatus,
+    resourceStatus: overrides.resourceStatus,
+    requirementGroup: { id: 'group-delivery', name: 'Delivery Center rollout' },
+    source: sourceWithTask,
+    creator: member,
+    submitter: member,
+    reviewer: overrides.reviewer ?? null,
+    reviewReason: overrides.reviewReason ?? null,
+    createdAt: '2026-08-12T08:00:00Z',
+    submittedAt: '2026-08-12T09:00:00Z',
+    reviewedAt: overrides.reviewedAt ?? null,
+    updatedAt: '2026-08-14T08:00:00Z',
+    capabilities: overrides.capabilities ?? capabilities(true, false, overrides.deliveryStatus === 'FAILED' || overrides.deliveryStatus === 'PARTIALLY_DELIVERED'),
+    repositories: overrides.repositories ?? [{ repositoryId: 'repo-main', name: 'qgents-web', branch: 'feat/delivery-center' }],
+    diffReviewId: overrides.diffReviewId ?? `diff-review-${overrides.id}`,
+    reviewStatus: overrides.reviewStatus,
+    deliveryStatus: overrides.deliveryStatus,
+    filesChanged: overrides.filesChanged ?? 4,
+    additions: overrides.additions ?? 42,
+    deletions: overrides.deletions ?? 8,
+    repositoryDeliveries: overrides.repositoryDeliveries ?? [{ repositoryId: 'repo-main', repositoryName: 'qgents-web', deliveryStatus: 'MR_CREATED', failureCode: null, failureReason: null }],
+    mergeRequest: overrides.mergeRequest ?? { id: 'mr-001', number: 18, title: 'Delivery Center change', status: 'OPEN', webUrl: 'https://github.com/example/qgents-web/pull/18' },
+  }
+}
+
+function memoryItem(overrides: Partial<MemoryDeliveryItem> & Pick<MemoryDeliveryItem, 'id' | 'resourceId' | 'title' | 'displayStatus' | 'resourceStatus' | 'visibility'>): MemoryDeliveryItem {
+  return {
+    id: overrides.id,
+    projectId: overrides.projectId ?? 'project-delivery-center',
+    resourceType: 'MEMORY',
+    resourceId: overrides.resourceId,
+    title: overrides.title,
+    summary: 'Memory excerpt is intentionally limited to a short preview.',
+    version: null,
+    displayStatus: overrides.displayStatus,
+    resourceStatus: overrides.resourceStatus,
+    requirementGroup: overrides.requirementGroup ?? { id: 'group-delivery', name: 'Delivery Center rollout' },
+    source: overrides.source ?? sourceWithoutTask,
+    creator: member,
+    submitter: overrides.submitter ?? member,
+    reviewer: overrides.reviewer ?? null,
+    reviewReason: overrides.reviewReason ?? null,
+    createdAt: '2026-08-11T08:00:00Z',
+    submittedAt: overrides.submittedAt ?? null,
+    reviewedAt: overrides.reviewedAt ?? null,
+    updatedAt: '2026-08-14T08:00:00Z',
+    capabilities: overrides.capabilities ?? capabilities(false, overrides.displayStatus === 'DRAFT'),
+    category: overrides.category ?? 'PROJECT_KNOWLEDGE',
+    tags: overrides.tags ?? ['delivery'],
+    visibility: overrides.visibility,
+    sources: overrides.sources ?? [{ groupId: null, messageId: 'message-memory-001' }],
+    contentExcerpt: overrides.contentExcerpt ?? 'Short memory content preview only; full content is never returned by this aggregate endpoint.',
+  }
+}
+
+function skillItem(overrides: Partial<SkillDeliveryItem> & Pick<SkillDeliveryItem, 'id' | 'resourceId' | 'title' | 'displayStatus' | 'resourceStatus' | 'visibility'>): SkillDeliveryItem {
+  return {
+    id: overrides.id,
+    projectId: overrides.projectId ?? 'project-delivery-center',
+    resourceType: 'SKILL',
+    resourceId: overrides.resourceId,
+    title: overrides.title,
+    summary: 'Skill capability summary without prompt or credentials.',
+    version: overrides.version ?? '0.3.0',
+    displayStatus: overrides.displayStatus,
+    resourceStatus: overrides.resourceStatus,
+    requirementGroup: overrides.requirementGroup ?? null,
+    source: overrides.source ?? { ...sourceWithoutTask, messageId: null },
+    creator: member,
+    submitter: overrides.submitter ?? member,
+    reviewer: overrides.reviewer ?? null,
+    reviewReason: overrides.reviewReason ?? null,
+    createdAt: '2026-08-10T08:00:00Z',
+    submittedAt: overrides.submittedAt ?? null,
+    reviewedAt: overrides.reviewedAt ?? null,
+    updatedAt: '2026-08-14T08:00:00Z',
+    capabilities: overrides.capabilities ?? capabilities(false, overrides.displayStatus === 'DRAFT'),
+    tags: overrides.tags ?? ['automation'],
+    visibility: overrides.visibility,
+    capabilitySummary: overrides.capabilitySummary ?? 'Reusable repository review capability',
+    contentExcerpt: overrides.contentExcerpt ?? 'Skill excerpt only; prompts, credentials, and full content are excluded.',
+  }
+}
+
+export const deliveryCenterFixtures: Record<string, DeliveryItem[]> = {
+  'project-delivery-center': [
+    memoryItem({ id: 'delivery-memory-draft', resourceId: 'memory-draft-001', title: 'Draft memory', displayStatus: 'DRAFT', resourceStatus: 'DRAFT', visibility: 'PRIVATE' }),
+    memoryItem({ id: 'delivery-memory-pending', resourceId: 'memory-pending-001', title: 'Pending memory', displayStatus: 'PENDING_REVIEW', resourceStatus: 'PENDING_REVIEW', visibility: 'PRIVATE', submittedAt: '2026-08-12T09:00:00Z' }),
+    memoryItem({ id: 'delivery-memory-approved', resourceId: 'memory-approved-001', title: 'Approved memory', displayStatus: 'ACCEPTED', resourceStatus: 'APPROVED', visibility: 'PROJECT_SHARED', reviewer, reviewedAt: '2026-08-13T09:00:00Z' }),
+    skillItem({ id: 'delivery-skill-published', resourceId: 'skill-published-001', title: 'Published skill', displayStatus: 'DELIVERED', resourceStatus: 'PUBLISHED', visibility: 'PROJECT_SHARED', reviewer, reviewedAt: '2026-08-13T10:00:00Z' }),
+    skillItem({ id: 'delivery-skill-rejected', resourceId: 'skill-rejected-001', title: 'Rejected skill', displayStatus: 'REJECTED', resourceStatus: 'REJECTED', visibility: 'PRIVATE', reviewReason: 'Needs a narrower capability boundary', reviewer, reviewedAt: '2026-08-13T11:00:00Z' }),
+    codeItem({ id: 'delivery-code-processing', resourceId: 'diff-review-processing', title: 'Code delivery in progress', displayStatus: 'PROCESSING', resourceStatus: 'DELIVERING', reviewStatus: 'ACCEPTED', deliveryStatus: 'DELIVERING' }),
+    codeItem({ id: 'delivery-code-partial', resourceId: 'diff-review-partial', title: 'Code delivery partially failed', displayStatus: 'FAILED', resourceStatus: 'PARTIALLY_DELIVERED', reviewStatus: 'ACCEPTED', deliveryStatus: 'PARTIALLY_DELIVERED', repositories: [{ repositoryId: 'repo-main', name: 'qgents-web', branch: 'feat/delivery-center' }, { repositoryId: 'repo-docs', name: 'qgents-docs', branch: 'feat/delivery-center' }], repositoryDeliveries: [{ repositoryId: 'repo-main', repositoryName: 'qgents-web', deliveryStatus: 'MR_CREATED', failureCode: null, failureReason: null }, { repositoryId: 'repo-docs', repositoryName: 'qgents-docs', deliveryStatus: 'FAILED', failureCode: 'PUSH_REJECTED', failureReason: 'Remote branch changed' }] }),
+    codeItem({ id: 'delivery-code-delivered', resourceId: 'diff-review-delivered', title: 'Delivered code', displayStatus: 'DELIVERED', resourceStatus: 'DELIVERED', reviewStatus: 'ACCEPTED', deliveryStatus: 'DELIVERED', capabilities: capabilities(true, false) }),
+    codeItem({ id: 'delivery-code-archived', resourceId: 'diff-review-archived', title: 'Archived code', displayStatus: 'ARCHIVED', resourceStatus: 'ARCHIVED', reviewStatus: 'REJECTED', deliveryStatus: 'FAILED', capabilities: capabilities(false, false), reviewer, reviewedAt: '2026-08-12T11:00:00Z', reviewReason: 'Archived after review' }),
+  ],
+  'project-no-approval': [
+    memoryItem({ id: 'delivery-member-pending', projectId: 'project-no-approval', resourceId: 'memory-member-pending', title: 'Member pending memory', displayStatus: 'PENDING_REVIEW', resourceStatus: 'PENDING_REVIEW', visibility: 'PRIVATE', capabilities: capabilities(false, false) }),
+  ],
+  'project-empty': [],
+}

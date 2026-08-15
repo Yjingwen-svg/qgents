@@ -3,6 +3,7 @@ import type { GithubAuthorizedRepository, GithubInstallation } from '@/types/git
 import type { Group, GroupMember, Message } from '@/types/group'
 import type { Memory, Notification } from '@/types'
 import { MOCK_CURRENT_USER } from './currentUser'
+import { deliveryCenterHandlers } from './delivery-center/handlers'
 
 // ══════════════════════════════════════════════
 // Mock 数据
@@ -600,6 +601,7 @@ function createRepoBindingHandlers() {
 // ══════════════════════════════════════════════
 
 export const handlers = [
+  ...deliveryCenterHandlers,
   // ── health ──
   http.get('/api/health', () => HttpResponse.json({ status: 'ok', source: 'msw' })),
 

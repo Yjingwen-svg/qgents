@@ -61,10 +61,11 @@ export function DiffCenterPage() {
       <main className={styles.mainContent}>
         {diffId ? <Button type="text" icon={<ArrowLeftOutlined />} onClick={backToList}>返回交付中心</Button> : null}
         <DiffList query={listQuery} diffs={diffs} selectedId={diffId} onSelect={selectDiff} />
+        {diffId ? <section className={styles.selectedDetail}><DiffDetailPanel query={selectedQuery} projectId={projectId} onRefresh={() => void selectedQuery.refetch()} /></section> : null}
         {!listQuery.isLoading && listQuery.hasNextPage ? <Button className={styles.loadMore} loading={listQuery.isFetchingNextPage} onClick={() => void listQuery.fetchNextPage()}>加载更多</Button> : null}
       </main>
       <aside className={styles.sidebar} aria-label="Diff 摘要">
-        {diffId ? <DiffDetailPanel query={selectedQuery} projectId={projectId} onRefresh={() => void selectedQuery.refetch()} /> : <DiffSummary diffs={diffs} />}
+        <DiffSummary diffs={diffs} />
       </aside>
     </div>
   </div>
@@ -92,7 +93,67 @@ function DiffRow({ diff, selected, onSelect }: { diff: DiffListItem; selected: b
 
 function DiffSummary({ diffs }: { diffs: DiffListItem[] }) {
   const pending = diffs.filter((diff) => diff.status === 'PENDING_REVIEW').length
+  const accepted = diffs.filter((diff) => diff.status === 'ACCEPTED').length
+  const rejected = diffs.filter((diff) => diff.status === 'REJECTED').length
+  const repositoryDiffs = [...new Map(diffs.map((diff) => [diff.repositoryId, diffs.filter((item) => item.repositoryId === diff.repositoryId)])).entries()]
+  const reference = diffs[0]
+  const actionableDiffs = diffs.filter((diff) => diff.status === 'PENDING_REVIEW')
+
+  return <div className={styles.deliverySidebar}>
+    <section className={styles.sidebarCard}>
+      <h3>交付预览</h3>
+      <div className={styles.overviewBody}>
+        <div className={styles.deliveryTotal}><strong>{diffs.length}</strong><span>总交付物</span></div>
+        <div className={styles.overviewLegend}>
+          <SummaryCount tone="accepted" label="已验收" value={accepted} />
+          <SummaryCount tone="pending" label="待验收" value={pending} />
+          <SummaryCount tone="rejected" label="已拒绝" value={rejected} />
+        </div>
+      </div>
+    </section>
+
+    <section className={styles.sidebarCard}>
+      <div className={styles.sidebarCardTitle}><h3>交付仓库状态</h3><Text>{repositoryDiffs.length} 个仓库</Text></div>
+      <div className={styles.repositoryReviewList}>
+        {repositoryDiffs.length === 0 ? <Text type="secondary">暂无仓库交付数据</Text> : repositoryDiffs.map(([repositoryId, items]) => {
+          const repositoryAccepted = items.filter((diff) => diff.status === 'ACCEPTED').length
+          const state = repositoryAccepted === items.length ? '已验收' : items.some((diff) => diff.status === 'REJECTED') ? '有拒绝项' : '待验收'
+          return <div className={styles.repositoryReviewRow} key={repositoryId}>
+            <strong title={repositoryId}>{repositoryId}</strong>
+            <span>{repositoryAccepted}/{items.length} 已验收</span>
+            <Tag className={`${styles.repositoryState} ${state === '已验收' ? styles.repositoryStateAccepted : state === '有拒绝项' ? styles.repositoryStateRejected : styles.repositoryStatePending}`}>{state}</Tag>
+          </div>
+        })}
+      </div>
+    </section>
+
+    <section className={styles.sidebarCard}>
+      <div className={styles.sidebarCardTitle}><h3>待我处理</h3><strong>{pending}/{diffs.length}</strong></div>
+      <ul className={styles.acceptanceList}>
+        {actionableDiffs.length === 0 ? <li><Text type="secondary">暂无待处理 Diff</Text></li> : actionableDiffs.map((diff) => <li key={diff.id}>
+          <span className={`${styles.acceptanceMark} ${diff.status === 'ACCEPTED' ? styles.acceptanceMarkAccepted : diff.status === 'REJECTED' ? styles.acceptanceMarkRejected : ''}`} />
+          <span title={diff.id}>{diff.id} · {diff.repositoryId}</span>
+        </li>)}
+      </ul>
+    </section>
+
+    <section className={styles.sidebarCard}>
+      <h3>需求信息</h3>
+      {reference ? <dl className={styles.deliveryInfo}>
+        <div><dt>任务</dt><dd>{reference.taskId}</dd></div>
+        <div><dt>需求群</dt><dd>{display(reference.requirementGroupId)}</dd></div>
+        <div><dt>创建时间</dt><dd>{formatDate(reference.createdAt)}</dd></div>
+      </dl> : <Text type="secondary">暂无交付信息</Text>}
+    </section>
+  </div>
+  /*
   return <Card title="Diff 摘要"><Space direction="vertical"><Text>当前页 Diff：{diffs.length}</Text><Text>待验收：{pending}</Text><Text type="secondary">文件级 Diff、评论和合并由 Diff/CR 模块提供。</Text></Space></Card>
+  */
+}
+
+function SummaryCount({ tone, label, value }: { tone: 'accepted' | 'pending' | 'rejected'; label: string; value: number }) {
+  const toneClass = tone === 'accepted' ? styles.summaryDotAccepted : tone === 'pending' ? styles.summaryDotPending : styles.summaryDotRejected
+  return <div className={styles.summaryCount}><span className={`${styles.summaryDot} ${toneClass}`} /><span>{label}</span><strong>{value}</strong></div>
 }
 
 function DiffDetailPanel({ query, projectId, onRefresh }: { query: ReturnType<typeof useDiff>; projectId: string; onRefresh: () => void }) {

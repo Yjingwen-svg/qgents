@@ -1,6 +1,8 @@
 .page {
   min-height: 100vh;
-  padding: 0 18px 32px;
+  width: 100%;
+  overflow-x: hidden;
+  padding: 0 24px 40px;
   background: #ffffff;
   color: #12213d;
 }
@@ -35,6 +37,8 @@
   justify-content: space-between;
   gap: 12px;
   min-height: 42px;
+  padding: 8px 0;
+  margin-bottom: 4px;
   border-bottom: 1px solid #edf1f5;
 }
 
@@ -65,7 +69,7 @@
 }
 
 .taskHeader {
-  padding: 16px 8px 18px;
+  padding: 20px 8px 22px;
   border-bottom: 1px solid #edf1f5;
 }
 
@@ -74,6 +78,21 @@
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.titleGroup {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.titleGroup .title {
+  min-width: 0;
+}
+
+.headerAttention {
+  margin-top: 16px;
 }
 
 .summaryHeader {
@@ -146,8 +165,8 @@
 
 .contentGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 240px;
-  gap: 22px;
+  grid-template-columns: minmax(0, 1fr) 252px;
+  gap: 24px;
   align-items: start;
   padding-top: 12px;
 }
@@ -159,10 +178,15 @@
 
 .section {
   margin-bottom: 16px;
-  padding: 14px;
+  padding: 18px;
   border: 1px solid #e4eaf2;
   border-radius: 7px;
   background: #ffffff;
+}
+
+.flowSection {
+  padding: 20px 8px;
+  border-bottom: 1px solid #edf1f5;
 }
 
 .compactSection {
@@ -191,7 +215,8 @@
 
 .flowGrid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 26px;
+  gap: 28px;
+  padding: 4px 2px 8px;
 }
 
 .flowGrid > .flowCard:not(:last-child)::after {
@@ -210,9 +235,29 @@
 .flowCard {
   position: relative;
   display: grid;
-  min-height: 214px;
+  min-height: 260px;
   gap: 10px;
   align-content: space-between;
+}
+
+.flowSequence {
+  display: inline-block;
+  margin-right: 5px;
+  color: #1269c7;
+  font-size: 12px;
+}
+
+.flowDetails {
+  display: grid;
+  gap: 6px;
+  color: #52627b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.flowDependency {
+  overflow-wrap: anywhere;
+  font-size: 11px;
 }
 
 .flowCardButton {
@@ -296,7 +341,7 @@
 
 .contextGrid,
 .developmentGrid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .developmentGrid {
@@ -306,13 +351,18 @@
 .infoCard {
   display: grid;
   gap: 6px;
-  min-height: 92px;
+  min-height: 112px;
+}
+
+.infoValue {
+  overflow-wrap: anywhere;
+  line-height: 1.55;
 }
 
 .contextGrid .infoCard {
   position: relative;
-  height: 92px;
-  min-height: 92px;
+  height: 112px;
+  min-height: 112px;
   padding: 11px 12px;
   gap: 4px;
 }
@@ -357,6 +407,21 @@
 .sideContent {
   position: sticky;
   top: 12px;
+}
+
+.agentRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  color: #243855;
+  font-size: 12px;
+}
+
+.agentRow span {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
 }
 
 .sideCard {
@@ -416,6 +481,87 @@
 
 .executionPanel {
   min-width: 0;
+}
+
+.artifactTimeline {
+  display: grid;
+  gap: 14px;
+}
+
+.artifactRow {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.artifactMarker {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid #0d9b9b;
+  border-radius: 50%;
+  color: #0d8d91;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.artifactBody {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #edf1f5;
+}
+
+.artifactHeader,
+.deliveryRow,
+.reviewSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.artifactSummary {
+  display: grid;
+  gap: 3px;
+  color: #52627b;
+  font-size: 12px;
+}
+
+.reviewSummary {
+  align-items: stretch;
+  margin-bottom: 14px;
+}
+
+.repositoryDeliveries {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.deliveryRow {
+  padding: 10px 12px;
+  border: 1px solid #edf1f5;
+  border-radius: 7px;
+  color: #243855;
+}
+
+.deliveryRow > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.diffLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 10px;
 }
 
 .executionHeader {
@@ -566,6 +712,11 @@
   .contentGrid {
     grid-template-columns: minmax(0, 1fr) 260px;
   }
+
+  .contextGrid,
+  .developmentGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1279px) {
@@ -573,6 +724,10 @@
     grid-template-columns: repeat(4, minmax(210px, 1fr));
     overflow-x: auto;
     padding-bottom: 8px;
+  }
+
+  .flowCard {
+    min-width: 220px;
   }
 
   .flowGrid > .flowCard:not(:last-child)::after {
@@ -597,6 +752,10 @@
   .developmentGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .sideContent {
+    padding-top: 8px;
+  }
 }
 
 @media (max-width: 767px) {
@@ -604,6 +763,25 @@
   .contextGrid,
   .developmentGrid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .page {
+    padding-inline: 14px;
+  }
+
+  .contentGrid {
+    gap: 12px;
+  }
+
+  .flowGrid {
+    grid-template-columns: repeat(4, minmax(220px, 1fr));
+  }
+
+  .artifactHeader,
+  .deliveryRow,
+  .reviewSummary {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .topBar,

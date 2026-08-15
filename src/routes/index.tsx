@@ -26,6 +26,7 @@ import { TaskDetailPage } from '../pages/ProjectDetail/TaskDetail/TaskDetailPage
 import { TaskRunDetailPage } from '../pages/ProjectDetail/TaskRunDetail/TaskRunDetailPage'
 import { TaskCenterPage } from '../pages/ProjectDetail/TaskCenter/TaskCenterPage'
 import { DiffCenterPage } from '../pages/ProjectDetail/DiffCenter/DiffCenterPage'
+import { DeliveryCenterPage } from '../pages/ProjectDetail/DeliveryCenter/DeliveryCenterPage'
 import { WorkflowViewerPage } from '../pages/ProjectDetail/Workflow/WorkflowViewerPage'
 import { AgentTeamPage } from '../pages/ProjectDetail/AgentTeam/AgentTeamPage'
 import {
@@ -94,7 +95,7 @@ export function AppRouter() {
                 <Route path="tasks" element={<TaskCenterPage />} />
                 <Route path="tasks/:taskId/executions/:taskRunId" element={<TaskRunDetailPage />} />
                 <Route path="tasks/:taskId" element={<TaskDetailPage />} />
-                <Route path="diffs" element={<DiffCenterPage />} />
+                <Route path="diffs" element={<DeliveryCenterPage />} />
                 <Route path="diffs/:diffId" element={<DiffCenterPage />} />
                 <Route path="workflow" element={<WorkflowViewerPage />} />
                 <Route path="agents" element={<AgentTeamPage />} />

@@ -32,4 +32,6 @@ export interface CreateProjectPayload {
   description?: string
   /** 初始项目成员 userId 列表 */
   memberIds?: string[]
+  /** 创建时一并绑定的 GitHub 授权仓库 id 列表（github_repositories.id，授权仓本地 UUID） */
+  repositoryIds?: string[]
 }

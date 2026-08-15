@@ -35,12 +35,8 @@ function BootstrapGate({ children }: { children: ReactNode }) {
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <ConfigProvider
-
       theme={{ token: { colorPrimary: '#0d9b8a', borderRadius: 10, fontFamily: QG_FONT_FAMILY } }}
-
-      theme={{ token: { colorPrimary: '#0d9b8a', borderRadius: 10 } }}
       modal={{ centered: true }}
-
     >
       <AntdApp>
         <QueryClientProvider client={queryClient}>

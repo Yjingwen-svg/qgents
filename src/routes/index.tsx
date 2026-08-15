@@ -20,6 +20,7 @@ import { TeamAuthorizedReposPage } from '@/pages/GitHubIntegration/TeamAuthorize
 import { ProjectDetailLayout } from '@/pages/ProjectDetail/ProjectDetailLayout'
 import { RequirementChatPage } from '@/pages/ProjectDetail/RequirementChatPage'
 import { DiffReviewPage } from '@/pages/ProjectDetail/DiffReviewPage'
+import { MergeRequestDetailPage } from '@/pages/ProjectDetail/MergeRequestDetail/MergeRequestDetailPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { ForbiddenPage } from '@/pages/ForbiddenPage'
 import { TaskDetailPage } from '../pages/ProjectDetail/TaskDetail/TaskDetailPage'
@@ -102,7 +103,8 @@ export function AppRouter() {
                 {/* 其他子页 */}
                 <Route path="skills" element={<SkillsPage />} />
                 <Route path="memory" element={<MemoryPage />} />
-                <Route path="code/diff/:branchId" element={<DiffReviewPage />} />
+                <Route path="code/mr/:mergeRequestId" element={<MergeRequestDetailPage />} />
+                <Route path="code/diff/:diffId" element={<DiffReviewPage />} />
                 <Route path="code" element={<CodePage />} />
                 <Route path="testset" element={<TestsetPage />} />
                 <Route path="members" element={<MembersPage />} />

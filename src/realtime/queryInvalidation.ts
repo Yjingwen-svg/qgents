@@ -1,5 +1,5 @@
 import type { QueryKey } from '@tanstack/react-query'
-import { queryClient, taskModelQueryKeys } from '@/query'
+import { queryClient, queryKeys, taskModelQueryKeys } from '@/query'
 import type { ProjectTaskEvent, ProjectTaskEventPayload } from './eventParser'
 
 export const TASK_MODEL_QUERY_ROOTS = (projectId: string): readonly QueryKey[] => [
@@ -8,6 +8,7 @@ export const TASK_MODEL_QUERY_ROOTS = (projectId: string): readonly QueryKey[] =
   taskModelQueryKeys.diffs.all(projectId),
   taskModelQueryKeys.taskArtifacts.root(projectId),
   taskModelQueryKeys.taskDiffReview.root(projectId),
+  taskModelQueryKeys.mergeRequests.all(projectId),
 ]
 
 function stringId(payload: ProjectTaskEventPayload, name: string): string | null {
@@ -101,6 +102,7 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.taskDiffReview.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.diffs.detail(projectId, diffId))
+      addKey(keys, taskModelQueryKeys.mergeRequests.all(projectId))
       break
     case 'delivery.completed':
     case 'delivery.failed':
@@ -108,7 +110,26 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.tasks.all(projectId))
       addKey(keys, taskModelQueryKeys.taskDiffReview.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      addKey(keys, taskModelQueryKeys.mergeRequests.all(projectId))
       break
+    case 'merge-request.updated':
+      if (!stringId(payload, 'mergeRequestId')) return []
+      addKey(keys, taskModelQueryKeys.mergeRequests.all(projectId))
+      break
+    case 'test-run.updated': {
+      const testRunId = stringId(payload, 'testRunId')
+      if (!testRunId) return []
+      addKey(keys, queryKeys.testRuns.all(projectId))
+      addKey(keys, queryKeys.testRuns.detail(projectId, testRunId))
+      break
+    }
+    case 'dry-run.updated': {
+      const dryRunId = stringId(payload, 'dryRunId')
+      if (!dryRunId) return []
+      addKey(keys, queryKeys.dryRuns.all(projectId))
+      addKey(keys, queryKeys.dryRuns.report(projectId, dryRunId))
+      break
+    }
   }
 
   return keys

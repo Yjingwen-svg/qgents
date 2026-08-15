@@ -160,9 +160,7 @@ export function MemoryPage() {
 
 export { CodePage } from './CodePage'
 
-export function TestsetPage() {
-  return <ProjectSectionPage section="testset" title="Testset" todos={['TODO: C - Testset 管理与执行']} />
-}
+export { TestsetPage } from './Testset/TestsetPage'
 
 export function MembersPage() {
   return <MembersPageImpl />

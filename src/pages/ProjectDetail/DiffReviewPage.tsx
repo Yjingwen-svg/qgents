@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   Typography,
   Tag,
@@ -9,6 +10,9 @@ import {
   Avatar,
   Empty,
   App,
+  Spin,
+  Alert,
+  Tooltip,
 } from 'antd'
 import {
   ArrowLeftOutlined,
@@ -17,61 +21,116 @@ import {
   DownloadOutlined,
   CommentOutlined,
 } from '@ant-design/icons'
+import { githubApi } from '@/api/github'
 import { PATHS } from '@/routes/paths'
+import { formatApiError } from '@/utils/formatApiError'
+import { projectApi } from '@/api/project'
+import { useAuth } from '@/context/AuthContext'
+import { queryKeys } from '@/query/queryKeys'
+import { commentAuthorName, HUNK_UNAVAILABLE_HINT } from './commentAuthor'
 import {
-  diffFileStatusLabel,
-  diffStatusLabel,
-  type DiffComment,
-  type DiffFile,
-  type DiffLine,
-} from '@/types/diff'
-import { getDemoDiffReview } from './diffReviewDemo'
+  useAcceptDiff,
+  useAddDiffComment,
+  useCreateMergeRequest,
+  useDiff,
+  useDiffComments,
+  useDiffFiles,
+  useRejectDiff,
+  useTask,
+} from '@/hooks/task-model'
+import { diffFileStatusLabel, diffStatusLabel } from '@/types/diff'
+import type { ProjectRole } from '@/types/project'
+import type { DiffComment, DiffDetail, DiffFile, DiffLine, DiffStatus, MergeRequestSummary } from '@/types/task-model'
 import './DiffReviewPage.css'
 
 const { Text } = Typography
+const FILE_PAGE_SIZE = 100
 
 /**
  * Diff 与 CR 详情
  * 入口：代码与 Branch → 点击 Diff 列 +/-
  *
- * TODO[后端联调] GET /projects/{projectId}/diffs/{diffId}
- * TODO[后端联调] GET /projects/{projectId}/diffs/{diffId}/files
- * TODO[后端联调] GET/POST /projects/{projectId}/diffs/{diffId}/comments
- * 本期指定 Reviewer / Reviewer 管理不做。
+ * GET  /projects/{projectId}/diffs/{diffId}
+ * GET  /projects/{projectId}/diffs/{diffId}/files
+ * GET  /projects/{projectId}/diffs/{diffId}/comments
+ * POST /projects/{projectId}/diffs/{diffId}/comments
+ * POST /projects/{projectId}/diffs/{diffId}/accept | reject
+ * POST /projects/{projectId}/merge-requests
+ *
+ * 通过 / 请求修改：发起人或 Project Admin。
+ * 创建 MR：项目成员可见；未通过 Diff 时禁用。远端核验与项目访问权由服务端在 POST 时校验。
+ *
+ * 数据一律走 diffsApi / mergeRequestsApi + TanStack Query；Mock / 真后端同一条调用链。
  */
 export function DiffReviewPage() {
-  const { message } = App.useApp()
-  const { projectId = '', branchId = '' } = useParams<{
+  const { message, modal } = App.useApp()
+  const { user } = useAuth()
+  const { projectId = '', diffId = '' } = useParams<{
     projectId: string
-    branchId: string
+    diffId: string
   }>()
-  const review = useMemo(() => getDemoDiffReview(branchId), [branchId])
+  const [searchParams] = useSearchParams()
+  const fileHint = searchParams.get('file')?.trim() || undefined
   const [fileIndex, setFileIndex] = useState(0)
   const [draft, setDraft] = useState('')
-  const [localComments, setLocalComments] = useState<DiffComment[]>([])
+  const [createdMr, setCreatedMr] = useState<MergeRequestSummary | null>(null)
 
-  if (!review) {
-    return (
-      <div className="diff-review">
-        <div className="diff-review__top">
-          <Link to={PATHS.projectCode(projectId)} className="diff-review__back">
-            <ArrowLeftOutlined /> 返回代码与 Branch
-          </Link>
-        </div>
-        <div className="diff-review__empty">
-          <Empty description="该分支没有可查看的 Diff" />
-        </div>
-      </div>
-    )
-  }
+  const { data: project } = useQuery({
+    queryKey: ['projects', projectId],
+    queryFn: () => projectApi.getById(projectId),
+    enabled: Boolean(projectId),
+  })
+  const membersQuery = useQuery({
+    queryKey: ['projects', projectId, 'members'],
+    queryFn: () => projectApi.listMembers(projectId),
+    enabled: Boolean(projectId),
+  })
+  const reposQuery = useQuery({
+    queryKey: queryKeys.projectRepositories(projectId),
+    queryFn: () => githubApi.listProjectRepositories(projectId),
+    enabled: Boolean(projectId),
+  })
 
-  const files = review.files
+  const detailQuery = useDiff(projectId, diffId)
+  const filesQuery = useDiffFiles(projectId, diffId, { limit: FILE_PAGE_SIZE })
+  const commentsQuery = useDiffComments(projectId, diffId, { limit: FILE_PAGE_SIZE })
+  const addComment = useAddDiffComment(projectId, diffId)
+  const acceptDiff = useAcceptDiff(projectId)
+  const rejectDiff = useRejectDiff(projectId)
+  const createMr = useCreateMergeRequest(projectId)
+  const taskQuery = useTask(projectId, detailQuery.data?.taskId ?? '')
+
+  const review = detailQuery.data
+  const files = filesQuery.data?.data ?? []
+  const comments = commentsQuery.data?.data ?? []
+
+  useEffect(() => {
+    const list = filesQuery.data?.data ?? []
+    if (!fileHint || list.length === 0) return
+    const index = list.findIndex((item) => item.path === fileHint || item.path.endsWith(fileHint))
+    if (index >= 0) setFileIndex(index)
+  }, [fileHint, filesQuery.data])
   const safeIndex = Math.min(fileIndex, Math.max(files.length - 1, 0))
   const current = files[safeIndex]
-  const comments = [...review.comments, ...localComments]
   const fileComments = current
     ? comments.filter((item) => item.path === current.path)
     : []
+  const tree = useMemo(() => groupFiles(filesQuery.data?.data ?? []), [filesQuery.data])
+  const pending = review?.status === 'PENDING_REVIEW'
+  const canReviewDiff = canAcceptOrRejectDiff(
+    project?.role,
+    user?.id,
+    taskQuery.data?.createdByUser?.id,
+  )
+  const createMrHint = review
+    ? createMergeRequestHint(review.status, review.headCommit, Boolean(createdMr))
+    : '请先通过该 Diff'
+  const reqChatTo = review?.requirementGroupId
+    ? PATHS.projectReqChat(projectId, review.requirementGroupId)
+    : PATHS.projectDetail(projectId)
+  const boundRepo = reposQuery.data?.find((item) => item.id === review?.repositoryId)
+  const repoLabel = boundRepo?.displayName || boundRepo?.fullName || review?.repositoryId || ''
+  const members = membersQuery.data ?? []
 
   function goFile(next: number) {
     if (next < 0 || next >= files.length) return
@@ -79,48 +138,160 @@ export function DiffReviewPage() {
     setDraft('')
   }
 
-  function addComment() {
+  function submitComment() {
     if (!current || !draft.trim()) return
     const firstChanged = current.hunks
       .flatMap((hunk) => hunk.lines)
       .find((line) => line.kind === 'ADD' || line.kind === 'DEL')
     const line = firstChanged?.newLine ?? firstChanged?.oldLine ?? 1
-    setLocalComments((prev) => [
-      ...prev,
+    addComment.mutate(
       {
-        id: `local-${Date.now()}`,
-        authorName: '我',
-        body: draft.trim(),
-        createdAt: new Date().toISOString(),
         path: current.path,
-        line,
         side: 'RIGHT',
+        line,
+        hunkId: current.hunks[0]?.id,
+        body: draft.trim(),
       },
-    ])
-    setDraft('')
-    message.success('评论已添加到当前文件（演示，未提交后端）')
+      {
+        onSuccess: () => {
+          setDraft('')
+          message.success('评论已提交')
+        },
+        onError: (error) => message.error(formatApiError(error)),
+      },
+    )
   }
 
-  const tree = groupFiles(files)
-  const reqChatTo = review.requirementGroupId
-    ? PATHS.projectReqChat(projectId, review.requirementGroupId)
-    : PATHS.projectDetail(projectId)
+  function handleAccept() {
+    if (!review) return
+    modal.confirm({
+      title: '接受该 Diff？',
+      content: '接受后由受控执行基于当前快照提交，不代表已合并 MR。若该 Diff 属于任务总确认批次，后端会返回 409。',
+      okText: '接受',
+      onOk: () =>
+        acceptDiff.mutateAsync(review.id).then(
+          () => message.success('已接受 Diff'),
+          (error: unknown) => {
+            message.error(formatApiError(error))
+          },
+        ),
+    })
+  }
+
+  function handleReject() {
+    if (!review) return
+    let reason = ''
+    modal.confirm({
+      title: '拒绝该 Diff',
+      content: (
+        <Input.TextArea
+          placeholder="请输入退回原因"
+          autoSize={{ minRows: 3, maxRows: 6 }}
+          onChange={(event) => {
+            reason = event.target.value
+          }}
+        />
+      ),
+      okText: '拒绝',
+      okButtonProps: { danger: true },
+      onOk: () => {
+        if (!reason.trim()) {
+          message.warning('拒绝原因不能为空')
+          return Promise.reject(new Error('reason required'))
+        }
+        return rejectDiff.mutateAsync({ diffId: review.id, input: { reason: reason.trim() } }).then(
+          () => message.success('已拒绝 Diff'),
+          (error: unknown) => {
+            message.error(formatApiError(error))
+          },
+        )
+      },
+    })
+  }
+
+  function handleCreateMr() {
+    if (!review || createMrHint) return
+    const repository = taskQuery.data?.repositories?.find(
+      (item) => item.repositoryId === review.repositoryId,
+    )
+    const targetBranch = boundRepo?.defaultBranch || repository?.defaultBranch || repository?.baseRef || 'main'
+    const title = taskQuery.data?.title?.trim() || `Merge ${review.sourceBranch}`
+    modal.confirm({
+      title: '创建合并请求？',
+      content: `将基于已接受的 Diff 向 ${targetBranch} 发起 MR，不会直接合并。源分支与提交 SHA 由服务端核验。`,
+      okText: '创建 MR',
+      onOk: () =>
+        createMr.mutateAsync({
+          taskId: review.taskId,
+          repositoryId: review.repositoryId,
+          targetBranch,
+          title,
+        }).then(
+          (mr) => {
+            setCreatedMr(mr)
+            message.success(`已创建 MR #${mr.number}`)
+          },
+          (error: unknown) => {
+            message.error(formatApiError(error))
+          },
+        ),
+    })
+  }
+
+  if (!diffId) {
+    return (
+      <div className="diff-review">
+        <Empty description="缺少 diffId" />
+      </div>
+    )
+  }
+
+  if (detailQuery.isLoading || filesQuery.isLoading) {
+    return (
+      <div className="diff-review">
+        <div className="diff-review__empty">
+          <Spin />
+        </div>
+      </div>
+    )
+  }
+
+  if (detailQuery.isError || !review) {
+    return (
+      <div className="diff-review">
+        <div className="diff-review__top">
+          <Link to={PATHS.projectCode(projectId)} className="diff-review__back">
+            <ArrowLeftOutlined /> 返回 Branch
+          </Link>
+        </div>
+        <Alert
+          type="error"
+          showIcon
+          style={{ margin: 24 }}
+          message={detailQuery.error ? formatApiError(detailQuery.error) : '该分支没有可查看的 Diff'}
+          action={
+            <Button size="small" onClick={() => void detailQuery.refetch()}>
+              重试
+            </Button>
+          }
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="diff-review">
       <header className="diff-review__top">
         <Link to={PATHS.projectCode(projectId)} className="diff-review__back">
-          <ArrowLeftOutlined /> 返回 Diff 列表
+          <ArrowLeftOutlined /> 返回 Branch
         </Link>
         <p className="diff-review__crumb">
-          需求群：{review.requirementTitle || '—'}
-          {review.taskCode ? ` / 任务 ${review.taskCode}` : ''}
-          {` / ${review.repositoryName} / ${review.sourceBranch} → ${review.targetBranch}`}
+          任务 {review.taskId}
+          {` / ${review.sourceBranch} → ${boundRepo?.defaultBranch || '仓库默认分支'}`}
+          {repoLabel ? ` / ${repoLabel}` : ''}
         </p>
         <div className="diff-review__title-row">
-          <h1>
-            Diff {review.displayCode} · {review.title}
-          </h1>
+          <h1>Diff {review.id.slice(0, 8)} · {review.sourceBranch}</h1>
           <Tag color={review.status === 'PENDING_REVIEW' ? 'success' : 'default'}>
             {diffStatusLabel(review.status)}
           </Tag>
@@ -157,6 +328,15 @@ export function DiffReviewPage() {
         </Space>
       </div>
 
+      {filesQuery.isError ? (
+        <Alert
+          type="error"
+          showIcon
+          style={{ margin: '12px 16px 0' }}
+          message={formatApiError(filesQuery.error)}
+        />
+      ) : null}
+
       <div className="diff-review__body">
         <aside className="diff-review__panel" aria-label="文件树">
           <div className="diff-review__panel-head">文件树</div>
@@ -166,7 +346,7 @@ export function DiffReviewPage() {
                 {group.dir ? <div className="diff-review__dir">{group.dir}</div> : null}
                 {group.files.map((file) => {
                   const index = files.indexOf(file)
-                  const mark = diffFileStatusLabel(file.status)
+                  const mark = diffFileStatusLabel(file.changeType || file.status)
                   return (
                     <button
                       key={file.path}
@@ -197,6 +377,8 @@ export function DiffReviewPage() {
               </div>
               {current.binary ? (
                 <div className="diff-review__binary">二进制文件，无法展示行级 Diff</div>
+              ) : current.hunks.length === 0 ? (
+                <Empty style={{ margin: 48 }} description={HUNK_UNAVAILABLE_HINT} />
               ) : (
                 current.hunks.map((hunk) => (
                   <div key={hunk.id}>
@@ -216,18 +398,7 @@ export function DiffReviewPage() {
                   <Text type="secondary">当前文件还没有行级评论</Text>
                 ) : (
                   fileComments.map((item) => (
-                    <article key={item.id} className="diff-review__comment">
-                      <Avatar size={28}>{item.authorName.slice(0, 1)}</Avatar>
-                      <div className="diff-review__comment-body">
-                        <strong>
-                          {item.authorName}
-                          {item.replyToId ? ' · 回复' : ''}
-                          {item.resolved ? ' · 已解决' : ''}
-                        </strong>
-                        <p>{item.body}</p>
-                        <time>L{item.line} · {item.createdAt.replace('T', ' ').slice(0, 16)}</time>
-                      </div>
-                    </article>
+                    <CommentCard key={item.id} comment={item} members={members} />
                   ))
                 )}
                 <Input.TextArea
@@ -237,8 +408,16 @@ export function DiffReviewPage() {
                   placeholder="添加评论…"
                   autoSize={{ minRows: 2, maxRows: 4 }}
                   style={{ marginTop: 8 }}
+                  disabled={!pending}
                 />
-                <Button type="primary" size="small" style={{ marginTop: 8 }} onClick={addComment}>
+                <Button
+                  type="primary"
+                  size="small"
+                  style={{ marginTop: 8 }}
+                  loading={addComment.isPending}
+                  disabled={!pending}
+                  onClick={submitComment}
+                >
                   发表评论
                 </Button>
               </div>
@@ -249,42 +428,156 @@ export function DiffReviewPage() {
         </section>
 
         <aside className="diff-review__panel diff-review__aside-wrap" aria-label="审查信息">
-          <div className="diff-review__aside">
-            <h3>提交信息</h3>
-            <p>作者 {review.authorName}</p>
-            <p>
-              Diff{' '}
-              <Text type="success">+{review.changeStats.additions}</Text>
-              {' / '}
-              <Text type="danger">-{review.changeStats.deletions}</Text>
-            </p>
-            <h3 style={{ marginTop: 16 }}>Agent 助手</h3>
-            <p>可参与审查（演示占位，本期不做 Reviewer 指定）</p>
-            <h3 style={{ marginTop: 16 }}>关联跳转</h3>
-            <Space direction="vertical" size={4}>
-              <Link to={reqChatTo}>引用 Diff 回需求群</Link>
-              <Link to={PATHS.projectTasks(projectId)}>跳转关联任务</Link>
-            </Space>
-            <div className="diff-review__actions">
-              <Button
-                onClick={() => message.success('演示：已标记评论已解决')}
-              >
-                标记评论已解决
-              </Button>
-              <Button danger onClick={() => message.warning('演示：已请求修改')}>
-                请求修改
-              </Button>
-              <Button
-                type="primary"
-                onClick={() => message.info('创建 MR 需要已接受的 Diff；本页第一版先占位')}
-              >
-                创建 MR
-              </Button>
-            </div>
-          </div>
+          <ReviewAside
+            projectId={projectId}
+            review={review}
+            reqChatTo={reqChatTo}
+            pending={pending}
+            repoLabel={repoLabel}
+            canReviewDiff={canReviewDiff}
+            createMrHint={createMrHint}
+            createdMr={createdMr}
+            accepting={acceptDiff.isPending}
+            rejecting={rejectDiff.isPending}
+            creatingMr={createMr.isPending}
+            onAccept={handleAccept}
+            onReject={handleReject}
+            onCreateMr={handleCreateMr}
+          />
         </aside>
       </div>
     </div>
+  )
+}
+
+function ReviewAside({
+  projectId,
+  review,
+  repoLabel,
+  reqChatTo,
+  pending,
+  canReviewDiff,
+  createMrHint,
+  createdMr,
+  accepting,
+  rejecting,
+  creatingMr,
+  onAccept,
+  onReject,
+  onCreateMr,
+}: {
+  projectId: string
+  review: DiffDetail
+  repoLabel: string
+  reqChatTo: string
+  pending: boolean
+  canReviewDiff: boolean
+  createMrHint: string | undefined
+  createdMr: MergeRequestSummary | null
+  accepting: boolean
+  rejecting: boolean
+  creatingMr: boolean
+  onAccept: () => void
+  onReject: () => void
+  onCreateMr: () => void
+}) {
+  return (
+    <div className="diff-review__aside">
+      <h3>提交信息</h3>
+      <p>仓库 {repoLabel || review.repositoryId}</p>
+      <p>
+        Diff{' '}
+        <Text type="success">+{review.changeStats.additions}</Text>
+        {' / '}
+        <Text type="danger">-{review.changeStats.deletions}</Text>
+      </p>
+      <h3 style={{ marginTop: 16 }}>关联跳转</h3>
+      <Space direction="vertical" size={4}>
+        <Link to={reqChatTo}>引用 Diff 回需求群</Link>
+        <Link to={PATHS.projectTasks(projectId)}>跳转关联任务</Link>
+        <Link to={`${PATHS.projectCode(projectId)}?tab=mr`}>查看项目 MR 列表</Link>
+        <Link to={PATHS.projectDiff(projectId, review.id)}>交付中心摘要</Link>
+        {createdMr?.webUrl ? (
+          <a href={createdMr.webUrl} target="_blank" rel="noreferrer">
+            打开 MR #{createdMr.number}
+          </a>
+        ) : null}
+      </Space>
+      <div className="diff-review__actions">
+        <Button disabled>标记评论已解决</Button>
+        {canReviewDiff ? (
+          <>
+            <Button danger loading={rejecting} disabled={!pending} onClick={onReject} aria-label="reject-diff">
+              请求修改
+            </Button>
+            <Button type="primary" loading={accepting} disabled={!pending} onClick={onAccept} aria-label="accept-diff">
+              通过
+            </Button>
+          </>
+        ) : null}
+        <Tooltip title={createMrHint}>
+          <span>
+            <Button
+              type={canReviewDiff ? 'default' : 'primary'}
+              loading={creatingMr}
+              disabled={Boolean(createMrHint)}
+              onClick={onCreateMr}
+              aria-label="create-merge-request"
+            >
+              创建 MR
+            </Button>
+          </span>
+        </Tooltip>
+        {createMrHint ? (
+          <Text type="secondary">{createMrHint}</Text>
+        ) : (
+          <Text type="secondary">创建 MR 会发起合并请求，不会直接合入目标分支</Text>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function canAcceptOrRejectDiff(
+  role: ProjectRole | undefined,
+  currentUserId: string | undefined,
+  initiatorId: string | undefined,
+): boolean {
+  if (role === 'PROJECT_ADMIN') return true
+  return Boolean(currentUserId && initiatorId && currentUserId === initiatorId)
+}
+
+function createMergeRequestHint(
+  status: DiffStatus,
+  headCommit: string | null | undefined,
+  alreadyCreated: boolean,
+): string | undefined {
+  if (alreadyCreated) return '该 Diff 已创建过 MR'
+  if (status !== 'ACCEPTED') return '请先通过该 Diff'
+  if (!headCommit) return '等待远端提交核验完成'
+  return undefined
+}
+
+function CommentCard({
+  comment,
+  members,
+}: {
+  comment: DiffComment
+  members: Array<{ userId: string; displayName?: string }>
+}) {
+  const name = commentAuthorName(comment, members)
+  return (
+    <article className="diff-review__comment">
+      <Avatar size={28}>{name.slice(0, 1)}</Avatar>
+      <div className="diff-review__comment-body">
+        <strong>{name}</strong>
+        <p>{comment.body}</p>
+        <time>
+          {comment.line != null ? `L${comment.line} · ` : ''}
+          {comment.createdAt ? comment.createdAt.replace('T', ' ').slice(0, 16) : ''}
+        </time>
+      </div>
+    </article>
   )
 }
 

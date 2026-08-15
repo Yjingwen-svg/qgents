@@ -9,18 +9,23 @@ const taskCancelMock = vi.hoisted(() => vi.fn())
 const taskRunRetryMock = vi.hoisted(() => vi.fn())
 const diffAcceptMock = vi.hoisted(() => vi.fn())
 const taskRunGetMock = vi.hoisted(() => vi.fn())
+const mergeRequestCreateMock = vi.hoisted(() => vi.fn())
+const mergeRequestMergeMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api/taskModel', () => ({
   diffsApi: { accept: diffAcceptMock },
   tasksApi: { create: taskCreateMock, cancel: taskCancelMock },
   taskRunsApi: { get: taskRunGetMock, retry: taskRunRetryMock },
+  mergeRequestsApi: { create: mergeRequestCreateMock, merge: mergeRequestMergeMock },
 }))
 
 import { queryClient, taskModelQueryKeys } from '@/query'
 import {
   useAcceptDiff,
   useCancelTask,
+  useCreateMergeRequest,
   useCreateTask,
+  useMergeMergeRequest,
   useRetryTaskRunModel,
   useTaskRun,
 } from './task-model'
@@ -45,6 +50,8 @@ beforeEach(() => {
   taskRunRetryMock.mockReset()
   diffAcceptMock.mockReset()
   taskRunGetMock.mockReset()
+  mergeRequestCreateMock.mockReset()
+  mergeRequestMergeMock.mockReset()
   queryClient.clear()
 })
 
@@ -132,5 +139,71 @@ describe('new task model hooks', () => {
     const { result } = renderHook(() => useTaskRun('project-1', 'run-2'), { wrapper: wrapper(queryClient) })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data?.steps).toBeUndefined()
+  })
+
+  it('creates a merge request through the documented mutation', async () => {
+    const created = {
+      id: 'mr-1',
+      repositoryId: 'repo-1',
+      groupIds: ['group-1'],
+      provider: 'GITHUB',
+      number: 42,
+      sourceBranch: 'feat/login-api',
+      targetBranch: 'main',
+      status: 'OPEN',
+      headCommit: 'abc123',
+      webUrl: null,
+    }
+    mergeRequestCreateMock.mockResolvedValue(created)
+    const cached = queryClient.getQueryCache().build(queryClient, {
+      queryKey: taskModelQueryKeys.mergeRequests.all('project-1'),
+      queryFn: async () => [],
+    })
+    cached.setData([])
+    const { result } = renderHook(() => useCreateMergeRequest('project-1'), { wrapper: wrapper(queryClient) })
+    await act(async () => {
+      await result.current.mutateAsync({
+        taskId: 'task-1',
+        repositoryId: 'repo-1',
+        targetBranch: 'main',
+        title: '实现邮箱登录',
+      })
+    })
+    expect(mergeRequestCreateMock).toHaveBeenCalledWith('project-1', {
+      taskId: 'task-1',
+      repositoryId: 'repo-1',
+      targetBranch: 'main',
+      title: '实现邮箱登录',
+    })
+    expect(queryClient.getQueryState(taskModelQueryKeys.mergeRequests.all('project-1'))?.isInvalidated).toBe(true)
+  })
+
+  it('writes a merged MR and invalidates the project MR queries', async () => {
+    const merged = {
+      id: 'mr-1',
+      repositoryId: 'repo-1',
+      groupIds: ['group-1'],
+      provider: 'GITHUB',
+      number: 42,
+      sourceBranch: 'feat/login-api',
+      targetBranch: 'main',
+      status: 'MERGED' as const,
+      headCommit: 'abc123',
+      webUrl: null,
+      qualityGate: { status: 'PASSED', requiredChecks: ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE'] },
+    }
+    mergeRequestMergeMock.mockResolvedValue(merged)
+    const list = queryClient.getQueryCache().build(queryClient, {
+      queryKey: taskModelQueryKeys.mergeRequests.all('project-1'),
+      queryFn: async () => [],
+    })
+    list.setData([])
+    const { result } = renderHook(() => useMergeMergeRequest('project-1'), { wrapper: wrapper(queryClient) })
+    await act(async () => {
+      await result.current.mutateAsync('mr-1')
+    })
+    expect(mergeRequestMergeMock).toHaveBeenCalledWith('project-1', 'mr-1')
+    expect(queryClient.getQueryData(taskModelQueryKeys.mergeRequests.detail('project-1', 'mr-1'))).toEqual(merged)
+    expect(queryClient.getQueryState(taskModelQueryKeys.mergeRequests.all('project-1'))?.isInvalidated).toBe(true)
   })
 })

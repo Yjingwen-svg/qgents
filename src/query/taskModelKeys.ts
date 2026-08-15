@@ -1,4 +1,4 @@
-import type { DiffListFilters, PageFilters, TaskListFilters, TaskRunListFilters } from '@/types/task-model'
+import type { DiffListFilters, MergeRequestListFilters, PageFilters, TaskListFilters, TaskRunListFilters } from '@/types/task-model'
 
 export const taskModelQueryKeys = {
   tasks: {
@@ -41,5 +41,14 @@ export const taskModelQueryKeys = {
     detail: (projectId: string, diffId: string) => ['qgents', 'projects', projectId, 'diffs', diffId] as const,
     files: (projectId: string, diffId: string, filters: PageFilters = {}) => ['qgents', 'projects', projectId, 'diffs', diffId, 'files', filters] as const,
     comments: (projectId: string, diffId: string, filters: PageFilters = {}) => ['qgents', 'projects', projectId, 'diffs', diffId, 'comments', filters] as const,
+  },
+  mergeRequests: {
+    all: (projectId: string) => ['qgents', 'projects', projectId, 'merge-requests'] as const,
+    list: (projectId: string, filters: MergeRequestListFilters = {}) =>
+      ['qgents', 'projects', projectId, 'merge-requests', 'list', filters] as const,
+    detail: (projectId: string, mergeRequestId: string) =>
+      ['qgents', 'projects', projectId, 'merge-requests', mergeRequestId] as const,
+    checks: (projectId: string, mergeRequestId: string) =>
+      ['qgents', 'projects', projectId, 'merge-requests', mergeRequestId, 'checks'] as const,
   },
 } as const

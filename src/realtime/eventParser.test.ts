@@ -3,7 +3,13 @@ import { parseProjectTaskEvent, PROJECT_TASK_EVENT_TYPES } from './eventParser'
 
 describe('project SSE event parsing', () => {
   it.each(PROJECT_TASK_EVENT_TYPES)('parses the new event %s', (eventType) => {
-    const ids = eventType === 'task-run.step.progress'
+    const ids = eventType === 'merge-request.updated'
+      ? { mergeRequestId: 'mr-1' }
+      : eventType === 'test-run.updated'
+      ? { testRunId: 'testrun-1' }
+      : eventType === 'dry-run.updated'
+        ? { dryRunId: 'dryrun-1' }
+      : eventType === 'task-run.step.progress'
       ? { taskId: 'task-1', stepId: 'step-1', taskRunId: 'run-1' }
       : eventType === 'task.updated'
         ? { taskId: 'task-1' }
@@ -57,9 +63,6 @@ describe('project SSE event parsing', () => {
     'task-run.approval-required',
     'message.created',
     'group.updated',
-    'test-run.updated',
-    'dry-run.updated',
-    'merge-request.updated',
     '',
   ])('ignores retired or unrelated event %s', (eventType) => {
     expect(parseProjectTaskEvent({

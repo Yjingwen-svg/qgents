@@ -103,6 +103,24 @@ export type {
   CreateSkillPayload,
 } from './skill'
 export type {
+  Testset,
+  TestsetStatus,
+  TestsetPassRule,
+  TestsetListFilters,
+  CreateTestsetPayload,
+  UpdateTestsetPayload,
+  TestRun,
+  TestRunStatus,
+  TestCaseSummary,
+  CreateTestRunPayload,
+  DryRunReport,
+  DryRunStatus,
+  DryRunConflict,
+  CreateDryRunPayload,
+  LocalRunHistoryItem,
+  LocalRunKind,
+} from './testset'
+export type {
   Activity,
   ActivityType,
   ActivityTargetType,

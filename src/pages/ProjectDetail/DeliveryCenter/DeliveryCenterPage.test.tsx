@@ -78,7 +78,7 @@ describe('DeliveryCenterPage', () => {
     const partialCard = partialTitle?.closest('article')
     if (!partialCard) throw new Error('partial code card not rendered')
     fireEvent.click(within(partialCard).getByRole('button', { name: /查看 Diff/ }))
-    expect(await screen.findByText('Diff Center')).toBeInTheDocument()
+    expect(await screen.findByText('Task Detail')).toBeInTheDocument()
     diffRender.unmount()
     const secondRender = renderPage('/app/projects/project-delivery-center/diffs')
     await screen.findByText('Draft memory')

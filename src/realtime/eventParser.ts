@@ -91,6 +91,12 @@ function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPay
   if (type.startsWith('skill.')) {
     return payload.resourceType === 'SKILL' && payload.eventVersion === 1
   }
+  if (type === 'merge-request.updated') {
+    return typeof payload.number === 'number' && Number.isInteger(payload.number) && typeof payload.status === 'string' && (typeof payload.webUrl === 'string' || payload.webUrl === null)
+  }
+  if (type === 'task.diff-review.failed') {
+    return typeof payload.reviewBatchId === 'string' && payload.reviewBatchId.length > 0
+  }
   if (type === 'task.artifact.created' || type === 'task-run.artifact.created') {
     return typeof payload.sequenceNo === 'number' && Number.isInteger(payload.sequenceNo) && payload.sequenceNo >= 0
   }

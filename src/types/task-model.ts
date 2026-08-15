@@ -50,6 +50,7 @@ export interface TaskAttention {
   inputRequestId: string | null
   diffReviewBatchId: string | null
   repositoryId: string | null
+  createdAt: string | null
 }
 
 export interface TaskListItem {

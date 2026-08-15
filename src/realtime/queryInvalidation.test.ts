@@ -33,10 +33,12 @@ describe('project SSE Task model query invalidation mapping', () => {
   })
 
   it('maps task-run.updated to run detail, task runs, and Task detail', () => {
-    const keys = keysFor('task-run.updated', { taskId: 'task-1', taskRunId: 'run-1' })
+    const keys = keysFor('task-run.updated', { taskId: 'task-1', taskRunId: 'run-1', agentId: 'agent-1' })
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1']))
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks', 'task-1', 'task-runs']))
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks', 'task-1']))
+    expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'agents', 'agent-1', 'runtime']))
+    expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'agent', 'agent-1']))
   })
 
   it('maps progress only to TaskRun detail and never writes content', () => {

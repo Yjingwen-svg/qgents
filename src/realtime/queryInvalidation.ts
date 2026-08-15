@@ -1,5 +1,5 @@
 import type { QueryKey } from '@tanstack/react-query'
-import { deliveryCenterKeys, queryClient, taskModelQueryKeys } from '@/query'
+import { deliveryCenterKeys, queryClient, queryKeys, taskModelQueryKeys } from '@/query'
 import type { ProjectTaskEvent, ProjectTaskEventPayload } from './eventParser'
 
 export const TASK_MODEL_QUERY_ROOTS = (projectId: string): readonly QueryKey[] => [
@@ -31,6 +31,7 @@ export function queryKeysForProjectTaskEvent(
   const taskId = stringId(payload, 'taskId')
   const taskStepId = stringId(payload, 'taskStepId')
   const taskRunId = stringId(payload, 'taskRunId')
+  const agentId = stringId(payload, 'agentId')
   const diffId = stringId(payload, 'diffId')
   const artifactId = stringId(payload, 'artifactId')
   const resourceType = stringId(payload, 'resourceType')
@@ -41,6 +42,11 @@ export function queryKeysForProjectTaskEvent(
     addKey(keys, deliveryCenterKeys.all(projectId))
     if (resourceType === 'MEMORY') addKey(keys, ['memories', projectId])
     if (resourceType === 'SKILL') addKey(keys, ['skills', projectId])
+  }
+  const addAgentQueries = (): void => {
+    if (!agentId) return
+    addKey(keys, queryKeys.agents.runtime(projectId, agentId))
+    addKey(keys, ['qgents', 'projects', projectId, 'task-runs', 'agent', agentId])
   }
 
   switch (event.type) {
@@ -60,6 +66,7 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
       addKey(keys, taskModelQueryKeys.taskRuns.all(projectId, taskId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      addAgentQueries()
       break
     case 'task-run.step.progress':
       if (!taskRunId || !stringId(payload, 'stepId')) return []

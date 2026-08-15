@@ -1,4 +1,4 @@
-import type { TaskRunStatus } from './task-model'
+import type { TaskRepositorySummary, TaskRunStatus, TaskStepRole } from './task-model'
 
 export type AgentRole = 'ORCHESTRATOR' | 'PLANNER' | 'DEVELOPER' | 'TESTER' | 'REVIEWER' | 'GENERAL'
 export type AgentVisibility = 'PRIVATE' | 'TEAM' | 'SYSTEM'
@@ -20,6 +20,8 @@ export interface AgentRuntimeSummary {
     requirementGroups: AgentAssignmentUsage
     workflows: AgentAssignmentUsage
   }
+  skillAccessScope: AgentAccessScope
+  memoryAccessScope: AgentAccessScope
 }
 
 export interface AgentSummary {
@@ -32,9 +34,6 @@ export interface AgentSummary {
   status: AgentStatus
   createdBy: string | null
   description: string | null
-  runtime: AgentRuntimeSummary
-  skillAccessScope: AgentAccessScope
-  memoryAccessScope: AgentAccessScope
 }
 
 export interface AgentDetail extends AgentSummary {
@@ -57,11 +56,19 @@ export interface ProjectSkillOption { id: string; name: string; scope: 'PROJECT'
 
 export type AgentAssignmentType = 'REQUIREMENT_GROUP' | 'WORKFLOW'
 
+export type AgentAssignmentStatus = 'ACTIVE' | 'INACTIVE'
+
 export interface AgentAssignmentSummary {
   type: AgentAssignmentType
   resourceId: string
   resourceName: string
-  status: string
+  status: AgentAssignmentStatus
+}
+
+export interface AgentAssignmentsFilters {
+  type?: AgentAssignmentType
+  cursor?: string
+  limit?: number
 }
 
 export interface AgentTaskRunSummary {
@@ -70,18 +77,17 @@ export interface AgentTaskRunSummary {
   taskId: string
   taskStepId: string
   agentId: string
-  role: AgentRole
+  role: TaskStepRole
   status: TaskRunStatus
   retryOfTaskRunId: string | null
   createdAt: string
-  startedAt: string | null
-  finishedAt: string | null
-  durationMs: number | null
-  task: { id: string; displayCode: string | null; title: string }
-  taskStep: { id: string; title: string; role: string }
-  requirementGroup: { id: string; name: string }
-  repository: { id: string; displayName: string } | null
-  statusReason: { code: string | null; summary: string } | null
+  updatedAt: string
+  taskDisplayCode: string
+  taskTitle: string
+  taskStepTitle: string
+  taskStepRole: TaskStepRole
+  requirementGroup: { id: string; name: string; status: string }
+  repository: TaskRepositorySummary | null
 }
 
 export interface CreateAgentPayload {

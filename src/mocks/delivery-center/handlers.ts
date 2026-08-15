@@ -53,7 +53,16 @@ function pageItems(items: DeliveryItem[], searchParams: URLSearchParams): { data
 
 function summarize(items: DeliveryItem[]) {
   const countsByType = { CODE: 0, MEMORY: 0, SKILL: 0 }
-  const countsByStatus: Partial<Record<DeliveryDisplayStatus, number>> = {}
+  const countsByStatus: Record<DeliveryDisplayStatus, number> = {
+    DRAFT: 0,
+    PENDING_REVIEW: 0,
+    PROCESSING: 0,
+    ACCEPTED: 0,
+    REJECTED: 0,
+    DELIVERED: 0,
+    FAILED: 0,
+    ARCHIVED: 0,
+  }
   const repositoryMap = new Map<string, DeliveryRepositorySummary>()
   const groups = new Map<string, { requirementGroupId: string; name: string; total: number; pending: number }>()
   let pendingForCurrentUser = 0
@@ -70,13 +79,14 @@ function summarize(items: DeliveryItem[]) {
     }
     if (item.resourceType !== 'CODE') continue
     for (const repository of item.repositories) {
-      const current = repositoryMap.get(repository.repositoryId) ?? { repositoryId: repository.repositoryId, name: repository.name, total: 0, accepted: 0, pending: 0, failed: 0, deliveryStatus: null, mergeRequestSummary: null }
+      const current = repositoryMap.get(repository.repositoryId) ?? { repositoryId: repository.repositoryId, repositoryName: repository.name, total: 0, accepted: 0, pending: 0, failed: 0, deliveryStatus: null, mergeRequest: null }
       current.total += 1
       if (item.displayStatus === 'ACCEPTED' || item.displayStatus === 'DELIVERED') current.accepted += 1
       if (item.displayStatus === 'PENDING_REVIEW' || item.displayStatus === 'PROCESSING') current.pending += 1
       if (item.displayStatus === 'FAILED') current.failed += 1
-      current.deliveryStatus = item.deliveryStatus
-      current.mergeRequestSummary = item.mergeRequest
+      const repositoryDelivery = item.repositoryDeliveries.find((delivery) => delivery.repositoryId === repository.repositoryId)
+      current.deliveryStatus = repositoryDelivery?.deliveryStatus ?? null
+      current.mergeRequest = repositoryDelivery?.mergeRequest ?? null
       repositoryMap.set(repository.repositoryId, current)
     }
   }
@@ -155,7 +165,7 @@ function applyCodeAction(
 ): Response {
   const idempotencyFailure = requireIdempotency(request)
   if (idempotencyFailure) return idempotencyFailure
-  const item = deliveryCenterStore.items.get(projectId)?.find((candidate) => candidate.resourceType === 'CODE' && candidate.source.taskId === taskId)
+  const item = deliveryCenterStore.items.get(projectId)?.find((candidate) => candidate.resourceType === 'CODE' && candidate.openTarget.kind === 'TASK_DIFF_REVIEW' && candidate.openTarget.taskId === taskId)
   if (!item || item.resourceType !== 'CODE') return errorResponse(404, 'DIFF_REVIEW_NOT_FOUND', 'Diff review was not found')
   if (projectId === 'project-delivery-conflict') return errorResponse(409, 'DELIVERY_STATE_CONFLICT', 'Delivery state has changed')
   if (action === 'reject' && !reason?.trim()) return errorResponse(422, 'REVIEW_REASON_REQUIRED', 'A rejection reason is required')

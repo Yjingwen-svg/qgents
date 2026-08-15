@@ -1,6 +1,6 @@
-Qgents接口文档v1.8.0
+Qgents接口文档v1.9.1
 
-版本：v1.8.0
+版本：v1.9.1
 
 状态：第 6 节 GitHub 集成接口已冻结；通知中心（§7.1）与群列表/消息字段按 A 联调约定补全；团队邀请收件人视角与团队最近动态已落地（§19，接口表见 §5.1）；新增两个SSE事件
 
@@ -719,7 +719,7 @@ added/removed 按 provider repository id upsert 或标记 REVOKED，校验 insta
 pull_request
 opened/reopened/synchronize → OPEN，closed+merged → MERGED，closed+未 merged → CLOSED；按 provider repository + PR number 幂等更新全部项目绑定 MR 镜像
 每个成功更新的项目一次
-投递审计表 github_webhook_deliveries：以 provider_delivery_id 唯一，状态 RECEIVED → PROCESSED/IGNORED/FAILED，只存原始 body 的 SHA-256 摘要；attempt_count 记录同一 delivery 实际处理次数；已完成记录保留 30 天后由定时任务清理，RECEIVED 不清理。
+投递审计表 github_webhook_deliveries：以 provider_delivery_id 唯一，状态 RECEIVED → PROCESSED/IGNORED/FAILED，只存原始 body 的 SHA-256 摘要；attempt_count 记录同一 delivery 实际处理次数；RECEIVED 超过 5 分钟视为处理中断，允许后续投递重新领取处理；已完成记录保留 30 天后由定时任务清理，超过 30 天的孤儿 RECEIVED 一并清除。
 
 
 SSE 事件契约补充：
@@ -2031,9 +2031,7 @@ POST .../retry-delivery
 确认成功仅表示用户已接受整个快照；后端仍会逐仓库交付。前端必须根据返回的总体 deliveryStatus 和后续 SSE 刷新 Task 与批次，不得将 ACCEPTED 当作“所有 PR 已创建”。
 
 15.6.4 新增 SSE 事件与 payload
-
 SSE 事件仍使用 §12.1 的事件信封；以下为 data 中的业务 payload 必填字段。事件到达后可重新请求对应的 Task、Artifact 或 Diff Review 资源。
-
 事件
 payload 必填字段
 推荐刷新资源
@@ -2073,13 +2071,12 @@ Task、Task Diff Review、错误提示
 diff-review.skipped
 projectId、taskId、reason
 Task<br>
-
 其中：
 
+
 - task.diff-review.failed 事件的 reason 固定为 DIFF_SNAPSHOT_STALE，表示用户确认时工作区已发生变化，当前 Diff 快照失效，前端应刷新 Task 和 Diff Review，并停止当前批次的确认操作。
-  
 - diff-review.skipped 事件的 reason 固定为 FINAL_DIFF_EMPTY，表示任务执行成功但没有检测到代码变更，前端无需展示 Diff 审核面板；此时查询 Diff Review 返回 404 DIFF_REVIEW_NOT_FOUND 属于正常业务结果。
-  
+
 16. v1.4.0 更新：任务中心与任务详情展示字段
 
 基线 v1.3.0。本小节补充任务中心/任务详情/执行流程/总 Diff 交付摘要的展示契约，
@@ -2820,16 +2817,13 @@ CODE openTarget 固定（成员B 最终契约 §五）：
 - 单 Diff 入口由 Task 级 DiffReview 详情中的仓库明细提供；DIFF openTarget 类型保留给其他页面/未来能力。
 
 20.4 Delivery 相关 SSE 冻结
-
 新增事件（沿用 §12.1 项目级单连接 / Bearer / Last-Event-ID / EVENT_CURSOR_EXPIRED；前端收到事件只失效 Query，不写入实体缓存）：
-
 事件
 覆盖场景
 memory.submit-review / memory.approved / memory.rejected / memory.archived
 MEMORY 审批流转
 skill.submit-review / skill.published / skill.rejected / skill.archived
 SKILL 审批流转
-
 统一 payload 基座（CODE 事件保持 §15.6.4 现有 payload 不动）：
 
 interface DeliveryEventPayload {
@@ -2843,9 +2837,7 @@ interface DeliveryEventPayload {
   eventVersion: number;        // 首版为 1
   updatedAt: string;           // RFC 3339 UTC
 }
-
-merge-request.updated：payload 含 projectId、mergeRequestId、number、status、webUrl（触发点：MR 创建/状态同步）；diff-review.skipped：reason 固定为 FINAL_DIFF_EMPTY（§15.6.4）。
-
+merge-request.updated：完整 payload 见 §6.10（projectId, mergeRequestId, repositoryId, number, status, headCommit, providerUpdatedAt, qualityGateStatus, timestamp，不含 webUrl；MR 链接由 MR 列表、详情或 Diff/MR 交付卡提供）；diff-review.skipped：reason 固定为 FINAL_DIFF_EMPTY（§15.6.4）。
 20.5 Agent 分配列表与运行时摘要
 
 GET /api/v1/projects/{projectId}/agents/{agentId}/assignments（B04）
@@ -2966,3 +2958,109 @@ PUBLISHED（前端按 PUBLISHED 消费；旧 APPROVED 不作为 Skill 状态）
 20.10 P2：DeliveryCenter 导出（延期）
 
 GET /delivery-items/export（CSV + Content-Disposition）不阻塞首轮联调，待 P0/P1 稳定后实现；导出范围仍限列表摘要，不含完整内容/Prompt/凭据/Patch。
+
+21. v1.9.0 补充：Diff / MR / Testset 页面缺口确认
+
+依据前端 docs/temp/diff-mr-testset-backend-gaps.md，后端基于现状逐项确认。以下「已符合」项为冻结契约；「需补」项待开发排期后落地（不阻塞首轮联调）；「本轮不做」项前端按空态处理。
+
+21.1 五个问题的直接结论
+
+编号
+问题
+结论
+Q1
+GET /merge-requests/{id}/checks 能否按 {status, requiredChecks, items[]} 冻结？
+语义一致、形状不同：现状返回扁平数组 MergeRequestCheckResponse[]（id/type/status/attemptNo/testsetId/commitSha/source/startedAt/completedAt）。type 枚举冻结为 TESTSET/AI_REVIEW/DRY_RUN/CQ_PLUS_ONE，status 冻结为 PENDING/PASSED/FAILED；qualityGate.requiredChecks 只含四项。待定：后端包装为 {status, requiredChecks, items[]}（推荐），或前端适配扁平数组
+Q2
+MR 能否直接返回 diffId？
+现状无。数据可推导（MR 的 taskId + projectRepositoryId + sourceBranch ↔ Diff 同字段 + reviewBatchId→taskId）。需补（推荐）：MR 详情返回该仓库该任务已 ACCEPTED 的 Diff 的 diffId，无则 null；备选：GET /diffs 增加 repositoryId + sourceBranch 过滤
+Q3
+Testset 列表是扁平字段还是 definition？
+扁平字段（§10 形状）已实现：TestsetResponse 顶层含 command/timeoutSeconds/passRule/acceptanceNotes；status 只用 ENABLED/DISABLED（无 enabled 布尔）；enable/disable/delete 已实现。缺 scopeTags（创建请求有、响应未返回，需补）
+Q4
+cases[]、reportUrl、pdfUrl 本轮给不给？
+本轮不给：TestRunResponse 详情为 id/projectId/repositoryId/ref/testsetIds/status/summary/createdBy/createdAt（无 caseSummary/cases/reportUrl/pdfUrl/sandboxId/startedAt/finishedAt）；DryRunReportResponse 为 id/status/createdAt。执行器未收集逐用例结果、报告产物未接存储。前端用例详情/报告 Tab 保持空态
+Q5
+Test Run / Dry Run 历史列表本轮做不做？
+本轮不做（§1 已声明）：无 GET /test-runs、GET /dry-runs 列表接口；前端继续本机 localStorage，联调不当作缺数据。后续补列表接口属 P1+
+
+21.2 Diff / MR / Testset 字段现状（冻结）
+
+Diff 评审页：
+
+字段/能力
+现状
+结论
+GET /diffs/{diffId}/files
+返回 DiffFileResponse[]：id/sequence/path/changeType/additions/deletions/binary，无 hunk/line 结构
+需补：解析 patch 为 hunks[].lines[]（Git 领域），或冻结「前端用 patch 接口自行解析」——待定
+文件变更类型
+字段名 changeType（前端称 status）
+枚举冻结为 ADDED/MODIFIED/DELETED；字段名待统一
+GET/POST /diffs/{diffId}/comments
+DiffCommentResponse：id/diffId/path/side/line/hunkId/commitSha/body/authorUserId/createdAt
+createdAt 已符合；authorName 需补（join users）或前端用 authorUserId 查用户
+Diff 详情 targetBranch / 仓库名
+无（仅 sourceBranch；无 repositoryName）
+建议：targetBranch 明确使用仓库默认分支；仓库名用 binding.displayName 或前端自行拼
+评论已解决 / 回复串 / 文件下载
+无
+本轮不做（书面确认）
+
+MR 列表 / 详情：
+
+字段
+现状
+结论
+title
+列表、详情均有 ✓
+已符合
+qualityGate
+列表、详情均有（{status, requiredChecks}）✓
+已符合
+status
+OPEN/MERGED/CLOSED ✓
+已符合（「进行中」即 OPEN 文案）
+webUrl
+无
+需补：GitHub repo + providerNumber 构造，构造不出给 null
+description
+无（未镜像 GitHub body）
+返回 null/""
+groupIds
+列表无
+需补（按群标识时）
+diffId
+无
+需补（Q2 推荐方案）
+
+Testset / TestRun / DryRun / SSE：
+
+项
+现状
+结论
+GET /testsets 过滤
+repositoryId ✓；status 前端已传
+status 过滤若未支持则需补（实现时确认）
+POST /test-runs / POST /dry-runs 立即响应
+含 id ✓
+前端可接着 GET 详情/report
+SSE test-run.updated
+payload 含 testRunId + projectId/repositoryId/taskId/ref/status ✓
+已符合
+SSE dry-run.updated
+payload 含 dryRunId + projectId/repositoryId/taskId/headCommit/targetBranch/status ✓
+已符合
+历史列表 / 用例详情 / 报告 URL
+无（Q4/Q5）
+本轮不做
+
+21.3 待补工作清单（后续实现，非当前冻结契约）
+
+1. Diff files：补 hunk/line 结构化，或冻结「前端自行解析 raw patch」；
+2. Diff / MR comments：响应补 authorName（join users）；
+3. MR：详情补 diffId（推荐）、列表/详情补 webUrl、详情补 description（允许 null）、列表补 groupIds；
+4. MR checks：包装为 {status, requiredChecks, items[]}（或前端适配扁平数组）；
+5. Testset：响应补 scopeTags；
+6. （P1+）test-run / dry-run 历史列表、逐用例结果、报告产物 URL（前端按空态处理，不阻塞联调）。
+  

@@ -1,7 +1,8 @@
-import type { DiffDetail, ExecutionContext, InputRequest, Task, TaskArtifact, TaskRunDetail, TaskRunLog, TaskRunStep, TaskStatus, TaskStep, TaskStepRole, DiffReviewBatch } from '@/types/task-model'
+import type { DiffDetail, ExecutionContext, InputRequest, Task, TaskArtifact, TaskAttention, TaskRunDetail, TaskRunLog, TaskRunStep, TaskStatus, TaskStep, TaskStepRole, DiffReviewBatch } from '@/types/task-model'
 import { createTaskModelStore, type TaskModelStore } from './store'
 const timestamp = '2026-08-12T08:00:00Z'; const laterTimestamp = '2026-08-12T08:01:00Z'
 const taskStatuses: readonly TaskStatus[] = ['PLANNING','PENDING','RUNNING','WAITING_DIFF_CONFIRMATION','DELIVERING','DELIVERY_FAILED','SUCCEEDED','FAILED','CANCELLING','CANCELLED']
+function attention(value: Omit<TaskAttention, 'createdAt'>): TaskAttention { return { ...value, createdAt: laterTimestamp } }
 function repo(projectId: string, id: string, status: TaskStatus) { return { repositoryId: `repository-${projectId}`, name: 'Mock repository', fullName: `qgents/${projectId}`, provider: 'GITHUB', defaultBranch: 'main', baseRef: 'main', baseCommit: 'base-commit-1', sourceBranch: `feat/${id}`, headCommit: status === 'SUCCEEDED' ? `head-${id}` : null } }
 function task(projectId: string, id: string, status: TaskStatus, index: number): Task { const repositories = [repo(projectId, id, status)]; return { id, displayCode: `T-${index+1000}`, projectId, title: `Task ${index+1}`, requirementSummary: `Requirement for ${id}`, status, deliveryMode: 'DIFF_FIRST', requirementGroup: { id: `group-${projectId}-requirements`, name: 'Requirements', status: 'ACTIVE' }, createdByUser: { id: 'user-1', displayName: 'Mock User', avatarUrl: null }, repositories, executionSummary: { totalSteps: 0, pendingSteps: 0, runningSteps: 0, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: null, currentStageTitle: null, requiresUserAction: false }, attention: null, createdAt: timestamp, updatedAt: laterTimestamp, requirement: `Requirement for ${id}`, acceptanceCriteria: [], workspace: { id: `workspace-${id}`, status: 'READY', repositories }, capabilities: { canCancel: status === 'RUNNING', canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: status === 'DELIVERY_FAILED' }, artifactSummary: { total: 0, byType: {} }, diffReviewSummary: { available: false, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 }, sourceMessage: null, triggerMessageId: null } }
 function step(value: Task, id: string, role: TaskStepRole, dependencies: string[]): TaskStep { const r = value.repositories[0]; return { id, taskId: value.id, sequenceNo: dependencies.length+1, title: role, description: null, role, agent: null, repository: r ? { repositoryId: r.repositoryId, name: r.name, sourceBranch: r.sourceBranch } : null, dependencies, status: 'PENDING', acceptanceNotes: null, latestRun: null, runCount: 0, startedAt: null, finishedAt: null, createdAt: timestamp, updatedAt: laterTimestamp } }
@@ -12,7 +13,94 @@ function input(store: TaskModelStore, r: TaskRunDetail, kind: InputRequest['kind
 export function addDiff(store: TaskModelStore, value: Task, s: TaskStep, status: DiffDetail['status'], suffix: string): DiffDetail { const d: DiffDetail = { id:`diff-${value.projectId}-${suffix}`, projectId:value.projectId, taskId:value.id, taskRunId:`run-${s.id}`, taskStepId:s.id, requirementGroupId:value.requirementGroup?.id ?? '', workspaceId:value.workspace?.id ?? '', repositoryId:value.repositories[0]?.repositoryId ?? '', baseCommit:'base-commit-1', sourceBranch:s.repository?.sourceBranch ?? 'main', headCommit:status === 'PENDING_REVIEW' ? null : `head-${value.id}`, status, changeStats:{files:2,additions:10,deletions:2}, createdAt:timestamp, workingTreeHash:null, snapshotKey:null, reviewedBy:null, reviewReason:null, reviewedAt:null, updatedAt:laterTimestamp }; store.diffs.set(d.id,d); return d }
 function artifacts(store: TaskModelStore, value: Task, r: TaskRunDetail | undefined) { const a: TaskArtifact[] = [{id:`artifact-${value.id}-plan`,taskId:value.id,taskRunId:null,taskStepId:null,sequenceNo:1,artifactType:'PLAN',title:'计划',description:null,status:null,summary:{},resources:[],createdAt:timestamp}]; if(r) for(const [n,type,title] of [[2,'CODING','代码编写'],[3,'REVIEWING','代码审查']] as const) a.push({id:`artifact-${value.id}-${type.toLowerCase()}`,taskId:value.id,taskRunId:r.id,taskStepId:r.taskStepId,sequenceNo:n,artifactType:type,title,description:null,status:r.status === 'SUCCEEDED' ? 'SUCCEEDED' : null,summary:{},resources:[],createdAt:laterTimestamp}); store.taskArtifacts.set(value.id,a) }
 function review(store: TaskModelStore, value: Task, d: DiffDetail, delivery: DiffReviewBatch['deliveryStatus'] = 'NOT_STARTED', status: DiffReviewBatch['reviewStatus'] = 'PENDING_CONFIRMATION') { store.diffReviews.set(value.id,{id:`review-${value.id}`,taskId:value.id,reviewStatus:status,deliveryStatus:delivery,aggregateHash:`hash-${value.id}`,reviewReason:null,diffs:[d],repositoryDeliveries:value.repositories.map((repository,index)=>({repositoryId:repository.repositoryId,repositoryName:repository.name,diffId:d.id,deliveryStatus:delivery === 'FAILED' ? 'FAILED' : delivery === 'PARTIALLY_DELIVERED' && index > 0 ? 'FAILED' : delivery === 'PARTIALLY_DELIVERED' ? 'MR_CREATED' : 'NOT_STARTED',failureCode:delivery === 'FAILED' || delivery === 'PARTIALLY_DELIVERED' && index > 0 ? 'DELIVERY_FAILED' : null,failureReason:delivery === 'FAILED' || delivery === 'PARTIALLY_DELIVERED' && index > 0 ? 'Mock delivery failed' : null,mergeRequest:null,updatedAt:laterTimestamp}))}) }
-export function createTaskModelScenario(projectId: string): TaskModelStore { const store=createTaskModelStore(); const statuses=taskStatuses.map((s,i)=>{const t=task(projectId,`task-${projectId}-${s.toLowerCase()}`,s,i);store.tasks.set(t.id,t);return t}); const attentionKinds = ['INPUT_REQUIRED','APPROVAL_REQUIRED','BLOCKED','EXECUTION_FAILED','DIFF_CONFIRMATION_REQUIRED','DELIVERY_FAILED'] as const; statuses.slice(1, 7).forEach((value, index) => { value.attention = { kind: attentionKinds[index], title: attentionKinds[index], summary: `Mock attention for ${value.id}`, taskRunId: null, inputRequestId: null, diffReviewBatchId: null, repositoryId: null } }); const main=task(projectId,`task-${projectId}-main`,'RUNNING',20); main.attention = { kind: 'INPUT_REQUIRED', title: 'INPUT_REQUIRED', summary: 'Mock input required', taskRunId: `run-step-${main.id}-developer`, inputRequestId: `input-run-step-${main.id}-developer`, diffReviewBatchId: null, repositoryId: null }; store.tasks.set(main.id,main); const p=step(main,`step-${main.id}-planner`,'PLANNER',[]); const d=step(main,`step-${main.id}-developer`,'DEVELOPER',[p.id]); for(const s of [p,d]) store.taskSteps.set(s.id,s); const mr=[run(main,p,'SUCCEEDED'),run(main,d,'WAITING_INPUT')]; for(const r of mr){store.taskRuns.set(r.id,r);resources(store,r)} artifacts(store,main,mr[0]); input(store,mr[1]!, 'INPUT'); for(const suffix of ['pending','accepted','rejected']) addDiff(store,main,d,suffix === 'pending' ? 'PENDING_REVIEW' : suffix === 'accepted' ? 'ACCEPTED' : 'REJECTED',suffix); const rt=statuses.find(t=>t.status==='PENDING')!; const rs=step(rt,`step-${rt.id}-developer`,'DEVELOPER',[]); store.taskSteps.set(rs.id,rs); for(const state of ['QUEUED','RUNNING','WAITING_INPUT','WAITING_APPROVAL','BLOCKED','FAILED','SUCCEEDED'] as const){const r=run(rt,rs,state);r.id=`run-${projectId}-${state.toLowerCase()}`;store.taskRuns.set(r.id,r);resources(store,r);if(state==='WAITING_INPUT')input(store,r,'INPUT');if(state==='WAITING_APPROVAL')input(store,r,'APPROVAL')} const rtInput = [...store.inputRequests.values()].find((request) => request.taskRunId === `run-${projectId}-waiting_input`); rt.attention = { kind: 'INPUT_REQUIRED', title: 'INPUT_REQUIRED', summary: `Mock attention for ${rt.id}`, taskRunId: `run-${projectId}-waiting_input`, inputRequestId: rtInput?.id ?? null, diffReviewBatchId: null, repositoryId: null }; const waiting=statuses.find(t=>t.status==='WAITING_DIFF_CONFIRMATION')!; const ws=step(waiting,`step-${waiting.id}-review`,'REVIEWER',[]);store.taskSteps.set(ws.id,ws);const wr=run(waiting,ws,'SUCCEEDED');store.taskRuns.set(wr.id,wr);resources(store,wr);artifacts(store,waiting,wr);const waitingDiff=addDiff(store,waiting,ws,'PENDING_REVIEW','batch');const waitingBatchId=`review-${waiting.id}`;review(store,waiting,waitingDiff); waiting.attention = { kind: 'DIFF_CONFIRMATION_REQUIRED', title: 'DIFF_CONFIRMATION_REQUIRED', summary: `Mock attention for ${waiting.id}`, taskRunId: null, inputRequestId: null, diffReviewBatchId: waitingBatchId, repositoryId: waiting.repositories[0]?.repositoryId ?? null }; for(const state of ['DELIVERING','DELIVERY_FAILED'] as const){const t=statuses.find(v=>v.status===(state === 'DELIVERY_FAILED' ? 'DELIVERY_FAILED' : 'DELIVERING'))!;if(state==='DELIVERING'){const secondary=repo(projectId,`${t.id}-secondary`,state);t.repositories=[t.repositories[0]!,{...secondary,repositoryId:`repository-${projectId}-secondary`,name:'Mock secondary repository',fullName:'qgents/secondary'}];if(t.workspace)t.workspace.repositories=t.repositories} const s=step(t,`step-${t.id}-delivery`,'REVIEWER',[]);store.taskSteps.set(s.id,s);const r=run(t,s,'SUCCEEDED');store.taskRuns.set(r.id,r);resources(store,r);artifacts(store,t,r);const diff=addDiff(store,t,s,'ACCEPTED',state.toLowerCase());const batchId=`review-${t.id}`;review(store,t,diff,state === 'DELIVERY_FAILED' ? 'FAILED' : 'DELIVERING','ACCEPTED'); t.attention = { kind: state === 'DELIVERING' ? 'BLOCKED' : 'DELIVERY_FAILED', title: state === 'DELIVERING' ? 'BLOCKED' : 'DELIVERY_FAILED', summary: `Mock attention for ${t.id}`, taskRunId: null, inputRequestId: null, diffReviewBatchId: batchId, repositoryId: t.repositories[0]?.repositoryId ?? null } } const partial=task(projectId,`task-${projectId}-partial-delivery`,'DELIVERY_FAILED',30);partial.repositories=[partial.repositories[0]!,{...repo(projectId,`${partial.id}-secondary`,partial.status),repositoryId:`repository-${projectId}-secondary`,name:'Mock secondary repository',fullName:'qgents/secondary'}];if(partial.workspace)partial.workspace.repositories=partial.repositories;store.tasks.set(partial.id,partial);const partialStep=step(partial,`step-${partial.id}-delivery`,'REVIEWER',[]);store.taskSteps.set(partialStep.id,partialStep);const partialRun=run(partial,partialStep,'SUCCEEDED');store.taskRuns.set(partialRun.id,partialRun);resources(store,partialRun);artifacts(store,partial,partialRun);const partialDiff=addDiff(store,partial,partialStep,'ACCEPTED','partial');const partialBatchId=`review-${partial.id}`;review(store,partial,partialDiff,'PARTIALLY_DELIVERED','ACCEPTED');partial.attention = { kind: 'DELIVERY_FAILED', title: 'DELIVERY_FAILED', summary: `Mock attention for ${partial.id}`, taskRunId: null, inputRequestId: null, diffReviewBatchId: partialBatchId, repositoryId: partial.repositories[1]?.repositoryId ?? null }; return store }
+export function createTaskModelScenario(projectId: string): TaskModelStore {
+  const store = createTaskModelStore()
+  const statuses = taskStatuses.map((status, index) => {
+    const value = task(projectId, `task-${projectId}-${status.toLowerCase()}`, status, index)
+    store.tasks.set(value.id, value)
+    return value
+  })
+  const attentionKinds = ['INPUT_REQUIRED', 'APPROVAL_REQUIRED', 'BLOCKED', 'EXECUTION_FAILED', 'DIFF_CONFIRMATION_REQUIRED', 'DELIVERY_FAILED'] as const
+  statuses.slice(1, 7).forEach((value, index) => {
+    value.attention = attention({ kind: attentionKinds[index], title: attentionKinds[index], summary: `Mock attention for ${value.id}`, taskRunId: null, inputRequestId: null, diffReviewBatchId: null, repositoryId: null })
+  })
+
+  const main = task(projectId, `task-${projectId}-main`, 'RUNNING', 20)
+  main.attention = attention({ kind: 'INPUT_REQUIRED', title: 'INPUT_REQUIRED', summary: 'Mock input required', taskRunId: `run-step-${main.id}-developer`, inputRequestId: `input-run-step-${main.id}-developer`, diffReviewBatchId: null, repositoryId: null })
+  store.tasks.set(main.id, main)
+  const planner = step(main, `step-${main.id}-planner`, 'PLANNER', [])
+  const developer = step(main, `step-${main.id}-developer`, 'DEVELOPER', [planner.id])
+  for (const value of [planner, developer]) store.taskSteps.set(value.id, value)
+  const mainRuns = [run(main, planner, 'SUCCEEDED'), run(main, developer, 'WAITING_INPUT')]
+  for (const value of mainRuns) {
+    store.taskRuns.set(value.id, value)
+    resources(store, value)
+  }
+  artifacts(store, main, mainRuns[0])
+  input(store, mainRuns[1]!, 'INPUT')
+  for (const suffix of ['pending', 'accepted', 'rejected'] as const) addDiff(store, main, developer, suffix === 'pending' ? 'PENDING_REVIEW' : suffix === 'accepted' ? 'ACCEPTED' : 'REJECTED', suffix)
+
+  const pendingTask = statuses.find((value) => value.status === 'PENDING')!
+  const pendingStep = step(pendingTask, `step-${pendingTask.id}-developer`, 'DEVELOPER', [])
+  store.taskSteps.set(pendingStep.id, pendingStep)
+  for (const status of ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED', 'FAILED', 'SUCCEEDED'] as const) {
+    const value = run(pendingTask, pendingStep, status)
+    value.id = `run-${projectId}-${status.toLowerCase()}`
+    store.taskRuns.set(value.id, value)
+    resources(store, value)
+    if (status === 'WAITING_INPUT') input(store, value, 'INPUT')
+    if (status === 'WAITING_APPROVAL') input(store, value, 'APPROVAL')
+  }
+  const pendingInput = [...store.inputRequests.values()].find((request) => request.taskRunId === `run-${projectId}-waiting_input`)
+  pendingTask.attention = attention({ kind: 'INPUT_REQUIRED', title: 'INPUT_REQUIRED', summary: `Mock attention for ${pendingTask.id}`, taskRunId: `run-${projectId}-waiting_input`, inputRequestId: pendingInput?.id ?? null, diffReviewBatchId: null, repositoryId: null })
+
+  const waiting = statuses.find((value) => value.status === 'WAITING_DIFF_CONFIRMATION')!
+  const waitingStep = step(waiting, `step-${waiting.id}-review`, 'REVIEWER', [])
+  store.taskSteps.set(waitingStep.id, waitingStep)
+  const waitingRun = run(waiting, waitingStep, 'SUCCEEDED')
+  store.taskRuns.set(waitingRun.id, waitingRun)
+  resources(store, waitingRun)
+  artifacts(store, waiting, waitingRun)
+  const waitingDiff = addDiff(store, waiting, waitingStep, 'PENDING_REVIEW', 'batch')
+  const waitingBatchId = `review-${waiting.id}`
+  review(store, waiting, waitingDiff)
+  waiting.attention = attention({ kind: 'DIFF_CONFIRMATION_REQUIRED', title: 'DIFF_CONFIRMATION_REQUIRED', summary: `Mock attention for ${waiting.id}`, taskRunId: null, inputRequestId: null, diffReviewBatchId: waitingBatchId, repositoryId: waiting.repositories[0]?.repositoryId ?? null })
+
+  for (const status of ['DELIVERING', 'DELIVERY_FAILED'] as const) {
+    const value = statuses.find((candidate) => candidate.status === (status === 'DELIVERY_FAILED' ? 'DELIVERY_FAILED' : 'DELIVERING'))!
+    if (status === 'DELIVERING') {
+      const secondary = repo(projectId, `${value.id}-secondary`, status)
+      value.repositories = [value.repositories[0]!, { ...secondary, repositoryId: `repository-${projectId}-secondary`, name: 'Mock secondary repository', fullName: 'qgents/secondary' }]
+      if (value.workspace) value.workspace.repositories = value.repositories
+    }
+    const valueStep = step(value, `step-${value.id}-delivery`, 'REVIEWER', [])
+    store.taskSteps.set(valueStep.id, valueStep)
+    const valueRun = run(value, valueStep, 'SUCCEEDED')
+    store.taskRuns.set(valueRun.id, valueRun)
+    resources(store, valueRun)
+    artifacts(store, value, valueRun)
+    const valueDiff = addDiff(store, value, valueStep, 'ACCEPTED', status.toLowerCase())
+    const batchId = `review-${value.id}`
+    review(store, value, valueDiff, status === 'DELIVERY_FAILED' ? 'FAILED' : 'DELIVERING', 'ACCEPTED')
+    value.attention = attention({ kind: status === 'DELIVERING' ? 'BLOCKED' : 'DELIVERY_FAILED', title: status === 'DELIVERING' ? 'BLOCKED' : 'DELIVERY_FAILED', summary: `Mock attention for ${value.id}`, taskRunId: null, inputRequestId: null, diffReviewBatchId: batchId, repositoryId: value.repositories[0]?.repositoryId ?? null })
+  }
+
+  const partial = task(projectId, `task-${projectId}-partial-delivery`, 'DELIVERY_FAILED', 30)
+  partial.repositories = [partial.repositories[0]!, { ...repo(projectId, `${partial.id}-secondary`, partial.status), repositoryId: `repository-${projectId}-secondary`, name: 'Mock secondary repository', fullName: 'qgents/secondary' }]
+  if (partial.workspace) partial.workspace.repositories = partial.repositories
+  store.tasks.set(partial.id, partial)
+  const partialStep = step(partial, `step-${partial.id}-delivery`, 'REVIEWER', [])
+  store.taskSteps.set(partialStep.id, partialStep)
+  const partialRun = run(partial, partialStep, 'SUCCEEDED')
+  store.taskRuns.set(partialRun.id, partialRun)
+  resources(store, partialRun)
+  artifacts(store, partial, partialRun)
+  const partialDiff = addDiff(store, partial, partialStep, 'ACCEPTED', 'partial')
+  const partialBatchId = `review-${partial.id}`
+  review(store, partial, partialDiff, 'PARTIALLY_DELIVERED', 'ACCEPTED')
+  partial.attention = attention({ kind: 'DELIVERY_FAILED', title: 'DELIVERY_FAILED', summary: `Mock attention for ${partial.id}`, taskRunId: null, inputRequestId: null, diffReviewBatchId: partialBatchId, repositoryId: partial.repositories[1]?.repositoryId ?? null })
+  return store
+}
 export const taskModelScenarioNames = ['DEFAULT','EMPTY'] as const
 export type TaskModelScenario = (typeof taskModelScenarioNames)[number]
 export function createTaskModelScenarioByName(projectId: string, scenario: TaskModelScenario): TaskModelStore { return scenario === 'EMPTY' ? createTaskModelStore() : createTaskModelScenario(projectId) }

@@ -1,15 +1,15 @@
-import type { AgentAssignmentSummary, AgentDetail, AgentRole, AgentTaskRunSummary } from '@/types'
+import type { AgentAssignmentSummary, AgentDetail, AgentRole, AgentRuntimeSummary, AgentTaskRunSummary } from '@/types'
 import { MOCK_CURRENT_USER } from '../currentUser'
 
 export const supportedAgentRoles: readonly AgentRole[] = ['ORCHESTRATOR', 'PLANNER', 'DEVELOPER', 'TESTER', 'REVIEWER', 'GENERAL']
 
-type AssignmentCapacity = AgentDetail['runtime']['assignmentUsage']
+type AssignmentCapacity = AgentRuntimeSummary['assignmentUsage']
 
 function activeTaskRunStatus(status: AgentTaskRunSummary['status']): boolean {
   return ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED', 'CANCELLING'].includes(status)
 }
 
-function createAgentRuntime(agentId: string, assignableCount: AssignmentCapacity): AgentDetail['runtime'] {
+function createAgentRuntime(agentId: string, assignableCount: AssignmentCapacity): AgentRuntimeSummary {
   const activeRunCount = createAgentTaskRunFixtures().filter((run) => run.projectId === 'demo-project' && run.agentId === agentId && activeTaskRunStatus(run.status)).length
   const requirementGroups = getAgentAssignments(agentId, 'REQUIREMENT_GROUP').length
   const workflows = getAgentAssignments(agentId, 'WORKFLOW').length
@@ -21,16 +21,18 @@ function createAgentRuntime(agentId: string, assignableCount: AssignmentCapacity
       requirementGroups: { assignedCount: requirementGroups, assignableCount: assignableCount.requirementGroups.assignableCount },
       workflows: { assignedCount: workflows, assignableCount: assignableCount.workflows.assignableCount },
     },
+    skillAccessScope: 'PROJECT',
+    memoryAccessScope: 'PROJECT',
   }
 }
 
 export function createAgentFixtures(): AgentDetail[] {
   return [
-    { id: 'agent-system-planner', name: 'Planner Agent', avatar: null, role: 'PLANNER', capabilities: ['任务规划'], visibility: 'SYSTEM', status: 'ACTIVE', createdBy: null, description: '系统内置的任务规划能力。', skillAccessScope: 'PROJECT', memoryAccessScope: 'PROJECT', runtime: createAgentRuntime('agent-system-planner', { requirementGroups: { assignedCount: 0, assignableCount: 0 }, workflows: { assignedCount: 0, assignableCount: 0 } }) },
-    { id: 'agent-private-backend', name: 'Backend Developer Agent', avatar: null, role: 'DEVELOPER', capabilities: ['Python', 'SQL', 'API'], visibility: 'PRIVATE', status: 'ACTIVE', createdBy: MOCK_CURRENT_USER.id, description: '负责后端接口与数据层实现。', skillAccessScope: 'PROJECT', memoryAccessScope: 'PROJECT', runtime: createAgentRuntime('agent-private-backend', { requirementGroups: { assignedCount: 0, assignableCount: 3 }, workflows: { assignedCount: 0, assignableCount: 0 } }), prompt: '仅创建者可见的 Prompt', tools: ['代码执行', '测试运行'], memoryAccess: ['当前项目共享 Memory'] },
-    { id: 'agent-team-tester', name: 'Tester Agent', avatar: null, role: 'TESTER', capabilities: ['测试'], visibility: 'TEAM', status: 'ACTIVE', createdBy: MOCK_CURRENT_USER.id, description: '负责自动化测试与质量检查。', skillAccessScope: 'PROJECT', memoryAccessScope: 'PROJECT', runtime: createAgentRuntime('agent-team-tester', { requirementGroups: { assignedCount: 0, assignableCount: 2 }, workflows: { assignedCount: 0, assignableCount: 0 } }), tools: [], memoryAccess: ['当前项目共享 Memory'] },
-    { id: 'agent-archived-reviewer', name: 'Reviewer Agent', avatar: null, role: 'REVIEWER', capabilities: ['审查'], visibility: 'PRIVATE', status: 'ARCHIVED', createdBy: MOCK_CURRENT_USER.id, description: '已归档的审查 Agent。', skillAccessScope: 'PROJECT', memoryAccessScope: 'PROJECT', runtime: createAgentRuntime('agent-archived-reviewer', { requirementGroups: { assignedCount: 0, assignableCount: 1 }, workflows: { assignedCount: 0, assignableCount: 0 } }) },
-    { id: 'agent-other-user', name: 'Other User Agent', avatar: null, role: 'GENERAL', capabilities: ['Other'], visibility: 'PRIVATE', status: 'ACTIVE', createdBy: 'user-002', description: 'Other user fixture for isolation tests.', skillAccessScope: 'PROJECT', memoryAccessScope: 'PROJECT', runtime: createAgentRuntime('agent-other-user', { requirementGroups: { assignedCount: 0, assignableCount: 0 }, workflows: { assignedCount: 0, assignableCount: 0 } }) },
+    { id: 'agent-system-planner', name: 'Planner Agent', avatar: null, role: 'PLANNER', capabilities: ['任务规划'], visibility: 'SYSTEM', status: 'ACTIVE', createdBy: null, description: '系统内置的任务规划能力。' },
+    { id: 'agent-private-backend', name: 'Backend Developer Agent', avatar: null, role: 'DEVELOPER', capabilities: ['Python', 'SQL', 'API'], visibility: 'PRIVATE', status: 'ACTIVE', createdBy: MOCK_CURRENT_USER.id, description: '负责后端接口与数据层实现。', prompt: '仅创建者可见的 Prompt', tools: ['代码执行', '测试运行'], memoryAccess: ['当前项目共享 Memory'] },
+    { id: 'agent-team-tester', name: 'Tester Agent', avatar: null, role: 'TESTER', capabilities: ['测试'], visibility: 'TEAM', status: 'ACTIVE', createdBy: MOCK_CURRENT_USER.id, description: '负责自动化测试与质量检查。', tools: [], memoryAccess: ['当前项目共享 Memory'] },
+    { id: 'agent-archived-reviewer', name: 'Reviewer Agent', avatar: null, role: 'REVIEWER', capabilities: ['审查'], visibility: 'PRIVATE', status: 'ARCHIVED', createdBy: MOCK_CURRENT_USER.id, description: '已归档的审查 Agent。' },
+    { id: 'agent-other-user', name: 'Other User Agent', avatar: null, role: 'GENERAL', capabilities: ['Other'], visibility: 'PRIVATE', status: 'ACTIVE', createdBy: 'user-002', description: 'Other user fixture for isolation tests.' },
   ]
 }
 
@@ -45,6 +47,19 @@ export function getAgentAssignments(agentId: string, type: AgentAssignmentSummar
   return assignments[`${agentId}:${type}`] ?? []
 }
 
+export function getAgentRuntime(projectId: string, agentId: string): AgentRuntimeSummary {
+  const capacities: Record<string, AssignmentCapacity> = {
+    'agent-system-planner': { requirementGroups: { assignedCount: 0, assignableCount: 0 }, workflows: { assignedCount: 0, assignableCount: 0 } },
+    'agent-private-backend': { requirementGroups: { assignedCount: 0, assignableCount: 3 }, workflows: { assignedCount: 0, assignableCount: 0 } },
+    'agent-team-tester': { requirementGroups: { assignedCount: 0, assignableCount: 2 }, workflows: { assignedCount: 0, assignableCount: 0 } },
+    'agent-archived-reviewer': { requirementGroups: { assignedCount: 0, assignableCount: 1 }, workflows: { assignedCount: 0, assignableCount: 0 } },
+    'agent-other-user': { requirementGroups: { assignedCount: 0, assignableCount: 0 }, workflows: { assignedCount: 0, assignableCount: 0 } },
+  }
+  const capacity = capacities[agentId] ?? capacities['agent-other-user']!
+  if (projectId !== 'demo-project') return { ...createAgentRuntime('', { requirementGroups: { assignedCount: 0, assignableCount: 0 }, workflows: { assignedCount: 0, assignableCount: 0 } }), assignmentUsage: { requirementGroups: { assignedCount: 0, assignableCount: 0 }, workflows: { assignedCount: 0, assignableCount: 0 } } }
+  return createAgentRuntime(agentId, capacity)
+}
+
 export function createAgentTaskRunFixtures(): AgentTaskRunSummary[] {
   return [
     {
@@ -57,14 +72,13 @@ export function createAgentTaskRunFixtures(): AgentTaskRunSummary[] {
       status: 'WAITING_INPUT',
       retryOfTaskRunId: null,
       createdAt: '2026-08-14T08:01:00Z',
-      startedAt: '2026-08-14T08:02:00Z',
-      finishedAt: null,
-      durationMs: null,
-      task: { id: 'task-demo-project-main', displayCode: 'TASK-001', title: '实现邮箱登录' },
-      taskStep: { id: 'step-task-demo-project-main-developer', title: '实现登录接口', role: 'DEVELOPER' },
-      requirementGroup: { id: 'group-demo-project-requirements', name: '登录功能' },
-      repository: { id: 'repository-demo-project', displayName: 'qgents-web' },
-      statusReason: null,
+      updatedAt: '2026-08-14T08:02:00Z',
+      taskDisplayCode: 'TASK-001',
+      taskTitle: '实现邮箱登录',
+      taskStepTitle: '实现登录接口',
+      taskStepRole: 'DEVELOPER',
+      requirementGroup: { id: 'group-demo-project-requirements', name: '登录功能', status: 'ACTIVE' },
+      repository: { repositoryId: 'repository-demo-project', name: 'qgents-web', fullName: 'qgents/qgents-web', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'main', baseCommit: 'base-commit', sourceBranch: 'feat/login', headCommit: null },
     },
     {
       id: 'run-demo-project-failed',
@@ -76,14 +90,13 @@ export function createAgentTaskRunFixtures(): AgentTaskRunSummary[] {
       status: 'FAILED',
       retryOfTaskRunId: null,
       createdAt: '2026-08-13T09:00:00Z',
-      startedAt: '2026-08-13T09:01:00Z',
-      finishedAt: '2026-08-13T09:06:00Z',
-      durationMs: 300000,
-      task: { id: 'task-demo-project-pending', displayCode: 'TASK-002', title: '补充支付回调' },
-      taskStep: { id: 'step-task-demo-project-pending-developer', title: '实现回调接口', role: 'DEVELOPER' },
-      requirementGroup: { id: 'group-demo-project-requirements', name: '支付回调' },
-      repository: { id: 'repository-demo-project', displayName: 'qgents-web' },
-      statusReason: { code: 'MOCK_TEST_FAILED', summary: '测试未通过，已停止当前执行。' },
+      updatedAt: '2026-08-13T09:06:00Z',
+      taskDisplayCode: 'TASK-002',
+      taskTitle: '补充支付回调',
+      taskStepTitle: '实现回调接口',
+      taskStepRole: 'DEVELOPER',
+      requirementGroup: { id: 'group-demo-project-requirements', name: '支付回调', status: 'ACTIVE' },
+      repository: { repositoryId: 'repository-demo-project', name: 'qgents-web', fullName: 'qgents/qgents-web', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'main', baseCommit: 'base-commit', sourceBranch: 'feat/payment', headCommit: null },
     },
   ]
 }

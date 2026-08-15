@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Alert, Avatar, Button, Empty, Spin, Tag, Typography } from 'antd'
 import { useNavigate } from 'react-router-dom'
-import { useAgentAssignments, useAgentSkillBindings, useAgentTaskRuns } from '@/hooks'
-import type { AgentAssignmentSummary, AgentDetail, AgentDetailTab, AgentSummary, AgentTaskRunSummary } from '@/types'
+import { useAgentAssignments, useAgentRuntime, useAgentSkillBindings, useAgentTaskRuns } from '@/hooks'
+import type { AgentAssignmentSummary, AgentDetail, AgentDetailTab, AgentRuntimeSummary, AgentSummary, AgentTaskRunSummary } from '@/types'
 import { PATHS } from '@/routes/paths'
 import styles from './AgentDetailPanel.module.scss'
 
@@ -34,11 +34,11 @@ export function AgentDetailPanel({ projectId, agent, detail, onEdit, canEdit, on
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<AgentDetailTab>('overview')
   const current = detail ?? agent
-  const assignmentsGroups = useAgentAssignments(projectId, current.id, 'REQUIREMENT_GROUP', activeTab === 'assignments')
-  const assignmentsWorkflows = useAgentAssignments(projectId, current.id, 'WORKFLOW', activeTab === 'assignments')
+  const assignmentsGroups = useAgentAssignments(projectId, current.id, { type: 'REQUIREMENT_GROUP' }, activeTab === 'assignments')
+  const assignmentsWorkflows = useAgentAssignments(projectId, current.id, { type: 'WORKFLOW' }, activeTab === 'assignments')
   const runs = useAgentTaskRuns(projectId, current.id, undefined, activeTab === 'overview' || activeTab === 'runs')
+  const runtimeQuery = useAgentRuntime(projectId, current.id, activeTab === 'overview')
   const skills = useAgentSkillBindings(projectId, current.id, activeTab === 'capabilities')
-  const runtime = current.runtime
   const task = runs.data?.data.find((item) => ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED', 'CANCELLING'].includes(item.status))
 
   return <aside className={styles.panel}>
@@ -53,7 +53,7 @@ export function AgentDetailPanel({ projectId, agent, detail, onEdit, canEdit, on
       {tabs.map((tab) => <button type="button" key={tab.key} className={`${styles.tab} ${activeTab === tab.key ? styles.tabActive : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button>)}
     </nav>
     <div className={styles.body}>
-      {activeTab === 'overview' ? <Overview agent={current} runtime={runtime} task={task} /> : null}
+      {activeTab === 'overview' ? <Overview agent={current} runtime={runtimeQuery} task={task} /> : null}
       {activeTab === 'assignments' ? <Assignments groups={assignmentsGroups} workflows={assignmentsWorkflows} /> : null}
       {activeTab === 'config' ? <Config agent={current} /> : null}
       {activeTab === 'capabilities' ? <Capabilities agent={current} skills={skills} /> : null}
@@ -62,14 +62,17 @@ export function AgentDetailPanel({ projectId, agent, detail, onEdit, canEdit, on
   </aside>
 }
 
-function Overview({ agent, runtime, task }: { agent: AgentDetail | AgentSummary; runtime: AgentSummary['runtime']; task?: AgentTaskRunSummary }) {
+function Overview({ agent, runtime, task }: { agent: AgentDetail | AgentSummary; runtime: ReturnType<typeof useAgentRuntime>; task?: AgentTaskRunSummary }) {
+  if (runtime.isLoading) return <Spin />
+  if (runtime.isError || !runtime.data) return <Alert type="error" showIcon message="Agent runtime 数据加载失败" />
+  const data: AgentRuntimeSummary = runtime.data
   return <div>
     <section className={styles.section}><Text className={styles.description}>{agent.description ?? '暂无描述'}</Text></section>
     <section className={styles.usageGrid} aria-label="Agent 运行使用量">
-      <Usage label="实时状态" value={runtime.status} />
-      <Usage label="并发使用量" value={`${runtime.activeRunCount}/${runtime.concurrencyLimit ?? '暂无'}`} />
-      <Usage label="需求群分配" value={`${runtime.assignmentUsage.requirementGroups.assignedCount}/${runtime.assignmentUsage.requirementGroups.assignableCount}`} />
-      <Usage label="Workflow 分配" value={`${runtime.assignmentUsage.workflows.assignedCount}/${runtime.assignmentUsage.workflows.assignableCount}`} />
+      <Usage label="实时状态" value={data.status} />
+      <Usage label="并发使用量" value={`${data.activeRunCount}/${data.concurrencyLimit ?? '暂无'}`} />
+      <Usage label="需求群分配" value={`${data.assignmentUsage.requirementGroups.assignedCount}/${data.assignmentUsage.requirementGroups.assignableCount}`} />
+      <Usage label="Workflow 分配" value={`${data.assignmentUsage.workflows.assignedCount}/${data.assignmentUsage.workflows.assignableCount}`} />
     </section>
     <section className={styles.section}><Title level={5}>当前正在执行的 TaskRun</Title>{task ? <TaskRunSummaryCard run={task} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有正在执行的 TaskRun" />}</section>
   </div>
@@ -105,9 +108,9 @@ function Runs({ projectId, query, navigate }: { projectId: string; query: Return
   if (query.isError) return <Alert type="error" showIcon message="运行记录加载失败" />
   const runs = query.data?.data ?? []
   if (runs.length === 0) return <Empty description="暂无运行记录" />
-  return <div className={styles.runList}>{runs.map((run) => <button type="button" className={styles.runItem} key={run.id} onClick={() => navigate(PATHS.projectTaskRunDetail(projectId, run.taskId, run.id))}><div className={styles.runHeader}><strong>{run.task.displayCode ?? run.task.id}</strong><Tag>{run.status}</Tag></div><Text>{run.task.title}</Text><Text type="secondary">{run.taskStep.title} · {run.requirementGroup.name}</Text><Text type="secondary">{run.repository?.displayName ?? '暂无仓库'} · {formatDate(run.startedAt ?? run.createdAt)}</Text>{run.statusReason ? <Text type="secondary">{run.statusReason.summary}</Text> : null}</button>)}</div>
+  return <div className={styles.runList}>{runs.map((run) => <button type="button" className={styles.runItem} key={run.id} onClick={() => navigate(PATHS.projectTaskRunDetail(projectId, run.taskId, run.id))}><div className={styles.runHeader}><strong>{run.taskDisplayCode}</strong><Tag>{run.status}</Tag></div><Text>{run.taskTitle}</Text><Text type="secondary">{run.taskStepTitle} · {run.requirementGroup.name}</Text><Text type="secondary">{run.repository?.name ?? '暂无仓库'} · {formatDate(run.createdAt)}</Text></button>)}</div>
 }
 
-function TaskRunSummaryCard({ run }: { run: AgentTaskRunSummary }) { return <div className={styles.taskCard}><div><Text strong>{run.task.displayCode ?? run.task.id}</Text><Text> · {run.task.title}</Text></div><Text type="secondary">TaskStep：{run.taskStep.title}</Text><Text type="secondary">需求群：{run.requirementGroup.name}</Text><Text type="secondary">仓库：{run.repository?.displayName ?? '暂无仓库'}</Text><Tag>{run.status}</Tag><Text type="secondary">开始：{formatDate(run.startedAt)}</Text></div> }
+function TaskRunSummaryCard({ run }: { run: AgentTaskRunSummary }) { return <div className={styles.taskCard}><div><Text strong>{run.taskDisplayCode}</Text><Text> · {run.taskTitle}</Text></div><Text type="secondary">TaskStep：{run.taskStepTitle}</Text><Text type="secondary">需求群：{run.requirementGroup.name}</Text><Text type="secondary">仓库：{run.repository?.name ?? '暂无仓库'}</Text><Tag>{run.status}</Tag><Text type="secondary">创建：{formatDate(run.createdAt)}</Text></div> }
 
 function formatDate(value: string | null): string { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '尚未开始' }

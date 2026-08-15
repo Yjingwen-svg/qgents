@@ -21,10 +21,10 @@ function resourceId(item: DeliveryItem): string {
 }
 
 function taskIdForCode(item: DeliveryItem): string {
-  if (item.resourceType !== 'CODE' || !item.source.taskId) {
-    throw new Error('CODE delivery item is missing source.taskId')
+  if (item.resourceType !== 'CODE' || item.openTarget.kind !== 'TASK_DIFF_REVIEW') {
+    throw new Error('CODE delivery item is missing TASK_DIFF_REVIEW openTarget')
   }
-  return item.source.taskId
+  return item.openTarget.taskId
 }
 
 export const deliveryCenterApi = {

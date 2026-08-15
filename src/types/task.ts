@@ -99,9 +99,7 @@ export interface TaskRun {
   role: WorkflowRole
   status: TaskRunStatus
   retryOfTaskRunId: string | null
-  artifactSummary: {
-    diffs: { count: number; byStatus: Record<string, number> }
-  }
+  artifactSummary: { total: number; diffCount: number }
   startedAt: string | null
   finishedAt: string | null
   /** 由 finishedAt - startedAt 派生，任一端为空时为 null */

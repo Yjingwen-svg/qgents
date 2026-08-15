@@ -26,11 +26,11 @@ describe('project SSE event parsing', () => {
                         : eventType === 'delivery.completed' || eventType === 'delivery.failed'
                           ? { taskId: 'task-1', reviewBatchId: 'batch-1', deliveryStatus: 'DELIVERED' }
                           : eventType === 'task.diff-review.failed'
-                            ? { taskId: 'task-1', reason: 'delivery failed' }
+                            ? { taskId: 'task-1', reviewBatchId: 'batch-1', reason: 'delivery failed' }
                             : eventType === 'diff-review.skipped'
                               ? { taskId: 'task-1', reason: 'FINAL_DIFF_EMPTY' }
                               : eventType === 'merge-request.updated'
-                                ? { mergeRequestId: 'mr-1' }
+                                ? { mergeRequestId: 'mr-1', number: 10, status: 'OPEN', webUrl: 'https://example.test/mr/10' }
                                 : eventType.startsWith('memory.')
                                   ? { resourceType: 'MEMORY', resourceId: 'memory-1', eventVersion: 1, updatedAt: '2026-08-15T00:00:00Z' }
                                   : eventType.startsWith('skill.')

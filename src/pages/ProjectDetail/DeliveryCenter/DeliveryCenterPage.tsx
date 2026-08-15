@@ -197,9 +197,6 @@ export function DeliveryCenterPage() {
       case 'TASK_DIFF_REVIEW':
         navigate(`${PATHS.projectTaskDetail(projectId, item.openTarget.taskId)}?diffReviewBatchId=${encodeURIComponent(item.openTarget.diffReviewBatchId)}`)
         break
-      case 'DIFF':
-        navigate(PATHS.projectDiff(projectId, item.openTarget.diffId))
-        break
       case 'MEMORY':
         navigate(`${PATHS.projectMemory(projectId)}?memoryId=${encodeURIComponent(item.openTarget.memoryId)}`)
         break
@@ -404,7 +401,7 @@ function DeliveryOverview({ summaryQuery, total, groupId }: { summaryQuery: Retu
       <div className={styles.chartRow}><div className={styles.donut} style={{ background: `conic-gradient(#45bb73 0deg ${acceptedDeg}deg, #a875df ${acceptedDeg}deg ${pendingDeg}deg, #f1a62d ${pendingDeg}deg ${processingDeg}deg, #7b879a ${processingDeg}deg 360deg)` }}><div><strong>{total}</strong><span>总交付物</span></div></div><div className={styles.chartLegend}><Legend color="#45bb73" label="已接受 / 已共享" value={accepted} /><Legend color="#a875df" label="待审核" value={pending} /><Legend color="#f1a62d" label="处理中" value={processing} /><Legend color="#e05252" label="失败" value={failed} /><Legend color="#7b879a" label="草稿 / 归档" value={draft + archived} /></div></div>
     </Card>
     <Card className={styles.overviewCard} title={<span>仓库交付状态 <Text type="secondary">{repositorySummaries.length} 个仓库</Text></span>}>
-      {repositorySummaries.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无仓库交付" /> : <div className={styles.repositoryList}>{repositorySummaries.map((repository) => <div className={styles.repositoryRow} key={repository.repositoryId}><div><strong>{repository.name}</strong><span>{repository.accepted}/{repository.total} 已交付</span></div><div><Tag color={repository.failed > 0 ? 'red' : repository.pending > 0 ? 'orange' : 'green'}>{repository.deliveryStatus ?? '暂无'}</Tag>{repository.mergeRequestSummary ? <small>MR #{repository.mergeRequestSummary.number}</small> : null}</div></div>)}</div>}
+      {repositorySummaries.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无仓库交付" /> : <div className={styles.repositoryList}>{repositorySummaries.map((repository) => <div className={styles.repositoryRow} key={repository.repositoryId}><div><strong>{repository.repositoryName}</strong><span>{repository.accepted}/{repository.total} 已交付</span></div><div><Tag color={repository.failed > 0 ? 'red' : repository.pending > 0 ? 'orange' : 'green'}>{repository.deliveryStatus ?? '暂无'}</Tag>{repository.mergeRequest ? <small>MR #{repository.mergeRequest.number}</small> : null}</div></div>)}</div>}
     </Card>
     <Card className={styles.overviewCard} title={<span>待我处理 <Text type="secondary">{summaryQuery.data.pendingForCurrentUser}</Text></span>}>
       <div className={styles.projectInfo}><SettingOutlined /><span>{summaryQuery.data.pendingForCurrentUser > 0 ? '当前筛选数据集中有待处理交付。' : '当前没有待处理交付。'}</span></div>
@@ -419,7 +416,7 @@ function Legend({ color, label, value }: { color: string; label: string; value: 
   return <div><i style={{ background: color }} /><span>{label}</span><strong>{value}</strong></div>
 }
 
-function GroupSummary({ summary }: { summary: { requirementGroupId: string | null; name: string | null; total: number; pending: number } | undefined }) {
+function GroupSummary({ summary }: { summary: { requirementGroupId: string; name: string; total: number; pending: number } | undefined }) {
   if (!summary) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前需求群暂无统计" />
-  return <div className={styles.projectInfo}><SettingOutlined /><div><strong>{summary.name ?? '未命名需求群'}</strong><span>{summary.total} 个交付物，其中 {summary.pending} 个待审核</span></div></div>
+  return <div className={styles.projectInfo}><SettingOutlined /><div><strong>{summary.name}</strong><span>{summary.total} 个交付物，其中 {summary.pending} 个待审核</span></div></div>
 }

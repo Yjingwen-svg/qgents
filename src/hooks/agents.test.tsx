@@ -7,8 +7,9 @@ import type { AgentDetail, AgentSummary } from '@/types'
 const agentListMock = vi.hoisted(() => vi.fn())
 const agentGetMock = vi.hoisted(() => vi.fn())
 const agentAssignmentsMock = vi.hoisted(() => vi.fn())
+const agentRuntimeMock = vi.hoisted(() => vi.fn())
 
-vi.mock('@/api', () => ({ agentApi: { list: agentListMock, get: agentGetMock, assignments: agentAssignmentsMock } }))
+vi.mock('@/api', () => ({ agentApi: { list: agentListMock, get: agentGetMock, assignments: agentAssignmentsMock, runtime: agentRuntimeMock } }))
 
 import { useAgent, useAgentAssignments, useAgents } from './agents'
 
@@ -22,9 +23,6 @@ const agent: AgentSummary = {
   status: 'ACTIVE',
   createdBy: 'user-one',
   description: null,
-  skillAccessScope: 'PROJECT',
-  memoryAccessScope: 'PROJECT',
-runtime: { status: 'IDLE', activeRunCount: 0, concurrencyLimit: null, assignmentUsage: { requirementGroups: { assignedCount: 0, assignableCount: 0 }, workflows: { assignedCount: 0, assignableCount: 0 } } },
 }
 
 const detail = (id: string): AgentDetail => ({ ...agent, id, description: id, prompt: `${id} prompt`, tools: [], memoryAccess: [] })

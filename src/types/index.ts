@@ -41,6 +41,8 @@ export type {
   AgentRuntimeSummary,
   AgentAssignmentUsage,
   AgentAssignmentType,
+  AgentAssignmentStatus,
+  AgentAssignmentsFilters,
   AgentAssignmentSummary,
   AgentTaskRunSummary,
   CreateAgentPayload,

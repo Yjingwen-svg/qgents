@@ -3,6 +3,7 @@ export {
   useAgent,
   useAgentSkillBindings,
   useAgentAssignments,
+  useAgentRuntime,
   useAgentTaskRuns,
   useAgents,
   useArchiveAgent,

@@ -4,16 +4,16 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentAssignmentSummary, AgentDetail, AgentTaskRunSummary } from '@/types'
 
-const hooks = vi.hoisted(() => ({ useAgents: vi.fn(), useAgent: vi.fn(), useAgentSkillBindings: vi.fn(), useAgentAssignments: vi.fn(), useAgentTaskRuns: vi.fn(), useCreateAgent: vi.fn(), useUpdateAgent: vi.fn(), usePublishAgent: vi.fn(), useUnpublishAgent: vi.fn(), useArchiveAgent: vi.fn() }))
+const hooks = vi.hoisted(() => ({ useAgents: vi.fn(), useAgent: vi.fn(), useAgentRuntime: vi.fn(), useAgentSkillBindings: vi.fn(), useAgentAssignments: vi.fn(), useAgentTaskRuns: vi.fn(), useCreateAgent: vi.fn(), useUpdateAgent: vi.fn(), usePublishAgent: vi.fn(), useUnpublishAgent: vi.fn(), useArchiveAgent: vi.fn() }))
 const projectGet = vi.hoisted(() => vi.fn())
 vi.mock('@/hooks', () => hooks)
 vi.mock('@/api', () => ({ projectApi: { getById: projectGet } }))
 import { AgentTeamPage } from './AgentTeamPage'
 
-const agent: AgentDetail = { id: 'agent-one', name: 'Agent One', avatar: null, role: 'DEVELOPER', capabilities: ['TypeScript'], visibility: 'PRIVATE', status: 'ACTIVE', createdBy: 'user-001', description: '负责接口实现', skillAccessScope: 'PROJECT', memoryAccessScope: 'PROJECT', runtime: { status: 'RUNNING', activeRunCount: 1, concurrencyLimit: null, assignmentUsage: { requirementGroups: { assignedCount: 1, assignableCount: 2 }, workflows: { assignedCount: 0, assignableCount: 0 } } }, prompt: 'private prompt', tools: ['测试运行'], memoryAccess: ['当前项目共享 Memory'] }
+const agent: AgentDetail = { id: 'agent-one', name: 'Agent One', avatar: null, role: 'DEVELOPER', capabilities: ['TypeScript'], visibility: 'PRIVATE', status: 'ACTIVE', createdBy: 'user-001', description: '负责接口实现', prompt: 'private prompt', tools: ['测试运行'], memoryAccess: ['当前项目共享 Memory'] }
 const mutation = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false, error: null }
 const assignment: AgentAssignmentSummary = { type: 'REQUIREMENT_GROUP', resourceId: 'group-one', resourceName: '登录功能', status: 'ACTIVE' }
-const run: AgentTaskRunSummary = { id: 'run-one', projectId: 'project-one', taskId: 'task-one', taskStepId: 'step-one', agentId: agent.id, role: 'DEVELOPER', status: 'FAILED', retryOfTaskRunId: null, createdAt: '2026-08-14T08:00:00Z', startedAt: '2026-08-14T08:01:00Z', finishedAt: '2026-08-14T08:03:00Z', durationMs: 120000, task: { id: 'task-one', displayCode: 'TASK-1', title: '实现登录' }, taskStep: { id: 'step-one', title: '实现接口', role: 'DEVELOPER' }, requirementGroup: { id: 'group-one', name: '登录功能' }, repository: { id: 'repo-one', displayName: 'qgents-web' }, statusReason: { code: 'TEST_FAILED', summary: '测试未通过。' } }
+const run: AgentTaskRunSummary = { id: 'run-one', projectId: 'project-one', taskId: 'task-one', taskStepId: 'step-one', agentId: agent.id, role: 'DEVELOPER', status: 'FAILED', retryOfTaskRunId: null, createdAt: '2026-08-14T08:00:00Z', updatedAt: '2026-08-14T08:03:00Z', taskDisplayCode: 'TASK-1', taskTitle: '实现登录', taskStepTitle: '实现接口', taskStepRole: 'DEVELOPER', requirementGroup: { id: 'group-one', name: '登录功能', status: 'ACTIVE' }, repository: { repositoryId: 'repo-one', name: 'qgents-web', fullName: 'qgents/qgents-web', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'main', baseCommit: 'base', sourceBranch: 'feat/login', headCommit: null } }
 
 function renderPage(url = '/app/projects/project-one/agents?agentId=agent-one') { render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={[url]}><Routes><Route path="/app/projects/:projectId/agents" element={<AgentTeamPage />} /></Routes></MemoryRouter></QueryClientProvider>) }
 
@@ -22,6 +22,7 @@ beforeEach(() => {
   projectGet.mockResolvedValue({ teamId: 'team-one' })
   hooks.useAgents.mockReturnValue({ data: { data: [agent] }, isLoading: false, isError: false, refetch: vi.fn() })
   hooks.useAgent.mockReturnValue({ data: agent, isLoading: false, isError: false, refetch: vi.fn() })
+  hooks.useAgentRuntime.mockReturnValue({ data: { status: 'RUNNING', activeRunCount: 1, concurrencyLimit: null, assignmentUsage: { requirementGroups: { assignedCount: 1, assignableCount: 2 }, workflows: { assignedCount: 0, assignableCount: 0 } }, skillAccessScope: 'PROJECT', memoryAccessScope: 'PROJECT' }, isLoading: false, isError: false })
   hooks.useAgentSkillBindings.mockReturnValue({ data: { agentId: agent.id, skillIds: ['skill-one'], skills: [{ id: 'skill-one', name: 'TypeScript', visibility: 'PROJECT_SHARED', status: 'PUBLISHED' }], updatedAt: '2026-08-13T00:00:00Z' }, isError: false, isLoading: false })
   hooks.useAgentAssignments.mockReturnValue({ data: { data: [assignment], page: { nextCursor: null, hasMore: false } }, isError: false, isLoading: false })
   hooks.useAgentTaskRuns.mockReturnValue({ data: { data: [run], page: { nextCursor: null, hasMore: false } }, isError: false, isLoading: false })
@@ -36,7 +37,7 @@ describe('AgentTeamPage', () => {
     expect(screen.getAllByText('1/2').length).toBeGreaterThan(0)
     expect(hooks.useAgents).toHaveBeenLastCalledWith('project-one', 'team-one')
     expect(hooks.useAgent).toHaveBeenLastCalledWith('project-one', 'team-one', 'agent-one')
-    expect(hooks.useAgentAssignments).toHaveBeenCalledWith('project-one', 'agent-one', 'REQUIREMENT_GROUP', false)
+    expect(hooks.useAgentAssignments).toHaveBeenCalledWith('project-one', 'agent-one', { type: 'REQUIREMENT_GROUP' }, false)
     expect(hooks.useAgentTaskRuns).toHaveBeenCalledWith('project-one', 'agent-one', undefined, true)
     expect(hooks.useAgentSkillBindings).toHaveBeenCalledWith('project-one', 'agent-one', false)
   })
@@ -48,11 +49,11 @@ describe('AgentTeamPage', () => {
     expect(screen.getAllByText('登录功能').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: '运行记录' }))
     expect(screen.getByText('TASK-1')).toBeInTheDocument()
-    expect(screen.getByText('测试未通过。')).toBeInTheDocument()
+    expect(screen.getByText('TASK-1')).toBeInTheDocument()
   })
 
   it('keeps assignment errors independent and shows capability empty states', async () => {
-    hooks.useAgentAssignments.mockImplementation((_projectId: string, _agentId: string, type: string) => type === 'REQUIREMENT_GROUP'
+    hooks.useAgentAssignments.mockImplementation((_projectId: string, _agentId: string, filters: { type?: string }) => filters.type === 'REQUIREMENT_GROUP'
       ? { data: undefined, isError: true, isLoading: false }
       : { data: { data: [], page: { nextCursor: null, hasMore: false } }, isError: false, isLoading: false })
     hooks.useAgent.mockReturnValue({ data: { ...agent, tools: [], memoryAccess: [] }, isLoading: false, isError: false, refetch: vi.fn() })

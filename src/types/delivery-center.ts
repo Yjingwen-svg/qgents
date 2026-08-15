@@ -105,10 +105,10 @@ interface DeliveryItemBase<TOpenTarget extends DeliveryOpenTarget = DeliveryOpen
   capabilities: DeliveryCapabilities
 }
 
-export interface CodeDeliveryItem extends DeliveryItemBase<Extract<DeliveryOpenTarget, { kind: 'TASK_DIFF_REVIEW' | 'DIFF' }>> {
+export interface CodeDeliveryItem extends DeliveryItemBase<Extract<DeliveryOpenTarget, { kind: 'TASK_DIFF_REVIEW' }>> {
   resourceType: 'CODE'
   repositories: DeliveryRepositoryRef[]
-  diffReviewId: string | null
+  diffReviewId: string
   diffId: string | null
   reviewStatus: CodeReviewStatus
   deliveryStatus: CodeDeliveryStatus
@@ -161,22 +161,22 @@ export interface DeliveryCountsByType {
   SKILL: number
 }
 
-export type DeliveryStatusCounts = Partial<Record<DeliveryDisplayStatus, number>>
+export type DeliveryStatusCounts = Record<DeliveryDisplayStatus, number>
 
 export interface DeliveryRepositorySummary {
   repositoryId: string
-  name: string
+  repositoryName: string
   total: number
   accepted: number
   pending: number
   failed: number
-  deliveryStatus: CodeDeliveryStatus | null
-  mergeRequestSummary: DeliveryMergeRequestSummary | null
+  deliveryStatus: CodeRepositoryDelivery['deliveryStatus'] | null
+  mergeRequest: DeliveryMergeRequestSummary | null
 }
 
 export interface DeliveryRequirementGroupSummary {
-  requirementGroupId: string | null
-  name: string | null
+  requirementGroupId: string
+  name: string
   total: number
   pending: number
 }

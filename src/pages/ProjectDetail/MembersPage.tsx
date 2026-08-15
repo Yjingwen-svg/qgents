@@ -52,7 +52,8 @@ export function MembersPage() {
     enabled: !!project?.teamId,
   })
 
-  const invalidate = () =>
+  const 
+  invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'members'] })
 
   const removeMutation = useMutation({

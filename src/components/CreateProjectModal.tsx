@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Modal, Form, Input, Button, Select } from 'antd'
 import { GithubOutlined } from '@ant-design/icons'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { projectApi, teamApi } from '@/api'
 import { PATHS } from '@/routes/paths'
 import type { CreateProjectPayload } from '@/types'
@@ -25,6 +25,7 @@ export function CreateProjectModal({
   onClose: () => void
 }) {
   const navigate = useNavigate()
+  const queryClient=useQueryClient()
   const [form] = Form.useForm<CreateProjectPayload>()
 
   // 团队成员列表（作为「初始成员」多选候选）
@@ -39,6 +40,7 @@ export function CreateProjectModal({
     onSuccess: (project) => {
       form.resetFields()
       onClose()
+      queryClient.invalidateQueries({queryKey:['teams',teamId,'projects']})
       navigate(PATHS.projectDetail(project.id), { replace: true })
     },
   })

@@ -125,6 +125,7 @@ export function TeamDetailPage() {
     queryFn: () => teamApi.getById(teamId),
     enabled: !!teamId,
   })
+  const isOwner=team?.role==='TEAM_OWNER';
 
   // 团队资料加载后，把角色同步进 store，供 Banner「团队首页」跳转时带 as=owner
   useEffect(() => {
@@ -148,6 +149,7 @@ export function TeamDetailPage() {
     queryKey: ['teams', teamId, 'activities'],
     queryFn: () => teamApi.activities(teamId),
     enabled: !!teamId,
+    refetchInterval: 15_000,
   })
   const activities = activitiesData?.data ?? []
 
@@ -228,13 +230,15 @@ export function TeamDetailPage() {
             <p>从个人中心切换团队或项目，进入项目总群继续协作。</p>
           </div>
           <Space>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setCreateOpen(true)}
-            >
-              创建项目
-            </Button>
+            {isOwner&&(
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setCreateOpen(true)}
+              >
+                创建项目
+              </Button>
+            )}
           </Space>
         </section>
 

@@ -9,6 +9,7 @@ import {
   QuestionCircleOutlined,
   InboxOutlined,
   BranchesOutlined,
+  UserAddOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { notificationApi } from '@/api'
@@ -24,10 +25,18 @@ const KIND_META: Record<NotificationKind, { icon: ReactNode; color: string }> = 
   AGENT_INPUT_REQUIRED: { icon: <QuestionCircleOutlined />, color: '#f59e0b' },
   DELIVERABLE_PENDING: { icon: <InboxOutlined />, color: '#3b82f6' },
   MR_PENDING: { icon: <BranchesOutlined />, color: '#a855f7' },
+  INVITED: { icon: <UserAddOutlined />, color: '#3b82f6' },
+}
+
+/** 后端可能下发未在枚举中的 kind，兜底展示，避免 meta 为 undefined 导致崩溃 */
+const FALLBACK_META: { icon: ReactNode; color: string } = {
+  icon: <BellOutlined />,
+  color: '#94a3b8',
 }
 
 /** 通知 → 跳转目标路由（交付中心等 B/C 页面未实现时兜底到项目详情） */
 function notificationTargetPath(n: Notification): string | null {
+  if (n.kind === 'INVITED') return PATHS.JOIN_TEAM
   const projectId = n.projectId
   if (!projectId) return null
   switch (n.kind) {
@@ -128,7 +137,7 @@ export function NotificationCenter() {
           <Empty description="暂无通知" style={{ marginTop: 64 }} />
         ) : (
           notifications.map((n) => {
-            const meta = KIND_META[n.kind]
+            const meta = KIND_META[n.kind] ?? FALLBACK_META
             return (
               <div
                 key={n.id}

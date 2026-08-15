@@ -36,6 +36,7 @@ export function JoinTeamPage() {
       setSuccess(`已成功加入「${inv.teamName}」`)
       queryClient.invalidateQueries({ queryKey: ['team-invitations', 'mine'] })
       queryClient.invalidateQueries({ queryKey: ['teams', 'mine'] })
+      queryClient.invalidateQueries({queryKey:['teams',inv.teamId,'projects']})
       setTimeout(() => {
         navigate(PATHS.teamDetail(inv.teamId), { replace: true })
       }, 1000)
@@ -110,23 +111,29 @@ export function JoinTeamPage() {
           <ul className="join-team__invite-list">
             {myInvitations.map((inv) => (
               <li key={inv.id} className="join-team__invite-item">
-                <div className="join-team__invite-info">
-                  <strong>{inv.teamName}</strong>
-                  <span>
-                    邀请人：{inv.inviterDisplayName} · 角色：
-                    <Tag color={inv.role === 'TEAM_OWNER' ? 'gold' : 'default'} style={{ margin: 0 }}>
-                      {inv.role === 'TEAM_OWNER' ? 'Owner' : 'Member'}
-                    </Tag>
-                  </span>
+                <div className="join-team__invite-main">
+                  <div className="join-team__invite-left">
+                    <div className="join-team__invite-title">
+                      <strong>{inv.teamName}</strong>
+                      <Tag color={inv.role === 'TEAM_OWNER' ? 'gold' : 'default'}>
+                        {inv.role === 'TEAM_OWNER' ? 'Owner' : 'Member'}
+                      </Tag>
+                    </div>
+                    <div className="join-team__invite-meta">
+                      <span>邀请人：{inv.inviterDisplayName}</span>
+                      <span className="join-team__invite-dot">·</span>
+                      <span>{inv.createdAt}</span>
+                    </div>
+                  </div>
+                  <Button
+                    type="primary"
+                    size="middle"
+                    loading={acceptMutation.isPending}
+                    onClick={() => acceptMutation.mutate(inv)}
+                  >
+                    接受邀请
+                  </Button>
                 </div>
-                <Button
-                  type="primary"
-                  size="small"
-                  loading={acceptMutation.isPending}
-                  onClick={() => acceptMutation.mutate(inv)}
-                >
-                  接受
-                </Button>
               </li>
             ))}
           </ul>

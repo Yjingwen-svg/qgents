@@ -77,7 +77,7 @@ type DetailView = 'gate' | 'changes' | 'comments'
  *
  * 评论 / 变更没有独立 MR 评论接口，复用关联 Diff 的 files / comments。
  */
-export function MergeRequestDetailPage() {
+export default function MergeRequestDetailPage() {
   const { message, modal } = App.useApp()
   const { projectId = '', mergeRequestId = '' } = useParams<{
     projectId: string

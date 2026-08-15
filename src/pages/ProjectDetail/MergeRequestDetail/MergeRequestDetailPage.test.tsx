@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { githubApi } from '@/api/github'
 import { projectApi } from '@/api/project'
 import type { DiffComment, DiffFile, DiffListItem, MergeRequestCheck, MergeRequestSummary } from '@/types/task-model'
-import { MergeRequestDetailPage } from './MergeRequestDetailPage'
+import MergeRequestDetailPage from './MergeRequestDetailPage'
 
 const useMergeRequestMock = vi.hoisted(() => vi.fn())
 const useMergeRequestChecksMock = vi.hoisted(() => vi.fn())

@@ -2,10 +2,6 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { List, Spin, Typography } from 'antd'
 import {
-  MessageOutlined,
-  FolderAddOutlined,
-  TeamOutlined,
-  FileAddOutlined,
   CheckCircleFilled,
   CloseCircleFilled,
   BranchesOutlined,
@@ -22,12 +18,8 @@ import type { ReactNode } from 'react'
 
 const { Title, Text } = Typography
 
-/** 动态类型 → 图标 + 颜色 */
+/** 动态类型 → 图标 + 颜色（本期后端仅产出 6 类） */
 const TYPE_META: Record<ActivityType, { icon: ReactNode; color: string }> = {
-  MESSAGE: { icon: <MessageOutlined />, color: '#3b82f6' },
-  GROUP_CREATED: { icon: <FolderAddOutlined />, color: '#22c55e' },
-  MEMBER_JOINED: { icon: <TeamOutlined />, color: '#8b5cf6' },
-  TASK_CREATED: { icon: <FileAddOutlined />, color: '#0d9b8a' },
   TASK_COMPLETED: { icon: <CheckCircleFilled />, color: '#16a34a' },
   TASK_FAILED: { icon: <CloseCircleFilled />, color: '#ef4444' },
   DIFF_CREATED: { icon: <BranchesOutlined />, color: '#3b82f6' },
@@ -55,11 +47,12 @@ function formatRelativeTime(iso: string): string {
 export function TeamActivitiesPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
 
-  const { data: activities = [], isLoading } = useQuery({
+  const { data: activitiesData, isLoading } = useQuery({
     queryKey: ['teams', teamId, 'activities'],
     queryFn: () => teamApi.activities(teamId),
     enabled: !!teamId,
   })
+  const activities = activitiesData?.data ?? []
 
   return (
     <DarkPage>
@@ -84,7 +77,7 @@ export function TeamActivitiesPage() {
           <List
             dataSource={activities}
             renderItem={(activity: Activity) => {
-              const meta = TYPE_META[activity.type] ?? TYPE_META.MESSAGE
+              const meta = TYPE_META[activity.type] ?? TYPE_META.TASK_COMPLETED
               return (
                 <List.Item style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                   <List.Item.Meta
@@ -114,7 +107,7 @@ export function TeamActivitiesPage() {
                           </Text>
                         ) : null}
                         <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
-                          {activity.actor.displayName} · {formatRelativeTime(activity.createdAt)}
+                          {activity.actor?.displayName ?? '系统'} · {formatRelativeTime(activity.createdAt)}
                         </Text>
                       </span>
                     }

@@ -13,7 +13,7 @@ type AuthTab = 'login' | 'register'
  */
 export function LoginPage() {
   const navigate = useNavigate()
-  const { login, register } = useAuth()
+  const { login, register, completeAuth } = useAuth()
   const [tab, setTab] = useState<AuthTab>('login')
   const [email, setEmail] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -28,13 +28,14 @@ export function LoginPage() {
     setSubmitting(true)
 
     try {
-      let hasTeam: boolean
-      if (tab === 'login') {
-        hasTeam = await login(email, password)
-      } else {
-        hasTeam = await register(email, password, displayName || email.split('@')[0])
-      }
-      navigate(hasTeam ? PATHS.MY_TEAMS : PATHS.WELCOME, { replace: true })
+      const session =
+        tab === 'login'
+          ? await login(email, password)
+          : await register(email, password, displayName || email.split('@')[0])
+      // completeAuth 与 navigate 在同一同步块内，React 批处理成一次渲染，
+      // 避免 setUser 先触发 RedirectIfAuthed 用残留的 location.state.from 抢跳
+      completeAuth(session)
+      navigate(session.hasTeam ? PATHS.MY_TEAMS : PATHS.WELCOME, { replace: true, state: null })
     } catch (err) {
       setError(formatApiError(err))
     } finally {

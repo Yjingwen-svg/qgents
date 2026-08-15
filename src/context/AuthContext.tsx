@@ -22,14 +22,22 @@ interface AuthContextValue {
   /** 是否正在初始化（bootstrap 阶段） */
   isBootstrapping: boolean
 
-  /** 登录：返回 hasTeam，调用方据此决定跳转目标 */
-  login: (email: string, password: string) => Promise<boolean>
-  /** 注册：新用户一定没有团队，返回 false */
-  register: (email: string, password: string, displayName: string) => Promise<boolean>
+  /** 登录：只调接口 + 存 token，返回会话，不更新 state */
+  login: (email: string, password: string) => Promise<AuthSession>
+  /** 注册：只调接口 + 存 token，返回会话，不更新 state */
+  register: (email: string, password: string, displayName: string) => Promise<AuthSession>
+  /** 把登录/注册结果一次性写入 state（与 navigate 同批调用，避免 RedirectIfAuthed 抢跳） */
+  completeAuth: (session: AuthSession) => void
   /** 退出登录 */
   logout: () => Promise<void>
   /** 设置 hasTeam（创建/加入团队后调用） */
   setHasTeam: (v: boolean) => void
+}
+
+/** 登录/注册成功后的会话结果 */
+export interface AuthSession {
+  user: User
+  hasTeam: boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -104,8 +112,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
   }, [])
 
-  // ──── 登录（返回 hasTeam，调用方用于决定跳转目标）────
-  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+  // ──── 登录：只调接口 + 存 token，返回会话；state 由 completeAuth 统一写入 ────
+  const login = useCallback(async (email: string, password: string): Promise<AuthSession> => {
     // 使用硬编码的固定 RSA 公钥加密密码（mock 阶段 encryptPassword 直传明文）
     const encryptedPassword = await encryptPassword(password)
 
@@ -122,9 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(ACCESS_TOKEN_KEY, result.accessToken)
     localStorage.setItem(REFRESH_TOKEN_KEY, result.refreshToken)
 
-    // 先查清团队归属，再一次性 setUser + setHasTeam。
-    // 若先 setUser 再异步查 teams，中间会出现「isAuthenticated=true 但 hasTeam 仍是旧值」的
-    // 渲染帧，包裹 /login 的 RedirectIfAuthed 会误判并把用户抢跳 /welcome，造成闪一下欢迎页。
+    // 查清团队归属（这里不 setState，避免在 LoginPage 的 navigate 之前先触发一次
+    // 渲染，让 RedirectIfAuthed 用残留的 location.state.from 抢跳）
     let haveTeam = false
     try {
       const teams = await teamApi.listMine()
@@ -133,15 +140,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       haveTeam = false
     }
 
-    // 两个 setState 在同一同步块内更新，React 批处理成一次渲染，避免不一致的中间帧。
-    setUser(result.user)
-    setHasTeam(haveTeam)
-    return haveTeam
+    return { user: result.user, hasTeam: haveTeam }
   }, [])
 
-  // ──── 注册（新用户没有团队，返回 false）────
+  // ──── 注册：只调接口 + 存 token，返回会话（新用户没有团队）────
   const register = useCallback(
-    async (email: string, password: string, displayName: string): Promise<boolean> => {
+    async (email: string, password: string, displayName: string): Promise<AuthSession> => {
       // 使用硬编码的固定 RSA 公钥加密密码（mock 阶段 encryptPassword 直传明文）
       const encryptedPassword = await encryptPassword(password)
 
@@ -154,9 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       localStorage.setItem(ACCESS_TOKEN_KEY, result.accessToken)
       localStorage.setItem(REFRESH_TOKEN_KEY, result.refreshToken)
-      setUser(result.user)
-      setHasTeam(false)
-      return false
+      return { user: result.user, hasTeam: false }
     },
     [],
   )
@@ -175,6 +177,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(REFRESH_TOKEN_KEY)
   }, [])
 
+  // ──── 把登录/注册结果一次性写入 state，供 LoginPage 在 navigate 的同一同步块内调用 ────
+  const completeAuth = useCallback((session: AuthSession) => {
+    setUser(session.user)
+    setHasTeam(session.hasTeam)
+  }, [])
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -183,10 +191,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isBootstrapping,
       login,
       register,
+      completeAuth,
       logout,
       setHasTeam,
     }),
-    [user, hasTeam, isBootstrapping, login, register, logout],
+    [user, hasTeam, isBootstrapping, login, register, completeAuth, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

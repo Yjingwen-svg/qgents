@@ -22,21 +22,22 @@ export function JoinTeamPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  // 待处理邀请列表（收件人视角）
-  const { data: myInvitations = [] } = useQuery({
+  // 待处理邀请列表（收件人视角，分页响应取 data）
+  const { data: myInvitationsData } = useQuery({
     queryKey: ['team-invitations', 'mine'],
     queryFn: () => teamApi.listMyInvitations(),
   })
+  const myInvitations = myInvitationsData?.data ?? []
 
   const acceptMutation = useMutation({
-    mutationFn: (inv: MyTeamInvitation) => teamApi.acceptInvitation(inv.token),
-    onSuccess: (result) => {
+    mutationFn: (inv: MyTeamInvitation) => teamApi.acceptInvitation(inv.id),
+    onSuccess: (_result, inv) => {
       setHasTeam(true)
-      setSuccess(`已成功加入「${result.teamName}」`)
+      setSuccess(`已成功加入「${inv.teamName}」`)
       queryClient.invalidateQueries({ queryKey: ['team-invitations', 'mine'] })
       queryClient.invalidateQueries({ queryKey: ['teams', 'mine'] })
       setTimeout(() => {
-        navigate(PATHS.teamDetail(result.teamId), { replace: true })
+        navigate(PATHS.teamDetail(inv.teamId), { replace: true })
       }, 1000)
     },
     onError: (err) => setError(err instanceof Error ? err.message : '接受邀请失败'),
@@ -50,12 +51,12 @@ export function JoinTeamPage() {
     setSubmitting(true)
 
     try {
-      const result = await teamApi.acceptInvitation(token.trim())
+      await teamApi.acceptInvitation(token.trim())
       setHasTeam(true)
-      setSuccess(`已成功加入「${result.teamName}」`)
-      // 延迟跳转，让用户看到成功提示
+      setSuccess('已成功加入团队')
+      // 延迟跳转，让用户看到成功提示（接受响应不含 teamId，回团队列表）
       setTimeout(() => {
-        navigate(PATHS.teamDetail(result.teamId), { replace: true })
+        navigate(PATHS.MY_TEAMS, { replace: true })
       }, 1000)
     } catch (err) {
       setError(err instanceof Error ? err.message : '加入失败，邀请令牌可能已过期')

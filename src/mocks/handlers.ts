@@ -11,6 +11,15 @@ import { deliveryCenterHandlers } from './delivery-center/handlers'
 
 const MOCK_USER = MOCK_CURRENT_USER
 
+// 项目设置（需求群规则）默认值，对齐 §22.2
+const DEFAULT_PROJECT_SETTINGS = {
+  allowCreateGroup: true,
+  autoArchiveGroup: false,
+  allowAgentTrigger: true,
+  autoJoinAllGroups: false,
+}
+const MOCK_PROJECT_SETTINGS: Record<string, typeof DEFAULT_PROJECT_SETTINGS> = {}
+
 const MOCK_TEAMS = [
   {
     id: 'team-owned-001',
@@ -1058,6 +1067,18 @@ export const handlers = [
   http.post('/api/projects/:projectId/archive', () => HttpResponse.json({ data: null })),
 
   http.post('/api/projects/:projectId/restore', () => HttpResponse.json({ data: null })),
+
+  // ── 项目设置（需求群规则，§22.2）──
+  http.get('/api/projects/:projectId/settings', ({ params }) => {
+    const settings = (MOCK_PROJECT_SETTINGS[params.projectId as string] ??= { ...DEFAULT_PROJECT_SETTINGS })
+    return HttpResponse.json({ data: settings })
+  }),
+  http.patch('/api/projects/:projectId/settings', async ({ params, request }) => {
+    const body = (await request.json()) as Record<string, unknown>
+    const settings = (MOCK_PROJECT_SETTINGS[params.projectId as string] ??= { ...DEFAULT_PROJECT_SETTINGS })
+    Object.assign(settings, body)
+    return HttpResponse.json({ data: settings })
+  }),
 
   // ── Group 与消息 ──
   http.get('/api/projects/:projectId/groups', ({ params }) => {

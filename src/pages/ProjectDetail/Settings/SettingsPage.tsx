@@ -273,61 +273,113 @@ function RepositoriesTab({
 // ============================================================
 
 function GroupRulesTab({
-  projectId: _projectId,
+  projectId,
   isEditable,
 }: {
   projectId: string
   isEditable: boolean
 }) {
+  const queryClient = useQueryClient()
   const [allowCreateGroup, setAllowCreateGroup] = useState(true)
   const [autoArchiveGroup, setAutoArchiveGroup] = useState(false)
   const [allowAgentTrigger, setAllowAgentTrigger] = useState(true)
   const [autoJoinAllGroups, setAutoJoinAllGroups] = useState(false)
 
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ['projects', projectId, 'settings'],
+    queryFn: () => projectApi.getSettings(projectId),
+    enabled: !!projectId,
+  })
+
+  // settings 异步加载后同步到本地 state
+  useEffect(() => {
+    if (!settings) return
+    setAllowCreateGroup(settings.allowCreateGroup)
+    setAutoArchiveGroup(settings.autoArchiveGroup)
+    setAllowAgentTrigger(settings.allowAgentTrigger)
+    setAutoJoinAllGroups(settings.autoJoinAllGroups)
+  }, [settings])
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      projectApi.updateSettings(projectId, {
+        allowCreateGroup,
+        autoArchiveGroup,
+        allowAgentTrigger,
+        autoJoinAllGroups,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'settings'] })
+      message.success('需求群规则已保存')
+    },
+    onError: () => {
+      message.error('保存失败，请重试')
+    },
+  })
+
   return (
     <div className="settings-tab">
       <div className="settings-tab__content">
-        <div className="settings-tab__field settings-tab__field--switch">
-          <div className="settings-tab__switch-row">
-            <Switch checked={allowCreateGroup} onChange={setAllowCreateGroup} disabled={!isEditable} />
-            <label className="settings-tab__label">允许成员创建需求群</label>
+        {isLoading ? (
+          <div className="settings-tab__repo-placeholder">
+            <Spin />
           </div>
-          <div className="settings-tab__hint">
-            {isEditable ? '关闭后只有 Project Admin 能创建需求群' : '当前为只读状态'}
-          </div>
-        </div>
+        ) : (
+          <>
+            <div className="settings-tab__field settings-tab__field--switch">
+              <div className="settings-tab__switch-row">
+                <Switch checked={allowCreateGroup} onChange={setAllowCreateGroup} disabled={!isEditable} />
+                <label className="settings-tab__label">允许成员创建需求群</label>
+              </div>
+              <div className="settings-tab__hint">
+                {isEditable ? '关闭后只有 Project Admin 能创建需求群' : '当前为只读状态'}
+              </div>
+            </div>
 
-        <div className="settings-tab__field settings-tab__field--switch">
-          <div className="settings-tab__switch-row">
-            <Switch checked={autoArchiveGroup} onChange={setAutoArchiveGroup} disabled={!isEditable} />
-            <label className="settings-tab__label">任务完成后自动归档群聊</label>
-          </div>
-          <div className="settings-tab__hint">
-            {isEditable ? '开启后，关联任务完成时自动归档需求群' : '当前为只读状态'}
-          </div>
-        </div>
+            <div className="settings-tab__field settings-tab__field--switch">
+              <div className="settings-tab__switch-row">
+                <Switch checked={autoArchiveGroup} onChange={setAutoArchiveGroup} disabled={!isEditable} />
+                <label className="settings-tab__label">任务完成后自动归档群聊</label>
+              </div>
+              <div className="settings-tab__hint">
+                {isEditable ? '开启后，关联任务完成时自动归档需求群' : '当前为只读状态'}
+              </div>
+            </div>
 
-        <div className="settings-tab__field settings-tab__field--switch">
-          <div className="settings-tab__switch-row">
-            <Switch checked={allowAgentTrigger} onChange={setAllowAgentTrigger} disabled={!isEditable} />
-            <label className="settings-tab__label">允许 @Agent 发起任务</label>
-          </div>
-          <div className="settings-tab__hint">
-            {isEditable ? '关闭后群内不显示「发起任务」按钮' : '当前为只读状态'}
-          </div>
-        </div>
+            <div className="settings-tab__field settings-tab__field--switch">
+              <div className="settings-tab__switch-row">
+                <Switch checked={allowAgentTrigger} onChange={setAllowAgentTrigger} disabled={!isEditable} />
+                <label className="settings-tab__label">允许 @Agent 发起任务</label>
+              </div>
+              <div className="settings-tab__hint">
+                {isEditable ? '关闭后群内不显示「发起任务」按钮' : '当前为只读状态'}
+              </div>
+            </div>
 
-        <div className="settings-tab__field settings-tab__field--switch">
-          <div className="settings-tab__switch-row">
-            <Switch checked={autoJoinAllGroups} onChange={setAutoJoinAllGroups} disabled={!isEditable} />
-            <label className="settings-tab__label">新成员自动加入所有需求群</label>
-          </div>
-          <div className="settings-tab__hint">
-            {isEditable ? '开启后，新成员自动进入所有已存在的需求群' : '当前为只读状态'}
-          </div>
-        </div>
+            <div className="settings-tab__field settings-tab__field--switch">
+              <div className="settings-tab__switch-row">
+                <Switch checked={autoJoinAllGroups} onChange={setAutoJoinAllGroups} disabled={!isEditable} />
+                <label className="settings-tab__label">新成员自动加入所有需求群</label>
+              </div>
+              <div className="settings-tab__hint">
+                {isEditable ? '开启后，新成员自动进入所有已存在的需求群' : '当前为只读状态'}
+              </div>
+            </div>
 
-
+            {isEditable && (
+              <div className="settings-tab__footer">
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  loading={saveMutation.isPending}
+                  onClick={() => saveMutation.mutate()}
+                >
+                  保存需求群规则
+                </Button>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   )

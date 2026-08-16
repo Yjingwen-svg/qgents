@@ -184,7 +184,7 @@ export default function ChatWorkspacePage() {
       </Layout.Sider>
 
       {selected ? (
-        <ChatPanel projectId={selected.projectId} groupId={selected.groupId} />
+        <ChatPanel key={selected.groupId} projectId={selected.projectId} groupId={selected.groupId} />
       ) : (
         <Layout style={{ background: token.colorBgBase }}>
           <div

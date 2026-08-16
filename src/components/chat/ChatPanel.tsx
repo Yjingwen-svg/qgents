@@ -316,7 +316,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
               zIndex: 10,
             }}
           >
-            {canOpenTaskTrigger && teamAgents.length > 0 && (
+            {/* Agent 候选：团队 Agent 列表（项目总群 / 需求群均展示，@ 提及不依赖群成员） */}
+            {teamAgents.length > 0 && (
               <MentionGroup
                 label="Agent"
                 members={teamAgents.map((a) => ({ id: a.id, displayName: a.name, type: 'AGENT' as const }))}

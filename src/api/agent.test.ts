@@ -29,6 +29,16 @@ describe('agentApi', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/projects/project-one/task-runs?agentId=agent-one&status=FAILED&cursor=1&limit=10', expect.any(Object))
   })
 
+  it('passes project context to the Agent detail endpoint', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: { id: 'agent-one', name: 'Agent One' },
+      requestId: 'request-agent-detail',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    await expect(agentApi.get('team-one', 'agent-one', 'project-one')).resolves.toMatchObject({ id: 'agent-one' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/teams/team-one/agents/agent-one?projectId=project-one', expect.any(Object))
+  })
+
   it('uses optional assignment filters and preserves the cursor envelope', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       data: [],

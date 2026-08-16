@@ -231,6 +231,6 @@ export const deliveryCenterHandlers = [
     const failure = projectError(projectId, searchParams)
     if (failure) return failure
     const allItems = deliveryCenterStore.items.get(projectId) ?? []
-    return HttpResponse.json({ data: summarize(filterItems(allItems, searchParams)), requestId: `delivery-summary-${projectId}` })
+    return HttpResponse.json(summarize(filterItems(allItems, searchParams)))
   }),
 ]

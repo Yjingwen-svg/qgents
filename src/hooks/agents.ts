@@ -8,7 +8,7 @@ export function useAgents(projectId: string, teamId?: string, scenario?: string)
   const resolvedTeamId = teamId ?? ''
   return useQuery({
     queryKey: queryKeys.agents.list(projectId, resolvedTeamId, scenario),
-    queryFn: () => agentApi.list(resolvedTeamId, projectId, scenario),
+    queryFn: () => agentApi.list(resolvedTeamId, scenario),
     enabled: Boolean(projectId && resolvedTeamId),
   })
 }

@@ -43,6 +43,27 @@ function renderPage(initialEntry: string) {
 }
 
 describe('DeliveryCenterPage', () => {
+  it('consumes the observed direct summary response shape without crashing', async () => {
+    server.use(
+      http.get('/api/projects/:projectId/delivery-items', () => HttpResponse.json({ data: [], page: { nextCursor: null, hasMore: false }, requestId: 'items-empty' })),
+      http.get('/api/projects/:projectId/delivery-summary', () => HttpResponse.json({
+        total: 0,
+        countsByType: { CODE: 0, MEMORY: 0, SKILL: 0 },
+        countsByStatus: { DRAFT: 0, PENDING_REVIEW: 0, PROCESSING: 0, ACCEPTED: 0, REJECTED: 0, DELIVERED: 0, FAILED: 0, ARCHIVED: 0 },
+        pendingForCurrentUser: 0,
+        repositorySummaries: [],
+        requirementGroupSummaries: [],
+        updatedAt: '2026-08-15T13:38:15.215Z',
+      })),
+    )
+
+    renderPage('/app/projects/project-delivery-center/diffs')
+
+    expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument()
+    expect(await screen.findByText('交付概览')).toBeInTheDocument()
+    expect(screen.queryByText('交付概览加载失败')).not.toBeInTheDocument()
+  })
+
   it('renders discriminated types, requirement groups, restores URL filters, and loads the next cursor', async () => {
     const filteredRender = renderPage('/app/projects/project-delivery-center/diffs?groupId=group-delivery&type=MEMORY&status=DRAFT')
 

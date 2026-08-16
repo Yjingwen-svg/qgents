@@ -1,5 +1,5 @@
 import { request } from './client'
-import type { CreateProjectPayload, Project, ProjectMember } from '@/types'
+import type { CreateProjectPayload, Project, ProjectMember, ProjectSettings } from '@/types'
 
 /**
  * 项目管理 API —— 对齐接口文档 v1.1.4 §5.2
@@ -34,6 +34,19 @@ export const projectApi = {
   /** POST /projects/{projectId}/archive — 归档项目 */
   archive(projectId: string) {
     return request<void>(`/projects/${projectId}/archive`, { method: 'POST' })
+  },
+
+  /** GET /projects/{projectId}/settings — 读取项目设置（需求群规则） */
+  getSettings(projectId: string) {
+    return request<ProjectSettings>(`/projects/${projectId}/settings`)
+  },
+
+  /** PATCH /projects/{projectId}/settings — 修改项目设置（仅 PROJECT_ADMIN，部分更新） */
+  updateSettings(projectId: string, payload: Partial<ProjectSettings>) {
+    return request<ProjectSettings>(`/projects/${projectId}/settings`, {
+      method: 'PATCH',
+      body: payload,
+    })
   },
 
   /** POST /projects/{projectId}/restore — 恢复项目 */

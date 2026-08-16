@@ -21,7 +21,7 @@ export type {
   AcceptInvitationResponse,
   MyTeamInvitation,
 } from './team'
-export type { Project, ProjectRole, ProjectMember, CreateProjectPayload } from './project'
+export type { Project, ProjectRole, ProjectMember, CreateProjectPayload, ProjectSettings } from './project'
 export type {
   Agent,
   AgentAvailability,
@@ -66,6 +66,8 @@ export type {
   SystemMessageContent,
   SendMessagePayload,
   CreateGroupPayload,
+  Mention,
+  MentionType,
   Page,
 } from './group'
 export type {

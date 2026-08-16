@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { githubApi } from '@/api/github'
 import type { DiffComment, DiffDetail, DiffFile } from '@/types/task-model'
 import { projectApi } from '@/api/project'
-import { DiffReviewPage } from './DiffReviewPage'
+import DiffReviewPage from './DiffReviewPage'
 
 const useDiffMock = vi.hoisted(() => vi.fn())
 const useDiffFilesMock = vi.hoisted(() => vi.fn())

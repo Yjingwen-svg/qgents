@@ -21,6 +21,10 @@ export const groupApi = {
   listMembers(projectId: string, groupId: string) {
     return request<GroupMember[]>(`/projects/${projectId}/groups/${groupId}/members`)
   },
+  /** POST /projects/{projectId}/groups/{groupId}/archive — 归档需求群（创建者或 Project Admin） */
+  archive(projectId: string, groupId: string) {
+    return request<void>(`/projects/${projectId}/groups/${groupId}/archive`, { method: 'POST' })
+  },
   /** 游标拉取消息 —— 返回 data + page 结构 */
   listMessages(projectId: string, groupId: string, cursor?: string, limit = 30) {
     const params = new URLSearchParams()

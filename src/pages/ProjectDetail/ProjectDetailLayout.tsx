@@ -181,9 +181,9 @@ export default function ProjectDetailLayout() {
               className={({ isActive }) => {
                 // 需求群聊：任意 /req-chat/* 都高亮该导航项
                 const active =
-                  item.path === 'req-chat'
-                    ? onReqChat
-                    : item.path === 'code'
+                  // item.path === 'req-chat'
+                  //   ? onReqChat
+                     item.path === 'code'
                       ? onCode
                       : isActive
                 return `pd-nav__item${active ? ' is-active' : ''}`

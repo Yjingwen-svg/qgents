@@ -12,7 +12,8 @@
 | --- | --- | --- |
 | 个人已装过，再给 **组织**（或另一个 GitHub 账号）装一份 | GitHub `/apps/qgents/installations/new` | 后端 `POST .../installations` 返回的 `installationUrl` |
 | 同一份安装上，**改仓库数量/范围** | GitHub **Configure**（已有安装的配置页） | 后端应提供 configure URL，或前端用 `providerInstallationId` 拼配置页 |
-| **卸掉** 这一份安装 | Qgents 调 `DELETE`，或 GitHub 配置页底部 Uninstall | 见第 3、4 节 |
+| **断开本团队连接**（GitHub 上 App 仍装着） | Qgents 调 `DELETE`（只删本地关联） | 见第 3 节 |
+| **从 GitHub 卸掉** 这一份安装 | GitHub 配置页底部 Uninstall | 见第 4、5 节 |
 
 顶部「安装 GitHub App」应继续只负责第一行。不要因为「已经装过」就把这个按钮改成「调整仓库」，否则组织安装入口会消失。
 
@@ -20,44 +21,42 @@ GitHub 对「同一账号重复走 `/installations/new`」会提示 `GitHub App 
 
 ## 2. 建议的卡片操作
 
-每张「已安装的 GitHub App」卡片建议三个动作分开：
+每张「已安装的 GitHub App」卡片三个动作分开：
 
-1. **查看仓库**（现有）：进入 Qgents 自己的授权仓库页。
-2. **在 GitHub 上管理**：打开该 installation 的 Configure 页（改仓库；页面下方也可卸载）。
-3. **在 Qgents 卸载**：调本系统 `DELETE`，清本地记录（后端应同时向 GitHub 卸载）。
+1. **查看仓库**：进入 Qgents 自己的授权仓库页。
+2. **断开 GitHub 连接**：调本系统 `DELETE`，只解除本团队 ↔ Installation 本地关联，**不会**在 GitHub 卸载 App。
+3. **在 GitHub 卸载 Qgents App**：打开该 installation 的 Configure 页，用户在 GitHub 上真正卸载。
 
 顶部「安装 GitHub App」只负责：再装到组织 / 另一个 GitHub 账号。
 
-## 3. 在 Qgents 上卸载
-
-前端已有接口，本页尚未挂按钮：
+## 3. 在 Qgents 上断开连接（不是卸载 App）
 
 ```http
 DELETE /teams/{teamId}/integrations/github/installations/{installationId}
 Idempotency-Key: <unique-key>
 ```
 
-约定成功为 `204`，**响应体里没有新的安装列表或仓库列表**。
+这是 **本地断开**：只删本团队与 Installation 的关联。后端 **不得** 调用 GitHub Uninstall API。GitHub 上 App 仍装着，其他团队之后可以装到同一份 Installation X。
+
+约定成功为 `204`，**响应体里没有新的安装列表或仓库列表**。项目仓库仍绑定时返回 `409 GITHUB_INSTALLATION_IN_USE`，前端 toast「请先解绑相关项目仓库」。
 
 列表要更新，必须：
 
-1. 用户点卡片卸载。
+1. 用户点卡片「断开 GitHub 连接」。
 2. 前端调用 `githubApi.deleteInstallation`。
 3. 成功后 `invalidateQueries`：安装列表 + 团队授权仓库列表。
 4. 页面重新 `GET`，卡片和仓库才会变。
 
-这和安装成功回跳（URL 带 `installed=1`）时刷新列表是同一套思路。`installed=1` **只在安装成功回调时**执行，GitHub 网页上卸载不会带这个参数。
-
-后端需要保证：**Qgents 卸载 = 同时卸 GitHub**（调用 GitHub Uninstall API 并删本地库）。若只删库、不通知 GitHub，Qgents 上看没了，GitHub 上可能还装着。
+从 GitHub 完整卸载 **没有** Qgents API，不要复用这个 DELETE。
 
 ## 4. 在 GitHub 上卸载，Qgents 如何同步
 
 两条路，不能指望一个按钮覆盖两种入口。
 
-| 用户在哪卸载 | 怎样同步到另一边 |
+| 用户在哪操作 | 怎样同步到另一边 |
 | --- | --- |
-| **Qgents 点卸载** | 后端 `DELETE` 时去 GitHub 卸掉，再清本地库；前端 invalidate 后 GET |
-| **GitHub 网页卸载** | GitHub 发 webhook（如 `installation.deleted`）给后端改库。没有 webhook 时列表不会自己变。补救：`POST .../installations/{id}/sync`，后端向 GitHub 核对，发现没了再删或标成 `DELETED` |
+| **Qgents 点断开连接** | 后端只删本地关联；GitHub 上 App 仍在。前端 invalidate 后 GET |
+| **GitHub 网页卸载** | GitHub 发 webhook（如 `installation.deleted`）给后端改库（`DELETED` + 仓库 `REVOKED`）。没有 webhook 时列表不会自己变。补救：`POST .../installations/{id}/sync`，后端向 GitHub 核对，发现没了再删或标成 `DELETED` |
 
 公网前端/回调域名 502 时，webhook 经常送不到，所以会出现：GitHub 已卸，Qgents 刷新后仍显示「已启用 + N 个仓库」。这通常是 **后端库仍有记录**，不是 TanStack Query 没清缓存。验证方法：看 Network 里 `GET .../installations` 是否仍返回该条。
 
@@ -77,7 +76,7 @@ Idempotency-Key: <unique-key>
 
 用户自己找：GitHub → Settings → Applications → Installed GitHub Apps → qgents → **Configure**。页面下方 Danger zone 才有 **Uninstall**。
 
-更好的产品做法：卡片上提供「在 GitHub 上管理」，用列表项里的 `providerInstallationId`（GitHub 数字 ID，仅用于跳转/展示，不写入绑定 body）。
+卡片上的「在 GitHub 卸载 Qgents App」用列表项里的 `providerInstallationId` 拼配置页（GitHub 数字 ID，仅用于跳转/展示，不写入绑定 body）。
 
 ## 6. 「添加 / 调整授权仓库」会进入什么页
 

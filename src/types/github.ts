@@ -48,14 +48,14 @@ export type GithubAuthorizationStatus = 'AUTHORIZED' | 'REVOKED'
  */
 export interface GithubInstallation {
   /** github_installations.id，Qgents 本地 UUID；绑定 / sync / 筛选用 */
-  id: string
+  id: string//github安装id,Qgents 自己库里的安装记录 ID（本地 UUID）
   /** GitHub Installation 数字 ID，仅展示或排查，禁止写入绑定 body */
-  providerInstallationId: number
-  accountLogin: string
-  accountType: GithubAccountType
-  installedAt: string
-  status: GithubInstallationStatus
-  metadataSyncedAt: string
+  providerInstallationId: number//github安装id,GitHub 那边的 Installation 数字 ID,拼 GitHub 配置页
+  accountLogin: string//github账号
+  accountType: GithubAccountType//github账号类型
+  installedAt: string//github安装时间
+  status: GithubInstallationStatus//github安装状态
+  metadataSyncedAt: string//github安装元数据同步时间
   /**
    * 可选：后端若直接返回授权仓库数则可展示；没有则前端用 repositories 列表统计
    * 已冻结见 docs：第一版不返回 authorizedRepositoryCount，前端按 installationId 统计。
@@ -134,4 +134,86 @@ export function isGithubRepoBindable(
     Boolean(repo.defaultBranch && repo.defaultBranch.trim()) &&
     installation?.status === 'ACTIVE'
   )
+}
+
+/**
+ * GitHub App 已安装配置页（勾选仓库 / 底部也可卸载）。
+ * 文档未返回 configure URL，用 providerInstallationId 拼接；绑定请求不得使用该数字 ID。
+ */
+export function githubInstallationConfigureUrl(
+  installation: Pick<GithubInstallation, 'accountType' | 'accountLogin' | 'providerInstallationId'>,
+): string | null {
+  if (!Number.isInteger(installation.providerInstallationId) || installation.providerInstallationId <= 0) {
+    return null
+  }
+  const id = String(installation.providerInstallationId)
+  if (installation.accountType === 'ORGANIZATION') {
+    return `https://github.com/organizations/${encodeURIComponent(installation.accountLogin)}/settings/installations/${id}`
+  }
+  return `https://github.com/settings/installations/${id}`
+}
+
+const GITHUB_APP_SLUG = 'qgents'
+
+/**
+ * 「安装 GitHub App」只允许跳到 /apps/{slug}/installations/new。
+ * 已装过的账号也走 new，由 GitHub 自己提示 already installed。
+ * 后端若误回 Configure，这里改回 new，并保留 state 给回调。
+ */
+export function toGithubAppInstallNewUrl(installationUrl: string): string | null {
+  let parsed: URL
+  try {
+    parsed = new URL(installationUrl)
+  } catch {
+    return null
+  }
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com') return null
+
+  if (/^\/apps\/[^/]+\/installations\/new(?:\/.*)?$/.test(parsed.pathname)) {
+    return parsed.toString()
+  }
+
+  const slugMatch = parsed.pathname.match(/^\/apps\/([^/]+)\//)
+  const slug = slugMatch?.[1] || GITHUB_APP_SLUG
+  const next = new URL(`https://github.com/apps/${encodeURIComponent(slug)}/installations/new`)
+  const state = parsed.searchParams.get('state')
+  if (state) next.searchParams.set('state', state)
+  return next.toString()
+}
+
+/**
+ * 把后端 ISO 时间转成「年月日时分秒」。
+ * 没有时区的字符串按 UTC 解析（联调常见 2026-08-16T03:24:56.030514），再显示为北京时间。
+ */
+export function formatGithubDateTime(value: string | null | undefined): string {
+  const trimmed = value?.trim() ?? ''
+  if (!trimmed) return '—'
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed)
+  const date = new Date(hasZone ? trimmed : `${trimmed}Z`)
+  if (Number.isNaN(date.getTime())) return trimmed
+
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date)
+
+  const pick = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? ''
+  return `${pick('year')}年${pick('month')}月${pick('day')}日 ${pick('hour')}时${pick('minute')}分${pick('second')}秒`
+}
+
+/** 卡片「N 个仓库已授权」：只统计 AUTHORIZED，已撤销不计入 */
+export function countAuthorizedRepositories(
+  installationId: string,//这个就是安装记录里的安装ID
+  repositories: Array<Pick<GithubAuthorizedRepository, 'installationId' | 'authorizationStatus'>>,//不需要完整的仓库对象，只需要 2 个字段即可运行函数
+): number {//github 授权仓库的安装id
+  return repositories.filter(
+    (repo) => repo.installationId === installationId && repo.authorizationStatus === 'AUTHORIZED',
+  ).length
 }

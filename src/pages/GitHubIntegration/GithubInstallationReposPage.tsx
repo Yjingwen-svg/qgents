@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Typography,
@@ -14,13 +14,15 @@ import {
   App,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { ArrowLeftOutlined, LinkOutlined, ReloadOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, LinkOutlined, ReloadOutlined, SettingOutlined } from '@ant-design/icons'
 import { githubApi } from '@/api/github'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
 import { DarkPage } from '@/components/DarkPage'
 import {
+  formatGithubDateTime,
+  githubInstallationConfigureUrl,
   isGithubRepoBindable,
   type GithubAuthorizedRepository,
   type GithubInstallation,
@@ -99,17 +101,57 @@ export default function GithubInstallationReposPage() {
   }, [reposQuery.data, installationId])
 // 仓库列表更新,安装id发生变化
 
+  const pendingConfigureSyncRef = useRef(false)
+
   const syncMutation = useMutation({
     mutationFn: () => githubApi.syncInstallation(teamId, installationId),
     onSuccess: async () => {
       message.success('已刷新授权仓库')
       await queryClient.invalidateQueries({ queryKey: queryKeys.githubInstallations(teamId) })
       await queryClient.invalidateQueries({ queryKey: queryKeys.githubTeamRepositories(teamId) })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.teamProjects(teamId) })
+      await queryClient.invalidateQueries({
+        predicate: (query) => {
+          const key = query.queryKey
+          return Array.isArray(key) && key[0] === 'qgents' && key[1] === 'projects' && key[3] === 'repositories'
+        },
+      })
     },
     onError: (error) => {
       message.error(formatApiError(error))
     },
   })
+
+  useEffect(() => {
+    function syncAfterReturningFromGithub() {
+      if (document.visibilityState !== 'visible') return
+      if (!pendingConfigureSyncRef.current) return
+      pendingConfigureSyncRef.current = false
+      syncMutation.mutate()
+    }
+    document.addEventListener('visibilitychange', syncAfterReturningFromGithub)
+    window.addEventListener('focus', syncAfterReturningFromGithub)
+    return () => {
+      document.removeEventListener('visibilitychange', syncAfterReturningFromGithub)
+      window.removeEventListener('focus', syncAfterReturningFromGithub)
+    }
+  }, [syncMutation])
+
+  const configureUrl = installation ? githubInstallationConfigureUrl(installation) : null
+
+  function openGithubConfigure() {
+    if (!configureUrl) {
+      message.error('缺少 GitHub Installation 数字 ID，无法打开配置页。请先刷新授权仓库。')
+      return
+    }
+    const popup = window.open(configureUrl, '_blank', 'noopener,noreferrer')
+    if (!popup) {
+      message.error('浏览器拦截了新窗口，请允许弹窗后再试')
+      return
+    }
+    pendingConfigureSyncRef.current = true
+    message.info('已打开 GitHub 配置页。调整并保存后回到本页，会自动同步授权仓库。')
+  }
 
   const accountLabel =
     installation?.accountType === 'ORGANIZATION' ? 'GitHub 组织' : 'GitHub 个人账号'
@@ -153,7 +195,7 @@ export default function GithubInstallationReposPage() {
       dataIndex: 'metadataSyncedAt',
       key: 'metadataSyncedAt',
       width: 180,
-      render: (at: string | undefined) => at || '—',
+      render: (at: string | undefined) => formatGithubDateTime(at),
     },
     {
       title: '操作',
@@ -218,14 +260,23 @@ export default function GithubInstallationReposPage() {
             teamId: <Text code>{teamId}</Text>
           </Paragraph>
         </div>
-        <Button
-          icon={<ReloadOutlined />}
-          loading={syncMutation.isPending}
-          disabled={!installationId}
-          onClick={() => syncMutation.mutate()}
-        >
-          刷新授权仓库
-        </Button>
+        <Space wrap>
+          <Button
+            icon={<SettingOutlined />}
+            disabled={!configureUrl}
+            onClick={openGithubConfigure}
+          >
+            调整仓库
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            loading={syncMutation.isPending}
+            disabled={!installationId}
+            onClick={() => syncMutation.mutate()}
+          >
+            刷新授权仓库
+          </Button>
+        </Space>
       </div>
 
       <Card>
@@ -238,7 +289,7 @@ export default function GithubInstallationReposPage() {
         ) : repos.length === 0 ? (
           <Empty description="该安装下暂无授权仓库">
             <Paragraph type="secondary">
-              可返回集成页再次「安装Github App」，在 GitHub 上调整授权仓库范围。
+              可点右上角「调整仓库」，在 GitHub 配置页勾选仓库后回到本页自动同步。
             </Paragraph>
           </Empty>
         ) : (
@@ -251,6 +302,9 @@ export default function GithubInstallationReposPage() {
           />
         )}
       </Card>
+      <Paragraph type="secondary" style={{ marginTop: 16 }}>
+        「调整仓库」会打开当前 GitHub App 的配置页（勾选授权仓库）。保存后回到本页会自动同步列表与授权状态；也可手动点「刷新授权仓库」。
+      </Paragraph>
     </DarkPage>
   )
 }

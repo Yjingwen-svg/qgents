@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Button,
+  Card,
   Drawer,
   Form,
   Input,
@@ -18,6 +19,7 @@ import { PlusOutlined, TagsOutlined, UserOutlined } from '@ant-design/icons'
 import { projectApi, skillApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
 import type { CreateSkillPayload, Skill, SkillStatus } from '@/types'
+import './SkillPage.css'
 
 const { Text, Paragraph } = Typography
 
@@ -102,7 +104,7 @@ export function SkillPage() {
 
   if (isLoading) {
     return (
-      <div className="pd-section">
+      <div className="skill-page">
         <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
           <Spin size="large" />
         </div>
@@ -111,41 +113,41 @@ export function SkillPage() {
   }
 
   return (
-    <div className="pd-section">
-      <header className="pd-section__header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <h1>共享 Skill</h1>
-            <p>沉淀可复用能力片段（规范、提示词、操作指引），经审核后供项目 Agent 使用</p>
-          </div>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-            新建 Skill
-          </Button>
-        </div>
+    <div className="skill-page">
+      <header className="skill-page__header">
+        <h1 className="skill-page__title">共享 Skill</h1>
+        <p className="skill-page__desc">沉淀可复用能力片段（规范、提示词、操作指引），经审核后供项目 Agent 使用</p>
       </header>
 
-      <div className="pd-section__body">
+      <div className="skill-page__toolbar">
         <Segmented
           options={FILTERS.map((f) => ({ label: f.label, value: f.key }))}
           value={filter}
           onChange={(v) => setFilter(v as FilterKey)}
-          style={{ marginBottom: 20 }}
         />
-
-        {filtered.length === 0 ? (
-          <EmptyState
-            icon="🛠️"
-            title="暂无 Skill"
-            description="新建一条草稿，提交审核后即可发布为项目共享能力"
-          />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {filtered.map((s) => (
-              <SkillCard key={s.id} skill={s} onClick={() => setDetailId(s.id)} />
-            ))}
-          </div>
-        )}
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+          新建 Skill
+        </Button>
       </div>
+
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon="🛠️"
+          title="暂无共享 Skill"
+          description="新建一条草稿，提交审核后即可发布为项目共享能力"
+          // action={
+          //   <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+          //     新建 Skill
+          //   </Button>
+          // }
+        />
+      ) : (
+        <div className="skill-page__list">
+          {filtered.map((s, i) => (
+            <SkillCard key={s.id} skill={s} index={i + 1} onClick={() => setDetailId(s.id)} />
+          ))}
+        </div>
+      )}
 
       {/* 详情抽屉 */}
       <SkillDetail
@@ -178,59 +180,45 @@ export function SkillPage() {
 }
 
 /** 列表卡片 */
-function SkillCard({ skill, onClick }: { skill: Skill; onClick: () => void }) {
+function SkillCard({ skill, index, onClick }: { skill: Skill; index: number; onClick: () => void }) {
   const meta = STATUS_META[skill.status] ?? { color: 'default', label: skill.status }
   const vis = VISIBILITY_META[skill.visibility] ?? { color: 'default', label: skill.visibility }
   return (
-    <div
-      onClick={onClick}
-      style={{
-        padding: '16px 20px',
-        background: 'rgba(255,255,255,0.04)',
-        borderRadius: 10,
-        border: '1px solid rgba(255,255,255,0.06)',
-        cursor: 'pointer',
-        transition: 'border-color 0.15s',
-      }}
-      onMouseEnter={(e) => {
-        ;(e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(13,155,138,0.5)'
-      }}
-      onMouseLeave={(e) => {
-        ;(e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,0.06)'
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <Text strong style={{ fontSize: 15, color: '#e2e8f0' }}>
-          {skill.name}
-        </Text>
-        <Space size={4}>
-          <Tag color={vis.color} style={{ margin: 0 }}>
-            {vis.label}
-          </Tag>
-          <Tag color={meta.color} style={{ margin: 0 }}>
-            {meta.label}
-          </Tag>
-        </Space>
-      </div>
-      <Paragraph
-        ellipsis={{ rows: 1 }}
-        style={{ color: '#94a3b8', fontSize: 13, marginBottom: 8 }}
-      >
-        {skill.content}
-      </Paragraph>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        {(skill.tags ?? []).map((t) => (
-          <Tag key={t} icon={<TagsOutlined />} bordered={false} style={{ color: '#9aa3b5' }}>
-            {t}
-          </Tag>
-        ))}
-        <Space size={4} style={{ marginLeft: 'auto' }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
+    <Card className="skill-card" onClick={onClick}>
+      <div className="skill-card__main">
+        <div className="skill-card__left">
+          <span className="skill-card__index">{String(index).padStart(2, '0')}</span>
+          <div className="skill-card__name-wrap">
+            <Text className="skill-card__name">{skill.name}</Text>
+            <Paragraph ellipsis={{ rows: 1 }} className="skill-card__content">
+              {skill.content}
+            </Paragraph>
+          </div>
+        </div>
+        <div className="skill-card__right">
+          <Space size={4}>
+            <Tag color={vis.color} style={{ margin: 0 }}>
+              {vis.label}
+            </Tag>
+            <Tag color={meta.color} style={{ margin: 0 }}>
+              {meta.label}
+            </Tag>
+          </Space>
+          <Text className="skill-card__creator">
             {skill.creator?.displayName ?? '未知'}
           </Text>
-        </Space>
+        </div>
       </div>
-    </div>
+      {(skill.tags ?? []).length > 0 && (
+        <div className="skill-card__tags">
+          {(skill.tags ?? []).map((t) => (
+            <Tag key={t} icon={<TagsOutlined />} bordered={false}>
+              {t}
+            </Tag>
+          ))}
+        </div>
+      )}
+    </Card>
   )
 }
 

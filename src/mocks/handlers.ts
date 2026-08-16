@@ -966,7 +966,13 @@ export const handlers = [
   http.delete(
     '/api/teams/:teamId/integrations/github/installations/:installationId',
     ({ params }) => {
-      mockInstallations = mockInstallations.filter((i) => i.id !== params.installationId)
+      const installationId = String(params.installationId)
+      mockInstallations = mockInstallations.filter((i) => i.id !== installationId)
+      for (let index = mockAuthorizedRepos.length - 1; index >= 0; index -= 1) {
+        if (mockAuthorizedRepos[index]?.installationId === installationId) {
+          mockAuthorizedRepos.splice(index, 1)
+        }
+      }
       return new HttpResponse(null, { status: 204 })
     },
   ),

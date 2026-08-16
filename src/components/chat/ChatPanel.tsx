@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Layout, Button, Input, Space, Typography, theme, Empty, Image, Tag, Popconfirm, message } from 'antd'
+import { App, Upload } from 'antd'
 import {
   SendOutlined,
   ThunderboltOutlined,
@@ -8,13 +9,15 @@ import {
   BranchesOutlined,
   CheckCircleOutlined,
   InboxOutlined,
+  PaperClipOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { groupApi, projectApi, agentApi } from '@/api'
 import { formatApiError } from '@/utils/formatApiError'
+import { groupApi, projectApi, agentApi, attachmentApi, uploadAttachment } from '@/api'
 import { useUnreadStore } from '@/store/unreadStore'
 import { useAuth } from '@/context/AuthContext'
 import { TaskTriggerModal } from '@/components/task-domain'
+import { AuthedImage } from '@/components/AuthedImage'
 import { PATHS } from '@/routes/paths'
 import type {
   Message,
@@ -37,12 +40,14 @@ const { Text } = Typography
  */
 export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: string }) {
   const { token } = theme.useToken()
+  const { message } = App.useApp()
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const markRead = useUnreadStore((state) => state.markRead)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [mentions, setMentions] = useState<Mention[]>([])
   const [sendError, setSendError] = useState<string | null>(null)
   const [triggerOpen, setTriggerOpen] = useState(false)
@@ -160,6 +165,31 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       setSendError(formatApiError(error))
     } finally {
       setSending(false)
+    }
+  }
+
+  /** 选择附件后：直传 OSS → 发送 IMAGE/FILE 消息（§18 附件链路） */
+  async function handleUpload(file: File) {
+    if (uploading) return
+    setUploading(true)
+    try {
+      const attachmentId = await uploadAttachment(projectId, file)
+      const url = attachmentApi.contentUrl(projectId, attachmentId)
+      const isImage = file.type.startsWith('image/')
+      await groupApi.sendMessage(projectId, groupId, {
+        type: isImage ? 'IMAGE' : 'FILE',
+        content: isImage
+          ? { url }
+          : { url, name: file.name, size: file.size, mimeType: file.type },
+        clientMessageId: `cmsg_${Date.now()}`,
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['groups', projectId, groupId, 'messages'],
+      })
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '附件发送失败')
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -305,6 +335,16 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
 
         {sendError ? <Text type="danger" style={{ display: 'block', marginBottom: 8 }}>{sendError}</Text> : null}
         <Space.Compact style={{ width: '100%' }}>
+          <Upload
+            showUploadList={false}
+            multiple={false}
+            beforeUpload={(file) => {
+              void handleUpload(file)
+              return false
+            }}
+          >
+            <Button icon={<PaperClipOutlined />} loading={uploading} aria-label="发送文件" />
+          </Upload>
           <Input.TextArea
             placeholder="输入消息，@ 可提及成员或 Agent，回车发送…"
             autoSize={{ minRows: 1, maxRows: 4 }}
@@ -493,11 +533,11 @@ function renderContent(message: Message, projectId: string): React.ReactNode {
     case 'IMAGE': {
       const c = message.content as ImageMessageContent
       return (
-        <Image
+        <AuthedImage
           src={c.url}
-          width={c.width ?? '100%'}
+          width={c.width ?? 260}
           height={c.height}
-          style={{ borderRadius: 10, display: 'block' }}
+          style={{ borderRadius: 10, display: 'block', maxWidth: '100%' }}
           fallback="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='120'%3E%3Crect width='100%25' height='100%25' fill='%231c2128'/%3E%3C/svg%3E"
         />
       )

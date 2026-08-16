@@ -143,9 +143,10 @@ function idempotencyHeaders(): Record<string, string> {
  *    GET /integrations/github/callback
  *    后端校验 state、落库 installation 元数据与授权仓库范围
  *
- * ⑥ 后端再 302 回前端（回跳地址需与后端约定，例如）：
- *    /app/integrations/github?teamId=xxx&installed=1
- *    前端可根据 installed=1 提示「安装成功」并刷新列表
+ * ⑥ 后端再 302 回前端：
+ *    成功：/app/integrations/github?teamId=xxx&installed=1
+ *    归属冲突：...&installed=0&conflict=GITHUB_INSTALLATION_TEAM_CONFLICT&message=...
+ *    前端根据参数提示成功或错误，并刷新列表
  *
  * 【权限】createInstallation / listInstallations：Team Owner
  * 【联调开关】
@@ -209,7 +210,13 @@ export const githubApi = {
     ).then((res) => asList(res.data).map(mapInstallation))
   },//数组的 map：遍历数组里每一项，把每一项传给函数 fn，用返回值拼成新数组
 
-  /** DELETE /teams/{teamId}/integrations/github/installations/{installationId} */
+  /**
+   * DELETE /teams/{teamId}/integrations/github/installations/{installationId}
+   * 权限：Team Owner。成功 204。
+   * 路径 {installationId} 为本地 UUID。只解除本团队与 Installation 的本地关联，
+   * 后端不得调用 GitHub Uninstall。项目仓库仍绑定时 409 GITHUB_INSTALLATION_IN_USE。
+   * 前端成功后再 GET 列表。从 GitHub 卸载走 Configure 页，不要复用本接口。
+   */
   deleteInstallation(teamId: string, installationId: string) {
     return request<void>(`/teams/${teamId}/integrations/github/installations/${installationId}`, {
       method: 'DELETE',

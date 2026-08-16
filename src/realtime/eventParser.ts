@@ -1,6 +1,11 @@
 import type { EventSourceMessage } from '@microsoft/fetch-event-source'
 
 export const PROJECT_TASK_EVENT_TYPES = [
+  'message.created',
+  'group.created',
+  'group.updated',
+  'group.archived',
+  'group.member.updated',
   'task.updated',
   'task-step.updated',
   'task-run.updated',
@@ -30,11 +35,6 @@ export const PROJECT_TASK_EVENT_TYPES = [
   'skill.archived',
   'test-run.updated',
   'dry-run.updated',
-  'message.created',
-  'group.created',
-  'group.updated',
-  'group.archived',
-  'group.member.updated',
 ] as const
 
 export type ProjectTaskEventType = (typeof PROJECT_TASK_EVENT_TYPES)[number]
@@ -62,6 +62,11 @@ function isPayload(value: unknown): value is ProjectTaskEventPayload {
 
 function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPayload): boolean {
   const required: Record<ProjectTaskEventType, readonly string[]> = {
+    'message.created': ['groupId', 'messageId'],
+    'group.created': ['groupId'],
+    'group.updated': ['groupId'],
+    'group.archived': ['groupId'],
+    'group.member.updated': ['groupId'],
     'task.updated': ['taskId'],
     'task-step.updated': ['taskId', 'taskStepId'],
     'task-run.updated': ['taskId', 'taskStepId', 'taskRunId'],
@@ -91,11 +96,6 @@ function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPay
     'skill.archived': ['resourceId', 'updatedAt'],
     'test-run.updated': ['testRunId'],
     'dry-run.updated': ['dryRunId'],
-    'message.created': ['groupId', 'messageId'],
-    'group.created': ['groupId'],
-    'group.updated': ['groupId'],
-    'group.archived': ['groupId'],
-    'group.member.updated': ['groupId'],
   }
   const stringsValid = required[type].every((key) => typeof payload[key] === 'string' && (payload[key] as string).length > 0)
   if (!stringsValid) return false

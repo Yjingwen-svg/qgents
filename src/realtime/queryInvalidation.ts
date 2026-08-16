@@ -37,6 +37,8 @@ export function queryKeysForProjectTaskEvent(
   const artifactId = stringId(payload, 'artifactId')
   const resourceType = stringId(payload, 'resourceType')
   const resourceId = stringId(payload, 'resourceId')
+  const groupId = stringId(payload, 'groupId')
+  const messageId = stringId(payload, 'messageId')
   const keys: QueryKey[] = []
 
   const addDeliveryQueries = (): void => {
@@ -51,6 +53,22 @@ export function queryKeysForProjectTaskEvent(
   }
 
   switch (event.type) {
+    case 'message.created':
+      if (!groupId || !messageId) return []
+      addKey(keys, ['groups', projectId])
+      addKey(keys, ['groups', projectId, groupId, 'messages'])
+      break
+    case 'group.created':
+    case 'group.updated':
+    case 'group.archived':
+      if (!groupId) return []
+      addKey(keys, ['groups', projectId])
+      break
+    case 'group.member.updated':
+      if (!groupId) return []
+      addKey(keys, ['groups', projectId])
+      addKey(keys, ['groups', projectId, groupId, 'members'])
+      break
     case 'task.updated':
       if (!taskId) return []
       addKey(keys, taskModelQueryKeys.tasks.all(projectId))
@@ -140,7 +158,7 @@ export function queryKeysForProjectTaskEvent(
       break
     case 'merge-request.updated':
       if (!stringId(payload, 'mergeRequestId')) return []
-      addDeliveryQueries()
+      addKey(keys, deliveryCenterKeys.all(projectId))
       addKey(keys, taskModelQueryKeys.mergeRequests.all(projectId))
       if (taskId) {
         addKey(keys, taskModelQueryKeys.tasks.all(projectId))
@@ -162,27 +180,7 @@ export function queryKeysForProjectTaskEvent(
         addKey(keys, taskModelQueryKeys.tasks.all(projectId))
         addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
       }
-      addKey(keys, taskModelQueryKeys.mergeRequests.all(projectId))
       break
-    case 'message.created': {
-      const groupId = stringId(payload, 'groupId')
-      if (!groupId) return []
-      addKey(keys, ['groups', projectId])
-      addKey(keys, ['groups', projectId, groupId, 'messages'])
-      break
-    }
-    case 'group.created':
-    case 'group.updated':
-    case 'group.archived':
-      if (!stringId(payload, 'groupId')) return []
-      addKey(keys, ['groups', projectId])
-      break
-    case 'group.member.updated': {
-      const groupId = stringId(payload, 'groupId')
-      if (!groupId) return []
-      addKey(keys, ['groups', projectId, groupId, 'members'])
-      break
-    }
     case 'test-run.updated': {
       const testRunId = stringId(payload, 'testRunId')
       if (!testRunId) return []

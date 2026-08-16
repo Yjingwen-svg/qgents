@@ -191,9 +191,6 @@ export default function ProjectDetailLayout() {
             >
               <NavIcon id={item.path} />
               <span className="pd-nav__label">{item.label}</span>
-              {'badge' in item && item.badge != null ? (
-                <span className="pd-nav__badge">{item.badge}</span>
-              ) : null}
             </NavLink>
           ))}
         </nav>

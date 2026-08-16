@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty, Image, Tag, Popconfirm, message } from 'antd'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm } from 'antd'
 import { App, Upload } from 'antd'
 import {
   SendOutlined,

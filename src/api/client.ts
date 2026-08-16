@@ -70,7 +70,8 @@ const WRITE_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
 /** 刷新 access token 的单例 Promise —— 并发请求同时 401 时只发一次 refresh */
 let refreshPromise: Promise<string | null> | null = null
 
-async function refreshAccessToken(): Promise<string | null> {
+/** 刷新 access token（供 SSE 等不走 rawRequest 的路径复用）。成功返回新 access token，失败返回 null。 */
+export async function refreshAccessToken(): Promise<string | null> {
   const refreshToken = getStoredRefreshToken()
   if (!refreshToken) return null
   if (refreshPromise) return refreshPromise

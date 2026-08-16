@@ -1,5 +1,6 @@
 import { EventStreamContentType, type EventSourceMessage } from '@microsoft/fetch-event-source'
 import { connectProjectEvents } from '@/api/projectEvents'
+import { refreshAccessToken } from '@/api/client'
 import { parseProjectTaskEvent, type ProjectTaskEvent } from './eventParser'
 import { browserEventCursorStore, type EventCursorStore } from './eventCursor'
 
@@ -102,7 +103,13 @@ export class ProjectEventConnection {
         if (!response.ok) {
           const code = response.status === 409 ? await eventErrorCode(response) : null
           if (response.status === 409 && code === 'EVENT_CURSOR_EXPIRED') throw new EventCursorExpiredError()
-          if (response.status === 401 || response.status === 403 || response.status === 409) throw new TerminalEventStreamError(response.status)
+          if (response.status === 401) {
+            // token 过期：刷新后走 onerror 普通重连（下次 connect 重读新 token）；刷新失败才停止
+            const newToken = await refreshAccessToken()
+            if (newToken) throw new Error('SSE token refreshed')
+            throw new TerminalEventStreamError(401)
+          }
+          if (response.status === 403 || response.status === 409) throw new TerminalEventStreamError(response.status)
           throw new Error(`Project event stream failed: ${response.status}`)
         }
         const contentType = response.headers.get('content-type')

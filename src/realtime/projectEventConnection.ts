@@ -140,8 +140,11 @@ export class ProjectEventConnection {
           this.setStatus('disconnected')
           throw error
         }
+        // 其余错误（含 401 后 token 刷新成功的「普通错误」）也必须抛错让 fetchEventSource reject，
+        // 交给外层 scheduleReconnect 重新 connectNow()（重新读最新 token）。
+        // 若返回数字，fetchEventSource 会复用闭包内旧 headers 内部重连，token 永不更新 → 401 死循环。
         if (this.running) this.setStatus('disconnected')
-        return this.nextRetryDelay()
+        throw error
       },
     }).catch(() => {
       if (this.running) {

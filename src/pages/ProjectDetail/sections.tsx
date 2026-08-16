@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { MemoryPage as MemoryPageImpl } from './MemoryPage'
 import { SkillPage as SkillPageImpl } from './SkillPage'
 import { MembersPage as MembersPageImpl } from './MembersPage'
+import { SettingsPage as SettingsPageImpl } from './Settings/SettingsPage'
 
 /**
  * 项目详情其它导航子页的统一占位壳
@@ -167,5 +168,5 @@ export function MembersPage() {
 }
 
 export function SettingsPage() {
-  return <ProjectSectionPage section="settings" title="项目设置" todos={['TODO: C - 项目设置与质量门禁']} />
+  return <SettingsPageImpl />
 }

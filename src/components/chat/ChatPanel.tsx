@@ -1,21 +1,24 @@
-import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty, Image, Tag } from 'antd'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Image, Tag, Popconfirm } from 'antd'
 import {
   SendOutlined,
   ThunderboltOutlined,
   FileOutlined,
   BranchesOutlined,
   CheckCircleOutlined,
+  InboxOutlined,
 } from '@ant-design/icons'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { groupApi } from '@/api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { groupApi, projectApi, agentApi } from '@/api'
+import { useUnreadStore } from '@/store/unreadStore'
 import { useAuth } from '@/context/AuthContext'
 import { TaskTriggerModal } from '@/components/task-domain'
 import { PATHS } from '@/routes/paths'
 import type {
   Message,
-  GroupMember,
+  Mention,
+  MentionType,
   TextMessageContent,
   CodeMessageContent,
   ImageMessageContent,
@@ -35,9 +38,11 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const { token } = theme.useToken()
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const markRead = useUnreadStore((state) => state.markRead)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
-  const [mentionIds, setMentionIds] = useState<string[]>([])
+  const [mentions, setMentions] = useState<Mention[]>([])
   const [triggerOpen, setTriggerOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -47,8 +52,18 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     enabled: !!projectId,
   })
   const group = groups.find((g) => g.id === groupId)
+  const mainGroup = groups.find((g) => g.type === 'PROJECT_MAIN')
 
-  // 群成员（项目成员 + Agent），用于 @提及
+  // 归档需求群（仅创建者可见，Project Admin 兜底后端校验）
+  const archiveGroup = useMutation({
+    mutationFn: () => groupApi.archive(projectId, groupId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+      if (mainGroup) navigate(PATHS.projectReqChat(projectId, mainGroup.id))
+    },
+  })
+
+  // 群成员（项目成员 + Agent），@ 提及用户候选来源
   const { data: members = [] } = useQuery({
     queryKey: ['groups', projectId, groupId, 'members'],
     queryFn: () => groupApi.listMembers(projectId, groupId),
@@ -56,9 +71,23 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   })
   const currentUserId = user?.id
   const userMembers = members.filter((m) => m.memberType === 'USER')
-  const agentMembers = members.filter((m) => m.memberType === 'AGENT')
   // 过滤掉自己的用户（Agent 保留，因为没有"自己"）
   const otherUserMembers = userMembers.filter((m) => m.id !== currentUserId)
+
+  // @ Agent 候选来源：团队 Agent 列表（不依赖群成员，v1.8.0 §7/§22）
+  const { data: project } = useQuery({
+    queryKey: ['projects', projectId],
+    queryFn: () => projectApi.getById(projectId),
+    enabled: !!projectId,
+  })
+  const teamId = project?.teamId
+  const { data: agentsPage } = useQuery({
+    queryKey: ['teams', teamId, 'agents', projectId],
+    queryFn: () => agentApi.list(teamId ?? '', projectId),
+    enabled: !!teamId,
+  })
+  // 仅展示可被 @ 的 Agent（ACTIVE 状态）
+  const teamAgents = (agentsPage?.data ?? []).filter((a) => a.status === 'ACTIVE')
 
   const {
     data: page,
@@ -69,7 +98,16 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     queryFn: () => groupApi.listMessages(projectId, groupId),
     enabled: !!projectId && !!groupId,
   })
-  const messages = page?.data ?? []
+  // 后端消息列表不保证顺序，按 sequence（缺则退回 createdAt）升序排，保证新消息在下方
+  const messages = useMemo(() => {
+    const list = page?.data ?? []
+    return [...list].sort((a, b) => {
+      const as = a.sequence ?? Number.MAX_SAFE_INTEGER
+      const bs = b.sequence ?? Number.MAX_SAFE_INTEGER
+      if (as !== bs) return as - bs
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    })
+  }, [page])
 
   // 新消息自动滚动到底部
   useEffect(() => {
@@ -78,12 +116,17 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     }
   }, [messages.length])
 
+  // 进入群聊 / 群内来新消息时持续标记已读（离开后群有新活动才重新亮红点）
+  useEffect(() => {
+    if (groupId) markRead(groupId)
+  }, [groupId, messages.length, markRead])
+
   // 输入框以 @ 结尾时弹出成员面板
   const mentionOpen = draft.endsWith('@')
 
-  function pickMention(member: GroupMember) {
-    setDraft((prev) => prev + `${member.displayName} `)
-    setMentionIds((prev) => [...prev, member.id])
+  function pickMention(target: { id: string; displayName: string; type: MentionType }) {
+    setDraft((prev) => prev + `${target.displayName} `)
+    setMentions((prev) => [...prev, { type: target.type, id: target.id }])
   }
 
   async function handleSend() {
@@ -95,11 +138,11 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       await groupApi.sendMessage(projectId, groupId, {
         type: 'TEXT',
         content: { text },
-        mentions: mentionIds.length > 0 ? mentionIds : undefined,
+        mentions: mentions.length > 0 ? mentions : undefined,
         clientMessageId: `cmsg_${Date.now()}`,
       })
       setDraft('')
-      setMentionIds([])
+      setMentions([])
       await queryClient.invalidateQueries({
         queryKey: ['groups', projectId, groupId, 'messages'],
       })
@@ -131,15 +174,36 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             </Text>
           </div>
         </div>
-        {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal */}
-        <Button
-          type="primary"
-          ghost
-          icon={<ThunderboltOutlined />}
-          onClick={() => setTriggerOpen(true)}
-        >
-          发起任务
-        </Button>
+        <Space size={8}>
+          {/* 归档需求群 —— 仅需求群 + 创建者可见 */}
+          {group?.type === 'REQUIREMENT' && group.createdBy === user?.id && !group.isArchived && (
+            <Popconfirm
+              title="归档需求群"
+              description="归档后该群将移入「已归档」，不可恢复。确定归档？"
+              okText="归档"
+              cancelText="取消"
+              onConfirm={() => archiveGroup.mutate()}
+            >
+              <Button
+                danger
+                ghost
+                icon={<InboxOutlined />}
+                loading={archiveGroup.isPending}
+              >
+                归档需求群
+              </Button>
+            </Popconfirm>
+          )}
+          {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal */}
+          <Button
+            type="primary"
+            ghost
+            icon={<ThunderboltOutlined />}
+            onClick={() => setTriggerOpen(true)}
+          >
+            发起任务
+          </Button>
+        </Space>
       </div>
 
       {/* 消息列表 */}
@@ -210,11 +274,19 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
               zIndex: 10,
             }}
           >
-            {agentMembers.length > 0 && (
-              <MentionGroup label="Agent" members={agentMembers} onPick={pickMention} />
+            {teamAgents.length > 0 && (
+              <MentionGroup
+                label="Agent"
+                members={teamAgents.map((a) => ({ id: a.id, displayName: a.name, type: 'AGENT' as const }))}
+                onPick={pickMention}
+              />
             )}
             {otherUserMembers.length > 0 && (
-              <MentionGroup label="成员" members={otherUserMembers} onPick={pickMention} />
+              <MentionGroup
+                label="成员"
+                members={otherUserMembers.map((m) => ({ id: m.id, displayName: m.displayName, type: 'USER' as const }))}
+                onPick={pickMention}
+              />
             )}
           </div>
         )}
@@ -301,8 +373,8 @@ function MentionGroup({
   onPick,
 }: {
   label: string
-  members: GroupMember[]
-  onPick: (m: GroupMember) => void
+  members: Array<{ id: string; displayName: string; type: MentionType }>
+  onPick: (m: { id: string; displayName: string; type: MentionType }) => void
 }) {
   const { token } = theme.useToken()
   return (
@@ -330,7 +402,7 @@ function MentionGroup({
           }}
         >
           <Text style={{ fontSize: 13 }}>
-            {m.memberType === 'AGENT' ? '🤖 ' : ''}
+            {m.type === 'AGENT' ? '🤖 ' : ''}
             {m.displayName}
           </Text>
         </div>

@@ -1,11 +1,13 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Modal, Form, Input, Button, Select } from 'antd'
-import { GithubOutlined } from '@ant-design/icons'
+import { Modal, Form, Input, Select, Empty, Typography } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { projectApi, teamApi } from '@/api'
+import { projectApi, teamApi, githubApi } from '@/api'
 import { PATHS } from '@/routes/paths'
+import { isGithubRepoBindable } from '@/types/github'
 import type { CreateProjectPayload } from '@/types'
+
+const { Text, Link: TextLink } = Typography
 
 /**
  * 创建项目弹窗 —— 复用给团队详情页 / 个人中心
@@ -34,6 +36,23 @@ export function CreateProjectModal({
     queryFn: () => teamApi.listMembers(teamId),
     enabled: !!teamId && open,
   })
+
+  // 团队已授权 GitHub 仓库（创建时必选，用于一并绑定）
+  const { data: teamRepos = [], isLoading: reposLoading } = useQuery({
+    queryKey: ['teams', teamId, 'github', 'repositories'],
+    queryFn: () => githubApi.listTeamRepositories(teamId),
+    enabled: !!teamId && open,
+  })
+  // 安装列表：用于判断仓库对应 installation 是否 ACTIVE
+  const { data: installations = [] } = useQuery({
+    queryKey: ['teams', teamId, 'github', 'installations'],
+    queryFn: () => githubApi.listInstallations(teamId),
+    enabled: !!teamId && open,
+  })
+  // 仅列出可绑定的授权仓库（已授权、未归档、默认分支非空、安装 ACTIVE）
+  const bindableRepos = teamRepos.filter((r) =>
+    isGithubRepoBindable(r, installations.find((i) => i.id === r.installationId)),
+  )
 
   const createProject = useMutation({
     mutationFn: (payload: CreateProjectPayload) => projectApi.create(payload),
@@ -92,17 +111,40 @@ export function CreateProjectModal({
             allowClear
           />
         </Form.Item>
-        {/* 原「Git 仓库」URL 输入已移除；改为跳转团队已授权仓库列表 */}
-        <Form.Item label="GitHub 仓库">
-          <Button
-            icon={<GithubOutlined />}
-            onClick={() => {
-              onClose()
-              navigate(PATHS.teamAuthorizedRepos(teamId))
-            }}
-          >
-            绑定github仓库
-          </Button>
+        {/* GitHub 仓库 —— 创建时必选，一并绑定 */}
+        <Form.Item
+          name="repositoryIds"
+          label="GitHub 仓库"
+          rules={[{ required: true, message: '请至少绑定一个 GitHub 仓库' }]}
+        >
+          <Select
+            mode="multiple"
+            placeholder="选择要绑定的仓库（可多选）"
+            loading={reposLoading}
+            notFoundContent={
+              bindableRepos.length === 0 ? (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={
+                    <span>
+                      暂无已授权的 GitHub 仓库，请先
+                      <TextLink onClick={() => { onClose(); navigate(PATHS.githubIntegration(teamId)) }}>去授权</TextLink>
+                    </span>
+                  }
+                />
+              ) : undefined
+            }
+            options={bindableRepos.map((r) => ({
+              value: r.id,
+              label: r.fullName,
+            }))}
+            optionFilterProp="label"
+          />
+        </Form.Item>
+        <Form.Item noStyle>
+          <Text type="secondary" style={{ fontSize: 12, marginTop: -16 }}>
+            创建项目需绑定至少一个 GitHub 仓库；若列表为空请先完成团队 GitHub App 授权
+          </Text>
         </Form.Item>
       </Form>
     </Modal>

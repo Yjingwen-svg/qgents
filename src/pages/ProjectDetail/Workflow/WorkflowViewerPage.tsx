@@ -153,7 +153,7 @@ function NodeDetail({ node, agent, projectId, teamId, taskId, onRunSelect }: {
   )
 }
 
-export function WorkflowViewerPage() {
+export default function WorkflowViewerPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const location = useLocation()
   const navigate = useNavigate()

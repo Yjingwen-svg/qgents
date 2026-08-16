@@ -18,6 +18,7 @@ import { projectApi, teamApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
 import { CreateProjectModal } from '@/components/CreateProjectModal'
 import { useAppUiStore } from '@/store/appUiStore'
+import { useTeamEvents } from '@/realtime/useTeamEvents'
 import type { Project, TeamMember } from '@/types'
 import './TeamDetailPage.css'
 
@@ -105,11 +106,14 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
   )
 }
 
-export function TeamDetailPage() {
+export default function TeamDetailPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
   const [activeView, setActiveView] = useState<TeamDetailView>('projects')
   const [createOpen, setCreateOpen] = useState(false)
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
+
+  // 团队级 SSE：被拉进项目 / 成员变更 / 动态产生时实时刷新
+  useTeamEvents(teamId || undefined)
 
   // 进入团队详情即记录当前团队，供顶部「团队首页」按钮回到此团队
   useEffect(() => {

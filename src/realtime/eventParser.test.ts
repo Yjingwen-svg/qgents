@@ -3,13 +3,17 @@ import { parseProjectTaskEvent, PROJECT_TASK_EVENT_TYPES } from './eventParser'
 
 describe('project SSE event parsing', () => {
   it.each(PROJECT_TASK_EVENT_TYPES)('parses the new event %s', (eventType) => {
-    const ids = eventType === 'merge-request.updated'
-      ? { mergeRequestId: 'mr-1' }
-      : eventType === 'test-run.updated'
-      ? { testRunId: 'testrun-1' }
+    const ids = eventType === 'message.created'
+    ? { groupId: 'group-1', messageId: 'message-1' }
+    : eventType === 'group.created' || eventType === 'group.updated' || eventType === 'group.archived' || eventType === 'group.member.updated'
+      ? { groupId: 'group-1' }
+    : eventType === 'merge-request.updated'
+    ? { mergeRequestId: 'mr-1', number: 10, status: 'OPEN', webUrl: 'https://example.test/mr/10' }
+    : eventType === 'test-run.updated'
+      ? { testRunId: 'test-run-1' }
       : eventType === 'dry-run.updated'
-        ? { dryRunId: 'dryrun-1' }
-      : eventType === 'task-run.step.progress'
+        ? { dryRunId: 'dry-run-1' }
+    : eventType === 'task-run.step.progress'
       ? { taskId: 'task-1', stepId: 'step-1', taskRunId: 'run-1' }
       : eventType === 'task.updated'
         ? { taskId: 'task-1' }
@@ -32,8 +36,14 @@ describe('project SSE event parsing', () => {
                         : eventType === 'delivery.completed' || eventType === 'delivery.failed'
                           ? { taskId: 'task-1', reviewBatchId: 'batch-1', deliveryStatus: 'DELIVERED' }
                           : eventType === 'task.diff-review.failed'
-                            ? { taskId: 'task-1', reason: 'delivery failed' }
-                            : { taskId: 'task-1', taskStepId: 'step-1', taskRunId: 'run-1', inputRequestId: 'input-1' }
+                            ? { taskId: 'task-1', reviewBatchId: 'batch-1', reason: 'delivery failed' }
+                          : eventType === 'diff-review.skipped'
+                                ? { taskId: 'task-1', reason: 'FINAL_DIFF_EMPTY' }
+                                : eventType.startsWith('memory.')
+                                  ? { resourceType: 'MEMORY', resourceId: 'memory-1', eventVersion: 1, updatedAt: '2026-08-15T00:00:00Z' }
+                                  : eventType.startsWith('skill.')
+                                    ? { resourceType: 'SKILL', resourceId: 'skill-1', eventVersion: 1, updatedAt: '2026-08-15T00:00:00Z' }
+                                    : { taskId: 'task-1', taskStepId: 'step-1', taskRunId: 'run-1', inputRequestId: 'input-1' }
     const event = parseProjectTaskEvent({
       id: 'evt-new',
       event: eventType,
@@ -61,8 +71,8 @@ describe('project SSE event parsing', () => {
     'work-package.updated',
     'task-run.input-required',
     'task-run.approval-required',
-    'message.created',
-    'group.updated',
+    'test-run.updated',
+    'dry-run.updated',
     '',
   ])('ignores retired or unrelated event %s', (eventType) => {
     expect(parseProjectTaskEvent({

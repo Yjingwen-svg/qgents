@@ -6,6 +6,7 @@ import { SearchOutlined, PushpinOutlined } from '@ant-design/icons'
 import { PATHS, PROJECT_NAV } from '@/routes/paths'
 import { ApiError, groupApi, projectApi } from '@/api'
 import { useAppUiStore } from '@/store/appUiStore'
+import { hasUnread, useUnreadStore } from '@/store/unreadStore'
 import { useProjectTaskDomainEvents } from '@/realtime/useProjectTaskDomainEvents'
 import { ProjectActivityPanel } from './ProjectActivityPanel'
 import type { CreateGroupPayload, Group } from '@/types'
@@ -17,7 +18,7 @@ import './ProjectDetailLayout.scss'
  * 左侧「群聊」列表：项目总群 + 需求群，数据来自 GET /groups
  *   /app/projects/:projectId/req-chat/:groupId
  */
-export function ProjectDetailLayout() {
+export default function ProjectDetailLayout() {
   const { projectId = '', groupId } = useParams<{
     projectId: string
     groupId?: string
@@ -30,6 +31,7 @@ export function ProjectDetailLayout() {
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
   const setCurrentProject = useAppUiStore((state) => state.setCurrentProject)
   const openProjectDetailNav = useAppUiStore((state) => state.openProjectDetailNav)
+  const readAt = useUnreadStore((state) => state.readAt)
   useProjectTaskDomainEvents(projectId)
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -133,9 +135,7 @@ export function ProjectDetailLayout() {
             <span className="pd-nav__branch-title-row">
               {pinned && <PushpinOutlined className="pd-nav__branch-pin" />}
               <span className="pd-nav__branch-title">{g.title}</span>
-              {g.unreadCount ? (
-                <span className="pd-nav__branch-unread">{g.unreadCount}</span>
-              ) : null}
+              {hasUnread(readAt, g) ? <span className="pd-nav__branch-dot" /> : null}
             </span>
             {g.latestMessage ? (
               <span className="pd-nav__branch-summary">

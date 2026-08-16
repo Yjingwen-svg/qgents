@@ -81,7 +81,7 @@ function authorizationTag(status: GithubAuthorizedRepository['authorizationStatu
  * 已冻结见 docs：方案 A 为团队总览 + 选择项目。本页不再把仓库绑到全部项目；
  * 「绑定到项目」跳转 BindRepoToProjectPage。绑定 body 不再传 defaultBranch。
  */
-export function TeamAuthorizedReposPage() {
+export default function TeamAuthorizedReposPage() {
   const { token } = theme.useToken()
   const { message } = App.useApp()
   const navigate = useNavigate()

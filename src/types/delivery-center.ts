@@ -11,6 +11,12 @@ export type DeliveryDisplayStatus =
   | 'FAILED'
   | 'ARCHIVED'
 
+export type DeliveryOpenTarget =
+  | { kind: 'TASK_DIFF_REVIEW'; taskId: string; diffReviewBatchId: string }
+  | { kind: 'DIFF'; taskId: string; diffId: string }
+  | { kind: 'MEMORY'; memoryId: string }
+  | { kind: 'SKILL'; skillId: string }
+
 export type DeliverySource = {
   taskId: string | null
   taskDisplayCode: string | null
@@ -64,6 +70,8 @@ export interface CodeRepositoryDelivery {
   deliveryStatus: 'NOT_STARTED' | 'COMMITTED' | 'MR_CREATED' | 'FAILED'
   failureCode: string | null
   failureReason: string | null
+  mergeRequest: DeliveryMergeRequestSummary | null
+  updatedAt: string
 }
 
 export interface DeliveryMergeRequestSummary {
@@ -74,10 +82,11 @@ export interface DeliveryMergeRequestSummary {
   webUrl: string | null
 }
 
-interface DeliveryItemBase {
+interface DeliveryItemBase<TOpenTarget extends DeliveryOpenTarget = DeliveryOpenTarget> {
   id: string
   projectId: string
   resourceId: string
+  openTarget: TOpenTarget
   title: string
   summary: string | null
   version: string | null
@@ -96,10 +105,11 @@ interface DeliveryItemBase {
   capabilities: DeliveryCapabilities
 }
 
-export interface CodeDeliveryItem extends DeliveryItemBase {
+export interface CodeDeliveryItem extends DeliveryItemBase<Extract<DeliveryOpenTarget, { kind: 'TASK_DIFF_REVIEW' }>> {
   resourceType: 'CODE'
   repositories: DeliveryRepositoryRef[]
-  diffReviewId: string | null
+  diffReviewId: string
+  diffId: string | null
   reviewStatus: CodeReviewStatus
   deliveryStatus: CodeDeliveryStatus
   filesChanged: number
@@ -114,16 +124,16 @@ export interface MemorySource {
   messageId: string
 }
 
-export interface MemoryDeliveryItem extends DeliveryItemBase {
+export interface MemoryDeliveryItem extends DeliveryItemBase<Extract<DeliveryOpenTarget, { kind: 'MEMORY' }>> {
   resourceType: 'MEMORY'
   category: string
   tags: string[]
-  visibility: 'PRIVATE' | 'PROJECT_SHARED'
+  visibility: 'PROJECT_SHARED'
   sources: MemorySource[]
   contentExcerpt: string | null
 }
 
-export interface SkillDeliveryItem extends DeliveryItemBase {
+export interface SkillDeliveryItem extends DeliveryItemBase<Extract<DeliveryOpenTarget, { kind: 'SKILL' }>> {
   resourceType: 'SKILL'
   tags: string[]
   visibility: 'PRIVATE' | 'PROJECT_SHARED'
@@ -151,22 +161,22 @@ export interface DeliveryCountsByType {
   SKILL: number
 }
 
-export type DeliveryStatusCounts = Partial<Record<DeliveryDisplayStatus, number>>
+export type DeliveryStatusCounts = Record<DeliveryDisplayStatus, number>
 
 export interface DeliveryRepositorySummary {
   repositoryId: string
-  name: string
+  repositoryName: string
   total: number
   accepted: number
   pending: number
   failed: number
-  deliveryStatus: CodeDeliveryStatus | null
-  mergeRequestSummary: DeliveryMergeRequestSummary | null
+  deliveryStatus: CodeRepositoryDelivery['deliveryStatus'] | null
+  mergeRequest: DeliveryMergeRequestSummary | null
 }
 
 export interface DeliveryRequirementGroupSummary {
-  requirementGroupId: string | null
-  name: string | null
+  requirementGroupId: string
+  name: string
   total: number
   pending: number
 }
@@ -177,13 +187,19 @@ export interface DeliverySummary {
   countsByStatus: DeliveryStatusCounts
   pendingForCurrentUser: number
   repositorySummaries: DeliveryRepositorySummary[]
-  requirementGroupSummary: DeliveryRequirementGroupSummary[]
+  requirementGroupSummaries: DeliveryRequirementGroupSummary[]
   updatedAt: string
 }
 
+/** Runtime v1.8.0 response observed from the Delivery Summary endpoint. */
+export type DeliverySummaryResponse = DeliverySummary
+
 export interface DeliverySummaryFilters {
   groupId?: string
+  type?: DeliveryResourceType
+  status?: DeliveryDisplayStatus
   repositoryId?: string
+  createdBy?: string
 }
 
 export type DeliveryAction =

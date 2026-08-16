@@ -21,14 +21,20 @@ import {
   ArrowLeftOutlined,
   GithubOutlined,
   EyeOutlined,
-  DeleteOutlined,
+  DisconnectOutlined,
+  ExportOutlined,
 } from '@ant-design/icons'
 import { githubApi } from '@/api/github'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
 import { DarkPage } from '@/components/DarkPage'
-import { countAuthorizedRepositories, formatGithubDateTime, type GithubInstallation } from '@/types/github'
+import {
+  countAuthorizedRepositories,
+  formatGithubDateTime,
+  githubInstallationConfigureUrl,
+  type GithubInstallation,
+} from '@/types/github'
 
 /**
  * ============================================================================
@@ -52,7 +58,8 @@ import { countAuthorizedRepositories, formatGithubDateTime, type GithubInstallat
  * 【页面结构】
  * - 上：已安装的 GitHub App（个人 User / 组织 Organization 卡片）
  * - 卡片「查看仓库」→ 跳转独立页 GithubInstallationReposPage
- * - 卡片「卸载」→ DELETE .../installations/{id}，不进 GitHub；成功后刷新安装/仓库列表
+ * - 卡片「解除关联」→ DELETE .../installations/{id}，只解本地关联，不卸 GitHub App
+ * - 卡片「在 GitHub 卸载 Qgents App」→ 打开 GitHub Configure，真正卸载走 GitHub
  * - 仓库页「绑定该仓库到项目」→ BindRepoToProjectPage（团队项目列表）
  *
  * 相关文件：
@@ -93,6 +100,8 @@ export function GitHubIntegrationPage() {
   )
 }
 
+export default GitHubIntegrationPage
+
 function GitHubIntegrationPageInner() {
   const { token } = theme.useToken()
   const { message, modal } = App.useApp() //toast / 确认框
@@ -115,15 +124,17 @@ function GitHubIntegrationPageInner() {
   // 从 GitHub 卸/改仓库再切回本页时，重新拉安装和仓库，接上 webhook 后的库状态。
   // 人一直停在本页不切走，webhook 不会推到前端，仍需手动刷新。
   //人从别的页（比如 GitHub）回到这个标签时，重新去后端拉安装列表和仓库列表。
-  useEffect(() => {
-    function refreshAfterReturning() {
+
+  useEffect(() => {//组件挂上后执行一次，用来注册浏览器事件。后面依赖变了会先清理再重新注册
+    function refreshAfterReturning() {//定义回来时要跑的函数。还没调用，只是准备好给监听器用。
       if (document.visibilityState !== 'visible') return
+      // 如果现在是藏着的，直接结束，不拉数据。只有重新看得见，才往下 invalidateQueries。
       void queryClient.invalidateQueries({ queryKey: queryKeys.githubInstallations(teamId) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.githubTeamRepositories(teamId) })
     }
     document.addEventListener('visibilitychange', refreshAfterReturning)
     window.addEventListener('focus', refreshAfterReturning)
-    return () => {
+    return () => {//清理函数
       document.removeEventListener('visibilitychange', refreshAfterReturning)
       window.removeEventListener('focus', refreshAfterReturning)
     }
@@ -203,17 +214,43 @@ function GitHubIntegrationPageInner() {
   }//触发网络请求返回的信息,弹窗
 
   /**
-   * 卡片「卸载」：确认后 DELETE 当前 Installation。
-   * 不跳转 GitHub。后端同时卸 GitHub App，前端再 GET 安装列表和授权仓库。
+   * 卡片「解除关联」：确认后 DELETE 当前 Installation。
+   * 只解除本团队本地关联，不会在 GitHub 卸载 Qgents App。
    */
-  function handleUninstall(inst: GithubInstallation) {
+  function handleDisconnect(inst: GithubInstallation) {
     modal.confirm({//antd确认弹窗,一个对象
-      title: '卸载 GitHub App',
-      content: `确定卸载「${inst.accountLogin}」吗？卸载后本团队将失去该账号下的授权仓库，已绑定到项目的仓库也会失效。此操作不可撤销。`,
-      okText: '确认卸载',
+      title: '解除关联',
+      content:
+        '将解除此 GitHub 账号/组织与当前 Qgents 团队的关联，不会在 GitHub 卸载 Qgents App。请先解绑该 Installation 下的项目仓库；解除后可在其他团队重新连接。',
+      okText: '确认解除',
       okButtonProps: { danger: true },
       cancelText: '取消',
       onOk: () => deleteMutation.mutateAsync(inst.id)//确认之后触发的回调函数
+    })
+  }
+
+  /**
+   * 卡片「在 GitHub 卸载 Qgents App」：打开 GitHub Installation 管理页。
+   * 不调用 DELETE。用户在 GitHub 卸载后，靠 webhook 把状态标成 DELETED。
+   */
+  function handleOpenGithubUninstall(inst: GithubInstallation) {
+    const configureUrl = githubInstallationConfigureUrl(inst)
+    if (!configureUrl) {
+      message.error('缺少 GitHub Installation 数字 ID，无法打开 GitHub 管理页。')
+      return
+    }
+    modal.confirm({
+      title: '在 GitHub 卸载 Qgents App',
+      content:
+        '将跳转至 GitHub 管理页。卸载后，Qgents 将立即失去该账号或组织下仓库的访问权限；现有项目记录会保留，但无法继续同步或推送。',
+      okText: '前往 GitHub',
+      cancelText: '取消',
+      onOk: () => {
+        const popup = window.open(configureUrl, '_blank', 'noopener,noreferrer')
+        if (!popup) {
+          message.error('浏览器拦截了新窗口，请允许弹窗后再试')
+        }
+      },
     })
   }
 
@@ -233,8 +270,8 @@ function GitHubIntegrationPageInner() {
 
   const installations = installationsQuery.data ?? []
   const allRepos = reposQuery.data ?? []
-  // webhook / 卸载后后端常把记录留在列表里，只把 status 改成 DELETED。
-  // 「已关联」只数还能用的安装，已卸载的不算。
+  // webhook 在 GitHub 卸载后常把记录留在列表里，只把 status 改成 DELETED。
+  // 本页「解除关联」成功后本地记录会被删掉。「已关联」只数还能用的安装。
   const associatedCount = installations.filter((inst) => inst.status !== 'DELETED').length
   // 计算某一条 GitHub App 安装记录，绑定了多少个授权仓库
   function repoCountOf(inst: GithubInstallation): number {
@@ -276,14 +313,20 @@ function GitHubIntegrationPageInner() {
           点击 → POST .../installations → 跳转 /apps/{slug}/installations/new
           已装过的账号也走 new，由 GitHub 提示 already installed；不进 Configure
         */}
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          loading={installMutation.isPending}
-          onClick={handleInstallApp}
-        >
-          安装Github App
-        </Button>
+        <div style={{ textAlign: 'right', maxWidth: 320 }}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            loading={installMutation.isPending}
+            onClick={handleInstallApp}
+          >
+            安装Github App
+          </Button>
+          <Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
+            一个 GitHub 账号只能授权给一个团队。每次都跳转 GitHub 新装页；已安装的账号由 GitHub
+            提示 already installed，不会重复绑定。
+          </Paragraph>
+        </div>
       </header>
 
       <Alert
@@ -364,11 +407,11 @@ function GitHubIntegrationPageInner() {
                     </Space>
                   </Space>
 
-                  <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
                     <Button
                       type="default"
                       icon={<EyeOutlined />}
-                      style={{ flex: 1 }}
+                      style={{ flex: '1 1 120px' }}
                       onClick={() =>
                         navigate(PATHS.githubInstallationRepos(teamId, inst.id))
                       }
@@ -376,14 +419,24 @@ function GitHubIntegrationPageInner() {
                       查看仓库
                     </Button>
                     {inst.status !== 'DELETED' ? (
-                      <Button
-                        danger
-                        icon={<DeleteOutlined />}
-                        loading={deleteMutation.isPending && deleteMutation.variables === inst.id}
-                        onClick={() => handleUninstall(inst)}
-                      >
-                        卸载
-                      </Button>
+                      <>
+                        <Button
+                          danger
+                          icon={<DisconnectOutlined />}
+                          style={{ flex: '1 1 140px' }}
+                          loading={deleteMutation.isPending && deleteMutation.variables === inst.id}
+                          onClick={() => handleDisconnect(inst)}
+                        >
+                          解除关联
+                        </Button>
+                        <Button
+                          icon={<ExportOutlined />}
+                          style={{ flex: '1 1 180px' }}
+                          onClick={() => handleOpenGithubUninstall(inst)}
+                        >
+                          在 GitHub 卸载 Qgents App
+                        </Button>
+                      </>
                     ) : null}
                   </div>
                 </Card>
@@ -400,7 +453,8 @@ function GitHubIntegrationPageInner() {
             <strong>组织</strong>（安装时在 GitHub 上选择）。
           </li>
           <li>
-            「查看仓库」进入独立页面；「卸载」在本页直接解除该 GitHub App 安装，无需进入 GitHub。
+            「查看仓库」进入独立页面；「解除关联」只解除本团队与该 Installation 的关联，不会在
+            GitHub 卸载 App；「在 GitHub 卸载 Qgents App」跳转 GitHub 管理页，由用户在 GitHub 侧卸载。
             仓库后的「绑定该仓库到项目」会进入本团队项目列表（Owner 可见全部项目）。
           </li>
           <li>

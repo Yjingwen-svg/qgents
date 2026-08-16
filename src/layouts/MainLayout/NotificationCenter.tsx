@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { notificationApi } from '@/api'
+import { useNotificationEvents } from '@/realtime/useNotificationEvents'
 import { PATHS } from '@/routes/paths'
 import type { Notification, NotificationKind } from '@/types'
 
@@ -73,6 +74,9 @@ export function NotificationCenter() {
   const { token } = theme.useToken()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
+
+  // 通知级 SSE：新通知产生时实时刷新未读数
+  useNotificationEvents()
 
   const { data: notifications = [] } = useQuery({
     queryKey: ['notifications'],

@@ -17,7 +17,7 @@ const useRetryTaskDiffReviewDeliveryMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/task-model', () => ({ useTask: useTaskMock, useTaskSteps: useTaskStepsMock, useCancelTask: useCancelTaskMock, useDiffs: useDiffsMock, useTaskArtifacts: useTaskArtifactsMock, useTaskDiffReview: useTaskDiffReviewMock, useConfirmTaskDiffReview: useConfirmTaskDiffReviewMock, useRejectTaskDiffReview: useRejectTaskDiffReviewMock, useRetryTaskDiffReviewDelivery: useRetryTaskDiffReviewDeliveryMock }))
 
-import { TaskDetailPage } from './TaskDetailPage'
+import TaskDetailPage from './TaskDetailPage'
 
 const task: Task = {
   id: 'task-1', displayCode: 'T-1', projectId: 'project-test', title: '登录任务', requirementSummary: '实现登录功能', status: 'RUNNING', deliveryMode: 'DIFF_FIRST', requirementGroup: { id: 'group-1', name: 'Login', status: 'ACTIVE' }, createdByUser: { id: 'user-1', displayName: 'User', avatarUrl: null }, repositories: [{ repositoryId: 'repo-1', name: 'Repo', fullName: 'mock/repo', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'main', baseCommit: 'base-1', sourceBranch: 'main', headCommit: 'head-1' }], executionSummary: { totalSteps: 1, pendingSteps: 0, runningSteps: 1, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: 'DEVELOPER', currentStageTitle: 'Developer', requiresUserAction: false }, attention: null, createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z', requirement: '实现登录功能', acceptanceCriteria: [], workspace: null, capabilities: { canCancel: true, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false }, artifactSummary: { total: 0, byType: {} }, diffReviewSummary: { available: false, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 }, sourceMessage: null, triggerMessageId: null,
@@ -55,7 +55,7 @@ describe('TaskDetailPage final information architecture', () => {
 
   it('shows attention only when present and uses a real taskRun association', async () => {
     const user = userEvent.setup()
-    const attention = { kind: 'BLOCKED' as const, title: '执行受阻', summary: '查看关联运行', taskRunId: 'run-1' } as unknown as Task['attention']
+    const attention = { kind: 'BLOCKED' as const, title: '执行受阻', summary: '查看关联运行', taskRunId: 'run-1', inputRequestId: null, diffReviewBatchId: null, repositoryId: null, createdAt: '2026-08-15T00:00:00Z' } as Task['attention']
     useTaskMock.mockReturnValue({ data: { ...task, attention }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
     renderPage()
     expect(screen.getByTestId('task-attention-banner')).toBeInTheDocument()
@@ -65,7 +65,7 @@ describe('TaskDetailPage final information architecture', () => {
 
   it('uses an in-page target when attention has no formal run id', async () => {
     const user = userEvent.setup()
-    useTaskMock.mockReturnValue({ data: { ...task, attention: { kind: 'DIFF_CONFIRMATION_REQUIRED', title: '待确认', summary: '请确认 Diff' } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskMock.mockReturnValue({ data: { ...task, attention: { kind: 'DIFF_CONFIRMATION_REQUIRED', title: '待确认', summary: '请确认 Diff', taskRunId: null, inputRequestId: null, diffReviewBatchId: 'batch-1', repositoryId: 'repo-1', createdAt: '2026-08-15T00:00:00Z' } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
     renderPage()
     await user.click(screen.getByRole('button', { name: '查看产出与交付' }))
     expect(screen.getByTestId('output-delivery-row')).toBeInTheDocument()

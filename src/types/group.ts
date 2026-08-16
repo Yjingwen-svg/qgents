@@ -34,6 +34,8 @@ export interface Group {
   title: string
   description?: string
   status: GroupStatus
+  /** 创建者 userId（后端 DTO 补充，用于归档权限判断） */
+  createdBy?: string
   memberCount?: number
   latestActivityAt?: string
   latestMessage?: MessageSummary
@@ -120,9 +122,16 @@ export interface Message {
 export interface SendMessagePayload {
   type: MessageContentType
   content: unknown
-  mentions?: string[]
+  mentions?: Mention[]
   replyToId?: string | null
   clientMessageId: string
+}
+
+/** @ 提及（v1.8.0 §22）—— 对象数组，type 区分 USER / AGENT */
+export type MentionType = 'USER' | 'AGENT'
+export interface Mention {
+  type: MentionType
+  id: string
 }
 
 export interface CreateGroupPayload {

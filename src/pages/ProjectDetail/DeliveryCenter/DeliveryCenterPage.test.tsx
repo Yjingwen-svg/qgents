@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { DeliveryCenterPage } from './DeliveryCenterPage'
+import DeliveryCenterPage from './DeliveryCenterPage'
 import { deliveryCenterHandlers } from '@/mocks/delivery-center/handlers'
 import { resetDeliveryCenterStore } from '@/mocks/delivery-center/store'
 
@@ -34,6 +34,7 @@ function renderPage(initialEntry: string) {
         <Routes>
           <Route path="/app/projects/:projectId/diffs" element={<DeliveryCenterPage />} />
           <Route path="/app/projects/:projectId/diffs/:diffId" element={<div>Diff Center</div>} />
+          <Route path="/app/projects/:projectId/tasks/:taskId" element={<div>Task Detail</div>} />
         </Routes>
         <LocationProbe />
       </MemoryRouter>
@@ -42,6 +43,27 @@ function renderPage(initialEntry: string) {
 }
 
 describe('DeliveryCenterPage', () => {
+  it('consumes the observed direct summary response shape without crashing', async () => {
+    server.use(
+      http.get('/api/projects/:projectId/delivery-items', () => HttpResponse.json({ data: [], page: { nextCursor: null, hasMore: false }, requestId: 'items-empty' })),
+      http.get('/api/projects/:projectId/delivery-summary', () => HttpResponse.json({
+        total: 0,
+        countsByType: { CODE: 0, MEMORY: 0, SKILL: 0 },
+        countsByStatus: { DRAFT: 0, PENDING_REVIEW: 0, PROCESSING: 0, ACCEPTED: 0, REJECTED: 0, DELIVERED: 0, FAILED: 0, ARCHIVED: 0 },
+        pendingForCurrentUser: 0,
+        repositorySummaries: [],
+        requirementGroupSummaries: [],
+        updatedAt: '2026-08-15T13:38:15.215Z',
+      })),
+    )
+
+    renderPage('/app/projects/project-delivery-center/diffs')
+
+    expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument()
+    expect(await screen.findByText('交付概览')).toBeInTheDocument()
+    expect(screen.queryByText('交付概览加载失败')).not.toBeInTheDocument()
+  })
+
   it('renders discriminated types, requirement groups, restores URL filters, and loads the next cursor', async () => {
     const filteredRender = renderPage('/app/projects/project-delivery-center/diffs?groupId=group-delivery&type=MEMORY&status=DRAFT')
 
@@ -59,7 +81,7 @@ describe('DeliveryCenterPage', () => {
     expect(screen.getAllByText('CODE').length).toBeGreaterThan(0)
   })
 
-  it('routes code details to Diff Center and enforces capabilities plus rejection reason validation', async () => {
+  it('routes code details through the formal openTarget and enforces capabilities plus rejection reason validation', async () => {
     const firstRender = renderPage('/app/projects/project-delivery-center/diffs')
     await screen.findByText('Draft memory')
     fireEvent.click(await screen.findByRole('button', { name: '加载更多' }))
@@ -67,9 +89,18 @@ describe('DeliveryCenterPage', () => {
     const codeCard = codeTitle?.closest('article')
     if (!codeCard) throw new Error('code card not rendered')
     fireEvent.click(within(codeCard).getByRole('button', { name: /查看 Diff/ }))
-    expect(await screen.findByText('Diff Center')).toBeInTheDocument()
+    expect(await screen.findByText('Task Detail')).toBeInTheDocument()
 
     firstRender.unmount()
+    const diffRender = renderPage('/app/projects/project-delivery-center/diffs')
+    await screen.findByText('Draft memory')
+    fireEvent.click(await screen.findByRole('button', { name: '加载更多' }))
+    const partialTitle = (await screen.findAllByText('Code delivery partially failed')).find((element) => element.closest('article'))
+    const partialCard = partialTitle?.closest('article')
+    if (!partialCard) throw new Error('partial code card not rendered')
+    fireEvent.click(within(partialCard).getByRole('button', { name: /查看 Diff/ }))
+    expect(await screen.findByText('Task Detail')).toBeInTheDocument()
+    diffRender.unmount()
     const secondRender = renderPage('/app/projects/project-delivery-center/diffs')
     await screen.findByText('Draft memory')
     fireEvent.click(screen.getByRole('button', { name: '加载更多' }))

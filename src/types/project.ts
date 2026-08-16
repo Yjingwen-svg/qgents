@@ -32,4 +32,14 @@ export interface CreateProjectPayload {
   description?: string
   /** 初始项目成员 userId 列表 */
   memberIds?: string[]
+  /** 创建时一并绑定的 GitHub 授权仓库 id 列表（github_repositories.id，授权仓本地 UUID） */
+  repositoryIds?: string[]
+}
+
+/** 项目设置（GET/PATCH /projects/{projectId}/settings，§22.2）—— 需求群规则开关 */
+export interface ProjectSettings {
+  allowCreateGroup: boolean
+  autoArchiveGroup: boolean
+  allowAgentTrigger: boolean
+  autoJoinAllGroups: boolean
 }

@@ -62,7 +62,7 @@ const FILE_PAGE_SIZE = 100
  *
  * 数据一律走 diffsApi / mergeRequestsApi + TanStack Query；Mock / 真后端同一条调用链。
  */
-export function DiffReviewPage() {
+export default function DiffReviewPage() {
   const { message, modal } = App.useApp()
   const { user } = useAuth()
   const { projectId = '', diffId = '' } = useParams<{

@@ -1,5 +1,5 @@
 import { memoryApi } from './memory'
-import { request } from './client'
+import { ApiError, request } from './client'
 import { withQuery } from './requestHelpers'
 import { skillApi } from './skill'
 import { tasksApi } from './taskModel'
@@ -8,7 +8,7 @@ import type {
   DeliveryItem,
   DeliveryItemsFilters,
   DeliveryItemsResponse,
-  DeliverySummary,
+  DeliverySummaryResponse,
   DeliverySummaryFilters,
   MemoryDeliveryItem,
   SkillDeliveryItem,
@@ -16,15 +16,39 @@ import type {
 import type { DiffReviewBatch } from '@/types/task-model'
 import type { Memory, Skill } from '@/types'
 
+const DELIVERY_STATUS_KEYS = ['DRAFT', 'PENDING_REVIEW', 'PROCESSING', 'ACCEPTED', 'REJECTED', 'DELIVERED', 'FAILED', 'ARCHIVED'] as const
+const DELIVERY_TYPE_KEYS = ['CODE', 'MEMORY', 'SKILL'] as const
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function hasNumericKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return keys.every((key) => typeof value[key] === 'number')
+}
+
+function isDeliverySummaryResponse(value: unknown): value is DeliverySummaryResponse {
+  if (!isRecord(value)) return false
+  return typeof value.total === 'number'
+    && isRecord(value.countsByType)
+    && hasNumericKeys(value.countsByType, DELIVERY_TYPE_KEYS)
+    && isRecord(value.countsByStatus)
+    && hasNumericKeys(value.countsByStatus, DELIVERY_STATUS_KEYS)
+    && typeof value.pendingForCurrentUser === 'number'
+    && Array.isArray(value.repositorySummaries)
+    && Array.isArray(value.requirementGroupSummaries)
+    && typeof value.updatedAt === 'string'
+}
+
 function resourceId(item: DeliveryItem): string {
   return item.resourceId
 }
 
 function taskIdForCode(item: DeliveryItem): string {
-  if (item.resourceType !== 'CODE' || !item.source.taskId) {
-    throw new Error('CODE delivery item is missing source.taskId')
+  if (item.resourceType !== 'CODE' || item.openTarget.kind !== 'TASK_DIFF_REVIEW') {
+    throw new Error('CODE delivery item is missing TASK_DIFF_REVIEW openTarget')
   }
-  return item.source.taskId
+  return item.openTarget.taskId
 }
 
 export const deliveryCenterApi = {
@@ -36,10 +60,15 @@ export const deliveryCenterApi = {
   },
 
   summary(projectId: string, filters: DeliverySummaryFilters = {}) {
-    return request<{ data: DeliverySummary; requestId: string }>(
+    return request<DeliverySummaryResponse>(
       withQuery(`/projects/${projectId}/delivery-summary`, filters),
       { unwrapData: false },
-    ).then((response) => response.data)
+    ).then((response: unknown) => {
+      if (!isDeliverySummaryResponse(response)) {
+        throw new ApiError('Delivery summary response shape mismatch: expected v1.8.0 summary object', 502, response)
+      }
+      return response
+    })
   },
 
   perform(input: DeliveryActionInput): Promise<Memory | Skill | DiffReviewBatch> {

@@ -11,6 +11,15 @@ import { deliveryCenterHandlers } from './delivery-center/handlers'
 
 const MOCK_USER = MOCK_CURRENT_USER
 
+// 项目设置（需求群规则）默认值，对齐 §22.2
+const DEFAULT_PROJECT_SETTINGS = {
+  allowCreateGroup: true,
+  autoArchiveGroup: false,
+  allowAgentTrigger: true,
+  autoJoinAllGroups: false,
+}
+const MOCK_PROJECT_SETTINGS: Record<string, typeof DEFAULT_PROJECT_SETTINGS> = {}
+
 const MOCK_TEAMS = [
   {
     id: 'team-owned-001',
@@ -92,6 +101,7 @@ const MOCK_GROUPS: Record<string, Group[]> = {
       title: '登录功能',
       description: '账号与登录体验',
       status: 'ACTIVE',
+      createdBy: 'user-001',
       latestActivityAt: '2026-08-12T10:03:00Z',
       unreadCount: 2,
       isPinned: true,
@@ -104,6 +114,7 @@ const MOCK_GROUPS: Record<string, Group[]> = {
       title: '支付回调',
       description: '支付回调与对账',
       status: 'ACTIVE',
+      createdBy: 'user-001',
       latestActivityAt: '2026-08-11T18:00:00Z',
       unreadCount: 0,
       isPinned: false,
@@ -116,6 +127,7 @@ const MOCK_GROUPS: Record<string, Group[]> = {
       title: '首页改版',
       description: '旧版首页重构，已完成并归档',
       status: 'ARCHIVED',
+      createdBy: 'user-002',
       latestActivityAt: '2026-08-01T09:00:00Z',
       unreadCount: 0,
       isPinned: false,
@@ -1062,6 +1074,18 @@ export const handlers = [
 
   http.post('/api/projects/:projectId/restore', () => HttpResponse.json({ data: null })),
 
+  // ── 项目设置（需求群规则，§22.2）──
+  http.get('/api/projects/:projectId/settings', ({ params }) => {
+    const settings = (MOCK_PROJECT_SETTINGS[params.projectId as string] ??= { ...DEFAULT_PROJECT_SETTINGS })
+    return HttpResponse.json({ data: settings })
+  }),
+  http.patch('/api/projects/:projectId/settings', async ({ params, request }) => {
+    const body = (await request.json()) as Record<string, unknown>
+    const settings = (MOCK_PROJECT_SETTINGS[params.projectId as string] ??= { ...DEFAULT_PROJECT_SETTINGS })
+    Object.assign(settings, body)
+    return HttpResponse.json({ data: settings })
+  }),
+
   // ── Group 与消息 ──
   http.get('/api/projects/:projectId/groups', ({ params }) => {
     const projectId = params.projectId as string
@@ -1093,6 +1117,7 @@ export const handlers = [
       title: body.title || '未命名需求群',
       description: body.description || '',
       status: 'ACTIVE',
+      createdBy: MOCK_CURRENT_USER.id,
       // 新需求群默认只有项目成员，无 Agent 参与
       memberCount: getGroupMembers(projectId, groupId).length,
       latestActivityAt: new Date().toISOString(),
@@ -1103,6 +1128,19 @@ export const handlers = [
     const list = MOCK_GROUPS[projectId] ?? (MOCK_GROUPS[projectId] = [])
     list.push(group)
     return HttpResponse.json({ data: group }, { status: 201 })
+  }),
+
+  http.post('/api/projects/:projectId/groups/:groupId/archive', ({ params }) => {
+    const groupId = params.groupId as string
+    const projectId = params.projectId as string
+    const group = (MOCK_GROUPS[projectId] ?? []).find((g) => g.id === groupId)
+    if (!group) return HttpResponse.json({ error: { code: 'NOT_FOUND', message: '群不存在' } }, { status: 404 })
+    if (group.type === 'PROJECT_MAIN') {
+      return HttpResponse.json({ error: { code: 'SYSTEM_GROUP_MANAGED', message: '项目总群不可归档' } }, { status: 422 })
+    }
+    group.status = 'ARCHIVED'
+    group.isArchived = true
+    return HttpResponse.json({ data: null })
   }),
 
   http.get('/api/projects/:projectId/groups/:groupId/members', ({ params }) => {

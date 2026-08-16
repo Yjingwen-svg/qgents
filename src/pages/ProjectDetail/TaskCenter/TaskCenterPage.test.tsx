@@ -66,4 +66,22 @@ describe('TaskCenterPage', () => {
     rerender(<MemoryRouter initialEntries={['/app/projects/project-test/tasks']}><Routes><Route path="/app/projects/:projectId/tasks" element={<TaskCenterPage />} /></Routes></MemoryRouter>)
     expect(screen.getByText('暂无权限查看任务')).toBeInTheDocument()
   })
+
+  it('keeps rendering when a new Task list item lacks derived summaries', () => {
+    const incompleteTask = {
+      ...task,
+      id: 'task-incomplete',
+      title: '新创建任务',
+      repositories: undefined,
+      executionSummary: undefined,
+    } as unknown as TaskListItem
+    useInfiniteTasksMock.mockReturnValue(result({
+      data: { pages: [page([incompleteTask])], pageParams: [undefined] },
+    }))
+
+    renderPage()
+
+    expect(screen.getByText('新创建任务')).toBeInTheDocument()
+    expect(screen.getByText('暂无')).toBeInTheDocument()
+  })
 })

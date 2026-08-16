@@ -134,6 +134,18 @@ export interface Mention {
   id: string
 }
 
+export interface MessageTaskSummary {
+  id: string
+  displayCode: string
+  status: string
+  missingFields: string[]
+}
+
+export interface SendMessageResult {
+  message: Message
+  task: MessageTaskSummary | null
+}
+
 export interface CreateGroupPayload {
   title: string
   description?: string

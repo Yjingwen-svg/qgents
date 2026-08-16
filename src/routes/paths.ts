@@ -132,7 +132,7 @@ export const PROJECT_NAV = [
     /** 跳到项目根，由 ProjectDetailLayout 重定向到项目总群 */
     to: (projectId: string) => PATHS.projectDetail(projectId),
   },
-  { path: 'tasks', label: '任务中心', to: PATHS.projectTasks, badge: 3 },
+  { path: 'tasks', label: '任务中心', to: PATHS.projectTasks },
   { path: 'diffs', label: '交付中心', to: PATHS.projectDiffs },
   { path: 'workflow', label: '工作流编排', to: PATHS.projectWorkflow },
   { path: 'agents', label: 'Agent 团队', to: PATHS.projectAgents },

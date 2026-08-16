@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty, Image, Tag, Popconfirm } from 'antd'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Image, Tag, Popconfirm, message } from 'antd'
 import {
   SendOutlined,
   ThunderboltOutlined,
@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { groupApi, projectApi, agentApi } from '@/api'
+import { formatApiError } from '@/utils/formatApiError'
 import { useUnreadStore } from '@/store/unreadStore'
 import { useAuth } from '@/context/AuthContext'
 import { TaskTriggerModal } from '@/components/task-domain'
@@ -43,6 +44,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [mentions, setMentions] = useState<Mention[]>([])
+  const [sendError, setSendError] = useState<string | null>(null)
   const [triggerOpen, setTriggerOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -82,8 +84,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   })
   const teamId = project?.teamId
   const { data: agentsPage } = useQuery({
-    queryKey: ['teams', teamId, 'agents', projectId],
-    queryFn: () => agentApi.list(teamId ?? '', projectId),
+    queryKey: ['teams', teamId, 'agents'],
+    queryFn: () => agentApi.list(teamId ?? ''),
     enabled: !!teamId,
   })
   // 仅展示可被 @ 的 Agent（ACTIVE 状态）
@@ -123,6 +125,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
 
   // 输入框以 @ 结尾时弹出成员面板
   const mentionOpen = draft.endsWith('@')
+  const canOpenTaskTrigger = group?.type === 'REQUIREMENT' && group.status === 'ACTIVE' && !group.isArchived
 
   function pickMention(target: { id: string; displayName: string; type: MentionType }) {
     setDraft((prev) => prev + `${target.displayName} `)
@@ -134,8 +137,9 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     if (!text || sending) return
 
     setSending(true)
+    setSendError(null)
     try {
-      await groupApi.sendMessage(projectId, groupId, {
+      const result = await groupApi.sendMessage(projectId, groupId, {
         type: 'TEXT',
         content: { text },
         mentions: mentions.length > 0 ? mentions : undefined,
@@ -146,6 +150,14 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       await queryClient.invalidateQueries({
         queryKey: ['groups', projectId, groupId, 'messages'],
       })
+      if (result.task) {
+        void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
+        message.success(result.task.missingFields.length > 0
+          ? `${result.task.displayCode} 已创建，等待补充执行信息`
+          : `${result.task.displayCode} 已创建并进入规划`)
+      }
+    } catch (error) {
+      setSendError(formatApiError(error))
     } finally {
       setSending(false)
     }
@@ -195,14 +207,14 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             </Popconfirm>
           )}
           {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal */}
-          <Button
+          {canOpenTaskTrigger && <Button
             type="primary"
             ghost
             icon={<ThunderboltOutlined />}
             onClick={() => setTriggerOpen(true)}
           >
             发起任务
-          </Button>
+          </Button>}
         </Space>
       </div>
 
@@ -274,7 +286,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
               zIndex: 10,
             }}
           >
-            {teamAgents.length > 0 && (
+            {canOpenTaskTrigger && teamAgents.length > 0 && (
               <MentionGroup
                 label="Agent"
                 members={teamAgents.map((a) => ({ id: a.id, displayName: a.name, type: 'AGENT' as const }))}
@@ -291,6 +303,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           </div>
         )}
 
+        {sendError ? <Text type="danger" style={{ display: 'block', marginBottom: 8 }}>{sendError}</Text> : null}
         <Space.Compact style={{ width: '100%' }}>
           <Input.TextArea
             placeholder="输入消息，@ 可提及成员或 Agent，回车发送…"

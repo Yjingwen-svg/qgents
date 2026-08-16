@@ -4,6 +4,7 @@ import type { Group, GroupMember, Message } from '@/types/group'
 import type { Activity, Memory, Notification, MyTeamInvitation } from '@/types'
 import { MOCK_CURRENT_USER } from './currentUser'
 import { deliveryCenterHandlers } from './delivery-center/handlers'
+import { createTaskFromMessageIntent } from './task-model/handlers'
 
 // ══════════════════════════════════════════════
 // Mock 数据
@@ -1159,6 +1160,17 @@ export const handlers = [
       content?: unknown
       senderId?: string
       clientMessageId?: string
+      mentions?: Array<{ type?: string; id?: string }>
+    }
+    const projectId = params.projectId as string
+    const group = (MOCK_GROUPS[projectId] ?? []).find((item) => item.id === groupId)
+    if (!group) return HttpResponse.json({ error: { code: 'GROUP_NOT_FOUND', message: '需求群不存在' } }, { status: 404 })
+    const mentionedAgents = body.mentions?.filter((mention) => mention.type === 'AGENT' && typeof mention.id === 'string' && mention.id.length > 0) ?? []
+    if (mentionedAgents.length > 0 && (group.type !== 'REQUIREMENT' || group.status !== 'ACTIVE' || group.isArchived)) {
+      return HttpResponse.json({ error: { code: 'TASK_TRIGGER_GROUP_INVALID', message: '只能在活跃需求群中发起任务' } }, { status: 422 })
+    }
+    if (mentionedAgents.length > 1) {
+      return HttpResponse.json({ error: { code: 'MULTIPLE_AGENT_TASK_TRIGGER_UNSUPPORTED', message: '一条消息只能提及一个 Agent 发起任务' } }, { status: 422 })
     }
     const list = MOCK_MESSAGES[groupId] ?? (MOCK_MESSAGES[groupId] = [])
     const message: Message = {
@@ -1174,7 +1186,23 @@ export const handlers = [
       replyToId: null,
     }
     list.push(message)
-    return HttpResponse.json({ data: message }, { status: 201 })
+    const taskRecord = mentionedAgents[0]
+      ? createTaskFromMessageIntent(projectId, {
+          requirementGroupId: groupId,
+          title: typeof (body.content as { text?: unknown })?.text === 'string'
+            ? (body.content as { text: string }).text.slice(0, 80)
+            : '来自群聊的任务',
+          requirement: typeof (body.content as { text?: unknown })?.text === 'string'
+            ? (body.content as { text: string }).text
+            : '',
+          messageId: message.id,
+          createdAt: message.createdAt,
+        })
+      : null
+    const task = taskRecord
+      ? { id: taskRecord.id, displayCode: taskRecord.displayCode, status: taskRecord.status, missingFields: ['repositoryIds', 'baseRef'] }
+      : null
+    return HttpResponse.json({ data: { message, task } }, { status: 201 })
   }),
 
   // ── 项目仓库绑定（GitHub）──

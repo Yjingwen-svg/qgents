@@ -1,6 +1,11 @@
 import type { EventSourceMessage } from '@microsoft/fetch-event-source'
 
 export const PROJECT_TASK_EVENT_TYPES = [
+  'message.created',
+  'group.created',
+  'group.updated',
+  'group.archived',
+  'group.member.updated',
   'task.updated',
   'task-step.updated',
   'task-run.updated',
@@ -57,6 +62,11 @@ function isPayload(value: unknown): value is ProjectTaskEventPayload {
 
 function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPayload): boolean {
   const required: Record<ProjectTaskEventType, readonly string[]> = {
+    'message.created': ['groupId', 'messageId'],
+    'group.created': ['groupId'],
+    'group.updated': ['groupId'],
+    'group.archived': ['groupId'],
+    'group.member.updated': ['groupId'],
     'task.updated': ['taskId'],
     'task-step.updated': ['taskId', 'taskStepId'],
     'task-run.updated': ['taskId', 'taskStepId', 'taskRunId'],

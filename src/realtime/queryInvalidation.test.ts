@@ -79,11 +79,26 @@ describe('project SSE Task model query invalidation mapping', () => {
     expect(repositoryKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'merge-requests']))
   })
 
-  it('maps merge-request.updated to the project MR list', () => {
+  it('maps merge-request.updated to the project MR list and DeliveryCenter', () => {
     expect(keysFor('merge-request.updated', { mergeRequestId: 'mr-1' })).toEqual([
+      JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']),
       JSON.stringify(['qgents', 'projects', projectId, 'merge-requests']),
     ])
     expect(keysFor('merge-request.updated', {})).toEqual([])
+  })
+
+  it('maps group and message events to their scoped group queries', () => {
+    expect(keysFor('message.created', { groupId: 'group-1', messageId: 'message-1' })).toEqual([
+      JSON.stringify(['groups', projectId]),
+      JSON.stringify(['groups', projectId, 'group-1', 'messages']),
+    ])
+    expect(keysFor('group.updated', { groupId: 'group-1' })).toEqual([
+      JSON.stringify(['groups', projectId]),
+    ])
+    expect(keysFor('group.member.updated', { groupId: 'group-1' })).toEqual([
+      JSON.stringify(['groups', projectId]),
+      JSON.stringify(['groups', projectId, 'group-1', 'members']),
+    ])
   })
 
   it('maps test-run.updated and dry-run.updated to the matching run queries', () => {
@@ -110,7 +125,10 @@ describe('project SSE Task model query invalidation mapping', () => {
     const skipped = keysFor('diff-review.skipped', { taskId: 'task-1', reason: 'FINAL_DIFF_EMPTY' })
     expect(skipped).toContain(JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']))
     const mergeRequest = keysFor('merge-request.updated', { mergeRequestId: 'mr-1' })
-    expect(mergeRequest).toEqual([JSON.stringify(['qgents', 'projects', projectId, 'delivery-center'])])
+    expect(mergeRequest).toEqual([
+      JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']),
+      JSON.stringify(['qgents', 'projects', projectId, 'merge-requests']),
+    ])
   })
 
   it('ignores mismatched projects and missing required IDs without broad invalidation', () => {
@@ -146,6 +164,7 @@ describe('project SSE Task model query invalidation mapping', () => {
       JSON.stringify(['qgents', 'projects', projectId, 'diffs']),
       JSON.stringify(['qgents', 'projects', projectId, 'task-artifacts']),
       JSON.stringify(['qgents', 'projects', projectId, 'task-diff-review']),
+      JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']),
       JSON.stringify(['qgents', 'projects', projectId, 'merge-requests']),
     ])
   })

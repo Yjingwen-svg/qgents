@@ -148,12 +148,11 @@ export default function TeamDetailPage() {
     enabled: !!teamId,
   })
 
-  // 团队最近动态（分页响应取 data）
+  // 团队最近动态（分页响应取 data；由 useTeamEvents 的 activity.created 事件驱动刷新）
   const { data: activitiesData } = useQuery({
     queryKey: ['teams', teamId, 'activities'],
     queryFn: () => teamApi.activities(teamId),
     enabled: !!teamId,
-    refetchInterval: 15_000,
   })
   const activities = activitiesData?.data ?? []
 

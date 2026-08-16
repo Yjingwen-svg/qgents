@@ -10,6 +10,7 @@ import {
   ExclamationCircleFilled,
 } from '@ant-design/icons'
 import { teamApi } from '@/api'
+import { useTeamEvents } from '@/realtime/useTeamEvents'
 import { DarkPage } from '@/components/DarkPage'
 import { EmptyState } from '@/components/EmptyState'
 import { PATHS } from '@/routes/paths'
@@ -47,11 +48,13 @@ function formatRelativeTime(iso: string): string {
 export default function TeamActivitiesPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
 
+  // activity.created 事件驱动刷新，替代轮询
+  useTeamEvents(teamId || undefined)
+
   const { data: activitiesData, isLoading } = useQuery({
     queryKey: ['teams', teamId, 'activities'],
     queryFn: () => teamApi.activities(teamId),
     enabled: !!teamId,
-    refetchInterval: 15_000,
   })
   const activities = activitiesData?.data ?? []
 

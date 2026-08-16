@@ -23,6 +23,7 @@ import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
 import { DarkPage } from '@/components/DarkPage'
 import {
+  formatGithubDateTime,
   isGithubRepoBindable,
   type GithubAuthorizedRepository,
   type GithubInstallation,
@@ -326,7 +327,7 @@ export function TeamAuthorizedReposPage() {
                             默认分支：{repo.defaultBranch || '—'}
                           </Text>
                           <Text type="secondary">
-                            元数据同步：{repo.metadataSyncedAt || '—'}
+                            元数据同步：{formatGithubDateTime(repo.metadataSyncedAt)}
                           </Text>
                           <Text type="secondary">
                             <GithubOutlined style={{ marginRight: 4 }} />

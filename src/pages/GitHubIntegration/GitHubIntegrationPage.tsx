@@ -1,7 +1,7 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useGithubInstallRedirect } from '@/hooks/useGithubInstall'
+import { useDeleteGithubInstallation, useGithubInstallRedirect } from '@/hooks/useGithubInstall'
 import {
   Typography,
   Card,
@@ -21,13 +21,14 @@ import {
   ArrowLeftOutlined,
   GithubOutlined,
   EyeOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons'
 import { githubApi } from '@/api/github'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
 import { DarkPage } from '@/components/DarkPage'
-import type { GithubInstallation } from '@/types/github'
+import { countAuthorizedRepositories, formatGithubDateTime, type GithubInstallation } from '@/types/github'
 
 /**
  * ============================================================================
@@ -39,17 +40,19 @@ import type { GithubInstallation } from '@/types/github'
  * 【本页「安装Github App」按钮职责】
  * 1. 校验 teamId（来自 URL query）
  * 2. POST /teams/{teamId}/integrations/github/installations
- * 3. 使用返回的 installationUrl 整页跳转 GitHub
+ * 3. 只跳转 /apps/{slug}/installations/new（已装过也走 new，不进 Configure）
  *
  * 【回调说明】
  * GET /integrations/github/callback 由 GitHub 打到后端，前端不直接请求。
- * 后端处理完后应重定向回本页，建议带：
- *   ?teamId=xxx&installed=1
- * 本页检测到 installed=1 时提示安装成功（见下方 useEffect）。
+ * 后端处理完后 302 回本页：
+ *   成功：?teamId=xxx&installed=1
+ *   归属冲突：?teamId=xxx&installed=0&conflict=GITHUB_INSTALLATION_TEAM_CONFLICT&message=...
+ * 本页 useEffect 分别提示成功 / 错误，并清理一次性 query 参数。
  *
  * 【页面结构】
  * - 上：已安装的 GitHub App（个人 User / 组织 Organization 卡片）
  * - 卡片「查看仓库」→ 跳转独立页 GithubInstallationReposPage
+ * - 卡片「卸载」→ DELETE .../installations/{id}，不进 GitHub；成功后刷新安装/仓库列表
  * - 仓库页「绑定该仓库到项目」→ BindRepoToProjectPage（团队项目列表）
  *
  * 相关文件：
@@ -77,8 +80,8 @@ function accountTypeLabel(type: GithubInstallation['accountType']): string {
 
 function statusTag(status: GithubInstallation['status']) {
   if (status === 'ACTIVE') return <Tag color="success">已启用</Tag>
-  if (status === 'SUSPENDED') return <Tag color="warning">已暂停</Tag>
-  return <Tag>已删除</Tag>
+  if (status === 'SUSPENDED') return <Tag color="warning">已暂停</Tag>//Webhook 同步时，GitHub 如果发了暂停事件，后端就会给 SUSPENDED
+  return <Tag>已卸载</Tag>
 }
 
 // 给当前团队安装 GitHub App
@@ -92,7 +95,7 @@ export function GitHubIntegrationPage() {
 
 function GitHubIntegrationPageInner() {
   const { token } = theme.useToken()
-  const { message } = App.useApp() //toast
+  const { message, modal } = App.useApp() //toast / 确认框
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   // JS 代码里做页面跳转（编程式导航）
@@ -109,14 +112,54 @@ function GitHubIntegrationPageInner() {
    */
   const teamId = searchParams.get('teamId') || 'team-xinghe' //A是假值就返回B
 
+  // 从 GitHub 卸/改仓库再切回本页时，重新拉安装和仓库，接上 webhook 后的库状态。
+  // 人一直停在本页不切走，webhook 不会推到前端，仍需手动刷新。
+  //人从别的页（比如 GitHub）回到这个标签时，重新去后端拉安装列表和仓库列表。
+  useEffect(() => {
+    function refreshAfterReturning() {
+      if (document.visibilityState !== 'visible') return
+      void queryClient.invalidateQueries({ queryKey: queryKeys.githubInstallations(teamId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.githubTeamRepositories(teamId) })
+    }
+    document.addEventListener('visibilitychange', refreshAfterReturning)
+    window.addEventListener('focus', refreshAfterReturning)
+    return () => {
+      document.removeEventListener('visibilitychange', refreshAfterReturning)
+      window.removeEventListener('focus', refreshAfterReturning)
+    }
+  }, [queryClient, teamId])
+
   /**
    * 后端回调回跳约定（请与后端对齐）：
    * GET /integrations/github/callback 处理完后 302 →
-   * /app/integrations/github?teamId={id}&installed=1
+   * 成功：/app/integrations/github?teamId={id}&installed=1
+   * 归属冲突：/app/integrations/github?teamId={id}&installed=0&conflict=GITHUB_INSTALLATION_TEAM_CONFLICT&message=...
    */
   const handledRef = useRef(false)
   // 处理 GitHub 安装完成页面回跳
   useEffect(() => {
+    // 归属冲突回跳：同一 GitHub 账号已绑定其他团队，后端 302 带回 conflict 与 message
+    const conflict = searchParams.get('conflict')
+    const conflictMessage = searchParams.get('message')
+    if (conflict) {
+      if (handledRef.current) return
+      handledRef.current = true //ref防抖操作
+      message.error(conflictMessage || 'GitHub 安装未完成，请稍后重试或联系管理员')
+      // 复制一份当前所有 url 查询参数，得到一份副本对象next。
+      // 清掉 conflict / message / installed，避免刷新反复弹 toast
+      const next = new URLSearchParams(searchParams)
+      next.delete('conflict')
+      next.delete('message')
+      next.delete('installed')
+      // 把一次性回调参数删掉。
+      setSearchParams(next, { replace: true })
+      // 默认模式:用户点浏览器左上角回退按钮，会退回到记录 A，url 又出现conflict，又会触发 useEffect，再次弹出提示，bug。
+      //替换模式:不新增历史，直接覆盖当前这一条历史记录
+      void queryClient.invalidateQueries({ queryKey: queryKeys.githubInstallations(teamId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.githubTeamRepositories(teamId) })//302负责跳转页面
+      return
+    }
+
     const installed = searchParams.get('installed')
     if (installed !== '1') return
     if (handledRef.current) return
@@ -152,11 +195,27 @@ function GitHubIntegrationPageInner() {
    */
   // 修改类 / 触发式网络请求
   const installMutation = useGithubInstallRedirect(teamId)
+  const deleteMutation = useDeleteGithubInstallation(teamId)
 
   /** 按钮点击入口：仅触发 mutation，业务全在上面 */
   function handleInstallApp() {
     installMutation.mutate()
   }//触发网络请求返回的信息,弹窗
+
+  /**
+   * 卡片「卸载」：确认后 DELETE 当前 Installation。
+   * 不跳转 GitHub。后端同时卸 GitHub App，前端再 GET 安装列表和授权仓库。
+   */
+  function handleUninstall(inst: GithubInstallation) {
+    modal.confirm({//antd确认弹窗,一个对象
+      title: '卸载 GitHub App',
+      content: `确定卸载「${inst.accountLogin}」吗？卸载后本团队将失去该账号下的授权仓库，已绑定到项目的仓库也会失效。此操作不可撤销。`,
+      okText: '确认卸载',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: () => deleteMutation.mutateAsync(inst.id)//确认之后触发的回调函数
+    })
+  }
 
   /** GET 团队已安装的 GitHub App 列表 */
   const installationsQuery = useQuery({
@@ -174,10 +233,13 @@ function GitHubIntegrationPageInner() {
 
   const installations = installationsQuery.data ?? []
   const allRepos = reposQuery.data ?? []
+  // webhook / 卸载后后端常把记录留在列表里，只把 status 改成 DELETED。
+  // 「已关联」只数还能用的安装，已卸载的不算。
+  const associatedCount = installations.filter((inst) => inst.status !== 'DELETED').length
   // 计算某一条 GitHub App 安装记录，绑定了多少个授权仓库
   function repoCountOf(inst: GithubInstallation): number {
     if (typeof inst.authorizedRepoCount === 'number') return inst.authorizedRepoCount
-    return allRepos.filter((r) => r.installationId === inst.id).length
+    return countAuthorizedRepositories(inst.id, allRepos)//传入全部仓库作为参数进行一个筛选
   }
 
   return (
@@ -210,9 +272,9 @@ function GitHubIntegrationPageInner() {
         </div>
 
         {/*
-          安装按钮（Team Owner）
-          点击 → POST .../installations → location.assign(installationUrl)
-          可再次安装到另一个个人账号或组织
+          安装按钮（Team Owner）：只负责新装
+          点击 → POST .../installations → 跳转 /apps/{slug}/installations/new
+          已装过的账号也走 new，由 GitHub 提示 already installed；不进 Configure
         */}
         <Button
           type="primary"
@@ -234,7 +296,7 @@ function GitHubIntegrationPageInner() {
       <Card
         title="已安装的 GitHub App"
         extra={
-          <Text type="secondary">当前团队已关联 {installations.length} 个安装</Text>
+          <Text type="secondary">当前团队已关联 {associatedCount} 个安装</Text>
         }
         style={{ marginBottom: 16 }}
       >
@@ -296,23 +358,34 @@ function GitHubIntegrationPageInner() {
                           type="secondary"
                           style={{ display: 'block', marginTop: 8, fontSize: 12 }}
                         >
-                          安装于 {inst.installedAt}
+                          安装于 {formatGithubDateTime(inst.installedAt)}
                         </Text>
                       </div>
                     </Space>
                   </Space>
 
-                  <Button
-                    type="default"
-                    icon={<EyeOutlined />}
-                    style={{ marginTop: 16 }}
-                    block
-                    onClick={() =>
-                      navigate(PATHS.githubInstallationRepos(teamId, inst.id))
-                    }
-                  >
-                    查看仓库
-                  </Button>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                    <Button
+                      type="default"
+                      icon={<EyeOutlined />}
+                      style={{ flex: 1 }}
+                      onClick={() =>
+                        navigate(PATHS.githubInstallationRepos(teamId, inst.id))
+                      }
+                    >
+                      查看仓库
+                    </Button>
+                    {inst.status !== 'DELETED' ? (
+                      <Button
+                        danger
+                        icon={<DeleteOutlined />}
+                        loading={deleteMutation.isPending && deleteMutation.variables === inst.id}
+                        onClick={() => handleUninstall(inst)}
+                      >
+                        卸载
+                      </Button>
+                    ) : null}
+                  </div>
                 </Card>
               </Col>
             ))}
@@ -327,7 +400,8 @@ function GitHubIntegrationPageInner() {
             <strong>组织</strong>（安装时在 GitHub 上选择）。
           </li>
           <li>
-            「查看仓库」进入独立页面；仓库后的「绑定该仓库到项目」会进入本团队项目列表（Owner 可见全部项目）。
+            「查看仓库」进入独立页面；「卸载」在本页直接解除该 GitHub App 安装，无需进入 GitHub。
+            仓库后的「绑定该仓库到项目」会进入本团队项目列表（Owner 可见全部项目）。
           </li>
           <li>
             点击「安装Github App」→ POST 获取 <code>installationUrl</code> → 跳转 GitHub；回调由后端

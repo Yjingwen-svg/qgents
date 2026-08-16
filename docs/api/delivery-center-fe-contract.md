@@ -46,7 +46,9 @@ Delivery Center 只提供聚合列表、统计和审批入口，不替代 Skill/
 | `GET` | `/projects/{projectId}/delivery-summary` | 完整数据集统计 |
 | `GET` | `/projects/{projectId}/delivery-items/export` | 导出提案；第一阶段不实现下载 UI |
 
-所有路径均通过 `src/api/client.ts` 调用。列表和统计沿用 `{ data, page?, requestId }` envelope。
+所有路径均通过 `src/api/client.ts` 调用。列表使用 `{ data, page, requestId }` cursor envelope；统计接口按 v1.8.0 实际响应使用直出 `DeliverySummary` 对象，不再要求 `data` 或 `requestId` 外层字段。
+
+> Runtime alignment (observed 2026-08-15): `GET /projects/{projectId}/delivery-summary` 返回摘要对象本身。前端按该实际 shape 消费，并继续对必需字段做运行时校验；缺字段仍显示局部统计错误。`qgents-api-current.md` 中仍记录的 envelope 是后端文档与实现的待同步项，不在前端补造 `requestId`。
 
 ## 5. 查询参数
 
@@ -150,32 +152,26 @@ interface SkillDeliveryItem extends DeliveryItemBase {
 
 ```json
 {
-  "data": {
-    "total": 12,
-    "countsByType": { "CODE": 4, "MEMORY": 5, "SKILL": 3 },
-    "countsByStatus": { "PENDING_REVIEW": 2, "DELIVERED": 5 },
-    "pendingForCurrentUser": 1,
-    "repositorySummaries": [{
-      "repositoryId": "project-repository-uuid",
-      "name": "qgents-web",
-      "total": 4,
-      "accepted": 2,
-      "pending": 1,
-      "failed": 1,
-      "deliveryStatus": "PARTIALLY_DELIVERED",
-      "mergeRequestSummary": null
-    }],
-    "requirementGroupSummary": [{
-      "requirementGroupId": "group-uuid",
-      "name": "Release",
-      "total": 8,
-      "pending": 2
-    }],
-    "updatedAt": "2026-08-14T08:00:00Z"
+  "total": 0,
+  "countsByType": { "CODE": 0, "MEMORY": 0, "SKILL": 0 },
+  "countsByStatus": {
+    "DRAFT": 0,
+    "PENDING_REVIEW": 0,
+    "PROCESSING": 0,
+    "ACCEPTED": 0,
+    "REJECTED": 0,
+    "DELIVERED": 0,
+    "FAILED": 0,
+    "ARCHIVED": 0
   },
-  "requestId": "req_01J..."
+  "pendingForCurrentUser": 0,
+  "repositorySummaries": [],
+  "requirementGroupSummaries": [],
+  "updatedAt": "2026-08-15T13:38:15.215Z"
 }
 ```
+
+The backend must update the v1.8.0 delivery-summary documentation and generated API schema to this direct response shape, or restore the documented `{ data, requestId }` envelope consistently. It must not return one shape in production and another shape in the contract. The frontend currently follows the observed direct response and does not synthesize `requestId`, `data`, `pendingItems`, `repositorySummaries`, or `requirementGroupSummaries`.
 
 ### Export 提案
 

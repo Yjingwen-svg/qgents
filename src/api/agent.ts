@@ -6,7 +6,7 @@ import type { CursorPage } from '@/types/api'
 const teamAgentsPath = (teamId: string) => `/teams/${teamId}/agents`
 
 export const agentApi = {
-  list(teamId: string, projectId?: string, scenario?: string) { return requestPage<AgentSummary>(withQuery(teamAgentsPath(teamId), { projectId, scenario })) },
+  list(teamId: string, scenario?: string) { return requestPage<AgentSummary>(withQuery(teamAgentsPath(teamId), { scenario })) },
   get(teamId: string, agentId: string, projectId?: string) { return requestData<AgentDetail>(withQuery(`${teamAgentsPath(teamId)}/${agentId}`, { projectId })) },
   create(teamId: string, payload: CreateAgentPayload) { return requestData<AgentDetail>(teamAgentsPath(teamId), { method: 'POST', headers: writeHeaders(), body: payload }) },
   update(teamId: string, agentId: string, payload: UpdateAgentPayload) { return requestData<AgentDetail>(`${teamAgentsPath(teamId)}/${agentId}`, { method: 'PATCH', headers: writeHeaders(), body: payload }) },

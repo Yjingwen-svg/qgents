@@ -40,7 +40,7 @@ describe('Delivery Center aggregate mock', () => {
     const code = response.data.find((item) => item.id === 'delivery-code-partial')
     expect(code && code.resourceType === 'CODE' ? { resourceId: code.resourceId, diffReviewId: code.diffReviewId, diffId: code.diffId } : null).toEqual({ resourceId: 'diff-review-partial', diffReviewId: 'diff-review-partial', diffId: 'diff-delivery-code-partial' })
     const summary = await deliveryCenterApi.summary('project-delivery-center', { type: 'SKILL', status: 'ACCEPTED' })
-    expect(summary.requestId).toBe('delivery-summary-project-delivery-center')
+    expect(summary).not.toHaveProperty('requestId')
     expect(summary).not.toHaveProperty('pendingItems')
     expect(summary.requirementGroupSummaries.every((group) => group.requirementGroupId)).toBe(true)
   })

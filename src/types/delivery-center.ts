@@ -191,10 +191,8 @@ export interface DeliverySummary {
   updatedAt: string
 }
 
-export type DeliverySummaryResponse = {
-  data: DeliverySummary
-  requestId: string
-}
+/** Runtime v1.8.0 response observed from the Delivery Summary endpoint. */
+export type DeliverySummaryResponse = DeliverySummary
 
 export interface DeliverySummaryFilters {
   groupId?: string

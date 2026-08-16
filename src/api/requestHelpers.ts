@@ -16,7 +16,7 @@ export function createIdempotencyKey(): string {
 }
 
 export async function requestData<T>(path: string, init?: Parameters<typeof request>[1]): Promise<T> {
-  const response = await request<ApiResponse<T>>(path, init)
+  const response = await request<ApiResponse<T>>(path, { ...init, unwrapData: false })
   return response.data
 }
 

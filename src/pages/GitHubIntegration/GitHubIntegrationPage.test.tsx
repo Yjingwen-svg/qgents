@@ -98,19 +98,42 @@ describe('GitHubIntegrationPage callback redirect', () => {
   })
 })
 
-describe('GitHubIntegrationPage uninstall', () => {
-  it('asks for confirmation then uninstalls the installation without leaving the page', async () => {
+describe('GitHubIntegrationPage disconnect and GitHub uninstall', () => {
+  it('asks for confirmation then disconnects the local team association', async () => {
     const user = userEvent.setup()
     vi.mocked(githubApi.listInstallations).mockResolvedValue([installation])
     renderPage('teamId=team-b')
 
     expect(await screen.findByText('octocat')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /卸载/ }))
-    expect(await screen.findByText(/确定卸载「octocat」吗/)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '确认卸载' }))
+    await user.click(screen.getByRole('button', { name: /解除关联/ }))
+    expect(
+      await screen.findByText(/不会在 GitHub 卸载 Qgents App/),
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '确认解除' }))
     await waitFor(() => {
       expect(deleteMutateAsync).toHaveBeenCalledWith('inst-1')
     })
+  })
+
+  it('opens the GitHub configure page after confirming uninstall on GitHub', async () => {
+    const user = userEvent.setup()
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window)
+    vi.mocked(githubApi.listInstallations).mockResolvedValue([installation])
+    renderPage('teamId=team-b')
+
+    expect(await screen.findByText('octocat')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /在 GitHub 卸载 Qgents App/ }))
+    expect(await screen.findByText(/将跳转至 GitHub 管理页/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '前往 GitHub' }))
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://github.com/settings/installations/12345678',
+        '_blank',
+        'noopener,noreferrer',
+      )
+    })
+    expect(deleteMutateAsync).not.toHaveBeenCalled()
+    openSpy.mockRestore()
   })
 
   it('does not count a DELETED installation as still associated', async () => {
@@ -122,6 +145,7 @@ describe('GitHubIntegrationPage uninstall', () => {
     expect(await screen.findByText('octocat')).toBeInTheDocument()
     expect(screen.getByText('当前团队已关联 0 个安装')).toBeInTheDocument()
     expect(screen.getByText('已卸载')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /卸载/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /解除关联/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /在 GitHub 卸载 Qgents App/ })).not.toBeInTheDocument()
   })
 })

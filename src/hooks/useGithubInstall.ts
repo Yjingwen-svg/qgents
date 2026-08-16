@@ -1,9 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App } from 'antd'
+import { ApiError } from '@/api/client'
 import { githubApi } from '@/api/github'
 import { queryKeys } from '@/query/queryKeys'
 import { formatApiError } from '@/utils/formatApiError'
 import { toGithubAppInstallNewUrl, type GithubInstallation } from '@/types/github'
+
+function readApiErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof ApiError)) return undefined
+  const body = error.body as { error?: { code?: string } } | undefined
+  return body?.error?.code
+}
+
+/** DELETE 解除关联失败时的提示：项目仓库仍绑定时必须先解绑。 */
+export function githubInstallationDisconnectErrorMessage(error: unknown): string {
+  if (readApiErrorCode(error) === 'GITHUB_INSTALLATION_IN_USE') {
+    return '请先解绑相关项目仓库后再解除关联'
+  }
+  return formatApiError(error)
+}
 
 export type GithubAuthStatus = 'AUTHORIZED' | 'NOT_AUTHORIZED' | 'SUSPENDED' | 'DELETED'
 
@@ -87,12 +102,13 @@ export function useGithubInstallations(teamId: string, enabled = true) {
 }
 
 /**
- * Team Owner：在 Qgents 卸载当前团队的一份 GitHub App 安装
+ * Team Owner：解除当前团队与该 GitHub Installation 的本地关联
  * DELETE /teams/{teamId}/integrations/github/installations/{installationId}
  *
- * 成功 204，响应体没有新列表。前端必须 invalidate 后再 GET：
- * 安装卡片、团队授权仓库、项目绑定仓库才会一起更新。
- * 后端约定：Qgents 卸载 = 同时向 GitHub 卸载该 Installation。
+ * 只删 Qgents 侧团队 ↔ Installation，后端不得调用 GitHub Uninstall。
+ * 项目仓库仍绑定时 409 GITHUB_INSTALLATION_IN_USE，需先解绑。
+ * 成功 204，响应体没有新列表。前端必须 invalidate 后再 GET。
+ * 从 GitHub 完整卸载没有 Qgents API，走 GitHub 管理页，不要复用本 DELETE。
  */
 export function useDeleteGithubInstallation(teamId: string) {
   const { message } = App.useApp()
@@ -109,7 +125,7 @@ export function useDeleteGithubInstallation(teamId: string) {
       await githubApi.deleteInstallation(teamId, installationId)
     },
     onSuccess: async () => {
-      message.success('已卸载 GitHub App，授权仓库已同步更新')
+      message.success('已解除与当前团队的关联')
       await queryClient.invalidateQueries({ queryKey: queryKeys.githubInstallations(teamId) })
       await queryClient.invalidateQueries({ queryKey: queryKeys.githubTeamRepositories(teamId) })
       await queryClient.invalidateQueries({ queryKey: queryKeys.teamProjects(teamId) })
@@ -121,7 +137,7 @@ export function useDeleteGithubInstallation(teamId: string) {
       })
     },
     onError: (error) => {
-      message.error(formatApiError(error))
+      message.error(githubInstallationDisconnectErrorMessage(error))
     },
   })
 }

@@ -213,8 +213,9 @@ export const githubApi = {
   /**
    * DELETE /teams/{teamId}/integrations/github/installations/{installationId}
    * 权限：Team Owner。成功 204。
-   * 路径 {installationId} 为本地 UUID。后端应同时向 GitHub 卸载该 Installation，
-   * 并清掉本团队授权仓库；前端成功后再 GET 列表。
+   * 路径 {installationId} 为本地 UUID。只解除本团队与 Installation 的本地关联，
+   * 后端不得调用 GitHub Uninstall。项目仓库仍绑定时 409 GITHUB_INSTALLATION_IN_USE。
+   * 前端成功后再 GET 列表。从 GitHub 卸载走 Configure 页，不要复用本接口。
    */
   deleteInstallation(teamId: string, installationId: string) {
     return request<void>(`/teams/${teamId}/integrations/github/installations/${installationId}`, {

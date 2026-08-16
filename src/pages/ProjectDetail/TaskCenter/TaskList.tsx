@@ -4,7 +4,7 @@ import type { TaskListItem } from '@/types/task-model'
 import { TaskModelStatusTag } from './TaskModelStatusTag'
 import type { TaskCenterView } from './taskCenterConfig'
 import { TaskCard } from './TaskCard'
-import { valueOrNone } from './taskDisplay'
+import { taskRepositories, valueOrNone } from './taskDisplay'
 import styles from './TaskCenterPage.module.scss'
 
 interface TaskListProps {
@@ -21,7 +21,7 @@ export function TaskList({ tasks, view, onViewDetails }: TaskListProps) {
       { title: '编号 / 任务', key: 'title', render: (_, task) => <Space direction="vertical" size={0}><Typography.Text type="secondary">{valueOrNone(task.displayCode)}</Typography.Text><Typography.Text>{valueOrNone(task.title)}</Typography.Text></Space>, ellipsis: true },
       { title: '状态', key: 'status', render: (_, task) => <TaskModelStatusTag status={task.status} /> },
       { title: '需求群', key: 'requirementGroup', render: (_, task) => valueOrNone(task.requirementGroup?.name) },
-      { title: '仓库', key: 'repository', render: (_, task) => valueOrNone(task.repositories.map((repository) => repository.name).join('、')) },
+      { title: '仓库', key: 'repository', render: (_, task) => valueOrNone(taskRepositories(task).map((repository) => repository.name).join('、')) },
       { title: '创建人', key: 'createdByUser', render: (_, task) => valueOrNone(task.createdByUser?.displayName) },
       { title: '更新时间', key: 'updatedAt', render: (_, task) => valueOrNone(task.updatedAt) },
       { title: '详情', key: 'details', render: (_, task) => <a onClick={(event) => { event.stopPropagation(); onViewDetails(task.id) }}>查看完整任务详情</a> },

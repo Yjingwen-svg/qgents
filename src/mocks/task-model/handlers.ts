@@ -53,6 +53,10 @@ function getStore(projectId: string, request: Request): TaskModelStore {
     stores.set(projectId, store)
     return store
   }
+  return getDefaultStore(projectId)
+}
+
+function getDefaultStore(projectId: string): TaskModelStore {
   const existing = stores.get(projectId)
   if (existing) return existing
   const store = createTaskModelScenario(projectId)
@@ -206,6 +210,64 @@ function createTaskResources(store: TaskModelStore, input: TaskCreateInput, proj
   store.inputRequests.set(inputRequest.id, inputRequest)
   addDiff(store, task, developer, 'PENDING_REVIEW', 'created-pending-1')
   addDiff(store, task, developer, 'PENDING_REVIEW', 'created-pending-2')
+  return task
+}
+
+export function createTaskFromMessageIntent(
+  projectId: string,
+  input: { requirementGroupId: string; title: string; requirement: string; messageId: string; createdAt: string },
+): Task {
+  const store = getDefaultStore(projectId)
+  const id = makeId(projectId, 'task', store.tasks.size)
+  const plannerStepId = `step-${id}-planner`
+  const plannerRunId = `run-${plannerStepId}`
+  const inputRequestId = `input-${plannerRunId}`
+  const task: Task = {
+    id,
+    displayCode: `T-${store.tasks.size + 1000}`,
+    projectId,
+    title: input.title,
+    requirementSummary: input.requirement.slice(0, 200),
+    status: 'PLANNING',
+    deliveryMode: 'DIFF_FIRST',
+    requirementGroup: { id: input.requirementGroupId, name: input.requirementGroupId, status: 'ACTIVE' },
+    createdByUser: { id: 'mock-user', displayName: 'Mock User', avatarUrl: null },
+    repositories: [],
+    executionSummary: { totalSteps: 0, pendingSteps: 0, runningSteps: 0, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: 'PLANNER', currentStageTitle: '等待补充执行环境', requiresUserAction: true },
+    attention: { kind: 'INPUT_REQUIRED', title: '需要补充执行信息', summary: '请补充仓库和基线分支后继续规划。', taskRunId: null, inputRequestId: null, diffReviewBatchId: null, repositoryId: null, createdAt: input.createdAt },
+    createdAt: input.createdAt,
+    updatedAt: input.createdAt,
+    requirement: input.requirement,
+    acceptanceCriteria: [],
+    workspace: null,
+    capabilities: { canCancel: true, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false },
+    artifactSummary: { total: 0, byType: {} },
+    diffReviewSummary: { available: false, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 },
+    sourceMessage: { id: input.messageId, sender: { id: 'user-001', displayName: 'Mock User', avatarUrl: null }, textExcerpt: input.requirement.slice(0, 200), createdAt: input.createdAt },
+    triggerMessageId: input.messageId,
+  }
+  store.tasks.set(task.id, task)
+  const plannerStep: TaskStep = {
+    id: plannerStepId, taskId: task.id, sequenceNo: 1, title: 'Planner', description: null,
+    role: 'PLANNER', agent: null, repository: null, dependencies: [], status: 'PENDING',
+    acceptanceNotes: '等待补充仓库和基线分支。',
+    latestRun: { id: plannerRunId, status: 'WAITING_INPUT', startedAt: input.createdAt, finishedAt: null, durationMs: null },
+    runCount: 1, startedAt: input.createdAt, finishedAt: null, createdAt: input.createdAt, updatedAt: input.createdAt,
+  }
+  const plannerRun: TaskRunDetail = {
+    id: plannerRunId, taskId: task.id, taskStepId: plannerStep.id, taskStepTitle: plannerStep.title,
+    agent: null, role: 'PLANNER', status: 'WAITING_INPUT', retryOfTaskRunId: null,
+    statusSummary: '等待补充执行环境',
+    statusReason: { code: 'INPUT_REQUIRED', title: '需要补充执行信息', summary: '请补充仓库和基线分支。', retryable: false, occurredAt: input.createdAt },
+    startedAt: input.createdAt, finishedAt: null, durationMs: null, artifactSummary: { total: 0, diffCount: 0 }, createdAt: input.createdAt, updatedAt: input.createdAt,
+  }
+  const inputRequest: InputRequest = {
+    id: inputRequestId, taskRunId: plannerRun.id, kind: 'INPUT', status: 'PENDING',
+    prompt: '请选择执行仓库并填写基线分支。', createdAt: input.createdAt,
+  }
+  store.taskSteps.set(plannerStep.id, plannerStep)
+  store.taskRuns.set(plannerRun.id, plannerRun)
+  store.inputRequests.set(inputRequest.id, inputRequest)
   return task
 }
 

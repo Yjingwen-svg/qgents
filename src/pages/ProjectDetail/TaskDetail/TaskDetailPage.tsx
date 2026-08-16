@@ -27,7 +27,7 @@ export default function TaskDetailPage() {
   if (taskQuery.isError) return <DetailError error={taskQuery.error} resource="任务详情" />
   const task = taskQuery.data
   if (!task || task.projectId !== projectId || task.id !== taskId) return <DetailState description="任务不存在或不可见" />
-  const currentTask = task
+  const currentTask = normalizeTaskForDisplay(task)
   const steps = stepsQuery.data?.data ?? []
 
   function handleCancel() {
@@ -167,6 +167,40 @@ function DiffReviewPanel({ projectId, task, batch, onRefresh }: { projectId: str
   const canRetry = task.capabilities.canRetryDelivery && batch.reviewStatus === 'ACCEPTED' && (batch.deliveryStatus === 'PARTIALLY_DELIVERED' || batch.deliveryStatus === 'FAILED')
   const handleError = (mutationError: Error) => { if (mutationError instanceof ApiError && mutationError.status === 409) onRefresh() }
   return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果 <Tag>{batch.reviewStatus}</Tag></div><Text type="secondary">{batch.deliveryStatus} · {batch.repositoryDeliveries.length} 个仓库</Text>{batch.reviewStatus === 'REJECTED' && batch.reviewReason ? <Text type="danger">拒绝原因：{batch.reviewReason}</Text> : null}{batch.deliveryStatus === 'DELIVERING' || failed.length > 0 || batch.deliveryStatus === 'DELIVERED' ? <div className={styles.deliverySummaryList}>{batch.repositoryDeliveries.map((delivery) => <div key={delivery.repositoryId} className={styles.deliverySummaryRow}><Text ellipsis>{delivery.repositoryName}</Text><Tag color={delivery.deliveryStatus === 'FAILED' ? 'red' : delivery.deliveryStatus === 'MR_CREATED' ? 'green' : 'orange'}>{delivery.deliveryStatus}</Tag>{delivery.failureReason ? <Text type="danger">{delivery.failureReason}</Text> : null}{delivery.mergeRequest?.webUrl ? <a href={delivery.mergeRequest.webUrl} target="_blank" rel="noreferrer">查看 MR</a> : null}</div>)}</div> : null}{batch.deliveryStatus === 'DELIVERED' ? <Text type="secondary">交付已完成，可从 MR 入口继续查看。</Text> : null}{batch.reviewStatus === 'PENDING_CONFIRMATION' ? <div className={styles.reviewActions}>{task.capabilities.canConfirmDiffReview ? <Button type="primary" loading={confirm.isPending} disabled={pending} onClick={() => confirm.mutate(batch.taskId, { onError: handleError })}>确认交付</Button> : null}{task.capabilities.canRejectDiffReview ? <Form onFinish={() => { const trimmed = reason.trim(); if (trimmed) reject.mutate({ taskId: batch.taskId, input: { reason: trimmed } }, { onError: handleError }) }}><Form.Item label="拒绝原因" required><Input.TextArea value={reason} rows={2} maxLength={4000} disabled={pending} onChange={(event) => setReason(event.target.value)} /></Form.Item><Button danger htmlType="submit" loading={reject.isPending} disabled={pending || !reason.trim()}>拒绝交付</Button></Form> : null}</div> : null}{canRetry ? <Button size="small" loading={retry.isPending} disabled={pending} onClick={() => retry.mutate(batch.taskId, { onError: handleError })}>重试交付</Button> : null}{error ? <Alert type="error" showIcon title={diffReviewError(error)} action={error instanceof ApiError && error.status === 409 ? <Button size="small" onClick={onRefresh}>刷新</Button> : undefined} /> : null}</Card>
+}
+
+function normalizeTaskForDisplay(task: Task): Task {
+  const capabilities = task.capabilities
+  return {
+    ...task,
+    requirement: typeof task.requirement === 'string' ? task.requirement : task.requirementSummary ?? '',
+    acceptanceCriteria: Array.isArray(task.acceptanceCriteria) ? task.acceptanceCriteria : [],
+    repositories: Array.isArray(task.repositories) ? task.repositories : [],
+    executionSummary: task.executionSummary && typeof task.executionSummary === 'object'
+      ? task.executionSummary
+      : {
+          totalSteps: 0,
+          pendingSteps: 0,
+          runningSteps: 0,
+          waitingSteps: 0,
+          blockedSteps: 0,
+          succeededSteps: 0,
+          failedSteps: 0,
+          currentStage: null,
+          currentStageTitle: null,
+          requiresUserAction: false,
+        },
+    capabilities: {
+      canCancel: capabilities?.canCancel === true,
+      canReplacePendingStepAgent: capabilities?.canReplacePendingStepAgent === true,
+      canConfirmDiffReview: capabilities?.canConfirmDiffReview === true,
+      canRejectDiffReview: capabilities?.canRejectDiffReview === true,
+      canRetryDelivery: capabilities?.canRetryDelivery === true,
+    },
+    sourceMessage: task.sourceMessage && task.sourceMessage.sender && typeof task.sourceMessage.sender.displayName === 'string'
+      ? task.sourceMessage
+      : null,
+  }
 }
 
 function RowHeading({ title, meta }: { title: string; meta?: string }) { return <div className={styles.rowHeading}><Title level={4}>{title}</Title>{meta ? <Text type="secondary">{meta}</Text> : null}</div> }

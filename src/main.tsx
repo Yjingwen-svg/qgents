@@ -9,6 +9,7 @@ import App from './App'
 import { AppProviders } from '@/providers/AppProviders'
 
 const MOCK_START_TIMEOUT_MS = 10_000
+const STALE_MOCK_WORKER_RELOAD_KEY = 'qgents:stale-mock-worker-reload'
 
 type StartupState =
   | { status: 'starting' }
@@ -111,15 +112,46 @@ async function startMockWorker(): Promise<void> {
   await withTimeout(worker.start({ onUnhandledRequest: 'error', waitUntilReady: true }), MOCK_START_TIMEOUT_MS)
 }
 
+/**
+ * A Mock Service Worker remains registered after VITE_USE_MOCK changes.  In
+ * real API mode it would otherwise keep intercepting requests from a previous
+ * local session, making successful writes exist only in browser memory.
+ */
+async function removeStaleMockWorker(): Promise<boolean> {
+  if (!('serviceWorker' in navigator)) return false
+
+  const registrations = await navigator.serviceWorker.getRegistrations()
+  const mockRegistrations = registrations.filter((registration) =>
+    [registration.active, registration.waiting, registration.installing]
+      .some((worker) => worker?.scriptURL.includes('mockServiceWorker.js')),
+  )
+  if (mockRegistrations.length === 0) {
+    sessionStorage.removeItem(STALE_MOCK_WORKER_RELOAD_KEY)
+    return false
+  }
+
+  await Promise.all(mockRegistrations.map((registration) => registration.unregister()))
+
+  const controlledByMock = navigator.serviceWorker.controller?.scriptURL.includes('mockServiceWorker.js')
+  if (controlledByMock && sessionStorage.getItem(STALE_MOCK_WORKER_RELOAD_KEY) !== '1') {
+    sessionStorage.setItem(STALE_MOCK_WORKER_RELOAD_KEY, '1')
+    window.location.reload()
+    return true
+  }
+
+  return false
+}
+
 function startupErrorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim().length > 0
     ? error.message
     : 'Mock 服务无法启动，请检查浏览器控制台或重试。'
 }
 
-function bootstrap(root: Root): void {
+async function bootstrap(root: Root): Promise<void> {
   const useMock = String(import.meta.env.VITE_USE_MOCK ?? '').trim() === 'true'
   if (!useMock) {
+    if (await removeStaleMockWorker()) return
     renderApp(root)
     return
   }
@@ -149,4 +181,4 @@ const rootElement = document.getElementById('root')
 if (!rootElement) throw new Error('Root element #root was not found')
 
 const root = createRoot(rootElement)
-bootstrap(root)
+void bootstrap(root)

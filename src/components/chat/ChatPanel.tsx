@@ -420,6 +420,11 @@ function formatTimeDivider(iso: string): string {
   return `${d.getMonth() + 1}月${d.getDate()}日 ${hhmm}`
 }
 
+/** 消息气泡发送时间：HH:mm（当天）/ 昨天 HH:mm / M月D日 HH:mm */
+function formatClock(iso: string): string {
+  return formatTimeDivider(iso)
+}
+
 /** @ 提及面板分组 */
 function MentionGroup({
   label,
@@ -502,6 +507,9 @@ function MessageBubble({
         <Text type="secondary">
           {message.senderType === 'AGENT' ? '🤖 ' : ''}
           {message.senderName ?? (message.senderType === 'AGENT' ? 'Agent' : '成员')}
+          <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
+            {formatClock(message.createdAt)}
+          </Text>
         </Text>
       </div>
       <div

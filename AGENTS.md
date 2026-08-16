@@ -1,6 +1,7 @@
 # Qgents V3 前端协作规范
 
-- 修改前先阅读 `docs/api/qgents-api-v1.1.1.md` 和 `docs/frontend/tech-stack.md`。
+- 修改前先阅读 `docs/api/qgents-api-current.md` 和 `docs/frontend/tech-stack.md`。
+  - 权威 API 契约以项目根目录最新版《Qgents 接口文档vX.Y.Z.md》为准（当前 v1.9.4）；`docs/api/qgents-api-current.md` 为前端维护的对接汇总，旧版本见 `docs/api/archive/`。
 - 全程使用 TypeScript strict 约束，不使用 `any`。
 - 只修改当前职责范围内的业务，不重写其他成员负责的页面或流程。
 - 不覆盖、删除或还原已有修改；发现来源不明的未提交修改时先停止并汇报。

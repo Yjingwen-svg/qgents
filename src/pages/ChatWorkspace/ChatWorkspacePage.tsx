@@ -4,6 +4,7 @@ import { SearchOutlined, TeamOutlined } from '@ant-design/icons'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { teamApi, projectApi, groupApi } from '@/api'
 import { ChatPanel } from '@/components/chat/ChatPanel'
+import { hasUnread, useUnreadStore } from '@/store/unreadStore'
 import type { Group } from '@/types'
 
 const { Text } = Typography
@@ -23,6 +24,7 @@ interface MainGroupSession {
  */
 export default function ChatWorkspacePage() {
   const { token } = theme.useToken()
+  const readAt = useUnreadStore((state) => state.readAt)
   const [selected, setSelected] = useState<MainGroupSession | null>(null)
   const [keyword, setKeyword] = useState('')
 
@@ -135,6 +137,17 @@ export default function ChatWorkspacePage() {
                         <Text strong ellipsis style={{ maxWidth: 150 }}>
                           {s.projectName}
                         </Text>
+                        {hasUnread(readAt, { id: s.groupId, latestActivityAt: s.latestActivityAt }) ? (
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              background: '#ef4444',
+                              flexShrink: 0,
+                            }}
+                          />
+                        ) : null}
                       </Space>
                     }
                     description={

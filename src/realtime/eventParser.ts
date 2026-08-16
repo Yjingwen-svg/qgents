@@ -30,6 +30,11 @@ export const PROJECT_TASK_EVENT_TYPES = [
   'skill.archived',
   'test-run.updated',
   'dry-run.updated',
+  'message.created',
+  'group.created',
+  'group.updated',
+  'group.archived',
+  'group.member.updated',
 ] as const
 
 export type ProjectTaskEventType = (typeof PROJECT_TASK_EVENT_TYPES)[number]
@@ -86,6 +91,11 @@ function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPay
     'skill.archived': ['resourceId', 'updatedAt'],
     'test-run.updated': ['testRunId'],
     'dry-run.updated': ['dryRunId'],
+    'message.created': ['groupId', 'messageId'],
+    'group.created': ['groupId'],
+    'group.updated': ['groupId'],
+    'group.archived': ['groupId'],
+    'group.member.updated': ['groupId'],
   }
   const stringsValid = required[type].every((key) => typeof payload[key] === 'string' && (payload[key] as string).length > 0)
   if (!stringsValid) return false

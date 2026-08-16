@@ -139,7 +139,9 @@ export function queryKeysForProjectTaskEvent(
       addDeliveryQueries()
       break
     case 'merge-request.updated':
+      if (!stringId(payload, 'mergeRequestId')) return []
       addDeliveryQueries()
+      addKey(keys, taskModelQueryKeys.mergeRequests.all(projectId))
       if (taskId) {
         addKey(keys, taskModelQueryKeys.tasks.all(projectId))
         addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
@@ -162,10 +164,25 @@ export function queryKeysForProjectTaskEvent(
       }
       addKey(keys, taskModelQueryKeys.mergeRequests.all(projectId))
       break
-    case 'merge-request.updated':
-      if (!stringId(payload, 'mergeRequestId')) return []
-      addKey(keys, taskModelQueryKeys.mergeRequests.all(projectId))
+    case 'message.created': {
+      const groupId = stringId(payload, 'groupId')
+      if (!groupId) return []
+      addKey(keys, ['groups', projectId])
+      addKey(keys, ['groups', projectId, groupId, 'messages'])
       break
+    }
+    case 'group.created':
+    case 'group.updated':
+    case 'group.archived':
+      if (!stringId(payload, 'groupId')) return []
+      addKey(keys, ['groups', projectId])
+      break
+    case 'group.member.updated': {
+      const groupId = stringId(payload, 'groupId')
+      if (!groupId) return []
+      addKey(keys, ['groups', projectId, groupId, 'members'])
+      break
+    }
     case 'test-run.updated': {
       const testRunId = stringId(payload, 'testRunId')
       if (!testRunId) return []

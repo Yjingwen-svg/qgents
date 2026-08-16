@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { groupApi, projectApi, agentApi } from '@/api'
+import { useUnreadStore } from '@/store/unreadStore'
 import { useAuth } from '@/context/AuthContext'
 import { TaskTriggerModal } from '@/components/task-domain'
 import { PATHS } from '@/routes/paths'
@@ -38,6 +39,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const markRead = useUnreadStore((state) => state.markRead)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [mentions, setMentions] = useState<Mention[]>([])
@@ -113,6 +115,11 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       listRef.current.scrollTop = listRef.current.scrollHeight
     }
   }, [messages.length])
+
+  // 进入群聊 / 群内来新消息时持续标记已读（离开后群有新活动才重新亮红点）
+  useEffect(() => {
+    if (groupId) markRead(groupId)
+  }, [groupId, messages.length, markRead])
 
   // 输入框以 @ 结尾时弹出成员面板
   const mentionOpen = draft.endsWith('@')

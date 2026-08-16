@@ -79,10 +79,10 @@ describe('project SSE Task model query invalidation mapping', () => {
     expect(repositoryKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'merge-requests']))
   })
 
-  it('maps merge-request.updated to the project MR list', () => {
-    expect(keysFor('merge-request.updated', { mergeRequestId: 'mr-1' })).toEqual([
-      JSON.stringify(['qgents', 'projects', projectId, 'merge-requests']),
-    ])
+  it('maps merge-request.updated to the project MR list and DeliveryCenter', () => {
+    const keys = keysFor('merge-request.updated', { mergeRequestId: 'mr-1' })
+    expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'merge-requests']))
+    expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']))
     expect(keysFor('merge-request.updated', {})).toEqual([])
   })
 
@@ -106,11 +106,12 @@ describe('project SSE Task model query invalidation mapping', () => {
     expect(skillKeys).toContain(JSON.stringify(['skills', projectId]))
   })
 
-  it('maps skipped Diff and MR updates without writing entity cache', () => {
+  it('maps skipped Diff and MR updates to DeliveryCenter and MR list', () => {
     const skipped = keysFor('diff-review.skipped', { taskId: 'task-1', reason: 'FINAL_DIFF_EMPTY' })
     expect(skipped).toContain(JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']))
     const mergeRequest = keysFor('merge-request.updated', { mergeRequestId: 'mr-1' })
-    expect(mergeRequest).toEqual([JSON.stringify(['qgents', 'projects', projectId, 'delivery-center'])])
+    expect(mergeRequest).toContain(JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']))
+    expect(mergeRequest).toContain(JSON.stringify(['qgents', 'projects', projectId, 'merge-requests']))
   })
 
   it('ignores mismatched projects and missing required IDs without broad invalidation', () => {
@@ -146,7 +147,31 @@ describe('project SSE Task model query invalidation mapping', () => {
       JSON.stringify(['qgents', 'projects', projectId, 'diffs']),
       JSON.stringify(['qgents', 'projects', projectId, 'task-artifacts']),
       JSON.stringify(['qgents', 'projects', projectId, 'task-diff-review']),
+      JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']),
       JSON.stringify(['qgents', 'projects', projectId, 'merge-requests']),
     ])
+  })
+
+  it('maps message.created to the group message list and group list', () => {
+    const keys = keysFor('message.created', { groupId: 'group-1', messageId: 'msg-1' })
+    expect(keys).toContain(JSON.stringify(['groups', projectId]))
+    expect(keys).toContain(JSON.stringify(['groups', projectId, 'group-1', 'messages']))
+    expect(keysFor('message.created', {})).toEqual([])
+  })
+
+  it('maps group.created / group.updated / group.archived to the group list', () => {
+    for (const type of ['group.created', 'group.updated', 'group.archived'] as const) {
+      expect(keysFor(type, { groupId: 'group-1' })).toEqual([
+        JSON.stringify(['groups', projectId]),
+      ])
+    }
+    expect(keysFor('group.updated', {})).toEqual([])
+  })
+
+  it('maps group.member.updated to the group member list', () => {
+    expect(keysFor('group.member.updated', { groupId: 'group-1' })).toEqual([
+      JSON.stringify(['groups', projectId, 'group-1', 'members']),
+    ])
+    expect(keysFor('group.member.updated', {})).toEqual([])
   })
 })

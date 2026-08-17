@@ -3,8 +3,8 @@ import { Alert, Button, Card, Empty, Form, Input, Result, Space, Spin, Tag, Typo
 import { ArrowLeftOutlined, CheckOutlined, CodeOutlined, CloseOutlined } from '@ant-design/icons'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/api'
-import { useAcceptDiff, useDiff, useInfiniteDiffs, useRejectDiff } from '@/hooks/task-model'
-import type { DiffDetail, DiffListItem } from '@/types/task-model'
+import { useAcceptDiff, useDiff, useDiffFiles, useInfiniteDiffs, useRejectDiff } from '@/hooks/task-model'
+import type { DiffDetail, DiffFile, DiffLine, DiffListItem } from '@/types/task-model'
 import { PATHS } from '@/routes/paths'
 import styles from './DiffCenterPage.module.scss'
 
@@ -163,10 +163,71 @@ function DiffDetailPanel({ query, projectId, onRefresh }: { query: ReturnType<ty
   return <Card title={<span>{diff.id} <Tag color={statusColor(diff.status)}>{statusLabel(diff.status)}</Tag></span>}>
     <Space direction="vertical" className={styles.detailContent}>
       <DetailFields diff={diff} />
+      <DiffFilesPanel projectId={projectId} diffId={diff.id} />
       <DiffAcceptance diff={diff} projectId={projectId} onRefresh={onRefresh} />
       <Text type="secondary">本页面仅完成 Diff 验收，不代表已合并 MR。</Text>
     </Space>
   </Card>
+}
+
+/** 文件变更区块：文件列表 + 行级红绿 hunks（GET /diffs/{diffId}/files，映射层已适配后端结构） */
+function DiffFilesPanel({ projectId, diffId }: { projectId: string; diffId: string }) {
+  const filesQuery = useDiffFiles(projectId, diffId, { limit: 100 })
+  const files = filesQuery.data?.data ?? []
+  const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const current = files.find((f) => f.path === selectedPath) ?? files.find((f) => f.hunks.length > 0) ?? files[0]
+
+  if (filesQuery.isLoading) return <Card size="small" title="文件变更"><Spin /></Card>
+  if (files.length === 0) return null
+
+  return <Card size="small" title="文件变更">
+    <div className={styles.fileList}>
+      {files.map((file) => (
+        <button
+          key={file.id}
+          type="button"
+          className={`${styles.fileChip}${current?.id === file.id ? ` ${styles.fileChipActive}` : ''}`}
+          onClick={() => setSelectedPath(file.path)}
+        >
+          <span className={styles.fileStatus}>{fileStatusLabel(file.changeType)}</span>
+          <span className={styles.filePath}>{file.path}</span>
+          <span className={styles.fileStats}>+{file.additions}/-{file.deletions}</span>
+        </button>
+      ))}
+    </div>
+    {current ? (
+      current.binary ? (
+        <div className={styles.binary}>二进制文件，无法展示行级 Diff</div>
+      ) : current.hunks.length === 0 ? (
+        <Empty style={{ margin: 24 }} description="该文件暂无行级变更" />
+      ) : (
+        current.hunks.map((hunk) => (
+          <div key={hunk.id}>
+            <div className={styles.hunkHead}>{hunk.header}</div>
+            {hunk.lines.map((line, index) => <DiffLineRow key={`${hunk.id}-${index}`} line={line} />)}
+          </div>
+        ))
+      )
+    ) : null}
+  </Card>
+}
+
+/** 行级渲染：CONTEXT 灰、ADD 绿、DEL 红（kind 已由映射层归一） */
+function DiffLineRow({ line }: { line: DiffLine }) {
+  const sign = line.kind === 'ADD' ? '+' : line.kind === 'DEL' ? '-' : ''
+  return (
+    <div className={`${styles.lineRow}${line.kind === 'ADD' ? ` ${styles.lineAdd}` : ''}${line.kind === 'DEL' ? ` ${styles.lineDel}` : ''}`}>
+      <span className={styles.gutter}>{line.oldLine ?? ''}</span>
+      <span className={styles.gutter}>{line.newLine ?? ''}</span>
+      <span className={styles.sign}>{sign}</span>
+      <span className={styles.code}>{line.text}</span>
+    </div>
+  )
+}
+
+/** DiffFile.changeType → A/M/D 徽标 */
+function fileStatusLabel(changeType: DiffFile['changeType']): string {
+  return changeType === 'ADDED' ? 'A' : changeType === 'DELETED' ? 'D' : 'M'
 }
 
 function DetailFields({ diff }: { diff: DiffDetail }) {

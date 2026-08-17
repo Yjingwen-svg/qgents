@@ -22,7 +22,7 @@ describe('independent Task model mock chain', () => {
     expect(payload.data[0]?.repositoryId).toBe('repository-project-repositories')
   })
 
-  it('creates a Task with queryable TaskSteps and a subsequent TaskRun', async () => {
+  it('creates a PLANNING Task before the Planner produces actual TaskSteps', async () => {
     const task = await tasksApi.create('project-create', {
       requirementGroupId: 'group-create',
       title: 'Create task',
@@ -31,17 +31,14 @@ describe('independent Task model mock chain', () => {
       baseRef: 'main',
     })
     expect((await tasksApi.get('project-create', task.id)).id).toBe(task.id)
+    expect(task.status).toBe('PLANNING')
     const steps = await tasksApi.listSteps('project-create', task.id)
-    expect(steps.data).toHaveLength(3)
-    expect(steps.data[1]?.dependencies).toEqual([steps.data[0]?.id])
+    expect(steps.data).toEqual([])
     const runs = await taskRunsApi.list('project-create', task.id)
-    expect(runs.data.length).toBeGreaterThanOrEqual(2)
-    expect(runs.data.every((run) => run.taskId === task.id)).toBe(true)
-    expect(runs.data[0]).toHaveProperty('artifactSummary')
-    expect(runs.data[0]?.artifactSummary).toEqual({ total: expect.any(Number), diffCount: expect.any(Number) })
+    expect(runs.data).toEqual([])
     const firstStepPage = await tasksApi.listSteps('project-create', task.id, { limit: 1 })
-    expect(firstStepPage.page.hasMore).toBe(true)
-    expect(firstStepPage.page.nextCursor).toBe('1')
+    expect(firstStepPage.page.hasMore).toBe(false)
+    expect(firstStepPage.page.nextCursor).toBeNull()
   })
 
   it('returns formal Task attention associations without inference fields', async () => {
@@ -51,7 +48,7 @@ describe('independent Task model mock chain', () => {
     expect(waiting.attention).toMatchObject({ kind: 'DIFF_CONFIRMATION_REQUIRED', diffReviewBatchId: 'review-task-project-attention-waiting_diff_confirmation', repositoryId: 'repository-project-attention' })
   })
 
-  it('walks one newly-created resource chain through input, retry, Diff review, and Task cancel', async () => {
+  it('keeps a newly-created Task in the planning boundary until the Planner creates resources', async () => {
     const projectId = 'project-e2e'
     const task = await tasksApi.create(projectId, {
       requirementGroupId: 'group-e2e',
@@ -66,32 +63,10 @@ describe('independent Task model mock chain', () => {
     const runs = (await taskRunsApi.list(projectId, task.id)).data
     expect(fetchedTask.id).toBe(task.id)
     expect(listedTasks.data.some((item) => item.id === task.id)).toBe(true)
-    expect(steps.length).toBeGreaterThanOrEqual(3)
-    expect(runs.every((run) => run.taskId === task.id && steps.some((step) => step.id === run.taskStepId))).toBe(true)
-
-    const inputRun = runs.find((run) => run.status === 'WAITING_INPUT')!
-    const inputRequests = await taskRunsApi.inputRequests(projectId, inputRun.id)
-    const inputRequest = inputRequests.data[0]!
-    expect(inputRequest.taskRunId).toBe(inputRun.id)
-    expect((await taskRunsApi.logs(projectId, inputRun.id)).data[0]?.id).toContain(inputRun.id)
-    expect((await taskRunsApi.executionContext(projectId, inputRun.id)).workspaceId).toBe(task.workspace?.id)
-    expect((await taskRunsApi.replyInputRequest(projectId, inputRun.id, inputRequest.id, { answer: { value: 'main' } })).status).toBe('ANSWERED')
-
-    const failedRun = runs.find((run) => run.status === 'FAILED')!
-    const retriedRun = await taskRunsApi.retry(projectId, failedRun.id)
-    expect(retriedRun.id).not.toBe(failedRun.id)
-    expect(retriedRun.taskId).toBe(task.id)
-    expect(retriedRun.taskStepId).toBe(failedRun.taskStepId)
-    expect((await taskRunsApi.get(projectId, failedRun.id)).status).toBe('FAILED')
-    expect((await taskRunsApi.cancel(projectId, retriedRun.id)).status).toBe('CANCELLING')
-
-    const diffs = await diffsApi.list(projectId, { taskId: task.id })
-    expect(diffs.data.length).toBe(2)
-    expect(diffs.data.every((diff) => diff.taskId === task.id && diff.taskStepId === failedRun.taskStepId && diff.taskRunId === failedRun.id)).toBe(true)
-    const firstDiff = await diffsApi.get(projectId, diffs.data[0]!.id)
-    expect(firstDiff.id).toBe(diffs.data[0]!.id)
-    expect((await diffsApi.accept(projectId, diffs.data[0]!.id)).status).toBe('ACCEPTED')
-    expect((await diffsApi.reject(projectId, diffs.data[1]!.id, { reason: 'Needs another review' })).status).toBe('REJECTED')
+    expect(fetchedTask.status).toBe('PLANNING')
+    expect(steps).toEqual([])
+    expect(runs).toEqual([])
+    expect((await diffsApi.list(projectId, { taskId: task.id })).data).toEqual([])
 
     expect((await tasksApi.cancel(projectId, task.id)).status).toBe('CANCELLED')
     expect((await tasksApi.get(projectId, task.id)).status).toBe('CANCELLED')
@@ -325,7 +300,7 @@ describe('independent Task model mock chain', () => {
     expect(tasks.data).toEqual([])
   })
 
-  it('creates an MR only after the matching Diff is accepted and remotely verified', async () => {
+  it('does not make a newly-created planning Task eligible for an MR', async () => {
     const projectId = 'project-create-mr'
     const task = await tasksApi.create(projectId, {
       requirementGroupId: 'group-create-mr',
@@ -334,45 +309,13 @@ describe('independent Task model mock chain', () => {
       repositoryIds: ['repository-create-mr'],
       baseRef: 'main',
     })
-    const diffs = await diffsApi.list(projectId, { taskId: task.id })
-    const pending = diffs.data[0]!
+    expect((await diffsApi.list(projectId, { taskId: task.id })).data).toEqual([])
     await expect(mergeRequestsApi.create(projectId, {
       taskId: task.id,
-      repositoryId: pending.repositoryId,
+      repositoryId: 'repository-create-mr',
       targetBranch: 'main',
       title: '实现邮箱登录',
     })).rejects.toMatchObject({ status: 409 })
-
-    const accepted = await diffsApi.accept(projectId, pending.id)
-    expect(accepted.headCommit).toBeTruthy()
-    const created = await mergeRequestsApi.create(projectId, {
-      taskId: task.id,
-      repositoryId: pending.repositoryId,
-      targetBranch: 'main',
-      title: '实现邮箱登录',
-    })
-    expect(created).toMatchObject({
-      repositoryId: pending.repositoryId,
-      sourceBranch: pending.sourceBranch,
-      targetBranch: 'main',
-      status: 'OPEN',
-      headCommit: accepted.headCommit,
-    })
-    expect(created.number).toBe(1)
-
-    const again = await mergeRequestsApi.create(projectId, {
-      taskId: task.id,
-      repositoryId: pending.repositoryId,
-      targetBranch: 'main',
-      title: '实现邮箱登录',
-    })
-    expect(again.id).toBe(created.id)
-    await expect(mergeRequestsApi.create('forbidden', {
-      taskId: task.id,
-      repositoryId: pending.repositoryId,
-      targetBranch: 'main',
-      title: '实现邮箱登录',
-    })).rejects.toMatchObject({ status: 403 })
   })
 
   it('lists merge requests and applies repository and status filters', async () => {

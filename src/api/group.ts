@@ -8,6 +8,13 @@ import type {
   CreateGroupPayload,
 } from '@/types'
 
+export interface TriggerTaskInput {
+  title: string
+  requirement: string
+  repositoryIds: string[]
+  baseRef: string
+}
+
 /** 群聊 API —— 对齐接口文档 v1.1.8 §7 */
 export const groupApi = {
   listByProject(projectId: string) {
@@ -44,5 +51,11 @@ export const groupApi = {
       if ('message' in response) return response
       return { message: response, task: null }
     })
+  },
+  async triggerTask(projectId: string, groupId: string, messageId: string, input: TriggerTaskInput): Promise<void> {
+    await request<unknown>(
+      `/projects/${projectId}/groups/${groupId}/messages/${messageId}/trigger-task`,
+      { method: 'POST', body: input },
+    )
   },
 }

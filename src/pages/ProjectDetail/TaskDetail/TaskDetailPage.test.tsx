@@ -81,6 +81,24 @@ describe('TaskDetailPage final information architecture', () => {
     expect(screen.getByText('尚未运行')).toBeInTheDocument()
   })
 
+  it('shows planning instead of a running empty state before TaskSteps are generated', () => {
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'PLANNING', executionSummary: { ...task.executionSummary, totalSteps: 0, runningSteps: 0, currentStage: null, currentStageTitle: '规划中' } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskStepsMock.mockReturnValue({ data: page<TaskStep>([]), error: null, isError: false, isLoading: false })
+
+    renderPage()
+
+    expect(screen.getByText('规划 Agent 正在生成执行方案')).toBeInTheDocument()
+    expect(screen.queryByText('暂无执行步骤')).not.toBeInTheDocument()
+  })
+
+  it('keeps the normal empty state for a non-planning Task without TaskSteps', () => {
+    useTaskStepsMock.mockReturnValue({ data: page<TaskStep>([]), error: null, isError: false, isLoading: false })
+
+    renderPage()
+
+    expect(screen.getByText('暂无执行步骤')).toBeInTheDocument()
+  })
+
   it('keeps source message conditional and shows compact acceptance empty state', () => {
     renderPage()
     expect(screen.getByText('暂无验收标准')).toBeInTheDocument()

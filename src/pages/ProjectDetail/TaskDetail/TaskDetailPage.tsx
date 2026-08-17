@@ -105,8 +105,8 @@ function ExecutionFlowRow({ projectId, taskId, task, query, steps }: { projectId
   const ordered = steps.slice().sort((left, right) => left.sequenceNo - right.sequenceNo)
   return (
     <section className={styles.executionFlowRow} id="execution-flow" data-testid="execution-flow-row">
-      <RowHeading title="执行流程" meta={ordered.length > 0 ? `${ordered.length} 个步骤` : undefined} />
-      {query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="TaskStep" error={query.error} /> : ordered.length === 0 ? <InlineState text="暂无执行步骤" /> : <div className={styles.flowScroller}><div className={styles.flowGrid}>{ordered.map((step) => <StepCard key={step.id} step={step} onRun={(runId) => navigate(PATHS.projectTaskRunDetail(projectId, taskId, runId))} />)}</div></div>}
+      <RowHeading title="执行流程" meta={ordered.length > 0 ? `${ordered.length} 个步骤` : task.status === 'PLANNING' ? '规划中' : undefined} />
+      {query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="TaskStep" error={query.error} /> : ordered.length === 0 ? <InlineState text={task.status === 'PLANNING' ? '规划 Agent 正在生成执行方案' : '暂无执行步骤'} /> : <div className={styles.flowScroller}><div className={styles.flowGrid}>{ordered.map((step) => <StepCard key={step.id} step={step} onRun={(runId) => navigate(PATHS.projectTaskRunDetail(projectId, taskId, runId))} />)}</div></div>}
       {task.workspace && task.workspace.status !== 'READY' ? <Text type="danger" className={styles.workspaceNotice}>执行环境状态：{task.workspace.status}</Text> : null}
     </section>
   )

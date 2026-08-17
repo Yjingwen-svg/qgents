@@ -16,7 +16,7 @@ import {
   Typography,
 } from 'antd'
 import { PlusOutlined, TagsOutlined, UserOutlined } from '@ant-design/icons'
-import { projectApi, skillApi } from '@/api'
+import { skillApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
 import type { CreateSkillPayload, Skill, SkillStatus } from '@/types'
 import './SkillPage.css'
@@ -50,7 +50,8 @@ const VISIBILITY_META: Record<Skill['visibility'], { color: string; label: strin
 
 /**
  * 共享 Skill —— 对齐接口文档 v1.3.0 §8
- * 列表 / 状态筛选 / 详情 / 手动创建 / 提交审核 / 批准·拒绝 / 归档
+ * 列表 / 状态筛选 / 详情 / 手动创建 / 归档
+ * 审核功能（提交审核 / 批准·拒绝）统一在交付中心处理，本页不提供
  */
 export function SkillPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
@@ -58,14 +59,6 @@ export function SkillPage() {
   const [filter, setFilter] = useState<FilterKey>('ALL')
   const [detailId, setDetailId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
-
-  // 当前用户项目角色（判断是否可批准/拒绝/归档）
-  const { data: project } = useQuery({
-    queryKey: ['projects', projectId],
-    queryFn: () => projectApi.getById(projectId),
-    enabled: !!projectId,
-  })
-  const isAdmin = project?.role === 'PROJECT_ADMIN'
 
   const { data: skills = [], isLoading } = useQuery({
     queryKey: ['skills', projectId],
@@ -83,24 +76,10 @@ export function SkillPage() {
 
   const detail = skills.find((s) => s.id === detailId) ?? null
 
-  const actions = {
-    submit: useMutation({
-      mutationFn: (id: string) => skillApi.submitReview(projectId, id),
-      onSuccess: invalidate,
-    }),
-    approve: useMutation({
-      mutationFn: (id: string) => skillApi.approve(projectId, id),
-      onSuccess: invalidate,
-    }),
-    reject: useMutation({
-      mutationFn: (id: string) => skillApi.reject(projectId, id, '审核未通过'),
-      onSuccess: invalidate,
-    }),
-    archive: useMutation({
-      mutationFn: (id: string) => skillApi.archive(projectId, id),
-      onSuccess: invalidate,
-    }),
-  }
+  const archive = useMutation({
+    mutationFn: (id: string) => skillApi.archive(projectId, id),
+    onSuccess: invalidate,
+  })
 
   if (isLoading) {
     return (
@@ -116,7 +95,7 @@ export function SkillPage() {
     <div className="skill-page">
       <header className="skill-page__header">
         <h1 className="skill-page__title">共享 Skill</h1>
-        <p className="skill-page__desc">沉淀可复用能力片段（规范、提示词、操作指引），经审核后供项目 Agent 使用</p>
+        <p className="skill-page__desc">沉淀可复用能力片段（规范、提示词、操作指引），审核在交付中心统一处理</p>
       </header>
 
       <div className="skill-page__toolbar">
@@ -134,12 +113,7 @@ export function SkillPage() {
         <EmptyState
           icon="🛠️"
           title="暂无共享 Skill"
-          description="新建一条草稿，提交审核后即可发布为项目共享能力"
-          // action={
-          //   <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          //     新建 Skill
-          //   </Button>
-          // }
+          description="新建一条草稿，在交付中心提交审核后即可发布为项目共享能力"
         />
       ) : (
         <div className="skill-page__list">
@@ -152,15 +126,14 @@ export function SkillPage() {
       {/* 详情抽屉 */}
       <SkillDetail
         skill={detail}
-        isAdmin={isAdmin}
         onClose={() => setDetailId(null)}
         onEdit={() => {
           setDetailId(null)
           setCreateOpen(true)
         }}
-        onAction={async (type) => {
+        onArchive={async () => {
           if (!detail) return
-          await actions[type].mutateAsync(detail.id)
+          await archive.mutateAsync(detail.id)
         }}
       />
 
@@ -225,16 +198,14 @@ function SkillCard({ skill, index, onClick }: { skill: Skill; index: number; onC
 /** 详情抽屉 */
 function SkillDetail({
   skill,
-  isAdmin,
   onClose,
   onEdit,
-  onAction,
+  onArchive,
 }: {
   skill: Skill | null
-  isAdmin: boolean
   onClose: () => void
   onEdit: () => void
-  onAction: (type: 'submit' | 'approve' | 'reject' | 'archive') => Promise<void>
+  onArchive: () => Promise<void>
 }) {
   if (!skill) return <Drawer open={false} onClose={onClose} />
   const meta = STATUS_META[skill.status] ?? { color: 'default', label: skill.status }
@@ -280,36 +251,11 @@ function SkillDetail({
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 16 }}>
-          {skill.status === 'DRAFT' && (
-            <>
-              <Button type="primary" onClick={() => onAction('submit')}>
-                提交审核
-              </Button>
-              <Button onClick={onEdit}>编辑</Button>
-            </>
+          {(skill.status === 'DRAFT' || skill.status === 'REJECTED') && (
+            <Button type="primary" onClick={onEdit}>编辑</Button>
           )}
-          {skill.status === 'REJECTED' && (
-            <Button type="primary" onClick={onEdit}>
-              编辑后重新提交
-            </Button>
-          )}
-          {skill.status === 'PENDING_REVIEW' && isAdmin && (
-            <>
-              <Button type="primary" onClick={() => onAction('approve')}>
-                批准
-              </Button>
-              <Button danger onClick={() => onAction('reject')}>
-                拒绝
-              </Button>
-            </>
-          )}
-          {skill.status === 'PUBLISHED' && isAdmin && (
-            <Button onClick={() => onAction('archive')}>归档</Button>
-          )}
-          {skill.status === 'PENDING_REVIEW' && !isAdmin && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              等待 Project Admin 审核
-            </Text>
+          {skill.status === 'PUBLISHED' && (
+            <Button onClick={onArchive}>归档</Button>
           )}
         </div>
       </Space>

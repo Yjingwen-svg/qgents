@@ -58,7 +58,7 @@ export function PersonalCenter() {
   const email = user?.email ?? '—'
   const avatarChar = user?.avatarChar ?? name.slice(0, 1)
 
-  // PATCH /me：改昵称（头像更新走 uploadAvatar → confirm 后同样调这里同步本地）
+  // PATCH /me：改昵称（头像更新走 uploadAvatar → confirm 后单独静默持久化 public URL，不在此弹窗）
   const updateProfile = useMutation({
     mutationFn: (payload: { displayName?: string; avatarUrl?: string }) => authApi.updateMe(payload),
     onSuccess: (_data, payload) => {
@@ -90,8 +90,8 @@ export function PersonalCenter() {
       const avatarUrl = await uploadAvatar(file)
       if (user) {
         updateUser({ ...user, avatarUrl })
-        // 头像 URL 也持久化到后端（PATCH /me 兼容任意 http(s) URL，§4）
-        updateProfile.mutate({ avatarUrl })
+        // 头像 URL 持久化到后端（PATCH /me 兼容任意 http(s) URL，§4）；静默调用，成功提示由下方「头像已更新」统一给出
+        await authApi.updateMe({ avatarUrl })
       }
       message.success('头像已更新')
     } catch (error) {

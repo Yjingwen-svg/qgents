@@ -51,9 +51,8 @@ function isProjectTaskEventType(type: string): type is ProjectTaskEventType {
 export function dispatchRealtimeFrame(frame: RealtimeFrame): void {
   const { type, scope } = frame
   if (scope === 'notification') {
-    if (type === 'notification.created') {
-      void queryClient.invalidateQueries({ queryKey: ['notifications'] })
-    }
+    // 帧 type 即通知 kind（PROJECT_ADDED/MR_PENDING/…），不按类型过滤：收到即刷新通知中心与铃铛
+    void queryClient.invalidateQueries({ queryKey: ['notifications'] })
     return
   }
   if (scope === 'team') {

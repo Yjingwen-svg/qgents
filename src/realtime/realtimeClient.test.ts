@@ -18,13 +18,13 @@ describe('realtimeWsUrl', () => {
 })
 
 describe('dispatchRealtimeFrame', () => {
-  it('refreshes the notification list for notification.created', () => {
+  it('refreshes the notification list for any notification-scope frame (type=kind, e.g. PROJECT_ADDED)', () => {
     const spy = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue(undefined)
     dispatchRealtimeFrame({
-      type: 'notification.created',
+      type: 'PROJECT_ADDED',
       scope: 'notification',
       recipientUserId: 'user-1',
-      payload: { projectId: 'project-1', messageId: 'message-1' },
+      payload: { notificationId: 'notification-1', kind: 'PROJECT_ADDED' },
     })
     expect(spy).toHaveBeenCalledWith({ queryKey: ['notifications'] })
   })

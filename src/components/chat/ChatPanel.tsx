@@ -54,15 +54,14 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const [triggerOpen, setTriggerOpen] = useState(false)
   // 回复引用：选中某条消息后，输入区显示引用条，发送时以 QUOTE 类型 + replyToId 提交
   const [replyTo, setReplyTo] = useState<Message | null>(null)
-  // 消息多选模式（微信风格）：唯一批量操作是「创建 Memory」
-  const [multiSelect, setMultiSelect] = useState(false)
-  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set())
   const listRef = useRef<HTMLDivElement>(null)
   // 消息列表内部真正承载消息的内容容器（ResizeObserver 监听其高度变化）
   const contentRef = useRef<HTMLDivElement>(null)
   // 用户是否「应该保持贴底」：发送消息/切群/首载时置 true；用户主动上滚查看历史时置 false。
   // 图片加载完成、内容高度变化时据此决定是否自动滚到底，避免把看历史的用户拉回底部。
   const shouldStickToBottomRef = useRef(true)
+  // 本次发送后需要强制滚到底（即使布局滚动事件把 stick 标志重算为 false 也照滚），待消息渲染后清除。
+  const pendingScrollRef = useRef(false)
 
   const { data: groups = [] } = useQuery({
     queryKey: ['groups', projectId],
@@ -174,14 +173,17 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   // 消息变化 / 切换群聊：
   // - 切群、首次加载 → 无条件滚到底（并把贴底标志置 true）
   // - 新消息到达（含自己发送）→ 用户之前在底部则滚，在查看历史则不打扰
+  // - 本群刚发送新消息（pendingScrollRef）→ 强制滚到底，忽略滚动事件把 stick 标志重算成 false
+  const lastMessageId = messages[messages.length - 1]?.id
   useEffect(() => {
     if (messages.length === 0) return
-    if (shouldStickToBottomRef.current) {
+    if (pendingScrollRef.current || shouldStickToBottomRef.current) {
+      pendingScrollRef.current = false
       scrollToBottom()
     }
     // 切群时强制贴底：groupId 变化代表进入新群，无视历史滚动位置
     // 通过重置标志 + 无条件滚动实现
-  }, [messages.length, groupId, scrollToBottom])
+  }, [messages.length, lastMessageId, groupId, scrollToBottom])
 
   // 切换群聊：进入新群一律贴底（重置用户滚动状态）
   useEffect(() => {
@@ -203,6 +205,21 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     if (groupId) markGroupReadMutate()
   }, [groupId, messages.length, markGroupReadMutate])
 
+  // 窗口从后台/最小化回到前台时重查当前群消息：浏览器会挂起后台标签页（WS 断开、消息丢失），
+  // 而全局 refetchOnWindowFocus 为 false，回前台必须显式校准，否则群聊面板停留旧消息。
+  useEffect(() => {
+    if (!projectId || !groupId) return
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void queryClient.invalidateQueries({ queryKey: ['groups', projectId, groupId, 'messages'] })
+        void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+        void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [projectId, groupId, queryClient])
+
   // 输入框以 @ 结尾时弹出成员面板
   const mentionOpen = draft.endsWith('@')
   const canOpenTaskTrigger = group?.type === 'REQUIREMENT' && group.status === 'ACTIVE' && !group.isArchived
@@ -223,6 +240,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     try {
       // 自己发消息 → 应当保持贴底（新消息渲染 + 历史图片继续加载时都滚到底）
       shouldStickToBottomRef.current = true
+      // 强制滚底：发送期间产生的滚动/布局事件可能把 stick 标志重算为 false，用 pending 标志兜底
+      pendingScrollRef.current = true
       // 回复引用：type=QUOTE，content 带被引用消息摘要，replyToId 指向原消息（对齐 §7 消息类型与请求体）
       const result = await groupApi.sendMessage(projectId, groupId, {
         type: replyTo ? 'QUOTE' : 'TEXT',
@@ -245,6 +264,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       await queryClient.invalidateQueries({
         queryKey: ['groups', projectId, groupId, 'messages'],
       })
+      // 发送完成后强制滚一次，确保最新消息可见（pending 标志由消息变化效果统一清除）
+      scrollToBottom()
       if (hasAgentMention && canOpenTaskTrigger) {
         void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
       }
@@ -355,58 +376,15 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     [projectId, message],
   )
 
-  // 进入多选模式（右上角「新建 Memory」触发）
-  function enterMultiSelect() {
-    setSelectedMessageIds(new Set())
-    setMultiSelect(true)
-  }
-
-  // 取消多选：恢复普通聊天界面
-  function exitMultiSelect() {
-    setMultiSelect(false)
-    setSelectedMessageIds(new Set())
-  }
-
-  // 切换单条消息选中状态（多选模式下点击消息调用）
-  function toggleMessageSelect(id: string) {
-    setSelectedMessageIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
-    })
-  }
-
-  // 创建 Memory（AI 草稿）：选中消息按原始列表顺序传入 generateDraft
-  const createMemory = useMutation({
-    mutationFn: async () => {
-      // messages 已按 sequence/createdAt 升序排列，过滤选中项即得到原始聊天顺序
-      const ordered = messages.filter((m) => selectedMessageIds.has(m.id))
-      if (ordered.length === 0) {
-        throw new Error('请先选择至少一条消息')
-      }
-      // instruction 后端必填（INVALID_ARGUMENT: instruction 不能为空）：
-      // 用前 2 条选中消息的摘要拼成沉淀说明
-      const instruction = `将以下 ${ordered.length} 条群聊消息沉淀为项目 Memory：${ordered
-        .slice(0, 2)
-        .map((m) => quotePreview(m))
-        .join('；')}`
-      return memoryApi.generateDraft(projectId, {
-        sourceMessages: ordered.map((m) => ({ groupId, messageId: m.id })),
-        instruction,
-      })
-    },
+  // AI 自动沉淀 Memory（草稿）：后端自动检索当前群最近聊天并生成草稿，投给用户/Admin 审核确认
+  const createAiMemory = useMutation({
+    mutationFn: () => memoryApi.generateDraft(projectId, { groupId }),
     onSuccess: () => {
-      exitMultiSelect()
-      message.success('Memory 草稿已创建，可在交付中心提交审核')
+      message.success('AI 已根据最近群聊生成 Memory 草稿，可在交付中心提交审核')
       void queryClient.invalidateQueries({ queryKey: ['memories', projectId] })
     },
     onError: (error) => {
-      // 失败不退出多选、保留选中，允许重试
-      message.error(error instanceof Error ? error.message : 'Memory 创建失败，请重试')
+      message.error(error instanceof Error ? error.message : 'Memory 生成失败，请重试')
     },
   })
 

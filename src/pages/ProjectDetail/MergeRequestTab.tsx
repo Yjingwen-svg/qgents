@@ -7,6 +7,7 @@ import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
 import type { ProjectBoundRepository } from '@/types/github'
 import type { MergeRequestStatus, MergeRequestSummary } from '@/types/task-model'
+import { githubPullRequestUrl } from './mergeRequestDisplay'
 
 const { Text } = Typography
 
@@ -149,10 +150,15 @@ export function MergeRequestTab({
         key: 'link',
         width: 88,
         align: 'right',
-        render: (_value, record) =>
-          record.webUrl ? (
+        render: (_value, record) => {
+          const href = githubPullRequestUrl(
+            record.webUrl,
+            record.number,
+            repositories.find((item) => item.id === record.repositoryId),
+          )
+          return href ? (
             <a
-              href={record.webUrl}
+              href={href}
               target="_blank"
               rel="noreferrer"
               onClick={(event) => event.stopPropagation()}
@@ -161,7 +167,8 @@ export function MergeRequestTab({
             </a>
           ) : (
             <Text type="secondary">—</Text>
-          ),
+          )
+        },
       },
     ],
     [projectId, repositories],

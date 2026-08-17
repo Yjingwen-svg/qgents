@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { githubApi } from '@/api/github'
 import { teamApi } from '@/api/team'
-import type { DiffComment, DiffDetail, DiffFile } from '@/types/task-model'
+import type { DiffComment, DiffDetail, DiffFile, MergeRequestSummary } from '@/types/task-model'
 import { projectApi } from '@/api/project'
 import DiffReviewPage from './DiffReviewPage'
 
@@ -19,6 +19,7 @@ const useRejectDiffMock = vi.hoisted(() => vi.fn())
 const useTaskMock = vi.hoisted(() => vi.fn())
 const useDiffsMock = vi.hoisted(() => vi.fn())
 const useCreateMergeRequestMock = vi.hoisted(() => vi.fn())
+const useMergeRequestsMock = vi.hoisted(() => vi.fn())
 const authState = vi.hoisted(() => ({
   user: { id: 'user-1', email: 'demo@qgents.dev', displayName: '陈同学' },
 }))
@@ -33,6 +34,7 @@ vi.mock('@/hooks/task-model', () => ({
   useRejectDiff: useRejectDiffMock,
   useTask: useTaskMock,
   useCreateMergeRequest: useCreateMergeRequestMock,
+  useMergeRequests: useMergeRequestsMock,
 }))
 
 vi.mock('@/context/AuthContext', () => ({
@@ -115,6 +117,21 @@ const comment: DiffComment = {
   createdAt: '2026-05-16T11:20:00Z',
 }
 
+const listedMr: MergeRequestSummary = {
+  id: 'mr-1',
+  repositoryId: 'bound-demo-auth-service',
+  groupIds: ['group-1'],
+  provider: 'GITHUB',
+  number: 42,
+  title: '实现邮箱登录',
+  sourceBranch: 'feat/login-api',
+  targetBranch: 'main',
+  status: 'OPEN',
+  headCommit: 'a1b2c3d',
+  webUrl: 'https://github.com/mock/auth-service/pull/42',
+  taskId: 'task-1',
+}
+
 function idleMutation() {
   return { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }
 }
@@ -129,6 +146,10 @@ function renderPage(path = '/app/projects/project-1/code/diff/diff-1') {
         <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/app/projects/:projectId/code/diff/:diffId" element={<DiffReviewPage />} />
+            <Route
+              path="/app/projects/:projectId/code/mr/:mergeRequestId"
+              element={<div>MR detail stub</div>}
+            />
           </Routes>
         </MemoryRouter>
       </App>
@@ -197,6 +218,13 @@ beforeEach(() => {
   useAcceptDiffMock.mockReturnValue(idleMutation())
   useRejectDiffMock.mockReturnValue(idleMutation())
   useCreateMergeRequestMock.mockReturnValue(idleMutation())
+  useMergeRequestsMock.mockReturnValue({
+    data: { data: [], page: { nextCursor: null, hasMore: false }, requestId: 'r4' },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  })
   useTaskMock.mockReturnValue({
     data: {
       id: 'task-1',
@@ -317,7 +345,7 @@ describe('DiffReviewPage', () => {
     expect(screen.getByText('创建 MR 会发起合并请求，不会直接合入目标分支')).toBeInTheDocument()
   })
 
-  it('shows a GitHub link under create MR when the backend returns webUrl', async () => {
+  it('navigates to MR detail after create succeeds', async () => {
     const user = userEvent.setup()
     const mutateAsync = vi.fn().mockResolvedValue({
       id: 'mr-1',
@@ -335,9 +363,54 @@ describe('DiffReviewPage', () => {
     renderPage()
     await user.click(await screen.findByRole('button', { name: 'create-merge-request' }))
     await user.click(await screen.findByRole('button', { name: '创建 MR' }))
-    const link = await screen.findByRole('link', { name: '打开 MR #42' })
+    expect(await screen.findByText('MR detail stub')).toBeInTheDocument()
+  })
+
+  it('restores an existing OPEN MR after refresh and disables create', async () => {
+    useDiffMock.mockReturnValue({
+      data: { ...diff, status: 'ACCEPTED' },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    useMergeRequestsMock.mockReturnValue({
+      data: { data: [listedMr], page: { nextCursor: null, hasMore: false }, requestId: 'r4' },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'create-merge-request' })).toBeDisabled()
+    expect(screen.getByText('该 Diff 已创建过 MR')).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: '打开 MR #42' })
     expect(link).toHaveAttribute('href', 'https://github.com/mock/auth-service/pull/42')
     expect(link).toHaveAttribute('target', '_blank')
+  })
+
+  it('builds a GitHub link when the listed MR has no webUrl', async () => {
+    useDiffMock.mockReturnValue({
+      data: { ...diff, status: 'ACCEPTED' },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    useMergeRequestsMock.mockReturnValue({
+      data: {
+        data: [{ ...listedMr, webUrl: null }],
+        page: { nextCursor: null, hasMore: false },
+        requestId: 'r4',
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    renderPage()
+    const link = await screen.findByRole('link', { name: '打开 MR #42' })
+    expect(link).toHaveAttribute('href', 'https://github.com/mock/auth-service/pull/42')
   })
 
   it('keeps create MR disabled if an accepted Diff is missing headCommit', async () => {

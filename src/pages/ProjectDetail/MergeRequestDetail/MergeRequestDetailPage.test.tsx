@@ -217,6 +217,10 @@ describe('MergeRequestDetailPage', () => {
       'href',
       '/app/projects/project-1/code?tab=mr',
     )
+    expect(screen.getByRole('link', { name: 'GitHub' })).toHaveAttribute(
+      'href',
+      'https://github.com/mock/demo/pull/42',
+    )
   })
 
   it('shows merge only for Project Admin when the gate has passed and the MR is open', async () => {
@@ -283,6 +287,21 @@ describe('MergeRequestDetailPage', () => {
     await user.click(await screen.findByRole('button', { name: 'merge-merge-request' }))
     await user.click(await screen.findByRole('button', { name: '确认合并' }))
     expect(mutateAsync).toHaveBeenCalledWith('mr-1')
+  })
+
+  it('builds a GitHub button when the MR has no webUrl', async () => {
+    useMergeRequestMock.mockReturnValue({
+      data: { ...mr, webUrl: null },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    renderPage()
+    expect(await screen.findByRole('link', { name: 'GitHub' })).toHaveAttribute(
+      'href',
+      'https://github.com/mock/auth-service/pull/42',
+    )
   })
 
   it('puts comments and changes on the detail tabs, not the list', async () => {

@@ -329,11 +329,12 @@ export function useCreateMergeRequest(
 export function useMergeRequests(
   projectId: string,
   filters: MergeRequestListFilters = {},
+  options?: { enabled?: boolean },
 ): UseQueryResult<Page<MergeRequestSummary>> {
   return useQuery({
     queryKey: taskModelQueryKeys.mergeRequests.list(projectId, filters),
     queryFn: () => mergeRequestsApi.list(projectId, filters),
-    enabled: Boolean(projectId),
+    enabled: Boolean(projectId) && (options?.enabled ?? true),
   })
 }
 

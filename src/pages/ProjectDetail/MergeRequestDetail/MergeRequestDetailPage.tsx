@@ -48,6 +48,7 @@ import type {
   MergeRequestSummary,
 } from '@/types/task-model'
 import { commentAuthorName, HUNK_UNAVAILABLE_HINT } from '../commentAuthor'
+import { githubPullRequestUrl } from '../mergeRequestDisplay'
 import styles from './MergeRequestDetailPage.module.scss'
 
 const { Text } = Typography
@@ -128,6 +129,13 @@ export default function MergeRequestDetailPage() {
   const current = files[safeIndex]
   const listToMr = `${PATHS.projectCode(projectId)}?tab=mr`
   const repoName = repoLabel(reposQuery.data ?? [], mr?.repositoryId ?? '')
+  const githubUrl = mr
+    ? githubPullRequestUrl(
+        mr.webUrl,
+        mr.number,
+        reposQuery.data?.find((item) => item.id === mr.repositoryId),
+      )
+    : null
   const showMerge = canShowMergeButton(project?.role, mr)
 
   function setView(next: string) {
@@ -263,8 +271,8 @@ export default function MergeRequestDetailPage() {
           <Button icon={<CopyOutlined />} onClick={() => void copyLink()}>
             复制链接
           </Button>
-          {mr.webUrl ? (
-            <Button href={mr.webUrl} target="_blank" rel="noreferrer">
+          {githubUrl ? (
+            <Button href={githubUrl} target="_blank" rel="noreferrer">
               GitHub
             </Button>
           ) : null}

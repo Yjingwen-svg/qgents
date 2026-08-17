@@ -36,9 +36,11 @@ import {
   useDiffComments,
   useDiffFiles,
   useDiffs,
+  useMergeRequests,
   useRejectDiff,
   useTask,
 } from '@/hooks/task-model'
+import { findOpenMergeRequestForDiff, githubPullRequestUrl } from './mergeRequestDisplay'
 import { diffFileStatusLabel, diffStatusLabel } from '@/types/diff'
 import type { ProjectRole } from '@/types/project'
 import type { TeamRole } from '@/types/team'
@@ -59,7 +61,8 @@ const FILE_PAGE_SIZE = 100
  * GET  /projects/{projectId}/diffs/{diffId}/comments  //底部两条评论、发表评论
  * POST /projects/{projectId}/diffs/{diffId}/comments
  * POST /projects/{projectId}/diffs/{diffId}/accept | reject    //通过 / 请求修改
- * POST /projects/{projectId}/merge-requests//创建MR
+ * POST /projects/{projectId}/merge-requests  // 创建 MR；成功后跳站内详情
+ * GET  /projects/{projectId}/merge-requests  // 刷新后用 OPEN 列表恢复「已开过 MR」
  *
  * accept 同步：200 时 headCommit 已是真实 SHA，失败保持 PENDING_REVIEW。不轮询、不依赖 SSE。
  *
@@ -80,7 +83,6 @@ export default function DiffReviewPage() {
   const fileHint = searchParams.get('file')?.trim() || undefined
   const [fileIndex, setFileIndex] = useState(0)
   const [draft, setDraft] = useState('')
-  const [createdMr, setCreatedMr] = useState<MergeRequestSummary | null>(null)
 
   const { data: project } = useQuery({
     queryKey: ['projects', projectId],
@@ -112,10 +114,23 @@ export default function DiffReviewPage() {
   const rejectDiff = useRejectDiff(projectId)
   const createMr = useCreateMergeRequest(projectId)
   const taskQuery = useTask(projectId, detailQuery.data?.taskId ?? '')
+  const openMrsQuery = useMergeRequests(
+    projectId,
+    {
+      repositoryId: detailQuery.data?.repositoryId,
+      status: 'OPEN',
+      limit: 50,
+    },
+    { enabled: Boolean(detailQuery.data?.repositoryId) },
+  )
 
   const review = detailQuery.data
   const files = filesQuery.data?.data ?? []
   const comments = commentsQuery.data?.data ?? []
+  const existingMr = useMemo(
+    () => (review ? findOpenMergeRequestForDiff(openMrsQuery.data?.data ?? [], review) ?? null : null),
+    [openMrsQuery.data, review],
+  )
 
   useEffect(() => {
     const list = filesQuery.data?.data ?? []
@@ -131,13 +146,20 @@ export default function DiffReviewPage() {
   const tree = useMemo(() => groupFiles(filesQuery.data?.data ?? []), [filesQuery.data])
   const pending = review?.status === 'PENDING_REVIEW'
   const canReviewDiff = canAcceptOrRejectDiff(project?.role, teamQuery.data?.role)
+  const boundRepo = reposQuery.data?.find((item) => item.id === review?.repositoryId)
   const createMrHint = review
-    ? createMergeRequestHint(review.status, review.headCommit, Boolean(createdMr))
+    ? createMergeRequestHint(
+        review.status,
+        review.headCommit,
+        Boolean(existingMr) && review.status === 'ACCEPTED',
+      )
     : '请先通过该 Diff'
+  const githubMrUrl = existingMr
+    ? githubPullRequestUrl(existingMr.webUrl, existingMr.number, boundRepo)
+    : null
   const reqChatTo = review?.requirementGroupId
     ? PATHS.projectReqChat(projectId, review.requirementGroupId)
     : PATHS.projectDetail(projectId)
-  const boundRepo = reposQuery.data?.find((item) => item.id === review?.repositoryId)
   const repoLabel = boundRepo?.displayName || boundRepo?.fullName || review?.repositoryId || ''
   const members = membersQuery.data ?? []
 
@@ -255,8 +277,8 @@ export default function DiffReviewPage() {
           title,
         }).then(
           (mr) => {
-            setCreatedMr(mr)
             message.success(`已创建 MR #${mr.number}`)
+            navigate(PATHS.projectCodeMr(projectId, mr.id))
           },
           (error: unknown) => {
             message.error(formatApiError(error))
@@ -451,7 +473,8 @@ export default function DiffReviewPage() {
             repoLabel={repoLabel}
             canReviewDiff={canReviewDiff}
             createMrHint={createMrHint}
-            createdMr={createdMr}
+            existingMr={existingMr}
+            githubMrUrl={githubMrUrl}
             accepting={acceptDiff.isPending}
             rejecting={rejectDiff.isPending}
             creatingMr={createMr.isPending}
@@ -473,7 +496,8 @@ function ReviewAside({
   pending,
   canReviewDiff,
   createMrHint,
-  createdMr,
+  existingMr,
+  githubMrUrl,
   accepting,
   rejecting,
   creatingMr,
@@ -488,7 +512,8 @@ function ReviewAside({
   pending: boolean
   canReviewDiff: boolean
   createMrHint: string | undefined
-  createdMr: MergeRequestSummary | null
+  existingMr: MergeRequestSummary | null
+  githubMrUrl: string | null
   accepting: boolean
   rejecting: boolean
   creatingMr: boolean
@@ -532,7 +557,9 @@ function ReviewAside({
           accepting={accepting}
           creatingMr={creatingMr}
           createMrHint={createMrHint}
-          createdMr={createdMr}
+          existingMr={existingMr}
+          githubMrUrl={githubMrUrl}
+          projectId={projectId}
           onAccept={onAccept}
           onCreateMr={onCreateMr}
         />
@@ -554,7 +581,9 @@ function ReviewPrimaryButton({
   accepting,
   creatingMr,
   createMrHint,
-  createdMr,
+  existingMr,
+  githubMrUrl,
+  projectId,
   onAccept,
   onCreateMr,
 }: {
@@ -563,7 +592,9 @@ function ReviewPrimaryButton({
   accepting: boolean
   creatingMr: boolean
   createMrHint: string | undefined
-  createdMr: MergeRequestSummary | null
+  existingMr: MergeRequestSummary | null
+  githubMrUrl: string | null
+  projectId: string
   onAccept: () => void
   onCreateMr: () => void
 }) {
@@ -596,15 +627,19 @@ function ReviewPrimaryButton({
           </Button>
         </span>
       </Tooltip>
-      {createdMr?.webUrl ? (
+      {githubMrUrl && existingMr ? (
         <a
           className="diff-review__github-mr"
-          href={createdMr.webUrl}
+          href={githubMrUrl}
           target="_blank"
           rel="noreferrer"
         >
-          打开 MR #{createdMr.number}
+          打开 MR #{existingMr.number}
         </a>
+      ) : existingMr ? (
+        <Link className="diff-review__github-mr" to={PATHS.projectCodeMr(projectId, existingMr.id)}>
+          查看 MR #{existingMr.number}
+        </Link>
       ) : null}
       {createMrHint ? (
         <Text type="secondary">{createMrHint}</Text>

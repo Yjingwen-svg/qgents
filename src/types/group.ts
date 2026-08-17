@@ -51,6 +51,8 @@ export interface GroupMember {
   displayName: string
   memberType: GroupMemberType
   avatarUrl?: string
+  /** 用户邮箱（后端补全后返回；用于成员管理弹窗展示，缺失时前端隐藏） */
+  email?: string
 }
 
 /** POST .../groups/{groupId}/read 响应（§三 标记已读，进群全读） */
@@ -169,4 +171,6 @@ export interface CreateGroupPayload {
   description?: string
   repositoryIds?: string[]
   type?: 'REQUIREMENT'
+  /** 建群时选择的初始成员（项目成员 userId 列表）；不传 = 群内只有创建者 */
+  memberIds?: string[]
 }

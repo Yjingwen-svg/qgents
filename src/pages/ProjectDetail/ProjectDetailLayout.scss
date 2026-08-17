@@ -269,6 +269,19 @@
   white-space: nowrap;
 }
 
+/* 需求群「管理成员」入口（创建者或 Project Admin 可见） */
+.pd-nav__branch-manage {
+  flex-shrink: 0;
+  height: auto;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--qg-text-on-dark-secondary);
+}
+.pd-nav__branch-manage:hover {
+  color: var(--qg-mint);
+}
+
 .pd-nav__branch-unread {
   flex-shrink: 0;
   min-width: 18px;

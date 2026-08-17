@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
+import { AuthProvider } from '@/context/AuthContext'
 import ProjectDetailLayout from './ProjectDetailLayout'
 
 vi.mock('@/pages/ProjectDetail/requirements', () => ({ PROJECT_REQUIREMENTS: [] }))
@@ -23,12 +24,14 @@ function LocationProbe() {
 function renderLayout(initialEntry: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]}>
-        <Routes><Route path="/app/projects/:projectId/*" element={<ProjectDetailLayout />} /></Routes>
-        <LocationProbe />
-      </MemoryRouter>
-    </QueryClientProvider>,
+    <AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[initialEntry]}>
+          <Routes><Route path="/app/projects/:projectId/*" element={<ProjectDetailLayout />} /></Routes>
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </AuthProvider>,
   )
 }
 

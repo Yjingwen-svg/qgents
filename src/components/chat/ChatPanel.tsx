@@ -177,9 +177,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       })
       if (result.task) {
         void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
-        message.success(result.task.missingFields.length > 0
-          ? `${result.task.displayCode} 已创建，等待补充执行信息`
-          : `${result.task.displayCode} 已创建并进入规划`)
+        message.success(`${result.task.displayCode} 已创建，当前状态：${result.task.status}`)
       }
     } catch (error) {
       setSendError(formatApiError(error))
@@ -315,7 +313,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
               <MessageBubble
                 key={m.id}
                 message={m}
-                isSelf={m.senderId === user?.id}
+                isSelf={m.senderType === 'USER' && m.senderId === user?.id}
                 projectId={projectId}
                 onReply={setReplyTo}
                 onOpenFile={openFile}

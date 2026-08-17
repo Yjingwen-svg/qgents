@@ -67,6 +67,20 @@ describe('TaskCenterPage', () => {
     expect(screen.getByText('暂无权限查看任务')).toBeInTheDocument()
   })
 
+  it('moves through loaded tasks with pagination', async () => {
+    const user = userEvent.setup()
+    const tasks = Array.from({ length: 9 }, (_, index) => ({ ...task, id: `task-${index + 1}`, title: `Task ${index + 1}` }))
+    useInfiniteTasksMock.mockReturnValue(result({ data: { pages: [page(tasks)], pageParams: [undefined] } }))
+
+    renderPage()
+
+    expect(screen.getByText('第 1 页')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '下一页' }))
+    expect(screen.getByText('第 2 页')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '上一页' }))
+    expect(screen.getByText('第 1 页')).toBeInTheDocument()
+  })
+
   it('keeps rendering when a new Task list item lacks derived summaries', () => {
     const incompleteTask = {
       ...task,

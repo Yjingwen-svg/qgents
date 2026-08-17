@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { projectEventsEnabled } from '@/api/projectEvents'
+import { useTaskNoCodeChangeStore } from '@/store/taskNoCodeChangeStore'
 import { invalidateProjectTaskEvent, invalidateProjectTaskModel } from './queryInvalidation'
 import { ProjectEventConnection, type ProjectEventConnectionStatus } from './projectEventConnection'
 
@@ -22,7 +23,15 @@ function createSharedConnection(projectId: string): SharedProjectConnection {
     status: 'idle',
   }
   shared.connection = new ProjectEventConnection(projectId, {
-    onEvent: (event) => invalidateProjectTaskEvent(projectId, event),
+    onEvent: (event) => {
+      if (event.type === 'diff-review.skipped' && event.payload.reason === 'FINAL_DIFF_EMPTY') {
+        const taskId = event.payload.taskId
+        if (typeof taskId === 'string' && taskId.length > 0) {
+          useTaskNoCodeChangeStore.getState().markCompletedWithoutCode(projectId, taskId)
+        }
+      }
+      invalidateProjectTaskEvent(projectId, event)
+    },
     onCursorExpired: () => invalidateProjectTaskModel(projectId),
     onStatusChange: (status) => {
       shared.status = status

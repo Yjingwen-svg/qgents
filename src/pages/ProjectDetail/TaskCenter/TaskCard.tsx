@@ -1,6 +1,7 @@
 import { Button, Card, Progress, Space, Tag, Tooltip, Typography } from 'antd'
 import type { TaskListItem } from '@/types/task-model'
 import { TaskModelStatusTag } from './TaskModelStatusTag'
+import { useTaskCompletedWithoutCode } from '@/store/taskNoCodeChangeStore'
 import { formatExactTime, formatRelativeTime, taskExecutionSummary, taskRepositories, valueOrNone } from './taskDisplay'
 import styles from './TaskCenterPage.module.scss'
 
@@ -28,6 +29,7 @@ export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
       requiresUserAction: false,
     },
   }
+  const completedWithoutCode = useTaskCompletedWithoutCode(task.projectId, task.id)
   return (
     <Card
       className={styles.taskCard}
@@ -43,7 +45,7 @@ export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
         <Text className={styles.taskCode}>#{valueOrNone(task.displayCode)}</Text>
         <div className={styles.taskCardTitleLine}>
           <Typography.Title level={5} ellipsis={{ tooltip: valueOrNone(task.title) }}>{valueOrNone(task.title)}</Typography.Title>
-          <TaskModelStatusTag status={task.status} />
+          <TaskModelStatusTag status={task.status} completedWithoutCode={completedWithoutCode} />
         </div>
       </div>
       <Space wrap size={[6, 6]} className={styles.taskCardTags}>

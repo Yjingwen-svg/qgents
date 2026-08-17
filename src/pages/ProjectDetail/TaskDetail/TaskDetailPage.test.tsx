@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/api'
+import { useTaskNoCodeChangeStore } from '@/store/taskNoCodeChangeStore'
 import type { DiffListItem, DiffReviewBatch, Task, TaskArtifact, TaskModelPage, TaskRunSummary, TaskStep } from '@/types/task-model'
 
 const useTaskMock = vi.hoisted(() => vi.fn())
@@ -31,6 +32,7 @@ function renderPage(path?: string) { return render(pageElement(path)) }
 function LocationProbe() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}</output> }
 
 beforeEach(() => {
+  useTaskNoCodeChangeStore.getState().clearAllCompletedWithoutCode()
   useTaskMock.mockReturnValue({ data: task, error: null, isError: false, isLoading: false, refetch: vi.fn() })
   useTaskStepsMock.mockReturnValue({ data: page([step]), error: null, isError: false, isLoading: false })
   useCancelTaskMock.mockReturnValue({ mutate: vi.fn(), error: null, isPending: false })
@@ -127,6 +129,19 @@ describe('TaskDetailPage final information architecture', () => {
     expect(screen.getByRole('button', { name: '确认交付' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '拒绝交付' }))
     expect(screen.getByRole('button', { name: '拒绝交付' })).toBeDisabled()
+  })
+
+  it('shows a completed-without-code state after FINAL_DIFF_EMPTY and skips the DiffReview request', () => {
+    useTaskNoCodeChangeStore.getState().markCompletedWithoutCode(task.projectId, task.id)
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'SUCCEEDED' }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+
+    renderPage()
+
+    expect(screen.getAllByText('已完成，无代码变更')).not.toHaveLength(0)
+    expect(screen.getByText('任务已完成，无代码变更，因此未生成 Diff 或 MR')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '确认交付' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '重试交付' })).not.toBeInTheDocument()
+    expect(useTaskDiffReviewMock).toHaveBeenLastCalledWith(task.projectId, task.id, false)
   })
 
   it('renders MR_FIRST as automatic delivery without user Diff actions', () => {

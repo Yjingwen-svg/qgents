@@ -6,6 +6,7 @@ import { ApiError } from '@/api'
 import { useCancelTask, useConfirmTaskDiffReview, useDiffs, useRejectTaskDiffReview, useRetryTaskDiffReviewDelivery, useTask, useTaskArtifacts, useTaskDiffReview, useTaskSteps } from '@/hooks/task-model'
 import type { DiffReviewBatch, Task, TaskArtifact, TaskArtifactType, TaskStep } from '@/types/task-model'
 import { PATHS } from '@/routes/paths'
+import { useTaskCompletedWithoutCode } from '@/store/taskNoCodeChangeStore'
 import { TaskModelStatusTag } from '../TaskCenter/TaskModelStatusTag'
 import styles from './TaskDetailPage.module.scss'
 
@@ -20,7 +21,8 @@ export default function TaskDetailPage() {
   const artifactsQuery = useTaskArtifacts(projectId, taskId)
   const diffsQuery = useDiffs(projectId, { taskId, limit: 100 })
   const cancelMutation = useCancelTask(projectId)
-  const reviewEnabled = isDiffReviewTask(taskQuery.data?.status)
+  const completedWithoutCode = useTaskCompletedWithoutCode(projectId, taskId)
+  const reviewEnabled = isDiffReviewTask(taskQuery.data?.status) && !completedWithoutCode
   const diffReviewQuery = useTaskDiffReview(projectId, taskId, reviewEnabled)
 
   if (taskQuery.isLoading) return <DetailState loading description="正在加载任务详情" />
@@ -43,19 +45,19 @@ export default function TaskDetailPage() {
   return (
     <div className={styles.page}>
       <div className={styles.topBar}><Breadcrumb items={[{ title: '任务中心' }, { title: '任务详情' }]} /></div>
-      <CompactTaskHeader task={currentTask} projectId={projectId} location={location} onCancel={handleCancel} cancelPending={cancelMutation.isPending} />
+      <CompactTaskHeader task={currentTask} projectId={projectId} location={location} onCancel={handleCancel} cancelPending={cancelMutation.isPending} completedWithoutCode={completedWithoutCode} />
       {cancelMutation.error ? <CancelError error={cancelMutation.error} onRefresh={() => void taskQuery.refetch()} /> : null}
       {currentTask.attention ? <AttentionBanner projectId={projectId} task={currentTask} steps={steps} onLocate={locate} /> : null}
       <main className={styles.content}>
         <ExecutionFlowRow projectId={projectId} taskId={currentTask.id} task={currentTask} query={stepsQuery} steps={steps} />
         <RequirementContextRow projectId={projectId} task={currentTask} />
-        <OutputDeliveryRow projectId={projectId} taskId={currentTask.id} task={currentTask} artifactsQuery={artifactsQuery} diffsQuery={diffsQuery} diffReviewQuery={diffReviewQuery} reviewEnabled={reviewEnabled} onRefresh={() => { void diffReviewQuery.refetch(); void taskQuery.refetch() }} />
+        <OutputDeliveryRow projectId={projectId} taskId={currentTask.id} task={currentTask} artifactsQuery={artifactsQuery} diffsQuery={diffsQuery} diffReviewQuery={diffReviewQuery} reviewEnabled={reviewEnabled} completedWithoutCode={completedWithoutCode} onRefresh={() => { void diffReviewQuery.refetch(); void taskQuery.refetch() }} />
       </main>
     </div>
   )
 }
 
-function CompactTaskHeader({ task, projectId, location, onCancel, cancelPending }: { task: Task; projectId: string; location: ReturnType<typeof useLocation>; onCancel: () => void; cancelPending: boolean }) {
+function CompactTaskHeader({ task, projectId, location, onCancel, cancelPending, completedWithoutCode }: { task: Task; projectId: string; location: ReturnType<typeof useLocation>; onCancel: () => void; cancelPending: boolean; completedWithoutCode: boolean }) {
   const navigate = useNavigate()
   const from = typeof location.pathname === 'string' && location.pathname.includes('/tasks/') ? location.state : undefined
   return (
@@ -66,7 +68,7 @@ function CompactTaskHeader({ task, projectId, location, onCancel, cancelPending 
           {task.requirementGroup ? <Button size="small" onClick={() => navigate(PATHS.projectReqChat(projectId, task.requirementGroup!.id))}>返回需求群</Button> : null}
           <Button size="small" type="primary" onClick={() => navigate(`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(task.id)}`)}>查看交付</Button>
           {task.capabilities.canCancel ? <Button size="small" danger loading={cancelPending} disabled={cancelPending} onClick={onCancel}>取消任务</Button> : null}
-          <TaskModelStatusTag status={task.status} />
+          <TaskModelStatusTag status={task.status} completedWithoutCode={completedWithoutCode} />
         </div>
       </div>
       <div className={styles.headerTitleBlock}>
@@ -153,8 +155,8 @@ function RequirementContextRow({ projectId, task }: { projectId: string; task: T
   )
 }
 
-function OutputDeliveryRow({ projectId, taskId, task, artifactsQuery, diffsQuery, diffReviewQuery, reviewEnabled, onRefresh }: { projectId: string; taskId: string; task: Task; artifactsQuery: ReturnType<typeof useTaskArtifacts>; diffsQuery: ReturnType<typeof useDiffs>; diffReviewQuery: ReturnType<typeof useTaskDiffReview>; reviewEnabled: boolean; onRefresh: () => void }) {
-  return <section className={styles.outputRow} id="output-delivery" data-testid="output-delivery-row"><RowHeading title="任务产出与交付" /><div className={styles.outputGrid}><ArtifactsCard projectId={projectId} taskId={taskId} query={artifactsQuery} /><DiffCard projectId={projectId} taskId={taskId} task={task} query={diffsQuery} /><DeliveryCard projectId={projectId} task={task} query={diffReviewQuery} enabled={reviewEnabled} onRefresh={onRefresh} /></div></section>
+function OutputDeliveryRow({ projectId, taskId, task, artifactsQuery, diffsQuery, diffReviewQuery, reviewEnabled, completedWithoutCode, onRefresh }: { projectId: string; taskId: string; task: Task; artifactsQuery: ReturnType<typeof useTaskArtifacts>; diffsQuery: ReturnType<typeof useDiffs>; diffReviewQuery: ReturnType<typeof useTaskDiffReview>; reviewEnabled: boolean; completedWithoutCode: boolean; onRefresh: () => void }) {
+  return <section className={styles.outputRow} id="output-delivery" data-testid="output-delivery-row"><RowHeading title="任务产出与交付" /><div className={styles.outputGrid}><ArtifactsCard projectId={projectId} taskId={taskId} query={artifactsQuery} /><DiffCard projectId={projectId} taskId={taskId} task={task} query={diffsQuery} completedWithoutCode={completedWithoutCode} /><DeliveryCard projectId={projectId} task={task} query={diffReviewQuery} enabled={reviewEnabled} completedWithoutCode={completedWithoutCode} onRefresh={onRefresh} /></div></section>
 }
 
 function ArtifactsCard({ projectId, taskId, query }: { projectId: string; taskId: string; query: ReturnType<typeof useTaskArtifacts> }) {
@@ -164,19 +166,20 @@ function ArtifactsCard({ projectId, taskId, query }: { projectId: string; taskId
   return <Card className={styles.outputCard} size="small" data-testid="artifacts-card"><div className={styles.cardHeading}>执行产物 <Text type="secondary">{artifacts.length} 个</Text></div>{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="执行产物" error={query.error} /> : latestByType.length === 0 ? <Text type="secondary" className={styles.compactEmpty}>暂无执行产物</Text> : <div className={styles.artifactSummaryGrid}>{latestByType.map(({ type, artifact }) => <div className={styles.artifactSummary} key={type}><div><Tag>{type}</Tag><Text strong>{artifact.title}</Text></div><Text type="secondary" ellipsis>{display(artifact.description)}</Text><div><Tag color={artifact.status === 'SUCCEEDED' ? 'green' : artifact.status === 'FAILED' ? 'red' : undefined}>{artifact.status ?? 'PENDING'}</Tag>{artifact.taskRunId ? <Button type="link" size="small" onClick={() => navigate(PATHS.projectTaskRunDetail(projectId, taskId, artifact.taskRunId!))}>查看运行</Button> : null}</div></div>)}</div>}</Card>
 }
 
-function DiffCard({ projectId, taskId, task, query }: { projectId: string; taskId: string; task: Task; query: ReturnType<typeof useDiffs> }) {
+function DiffCard({ projectId, taskId, task, query, completedWithoutCode }: { projectId: string; taskId: string; task: Task; query: ReturnType<typeof useDiffs>; completedWithoutCode: boolean }) {
   const navigate = useNavigate()
   const diffs = query.data?.data ?? []
   const repositories = new Map<string, { name: string; files: number; additions: number; deletions: number; ids: string[] }>()
   for (const diff of diffs) { const repository = task.repositories.find((item) => item.repositoryId === diff.repositoryId); const summary = repositories.get(diff.repositoryId) ?? { name: repository?.name ?? diff.repositoryId, files: 0, additions: 0, deletions: 0, ids: [] }; summary.files += diff.changeStats.files; summary.additions += diff.changeStats.additions; summary.deletions += diff.changeStats.deletions; summary.ids.push(diff.id); repositories.set(diff.repositoryId, summary) }
   const totals = [...repositories.values()].reduce((sum, repository) => ({ files: sum.files + repository.files, additions: sum.additions + repository.additions, deletions: sum.deletions + repository.deletions }), { files: 0, additions: 0, deletions: 0 })
-  return <Card className={styles.outputCard} size="small" data-testid="diff-card"><div className={styles.cardHeading}><CodeOutlined />代码变更 <Text type="secondary">{diffs.length} 个 Diff / {repositories.size} 个仓库</Text></div>{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="Diff" error={query.error} /> : diffs.length === 0 ? <Text type="secondary" className={styles.compactEmpty}>{isDiffReviewTask(task.status) ? '当前阶段尚未生成 Diff' : '暂无代码变更'}</Text> : <><Text type="secondary">files {totals.files} · +{totals.additions} / -{totals.deletions}</Text><div className={styles.diffSummaryList}>{[...repositories.entries()].map(([repositoryId, summary]) => <div key={repositoryId} className={styles.diffSummaryRow}><Text ellipsis>{summary.name}</Text><Text type="secondary">{summary.files} files · +{summary.additions} / -{summary.deletions}</Text>{summary.ids.map((diffId) => <Button key={diffId} type="link" size="small" onClick={() => navigate(PATHS.projectDiff(projectId, diffId), { state: { from: PATHS.projectTaskDetail(projectId, taskId) } })}>查看完整 Diff</Button>)}</div>)}</div></>}</Card>
+  return <Card className={styles.outputCard} size="small" data-testid="diff-card"><div className={styles.cardHeading}><CodeOutlined />代码变更 <Text type="secondary">{diffs.length} 个 Diff / {repositories.size} 个仓库</Text></div>{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="Diff" error={query.error} /> : diffs.length === 0 ? <Text type="secondary" className={styles.compactEmpty}>{completedWithoutCode ? '任务已完成，无代码变更' : isDiffReviewTask(task.status) ? '当前阶段尚未生成 Diff' : '暂无代码变更'}</Text> : <><Text type="secondary">files {totals.files} · +{totals.additions} / -{totals.deletions}</Text><div className={styles.diffSummaryList}>{[...repositories.entries()].map(([repositoryId, summary]) => <div key={repositoryId} className={styles.diffSummaryRow}><Text ellipsis>{summary.name}</Text><Text type="secondary">{summary.files} files · +{summary.additions} / -{summary.deletions}</Text>{summary.ids.map((diffId) => <Button key={diffId} type="link" size="small" onClick={() => navigate(PATHS.projectDiff(projectId, diffId), { state: { from: PATHS.projectTaskDetail(projectId, taskId) } })}>查看完整 Diff</Button>)}</div>)}</div></>}</Card>
 }
 
-function DeliveryCard({ projectId, task, query, enabled, onRefresh }: { projectId: string; task: Task; query: ReturnType<typeof useTaskDiffReview>; enabled: boolean; onRefresh: () => void }) {
+function DeliveryCard({ projectId, task, query, enabled, completedWithoutCode, onRefresh }: { projectId: string; task: Task; query: ReturnType<typeof useTaskDiffReview>; enabled: boolean; completedWithoutCode: boolean; onRefresh: () => void }) {
+  if (completedWithoutCode) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><Text type="secondary" className={styles.compactEmpty}>任务已完成，无代码变更，因此未生成 Diff 或 MR</Text></Card>
   if (!enabled) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><Text type="secondary" className={styles.compactEmpty}>当前任务尚未进入代码交付确认阶段</Text></Card>
   if (query.isLoading) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><InlineState loading /></Card>
-  if (query.isError) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div>{errorCode(query.error) === 'DIFF_REVIEW_NOT_FOUND' ? <Text type="secondary" className={styles.compactEmpty}>最终 Diff 尚未生成</Text> : <SectionError resource="DiffReview" error={query.error} />}</Card>
+  if (query.isError) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><SectionError resource="DiffReview" error={query.error} /></Card>
   if (!query.data || query.data.taskId !== task.id) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><Text type="secondary" className={styles.compactEmpty}>最终 Diff 尚未生成</Text></Card>
   return <DiffReviewPanel projectId={projectId} task={task} batch={query.data} onRefresh={onRefresh} />
 }

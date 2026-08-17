@@ -13,8 +13,9 @@ import {
   UserOutlined,
   SettingOutlined,
 } from '@ant-design/icons'
-import { groupApi, projectApi, tasksApi } from '@/api'
+import { githubApi, groupApi, projectApi, tasksApi } from '@/api'
 import { PATHS } from '@/routes/paths'
+import { queryKeys } from '@/query'
 import type { TaskStatus } from '@/types/task-model'
 import './OverviewPage.css'
 
@@ -47,6 +48,13 @@ export function OverviewPage() {
   const { data: members = [] } = useQuery({
     queryKey: ['projects', projectId, 'members'],
     queryFn: () => projectApi.listMembers(projectId),
+    enabled: !!projectId,
+  })
+
+  // 绑定仓库数：GET /projects/{id} 契约不含 repositoryCount（§6），以已绑定仓库列表实取为准
+  const { data: repositories = [] } = useQuery({
+    queryKey: queryKeys.projectRepositories(projectId),
+    queryFn: () => githubApi.listProjectRepositories(projectId),
     enabled: !!projectId,
   })
 
@@ -92,7 +100,7 @@ export function OverviewPage() {
       </header>
 
       <div className="ov__stats">
-        <StatCard icon={<DatabaseOutlined />} tone="teal" label="绑定仓库" value={project.repositoryCount ?? 0} />
+        <StatCard icon={<DatabaseOutlined />} tone="teal" label="绑定仓库" value={repositories.length} />
         <StatCard icon={<CommentOutlined />} tone="green" label="需求群" value={activeReqGroups} />
         <StatCard icon={<TeamOutlined />} tone="blue" label="项目成员" value={members.length} />
         <StatCard icon={<RocketOutlined />} tone="orange" label="进行中任务" value={runningTasks} />

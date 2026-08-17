@@ -1,6 +1,27 @@
-import type { DiffComment, DiffFile } from '@/types/task-model'
+import type { DiffComment, DiffFile, DiffHunk } from '@/types/task-model'
 
-/** 对齐 DiffFileResponse：id/sequence/path/changeType/additions/deletions/binary，无 hunk。 */
+/**
+ * 行级 hunk 示例（对齐后端 DiffFileResponse.hunks 原始形状：
+ * header 为 {oldStart,newStart,oldLines,newLines} 对象、行用 type/oldLineNo/newLineNo/content；
+ * 经 taskModelMap.mapDiffFile 二次映射为前端 DiffHunk {header:string, lines:[{kind,oldLine,newLine,text}]}）。
+ */
+const RAW_HUNKS_MODIFIED: Array<{
+  header: { oldStart: number; newStart: number; oldLines: number; newLines: number }
+  lines: Array<{ type: 'CONTEXT' | 'ADD' | 'DELETE'; oldLineNo: number | null; newLineNo: number | null; content: string }>
+}> = [
+  {
+    header: { oldStart: 10, newStart: 10, oldLines: 4, newLines: 6 },
+    lines: [
+      { type: 'CONTEXT', oldLineNo: 10, newLineNo: 10, content: 'public class AuthController {' },
+      { type: 'DELETE', oldLineNo: 11, newLineNo: null, content: '  String password = plainText(raw);' },
+      { type: 'ADD', oldLineNo: null, newLineNo: 11, content: '  String password = bcrypt.hash(raw);' },
+      { type: 'ADD', oldLineNo: null, newLineNo: 12, content: '  logger.info("login attempt");' },
+      { type: 'CONTEXT', oldLineNo: 12, newLineNo: 13, content: '}' },
+    ],
+  },
+]
+
+/** 对齐 DiffFileResponse：id/sequence/path/changeType/additions/deletions/binary + hunks。 */
 export function defaultMockDiffFiles(): DiffFile[] {
   return [
     {
@@ -12,7 +33,7 @@ export function defaultMockDiffFiles(): DiffFile[] {
       additions: 1,
       deletions: 1,
       binary: false,
-      hunks: [],
+      hunks: RAW_HUNKS_MODIFIED as unknown as DiffHunk[],
     },
   ]
 }
@@ -28,7 +49,7 @@ export function loginApiDiffFiles(): DiffFile[] {
       additions: 8,
       deletions: 2,
       binary: false,
-      hunks: [],
+      hunks: RAW_HUNKS_MODIFIED as unknown as DiffHunk[],
     },
     {
       id: 'file-jwt-middleware',

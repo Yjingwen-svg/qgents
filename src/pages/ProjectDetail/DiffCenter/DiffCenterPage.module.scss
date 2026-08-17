@@ -164,6 +164,78 @@
 .empty { margin: 50px 0; }
 .detailContent { width: 100%; }
 .mutationError { margin-top: 12px; }
+
+/* 文件变更：文件列表 + 行级红绿 hunks */
+.fileList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.fileChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid #dbe4f0;
+  border-radius: 999px;
+  background: #f7f9fc;
+  color: #294574;
+  font-size: 12px;
+  cursor: pointer;
+}
+.fileChip:hover { border-color: #347eff; }
+.fileChipActive { border-color: #347eff; background: rgba(52, 126, 255, 0.08); }
+.fileStatus {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: #e8eef7;
+  color: #687da3;
+  font-weight: 700;
+  font-size: 11px;
+}
+.filePath { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fileStats { color: #687da3; font-size: 11px; white-space: nowrap; }
+
+.hunkHead {
+  margin: 4px 0 6px;
+  padding: 2px 10px;
+  border-radius: 4px;
+  background: #f0f4fa;
+  color: #5a6f92;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.lineRow {
+  display: grid;
+  grid-template-columns: 44px 44px 22px minmax(0, 1fr);
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.lineRow:hover { background: rgba(52, 126, 255, 0.05); }
+.lineAdd { background: rgba(22, 163, 74, 0.1); }
+.lineDel { background: rgba(220, 38, 38, 0.1); }
+.gutter {
+  padding-right: 8px;
+  text-align: right;
+  color: #9db0cc;
+  user-select: none;
+}
+.sign { color: #9db0cc; user-select: none; }
+.code {
+  min-width: 0;
+  padding-left: 10px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: #1f2d49;
+}
+.binary { padding: 10px; color: #687da3; font-size: 13px; }
 @media (max-width: 1100px) {
   .page {
     display: block;

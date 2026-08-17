@@ -729,6 +729,49 @@ function createRepoBindingHandlers() {
       boundAt: '2026-08-11T09:00:00Z',
     },
   ])
+  bindings.set('proj-002', [
+    {
+      id: 'bound-proj-002-pet-app',
+      repositoryId: 'repo-3',
+      installationId: 'gh-install-1002',
+      providerRepositoryId: 987654323,
+      fullName: 'qgents-lab/pet-app',
+      githubUrl: 'https://github.com/qgents-lab/pet-app',
+      displayName: '宠影记',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T09:00:00Z',
+      boundAt: '2026-08-12T08:00:00Z',
+    },
+  ])
+  bindings.set('proj-003', [
+    {
+      id: 'bound-proj-003-decision',
+      repositoryId: 'repo-1',
+      installationId: 'gh-install-1001',
+      providerRepositoryId: 987654321,
+      fullName: 'Yjingwen-svg/qgents-web',
+      githubUrl: 'https://github.com/Yjingwen-svg/qgents-web',
+      displayName: 'decision-web',
+      defaultBranch: 'main',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T10:00:00Z',
+      boundAt: '2026-08-09T10:00:00Z',
+    },
+    {
+      id: 'bound-proj-003-server',
+      repositoryId: 'repo-2',
+      installationId: 'gh-install-1001',
+      providerRepositoryId: 987654322,
+      fullName: 'Yjingwen-svg/qgents-server',
+      githubUrl: 'https://github.com/Yjingwen-svg/qgents-server',
+      displayName: 'decision-api',
+      defaultBranch: 'develop',
+      authorizationStatus: 'AUTHORIZED',
+      metadataSyncedAt: '2026-08-13T10:00:00Z',
+      boundAt: '2026-08-09T10:30:00Z',
+    },
+  ])
 
   return [
     http.get('/api/projects/:projectId/repositories', ({ params }) => {

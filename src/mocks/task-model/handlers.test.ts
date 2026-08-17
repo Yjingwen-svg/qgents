@@ -408,4 +408,21 @@ describe('independent Task model mock chain', () => {
       reason: 'first look',
     })
   })
+
+  it('lists provisional MR commits with totalCount and limit', async () => {
+    const listed = await mergeRequestsApi.list('demo-project')
+    const pending = listed.data.find((item) => item.qualityGate?.status === 'PENDING')
+    expect(pending).toBeDefined()
+    const preview = await mergeRequestsApi.commits('demo-project', pending!.id, 2)
+    expect(preview.totalCount).toBe(3)
+    expect(preview.items).toHaveLength(2)
+    expect(preview.items[0]).toMatchObject({
+      sha: expect.stringMatching(/^a81f3c2/),
+      message: 'feat(login): 实现登录接口与 JWT 鉴权',
+      authorName: '陈同学',
+    })
+    const all = await mergeRequestsApi.commits('demo-project', pending!.id, 100)
+    expect(all.items).toHaveLength(3)
+    expect(all.items.map((item) => item.authorName)).toEqual(['陈同学', '李同学', '张同学'])
+  })
 })

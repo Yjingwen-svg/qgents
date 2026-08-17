@@ -6,6 +6,7 @@ import {
   mapMergeRequest,
   mapMergeRequestChecks,
   mapMergeRequestCqReviews,
+  mapMergeRequestCommitList,
   mapMergeRequestPage,
 } from './taskModelMap'
 import type {
@@ -249,6 +250,13 @@ export const mergeRequestsApi = {
     return requestModelData<unknown>(
       `/projects/${projectId}/merge-requests/${mergeRequestId}/reviews`,
     ).then(mapMergeRequestCqReviews)
+  },
+
+  /** 暂定路径：官方契约尚未冻结 MR commits */
+  commits(projectId: string, mergeRequestId: string, limit = 3) {
+    return requestModelData<unknown>(
+      withModelQuery(`/projects/${projectId}/merge-requests/${mergeRequestId}/commits`, { limit }),
+    ).then(mapMergeRequestCommitList)
   },
 
   create(projectId: string, input: MergeRequestCreateInput) {

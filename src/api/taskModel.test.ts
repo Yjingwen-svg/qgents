@@ -191,4 +191,13 @@ describe('new task model API', () => {
       expect.objectContaining({ body: undefined }),
     )
   })
+
+  it('loads MR commits through the provisional path with limit', async () => {
+    const fetchMock = vi.mocked(fetch)
+    await mergeRequestsApi.commits('project-1', 'mr-1', 3)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/project-1/merge-requests/mr-1/commits?limit=3',
+      expect.objectContaining({ body: undefined }),
+    )
+  })
 })

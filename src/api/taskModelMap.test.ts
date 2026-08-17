@@ -4,6 +4,7 @@ import {
   mapDiffFile,
   mapMergeRequest,
   mapMergeRequestChecks,
+  mapMergeRequestCommitList,
   mapMergeRequestCqReviews,
 } from './taskModelMap'
 
@@ -147,5 +148,45 @@ describe('task model Diff / MR mapping', () => {
         commitSha: null,
       },
     ])
+  })
+
+  it('maps MR commit list with totalCount and author aliases', () => {
+    expect(
+      mapMergeRequestCommitList({
+        totalCount: 2,
+        items: [
+          {
+            sha: 'a81f3c2',
+            message: 'feat(login): 实现登录接口与 JWT 鉴权',
+            author: { id: 'u1', displayName: '陈同学' },
+            committedAt: '2026-08-17T10:00:00Z',
+          },
+          {
+            commitSha: 'b47d9e1',
+            title: 'refactor: 优化校验逻辑与异常处理',
+            authorName: '李同学',
+            authoredAt: '2026-08-17T08:00:00Z',
+          },
+        ],
+      }),
+    ).toEqual({
+      totalCount: 2,
+      items: [
+        {
+          sha: 'a81f3c2',
+          message: 'feat(login): 实现登录接口与 JWT 鉴权',
+          authorName: '陈同学',
+          authorUserId: 'u1',
+          committedAt: '2026-08-17T10:00:00Z',
+        },
+        {
+          sha: 'b47d9e1',
+          message: 'refactor: 优化校验逻辑与异常处理',
+          authorName: '李同学',
+          authorUserId: null,
+          committedAt: '2026-08-17T08:00:00Z',
+        },
+      ],
+    })
   })
 })

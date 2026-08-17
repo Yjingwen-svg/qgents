@@ -40,6 +40,7 @@ import type {
   MergeRequestCreateInput,
   MergeRequestCqInput,
   MergeRequestCqReview,
+  MergeRequestCommitList,
   MergeRequestListFilters,
   MergeRequestSummary,
 } from '@/types/task-model'
@@ -370,6 +371,19 @@ export function useMergeRequestReviews(
   return useQuery({
     queryKey: taskModelQueryKeys.mergeRequests.reviews(projectId, mergeRequestId),
     queryFn: () => mergeRequestsApi.reviews(projectId, mergeRequestId),
+    enabled: Boolean(projectId && mergeRequestId && enabled),
+  })
+}
+
+export function useMergeRequestCommits(
+  projectId: string,
+  mergeRequestId: string,
+  limit = 3,
+  enabled = true,
+): UseQueryResult<MergeRequestCommitList> {
+  return useQuery({
+    queryKey: taskModelQueryKeys.mergeRequests.commits(projectId, mergeRequestId, limit),
+    queryFn: () => mergeRequestsApi.commits(projectId, mergeRequestId, limit),
     enabled: Boolean(projectId && mergeRequestId && enabled),
   })
 }

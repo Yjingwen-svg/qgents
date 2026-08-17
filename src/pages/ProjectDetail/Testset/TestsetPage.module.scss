@@ -180,22 +180,44 @@
 }
 
 .historyItem {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 4px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 10px 8px 10px 12px;
   border: 1px solid #e4eaf2;
   border-radius: 8px;
   background: #f7f9fc;
+}
+
+.historyItem:hover {
+  border-color: #0d9b9b;
+}
+
+.historyHit {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 
-.historyItem:hover {
-  border-color: #0d9b9b;
+.historyDelete {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #94a3b8;
+}
+
+.historyDelete:hover {
+  color: #dc2626 !important;
 }
 
 .historyHeading {

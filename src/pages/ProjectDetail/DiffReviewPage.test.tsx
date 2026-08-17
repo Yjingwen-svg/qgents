@@ -458,4 +458,12 @@ describe('DiffReviewPage', () => {
     renderPage()
     await waitFor(() => expect(useDiffMock).toHaveBeenCalledWith('project-1', 'diff-2'))
   })
+
+  it('renders an empty shell for zero-change branch entry without calling live Diff APIs', async () => {
+    renderPage('/app/projects/project-1/code/diff/empty-branch%3Abr-auth-main')
+    expect(await screen.findByText('没有文件')).toBeInTheDocument()
+    expect(screen.getByText('该分支当前没有可查看的代码变更')).toBeInTheDocument()
+    expect(useDiffMock).toHaveBeenCalledWith('project-1', '')
+    expect(useDiffFilesMock).toHaveBeenCalledWith('project-1', '', { limit: 100 })
+  })
 })

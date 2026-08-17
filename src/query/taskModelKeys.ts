@@ -52,5 +52,7 @@ export const taskModelQueryKeys = {
       ['qgents', 'projects', projectId, 'merge-requests', mergeRequestId, 'checks'] as const,
     reviews: (projectId: string, mergeRequestId: string) =>
       ['qgents', 'projects', projectId, 'merge-requests', mergeRequestId, 'reviews'] as const,
+    commits: (projectId: string, mergeRequestId: string, limit = 3) =>
+      ['qgents', 'projects', projectId, 'merge-requests', mergeRequestId, 'commits', limit] as const,
   },
 } as const

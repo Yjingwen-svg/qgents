@@ -9,6 +9,8 @@ import type {
   MergeRequestCheckName,
   MergeRequestCqDecision,
   MergeRequestCqReview,
+  MergeRequestCommit,
+  MergeRequestCommitList,
   MergeRequestStatus,
   MergeRequestSummary,
   TaskModelPage,
@@ -235,6 +237,50 @@ export function mapMergeRequestCqReviews(raw: unknown): MergeRequestCqReview[] {
     const mapped = mapMergeRequestCqReview(item)
     return mapped ? [mapped] : []
   })
+}
+
+export function mapMergeRequestCommit(raw: unknown): MergeRequestCommit | null {
+  const row = isRecord(raw) ? raw : {}
+  const sha = readOptionalString(row, 'sha', 'commitSha', 'id')
+  const message = readOptionalString(row, 'message', 'title', 'subject')
+  const committedAt = readOptionalString(row, 'committedAt', 'authoredAt', 'createdAt')
+  if (!sha || !message || !committedAt) return null
+  const author = isRecord(row.author) ? row.author : isRecord(row.committer) ? row.committer : null
+  const authorName =
+    readOptionalString(row, 'authorName', 'authorDisplayName')
+    ?? (author && typeof author.displayName === 'string' ? author.displayName : null)
+    ?? (author && typeof author.name === 'string' ? author.name : null)
+    ?? '未知作者'
+  const authorUserId =
+    readOptionalString(row, 'authorUserId')
+    ?? (author && typeof author.id === 'string' ? author.id : null)
+  return {
+    sha,
+    message,
+    authorName,
+    authorUserId,
+    committedAt,
+  }
+}
+
+export function mapMergeRequestCommitList(raw: unknown): MergeRequestCommitList {
+  const root = isRecord(raw) ? raw : null
+  const list = Array.isArray(raw)
+    ? raw
+    : root && Array.isArray(root.items)
+      ? root.items
+      : root && Array.isArray(root.commits)
+        ? root.commits
+        : []
+  const items = list.flatMap((item) => {
+    const mapped = mapMergeRequestCommit(item)
+    return mapped ? [mapped] : []
+  })
+  const totalCount =
+    root && typeof root.totalCount === 'number' && Number.isFinite(root.totalCount)
+      ? root.totalCount
+      : items.length
+  return { totalCount, items }
 }
 
 function mapMrStatus(value: unknown): MergeRequestStatus {

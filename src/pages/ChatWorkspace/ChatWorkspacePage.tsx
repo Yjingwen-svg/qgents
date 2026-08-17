@@ -5,6 +5,7 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { teamApi, projectApi, groupApi } from '@/api'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { hasUnread, useUnreadStore } from '@/store/unreadStore'
+import { latestMessageText } from '@/utils/messageSummary'
 import type { Group } from '@/types'
 
 const { Text } = Typography
@@ -171,7 +172,7 @@ export default function ChatWorkspacePage() {
                     description={
                       <Text type="secondary" ellipsis style={{ fontSize: 12 }}>
                         {s.latestMessage
-                          ? `${s.latestMessage.senderName ? `${s.latestMessage.senderName}: ` : ''}${s.latestMessage.text}`
+                          ? `${s.latestMessage.senderName ? `${s.latestMessage.senderName}: ` : ''}${latestMessageText(s.latestMessage)}`
                           : s.groupTitle}
                       </Text>
                     }

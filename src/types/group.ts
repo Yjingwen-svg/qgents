@@ -25,6 +25,8 @@ export interface Page<T> {
 export interface MessageSummary {
   senderName?: string
   text: string
+  /** 最新消息类型（§7：TEXT/CODE/IMAGE/FILE/SYSTEM/QUOTE/DIFF/TASK_STATUS），用于无文本类型的摘要占位 */
+  type?: MessageContentType
 }
 
 export interface Group {
@@ -144,6 +146,15 @@ export interface MessageTaskSummary {
 export interface SendMessageResult {
   message: Message
   task: MessageTaskSummary | null
+}
+
+/** 显式触发任务请求体（§7 从消息触发任务）—— 续作引用时不得传 repositoryIds */
+export interface TaskTriggerRequest {
+  title: string
+  requirement?: string
+  repositoryIds?: string[]
+  baseRef?: string
+  deliveryMode?: 'DIFF_FIRST' | 'MR_FIRST'
 }
 
 export interface CreateGroupPayload {

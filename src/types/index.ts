@@ -67,6 +67,7 @@ export type {
   SendMessagePayload,
   SendMessageResult,
   MessageTaskSummary,
+  TaskTriggerRequest,
   CreateGroupPayload,
   Mention,
   MentionType,

@@ -6,16 +6,8 @@ import type {
   SendMessageResult,
   SendMessagePayload,
   CreateGroupPayload,
+  TaskTriggerRequest,
 } from '@/types'
-import type { TaskDeliveryMode } from '@/types/task-model'
-
-export interface TriggerTaskInput {
-  title: string
-  requirement: string
-  repositoryIds: string[]
-  baseRef: string
-  deliveryMode?: TaskDeliveryMode
-}
 
 /** 群聊 API —— 对齐接口文档 v1.1.8 §7 */
 export const groupApi = {
@@ -54,7 +46,8 @@ export const groupApi = {
       return { message: response, task: null }
     })
   },
-  async triggerTask(projectId: string, groupId: string, messageId: string, input: TriggerTaskInput): Promise<void> {
+  /** 显式触发任务（§7；续作引用时不得传 repositoryIds，否则 409 WORKSPACE_CONTINUATION_REPOSITORIES_FORBIDDEN） */
+  async triggerTask(projectId: string, groupId: string, messageId: string, input: TaskTriggerRequest): Promise<void> {
     await request<unknown>(
       `/projects/${projectId}/groups/${groupId}/messages/${messageId}/trigger-task`,
       { method: 'POST', body: input },

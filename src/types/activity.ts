@@ -40,5 +40,10 @@ export interface Activity {
   target: ActivityTarget
   /** 本期恒为 null，前端按 target.type + id 用 PATHS 拼前端路由 */
   link?: string | null
+  /**
+   * 所属项目 id。§19.4 当前响应未下发（TASK/DIFF/MR 目标无法拼项目路由）；
+   * 后端补齐后前端即可跳转，缺省时仅 PROJECT 目标可跳。
+   */
+  projectId?: string | null
   createdAt: string
 }

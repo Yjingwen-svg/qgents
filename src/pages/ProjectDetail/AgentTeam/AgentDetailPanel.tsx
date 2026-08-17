@@ -12,7 +12,7 @@ const tabs: Array<{ key: AgentDetailTab; label: string }> = [
   { key: 'overview', label: '概览' },
   { key: 'assignments', label: '分配详情' },
   { key: 'config', label: '配置' },
-  { key: 'capabilities', label: '能力与工具' },
+  { key: 'capabilities', label: '项目资源' },
   { key: 'runs', label: '运行记录' },
 ]
 
@@ -56,7 +56,7 @@ export function AgentDetailPanel({ projectId, agent, detail, onEdit, canEdit, on
       {activeTab === 'overview' ? <Overview agent={current} runtime={runtimeQuery} task={task} /> : null}
       {activeTab === 'assignments' ? <Assignments groups={assignmentsGroups} workflows={assignmentsWorkflows} /> : null}
       {activeTab === 'config' ? <Config agent={current} /> : null}
-      {activeTab === 'capabilities' ? <Capabilities agent={current} skills={skills} /> : null}
+      {activeTab === 'capabilities' ? <ProjectResources skills={skills} /> : null}
       {activeTab === 'runs' ? <Runs projectId={projectId} query={runs} navigate={navigate} /> : null}
     </div>
   </aside>
@@ -97,10 +97,8 @@ function Config({ agent }: { agent: AgentDetail | AgentSummary }) {
   return <section className={styles.card}><Title level={5}>现有配置</Title><dl className={styles.definition}><dt>可见性</dt><dd>{agent.visibility}</dd><dt>生命周期</dt><dd>{agent.status}</dd><dt>Prompt</dt><dd>{'prompt' in agent && agent.prompt ? agent.prompt : '未提供或无权限查看'}</dd></dl><Text type="secondary">当前保留自定义 Agent 入口与原有配置内容，本轮不新增保存字段。</Text></section>
 }
 
-function Capabilities({ agent, skills }: { agent: AgentDetail | AgentSummary; skills: ReturnType<typeof useAgentSkillBindings> }) {
-  const tools = 'tools' in agent ? agent.tools ?? [] : []
-  const memory = 'memoryAccess' in agent ? agent.memoryAccess ?? [] : []
-  return <div><section className={styles.card}><Title level={5}>Agent capabilities</Title>{agent.capabilities.length ? <div className={styles.tags}>{agent.capabilities.map((item) => <Tag key={item}>{item}</Tag>)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无能力数据" />}</section><section className={styles.card}><Title level={5}>已绑定 Skill</Title>{skills.isLoading ? <Spin size="small" /> : skills.isError ? <Alert type="error" showIcon message="Skill 数据加载失败" /> : skills.data?.skills.length ? <div className={styles.tags}>{skills.data.skills.map((skill) => <Tag key={skill.id}>{skill.name}</Tag>)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 Skill" />}</section><section className={styles.card}><Title level={5}>可用 Memory 范围</Title>{memory.length ? <ul className={styles.list}>{memory.map((item) => <li key={item}>{item}</li>)}</ul> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 Memory 范围数据" />}</section><section className={styles.card}><Title level={5}>工具摘要</Title>{tools.length ? <ul className={styles.list}>{tools.map((item) => <li key={item}>{item}</li>)}</ul> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无正式工具信息" />}</section><Text type="secondary">TEAM_OWNER 可编辑共享 Skill/Memory；TEAM_MEMBER 仅使用。</Text></div>
+function ProjectResources({ skills }: { skills: ReturnType<typeof useAgentSkillBindings> }) {
+  return <div><section className={styles.card}><Title level={5}>已绑定 Skill</Title>{skills.isLoading ? <Spin size="small" /> : skills.isError ? <Alert type="error" showIcon message="Skill 数据加载失败" /> : skills.data?.skills.length ? <div className={styles.tags}>{skills.data.skills.map((skill) => <Tag key={skill.id}>{skill.name}</Tag>)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无已绑定 Skill" />}</section><Text type="secondary">Skill 绑定按项目隔离；Memory 访问范围由运行时摘要返回。</Text></div>
 }
 
 function Runs({ projectId, query, navigate }: { projectId: string; query: ReturnType<typeof useAgentTaskRuns>; navigate: ReturnType<typeof useNavigate> }) {

@@ -8,9 +8,10 @@ const hooks = vi.hoisted(() => ({ useAgents: vi.fn(), useAgent: vi.fn(), useAgen
 const projectGet = vi.hoisted(() => vi.fn())
 vi.mock('@/hooks', () => hooks)
 vi.mock('@/api', () => ({ projectApi: { getById: projectGet } }))
+vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: { id: 'user-001' } }) }))
 import AgentTeamPage from './AgentTeamPage'
 
-const agent: AgentDetail = { id: 'agent-one', name: 'Agent One', avatar: null, role: 'DEVELOPER', capabilities: ['TypeScript'], visibility: 'PRIVATE', status: 'ACTIVE', createdBy: 'user-001', description: '负责接口实现', prompt: 'private prompt', tools: ['测试运行'], memoryAccess: ['当前项目共享 Memory'] }
+const agent: AgentDetail = { id: 'agent-one', name: 'Agent One', avatar: null, role: 'DEVELOPER', visibility: 'PRIVATE', status: 'ACTIVE', createdBy: 'user-001', description: '负责接口实现', prompt: 'private prompt', tools: ['测试运行'], memoryAccess: ['当前项目共享 Memory'] }
 const mutation = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false, error: null }
 const assignment: AgentAssignmentSummary = { type: 'REQUIREMENT_GROUP', resourceId: 'group-one', resourceName: '登录功能', status: 'ACTIVE' }
 const run: AgentTaskRunSummary = { id: 'run-one', projectId: 'project-one', taskId: 'task-one', taskStepId: 'step-one', agentId: agent.id, role: 'DEVELOPER', status: 'FAILED', retryOfTaskRunId: null, createdAt: '2026-08-14T08:00:00Z', updatedAt: '2026-08-14T08:03:00Z', taskDisplayCode: 'TASK-1', taskTitle: '实现登录', taskStepTitle: '实现接口', taskStepRole: 'DEVELOPER', requirementGroup: { id: 'group-one', name: '登录功能', status: 'ACTIVE' }, repository: { repositoryId: 'repo-one', name: 'qgents-web', fullName: 'qgents/qgents-web', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'main', baseCommit: 'base', sourceBranch: 'feat/login', headCommit: null } }
@@ -52,7 +53,7 @@ describe('AgentTeamPage', () => {
     expect(screen.getByText('TASK-1')).toBeInTheDocument()
   })
 
-  it('keeps assignment errors independent and shows capability empty states', async () => {
+  it('keeps assignment errors independent and shows project resource empty states', async () => {
     hooks.useAgentAssignments.mockImplementation((_projectId: string, _agentId: string, filters: { type?: string }) => filters.type === 'REQUIREMENT_GROUP'
       ? { data: undefined, isError: true, isLoading: false }
       : { data: { data: [], page: { nextCursor: null, hasMore: false } }, isError: false, isLoading: false })
@@ -62,10 +63,8 @@ describe('AgentTeamPage', () => {
     await waitFor(() => expect(screen.getAllByText('Agent One').length).toBeGreaterThan(0))
     fireEvent.click(screen.getByRole('button', { name: '分配详情' }))
     expect(screen.getByText('分配详情加载失败')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '能力与工具' }))
-    expect(screen.getByText('暂无 Skill')).toBeInTheDocument()
-    expect(screen.getByText('暂无 Memory 范围数据')).toBeInTheDocument()
-    expect(screen.getByText('暂无正式工具信息')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '项目资源' }))
+    expect(screen.getByText('暂无已绑定 Skill')).toBeInTheDocument()
   })
 
   it('shows empty and error states without treating them as the same', async () => {
@@ -93,5 +92,15 @@ describe('AgentTeamPage', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '添加 Agent' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: '配置' }))
     expect(screen.getByText(/不新增保存字段/)).toBeInTheDocument()
+  })
+
+  it('does not show creator-only actions for a team Agent created by someone else', async () => {
+    const shared = { ...agent, id: 'agent-shared', createdBy: 'user-other', visibility: 'TEAM' as const, prompt: undefined }
+    hooks.useAgents.mockReturnValue({ data: { data: [shared] }, isLoading: false, isError: false, refetch: vi.fn() })
+    hooks.useAgent.mockReturnValue({ data: shared, isLoading: false, isError: false, refetch: vi.fn() })
+    renderPage('/app/projects/project-one/agents?agentId=agent-shared')
+    await waitFor(() => expect(screen.getAllByText('Agent One').length).toBeGreaterThan(0))
+    expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '发布为 TEAM' })).not.toBeInTheDocument()
   })
 })

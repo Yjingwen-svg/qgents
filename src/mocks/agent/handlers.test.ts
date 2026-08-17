@@ -11,15 +11,23 @@ beforeEach(() => resetAgentStores())
 const json = async <T,>(response: Response): Promise<T> => response.json() as Promise<T>
 
 describe('Agent team MSW API', () => {
-  it('returns only the current user DTOs without Prompt', async () => {
+  it('returns system, team and current-user private Agent cards without Prompt', async () => {
     const result = await json<{ data: Array<Record<string, unknown>>; page: { nextCursor: string | null; hasMore: boolean }; requestId: string }>(await fetch(`${baseUrl}/teams/team-a/agents`))
-    expect(result.data[0]).toMatchObject({ id: 'agent-private-backend', createdBy: 'user-001', visibility: 'PRIVATE', status: 'ACTIVE' })
+    expect(result.data.map((agent) => agent.id)).toContain('agent-system-planner')
+    expect(result.data.map((agent) => agent.id)).toContain('agent-team-tester')
+    expect(result.data.map((agent) => agent.id)).toContain('agent-private-backend')
+    expect(result.data.map((agent) => agent.id)).not.toContain('agent-other-user')
     expect(result.data[0]).not.toHaveProperty('runtime')
     expect(result.data[0]).not.toHaveProperty('skillAccessScope')
-    expect(result.data.every((agent) => agent.createdBy === 'user-001')).toBe(true)
     expect(result.data.every((agent) => agent.prompt === undefined && agent.availability === undefined && agent.permissions === undefined)).toBe(true)
     expect(result.page).toEqual({ nextCursor: null, hasMore: false })
     expect(result.requestId).toBeTruthy()
+  })
+  it('returns Prompt only to the Agent creator on the detail endpoint', async () => {
+    const own = await json<{ data: Record<string, unknown> }>(await fetch(`${baseUrl}/teams/team-a/agents/agent-private-backend?projectId=demo-project`))
+    const shared = await json<{ data: Record<string, unknown> }>(await fetch(`${baseUrl}/teams/team-a/agents/agent-team-tester?projectId=demo-project`))
+    expect(own.data.prompt).toBeTruthy()
+    expect(shared.data.prompt).toBeUndefined()
   })
   it('handles every supplied teamId without relying on a fixed fixture ID', async () => {
     const [first, second] = await Promise.all([
@@ -30,7 +38,7 @@ describe('Agent team MSW API', () => {
     expect(second.status).toBe(200)
   })
   it('creates, publishes, unpublishes and archives using formal status and visibility', async () => {
-    const created = await json<{ data: { id: string; visibility: string; status: string } }>(await fetch(`${baseUrl}/teams/team-a/agents`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'New', role: 'DEVELOPER', capabilities: ['API'], prompt: 'private' }) }))
+    const created = await json<{ data: { id: string; visibility: string; status: string } }>(await fetch(`${baseUrl}/teams/team-a/agents`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'New', role: 'DEVELOPER', description: '负责 API 开发', prompt: 'private' }) }))
     expect(created.data).toMatchObject({ visibility: 'PRIVATE', status: 'ACTIVE' })
     const published = await json<{ data: { visibility: string } }>(await fetch(`${baseUrl}/teams/team-a/agents/${created.data.id}/publish`, { method: 'POST' })); expect(published.data.visibility).toBe('TEAM')
     const unpublished = await json<{ data: { visibility: string } }>(await fetch(`${baseUrl}/teams/team-a/agents/${created.data.id}/unpublish`, { method: 'POST' })); expect(unpublished.data.visibility).toBe('PRIVATE')

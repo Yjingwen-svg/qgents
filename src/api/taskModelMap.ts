@@ -44,7 +44,9 @@ function mapChangeType(value: unknown): DiffFileStatus {
 }
 
 function mapLineKind(value: unknown): DiffLineKind {
+  // 后端枚举 CONTEXT/ADD/DELETE → 前端 CONTEXT/ADD/DEL；兼容旧 DEL
   if (value === 'ADD' || value === 'DEL' || value === 'CONTEXT') return value
+  if (value === 'DELETE') return 'DEL'
   return 'CONTEXT'
 }
 
@@ -54,13 +56,23 @@ function mapLines(raw: unknown): DiffLine[] {
     if (!isRecord(item)) return []
     return [
       {
-        kind: mapLineKind(item.kind),
-        oldLine: typeof item.oldLine === 'number' ? item.oldLine : null,
-        newLine: typeof item.newLine === 'number' ? item.newLine : null,
-        text: readString(item, 'text'),
+        // 后端新结构 type/oldLineNo/newLineNo/content；兼容旧 kind/oldLine/newLine/text
+        kind: mapLineKind(item.type ?? item.kind),
+        oldLine: typeof item.oldLineNo === 'number' ? item.oldLineNo : (typeof item.oldLine === 'number' ? item.oldLine : null),
+        newLine: typeof item.newLineNo === 'number' ? item.newLineNo : (typeof item.newLine === 'number' ? item.newLine : null),
+        text: typeof item.content === 'string' ? item.content : (typeof item.text === 'string' ? item.text : ''),
       },
     ]
   })
+}
+
+/** 后端 hunk header 对象 {oldStart,newStart,oldLines,newLines} → 展示用 '@@ -a,b +c,d @@' 头字符串 */
+function formatHunkHeader(header: Record<string, unknown>): string {
+  const oldStart = typeof header.oldStart === 'number' ? header.oldStart : 0
+  const newStart = typeof header.newStart === 'number' ? header.newStart : 0
+  const oldLines = typeof header.oldLines === 'number' ? header.oldLines : 1
+  const newLines = typeof header.newLines === 'number' ? header.newLines : 1
+  return `@@ -${oldStart},${oldLines} +${newStart},${newLines} @@`
 }
 
 function mapHunks(raw: unknown): DiffHunk[] {
@@ -70,7 +82,8 @@ function mapHunks(raw: unknown): DiffHunk[] {
     return [
       {
         id: readString(item, 'id') || `hunk-${index + 1}`,
-        header: readString(item, 'header'),
+        // 后端新结构 header 为 {oldStart,newStart,oldLines,newLines} 对象；兼容旧字符串 header
+        header: isRecord(item.header) ? formatHunkHeader(item.header) : readString(item, 'header'),
         lines: mapLines(item.lines),
       },
     ]

@@ -101,7 +101,7 @@ function CompactTaskHeader({ task, projectId, location, onCancel, cancelPending,
         <HeaderMeta label="创建者" value={task.createdByUser?.displayName} />
         <HeaderMeta label="创建时间" value={formatDate(task.createdAt)} />
         <HeaderMeta label="更新时间" value={formatDate(task.updatedAt)} />
-        <HeaderMeta label="仓库" value={`${task.repositories.length} 个`} />
+        <HeaderMeta label="仓库" value={`${task.repositories.length || task.repositoryIds.length} 个`} />
       </div>
     </header>
   )
@@ -125,7 +125,6 @@ function ExecutionFlowRow({ projectId, taskId, task, query, steps }: { projectId
     <section className={styles.executionFlowRow} id="execution-flow" data-testid="execution-flow-row">
       <RowHeading title="执行流程" meta={ordered.length > 0 ? `${ordered.length} 个步骤` : task.status === 'PLANNING' ? '规划中' : undefined} />
       {query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="TaskStep" error={query.error} /> : ordered.length === 0 ? <InlineState text={task.status === 'PLANNING' ? '规划 Agent 正在生成执行方案' : '暂无执行步骤'} /> : <div className={styles.flowScroller}><div className={styles.flowGrid}>{ordered.map((step) => <StepCard key={step.id} step={step} onRun={(runId) => navigate(PATHS.projectTaskRunDetail(projectId, taskId, runId))} />)}</div></div>}
-      {task.workspace && task.workspace.status !== 'READY' ? <Text type="danger" className={styles.workspaceNotice}>执行环境状态：{task.workspace.status}</Text> : null}
     </section>
   )
 }
@@ -186,7 +185,7 @@ function DiffCard({ projectId, taskId, task, query, completedWithoutCode }: { pr
   const navigate = useNavigate()
   const diffs = query.data?.data ?? []
   const repositories = new Map<string, { name: string; files: number; additions: number; deletions: number; ids: string[] }>()
-  for (const diff of diffs) { const repository = task.repositories.find((item) => item.repositoryId === diff.repositoryId); const summary = repositories.get(diff.repositoryId) ?? { name: repository?.name ?? diff.repositoryId, files: 0, additions: 0, deletions: 0, ids: [] }; summary.files += diff.changeStats.files; summary.additions += diff.changeStats.additions; summary.deletions += diff.changeStats.deletions; summary.ids.push(diff.id); repositories.set(diff.repositoryId, summary) }
+  for (const diff of diffs) { const repository = task.repositories.find((item) => item.repositoryId === diff.repositoryId); const summary = repositories.get(diff.repositoryId) ?? { name: repository?.name ?? task.title, files: 0, additions: 0, deletions: 0, ids: [] }; summary.files += diff.changeStats.files; summary.additions += diff.changeStats.additions; summary.deletions += diff.changeStats.deletions; summary.ids.push(diff.id); repositories.set(diff.repositoryId, summary) }
   const totals = [...repositories.values()].reduce((sum, repository) => ({ files: sum.files + repository.files, additions: sum.additions + repository.additions, deletions: sum.deletions + repository.deletions }), { files: 0, additions: 0, deletions: 0 })
   return <Card className={styles.outputCard} size="small" data-testid="diff-card"><div className={styles.cardHeading}><CodeOutlined />代码变更 <Text type="secondary">{diffs.length} 个 Diff / {repositories.size} 个仓库</Text></div>{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="Diff" error={query.error} /> : diffs.length === 0 ? <Text type="secondary" className={styles.compactEmpty}>{completedWithoutCode ? '任务已完成，无代码变更' : isDiffReviewTask(task.status) ? '当前阶段尚未生成 Diff' : '暂无代码变更'}</Text> : <><Text type="secondary">files {totals.files} · +{totals.additions} / -{totals.deletions}</Text><div className={styles.diffSummaryList}>{[...repositories.entries()].map(([repositoryId, summary]) => <div key={repositoryId} className={styles.diffSummaryRow}><Text ellipsis>{summary.name}</Text><Text type="secondary">{summary.files} files · +{summary.additions} / -{summary.deletions}</Text>{summary.ids.map((diffId) => <Button key={diffId} type="link" size="small" onClick={() => navigate(PATHS.projectDiff(projectId, diffId), { state: { from: PATHS.projectTaskDetail(projectId, taskId) } })}>查看完整 Diff</Button>)}</div>)}</div></>}</Card>
 }
@@ -222,7 +221,10 @@ function normalizeTaskForDisplay(task: Task): Task {
     ...task,
     requirement: typeof task.requirement === 'string' ? task.requirement : task.requirementSummary ?? '',
     acceptanceCriteria: Array.isArray(task.acceptanceCriteria) ? task.acceptanceCriteria : [],
-    repositories: Array.isArray(task.repositories) ? task.repositories : [],
+    repositories: Array.isArray(task.repositories) && task.repositories.length > 0
+      ? task.repositories
+      : Array.isArray(task.workspace?.repositories) ? task.workspace.repositories : [],
+    repositoryIds: Array.isArray(task.repositoryIds) ? task.repositoryIds : [],
     executionSummary: task.executionSummary && typeof task.executionSummary === 'object'
       ? task.executionSummary
       : {

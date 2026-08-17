@@ -1,12 +1,11 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Modal, Form, Input } from 'antd'
+import { Modal, Form, Input, Badge } from 'antd'
 import { SearchOutlined, PushpinOutlined } from '@ant-design/icons'
 import { PATHS, PROJECT_NAV } from '@/routes/paths'
 import { ApiError, groupApi, projectApi } from '@/api'
 import { useAppUiStore } from '@/store/appUiStore'
-import { hasUnread, useUnreadStore } from '@/store/unreadStore'
 import { latestMessageText } from '@/utils/messageSummary'
 import { useProjectTaskDomainEvents } from '@/realtime/useProjectTaskDomainEvents'
 import { ProjectActivityPanel } from './ProjectActivityPanel'
@@ -32,7 +31,6 @@ export default function ProjectDetailLayout() {
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
   const setCurrentProject = useAppUiStore((state) => state.setCurrentProject)
   const openProjectDetailNav = useAppUiStore((state) => state.openProjectDetailNav)
-  const readAt = useUnreadStore((state) => state.readAt)
   useProjectTaskDomainEvents(projectId)
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -164,7 +162,7 @@ export default function ProjectDetailLayout() {
               {pinned && <PushpinOutlined className="pd-nav__branch-pin" />}
               <span className="pd-nav__branch-title">{g.title}</span>
               {isMain && <span className="pd-nav__branch-main-tag">总群</span>}
-              {hasUnread(readAt, g) ? <span className="pd-nav__branch-dot" /> : null}
+              {g.unreadCount ? <Badge count={g.unreadCount} overflowCount={99} size="small" /> : null}
             </span>
             {g.latestMessage ? (
               <span className="pd-nav__branch-summary">

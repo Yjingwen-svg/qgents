@@ -52,6 +52,7 @@ export type {
 export type {
   Group,
   GroupMember,
+  MarkReadResult,
   Message,
   MessageSummary,
   MessageContentType,

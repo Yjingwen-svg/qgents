@@ -17,7 +17,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
 import { ApiError, groupApi, projectApi, agentApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
 import { getApiBaseUrl } from '@/api/client'
-import { useUnreadStore } from '@/store/unreadStore'
 import { useAuth } from '@/context/AuthContext'
 import { TaskTriggerModal } from '@/components/task-domain'
 import { AuthedImage } from '@/components/AuthedImage'
@@ -47,7 +46,6 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const markRead = useUnreadStore((state) => state.markRead)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -191,10 +189,19 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     scrollToBottom()
   }, [groupId, scrollToBottom])
 
+  // 进群全读（§三）：后端按用户×群推进已读游标，成功后校准群列表 / 工作台聚合未读
+  const markGroupRead = useMutation({
+    mutationFn: () => groupApi.markRead(projectId, groupId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+    },
+  })
+  const markGroupReadMutate = markGroupRead.mutate
   // 进入群聊 / 群内来新消息时持续标记已读（离开后群有新活动才重新亮红点）
   useEffect(() => {
-    if (groupId) markRead(groupId)
-  }, [groupId, messages.length, markRead])
+    if (groupId) markGroupReadMutate()
+  }, [groupId, messages.length, markGroupReadMutate])
 
   // 输入框以 @ 结尾时弹出成员面板
   const mentionOpen = draft.endsWith('@')
@@ -1068,7 +1075,7 @@ function renderContent(
             </Text>
           </div>
           <Tag color={taskStatusColor(c.status)} style={{ margin: 0 }}>
-            {c.status}
+            {taskStatusLabel(c.status)}
           </Tag>
         </Link>
       )
@@ -1094,4 +1101,17 @@ function taskStatusColor(status: string): string {
   if (s === 'FAILED' || s === 'CANCELLED') return 'red'
   if (s === 'RUNNING' || s === 'IN_PROGRESS') return 'blue'
   return 'default'
+}
+
+/** 任务状态 → 卡片 tag 中文标签（§5.4：终态用「已完成/失败」而非英文枚举） */
+function taskStatusLabel(status: string): string {
+  const s = status.toUpperCase()
+  if (s === 'SUCCEEDED' || s === 'COMPLETED') return '已完成'
+  if (s === 'FAILED') return '失败'
+  if (s === 'CANCELLED' || s === 'CANCELLING') return '已取消'
+  if (s === 'RUNNING' || s === 'IN_PROGRESS') return '执行中'
+  if (s === 'WAITING_DIFF_CONFIRMATION') return '等待 Diff 确认'
+  if (s === 'DELIVERING') return '交付中'
+  if (s === 'DELIVERY_FAILED') return '交付失败'
+  return s
 }

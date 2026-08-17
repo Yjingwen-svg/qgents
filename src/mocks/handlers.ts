@@ -4,8 +4,12 @@ import type { Group, GroupMember, Message } from '@/types/group'
 import type { Activity, Memory, Notification, MyTeamInvitation } from '@/types'
 import { MOCK_CURRENT_USER } from './currentUser'
 import { deliveryCenterHandlers } from './delivery-center/handlers'
+<<<<<<< HEAD
 import { createTaskFromMessageIntent } from './task-model/handlers'
 import { createWorkBranchHandlers } from './workBranches'
+=======
+import { createTaskFromMessageIntent, findTaskByTriggerMessageId } from './task-model/handlers'
+>>>>>>> 8a384ccc9061a8e80e2e14cc5db723212c3da356
 
 // ══════════════════════════════════════════════
 // Mock 数据
@@ -1256,6 +1260,32 @@ export const handlers = [
       ? { id: taskRecord.id, displayCode: taskRecord.displayCode, status: taskRecord.status, missingFields: ['repositoryIds', 'baseRef'] }
       : null
     return HttpResponse.json({ data: { message, task } }, { status: 201 })
+  }),
+
+  http.post('/api/projects/:projectId/groups/:groupId/messages/:messageId/trigger-task', ({ params }) => {
+    const projectId = params.projectId as string
+    const groupId = params.groupId as string
+    const messageId = params.messageId as string
+    const group = (MOCK_GROUPS[projectId] ?? []).find((item) => item.id === groupId)
+    if (!group) return HttpResponse.json({ error: { code: 'GROUP_NOT_FOUND', message: '需求群不存在' } }, { status: 404 })
+    if (group.type !== 'REQUIREMENT' || group.status !== 'ACTIVE' || group.isArchived) {
+      return HttpResponse.json({ error: { code: 'TASK_TRIGGER_GROUP_INVALID', message: '只能在活跃需求群中发起任务' } }, { status: 422 })
+    }
+    const message = (MOCK_MESSAGES[groupId] ?? []).find((item) => item.id === messageId)
+    if (!message) return HttpResponse.json({ error: { code: 'MESSAGE_NOT_FOUND', message: '消息不存在' } }, { status: 404 })
+    const existing = findTaskByTriggerMessageId(projectId, messageId)
+    const task = existing ?? createTaskFromMessageIntent(projectId, {
+      requirementGroupId: groupId,
+      title: typeof (message.content as { text?: unknown })?.text === 'string'
+        ? (message.content as { text: string }).text.slice(0, 80)
+        : '来自群聊的任务',
+      requirement: typeof (message.content as { text?: unknown })?.text === 'string'
+        ? (message.content as { text: string }).text
+        : '',
+      messageId,
+      createdAt: message.createdAt,
+    })
+    return HttpResponse.json({ data: task }, { status: existing ? 200 : 201 })
   }),
 
   // ── 项目仓库绑定（GitHub）──

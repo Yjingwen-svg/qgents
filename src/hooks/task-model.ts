@@ -8,7 +8,7 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query'
 import { diffsApi, mergeRequestsApi, tasksApi, taskRunsApi } from '@/api/taskModel'
-import { queryClient, taskModelQueryKeys } from '@/query'
+import { deliveryCenterKeys, queryClient, taskModelQueryKeys } from '@/query'
 import type {
   DiffComment,
   DiffCommentInput,
@@ -438,6 +438,8 @@ function invalidateTaskDiffReview(projectId: string, batch: DiffReviewBatch): vo
   void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.detail(projectId, batch.taskId) })
   void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.all(projectId) })
   void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.diffs.all(projectId) })
+  void queryClient.invalidateQueries({ queryKey: deliveryCenterKeys.all(projectId) })
+  void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.all(projectId) })
 }
 
 export function useConfirmTaskDiffReview(projectId: string): UseMutationResult<DiffReviewBatch, Error, string> {

@@ -35,7 +35,7 @@ const FALLBACK_META: { icon: ReactNode; color: string } = {
   color: '#94a3b8',
 }
 
-/** 通知 → 跳转目标路由（交付中心等 B/C 页面未实现时兜底到项目详情） */
+/** 通知 → 跳转目标路由（无对应资源时兜底到项目详情） */
 export function notificationTargetPath(n: Notification): string | null {
   if (n.kind === 'INVITED') return PATHS.JOIN_TEAM
   const projectId = n.projectId
@@ -46,9 +46,10 @@ export function notificationTargetPath(n: Notification): string | null {
     case 'AGENT_INPUT_REQUIRED':
       return n.resourceId ? PATHS.projectTaskDetail(projectId, n.resourceId) : PATHS.projectTasks(projectId)
     case 'MR_PENDING':
-      return PATHS.projectCode(projectId)
+      return n.resourceId ? PATHS.projectCodeMr(projectId, n.resourceId) : PATHS.projectCode(projectId)
     case 'DELIVERABLE_PENDING':
-      return PATHS.projectDetail(projectId)
+      // §7.1：diff.created 触发 DELIVERABLE_PENDING，resourceId = diffId → 跳交付中心 Diff 详情
+      return n.resourceId ? PATHS.projectDiff(projectId, n.resourceId) : PATHS.projectDiffs(projectId)
     default:
       return PATHS.projectDetail(projectId)
   }

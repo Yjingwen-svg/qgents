@@ -1,7 +1,7 @@
 import { Alert, Breadcrumb, Button, Card, Form, Input, Modal, Result, Spin, Tag, Tooltip, Typography } from 'antd'
 import { ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined, CodeOutlined, CopyOutlined, ExperimentOutlined, FileTextOutlined, LinkOutlined, TeamOutlined } from '@ant-design/icons'
-import { useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/api'
 import { useCancelTask, useConfirmTaskDiffReview, useDiffs, useRejectTaskDiffReview, useRetryTaskDiffReviewDelivery, useTask, useTaskArtifacts, useTaskDiffReview, useTaskSteps } from '@/hooks/task-model'
 import type { DiffReviewBatch, Task, TaskArtifact, TaskArtifactType, TaskStep } from '@/types/task-model'
@@ -22,6 +22,20 @@ export default function TaskDetailPage() {
   const cancelMutation = useCancelTask(projectId)
   const reviewEnabled = isDiffReviewTask(taskQuery.data?.status)
   const diffReviewQuery = useTaskDiffReview(projectId, taskId, reviewEnabled)
+
+  // G1：交付中心等入口带 ?diffReviewBatchId 跳转时，定位到「任务产出与交付」卡片
+  const [searchParams] = useSearchParams()
+  const paramBatchId = searchParams.get('diffReviewBatchId')
+  useEffect(() => {
+    if (!paramBatchId) return
+    const attentionBatchId = taskQuery.data?.attention?.diffReviewBatchId
+    const loadedBatchId = diffReviewQuery.data?.id
+    if (attentionBatchId !== paramBatchId && loadedBatchId !== paramBatchId) return
+    const target = document.getElementById('output-delivery')
+    if (target && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [paramBatchId, taskQuery.data?.attention?.diffReviewBatchId, diffReviewQuery.data?.id])
 
   if (taskQuery.isLoading) return <DetailState loading description="正在加载任务详情" />
   if (taskQuery.isError) return <DetailError error={taskQuery.error} resource="任务详情" />
@@ -97,7 +111,7 @@ function AttentionBanner({ projectId, task, steps, onLocate }: { projectId: stri
   const runId = attentionRunId ?? null
   const isOutput = attention.kind === 'DIFF_CONFIRMATION_REQUIRED' || attention.kind === 'DELIVERY_FAILED'
   const action = runId ? <Button size="small" onClick={() => navigate(PATHS.projectTaskRunDetail(projectId, task.id, runId))}>查看关联运行</Button> : isOutput ? <Button size="small" onClick={() => onLocate('output-delivery')}>查看产出与交付</Button> : <Button size="small" onClick={() => onLocate('execution-flow')}>{latestRunId ? '查看执行流程' : '定位执行流程'}</Button>
-  return <section className={styles.attentionBanner} data-testid="task-attention-banner"><Alert type="warning" showIcon title={<span><Tag color="orange">{attention.kind}</Tag>{attention.title}</span>} description={attention.summary} action={action} /></section>
+  return <section className={styles.attentionBanner} data-testid="task-attention-banner"><Alert type="warning" showIcon title={<span><Tag color="orange">{attention.kind}</Tag>{attention.diffReviewBatchId ? <Tag color="blue">批次 {attention.diffReviewBatchId}</Tag> : null}{attention.title}</span>} description={attention.summary} action={action} /></section>
 }
 
 function ExecutionFlowRow({ projectId, taskId, task, query, steps }: { projectId: string; taskId: string; task: Task; query: ReturnType<typeof useTaskSteps>; steps: TaskStep[] }) {
@@ -105,8 +119,8 @@ function ExecutionFlowRow({ projectId, taskId, task, query, steps }: { projectId
   const ordered = steps.slice().sort((left, right) => left.sequenceNo - right.sequenceNo)
   return (
     <section className={styles.executionFlowRow} id="execution-flow" data-testid="execution-flow-row">
-      <RowHeading title="执行流程" meta={ordered.length > 0 ? `${ordered.length} 个步骤` : undefined} />
-      {query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="TaskStep" error={query.error} /> : ordered.length === 0 ? <InlineState text="暂无执行步骤" /> : <div className={styles.flowScroller}><div className={styles.flowGrid}>{ordered.map((step) => <StepCard key={step.id} step={step} onRun={(runId) => navigate(PATHS.projectTaskRunDetail(projectId, taskId, runId))} />)}</div></div>}
+      <RowHeading title="执行流程" meta={ordered.length > 0 ? `${ordered.length} 个步骤` : task.status === 'PLANNING' ? '规划中' : undefined} />
+      {query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="TaskStep" error={query.error} /> : ordered.length === 0 ? <InlineState text={task.status === 'PLANNING' ? '规划 Agent 正在生成执行方案' : '暂无执行步骤'} /> : <div className={styles.flowScroller}><div className={styles.flowGrid}>{ordered.map((step) => <StepCard key={step.id} step={step} onRun={(runId) => navigate(PATHS.projectTaskRunDetail(projectId, taskId, runId))} />)}</div></div>}
       {task.workspace && task.workspace.status !== 'READY' ? <Text type="danger" className={styles.workspaceNotice}>执行环境状态：{task.workspace.status}</Text> : null}
     </section>
   )
@@ -188,10 +202,13 @@ function DiffReviewPanel({ projectId, task, batch, onRefresh }: { projectId: str
   const [reason, setReason] = useState('')
   const pending = confirm.isPending || reject.isPending || retry.isPending
   const error = confirm.error ?? reject.error ?? retry.error
-  const failed = batch.repositoryDeliveries.filter((delivery) => delivery.deliveryStatus === 'FAILED')
+  const canUserDecide = task.deliveryMode === 'DIFF_FIRST' && batch.reviewStatus === 'PENDING_CONFIRMATION' && batch.confirmationSource === 'USER'
   const canRetry = task.capabilities.canRetryDelivery && batch.reviewStatus === 'ACCEPTED' && (batch.deliveryStatus === 'PARTIALLY_DELIVERED' || batch.deliveryStatus === 'FAILED')
   const handleError = (mutationError: Error) => { if (mutationError instanceof ApiError && mutationError.status === 409) onRefresh() }
-  return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果 <Tag>{batch.reviewStatus}</Tag></div><Text type="secondary">{batch.deliveryStatus} · {batch.repositoryDeliveries.length} 个仓库</Text>{batch.reviewStatus === 'REJECTED' && batch.reviewReason ? <Text type="danger">拒绝原因：{batch.reviewReason}</Text> : null}{batch.deliveryStatus === 'DELIVERING' || failed.length > 0 || batch.deliveryStatus === 'DELIVERED' ? <div className={styles.deliverySummaryList}>{batch.repositoryDeliveries.map((delivery) => <div key={delivery.repositoryId} className={styles.deliverySummaryRow}><Text ellipsis>{delivery.repositoryName}</Text><Tag color={delivery.deliveryStatus === 'FAILED' ? 'red' : delivery.deliveryStatus === 'MR_CREATED' ? 'green' : 'orange'}>{delivery.deliveryStatus}</Tag>{delivery.failureReason ? <Text type="danger">{delivery.failureReason}</Text> : null}{delivery.mergeRequest?.webUrl ? <a href={delivery.mergeRequest.webUrl} target="_blank" rel="noreferrer">查看 MR</a> : null}</div>)}</div> : null}{batch.deliveryStatus === 'DELIVERED' ? <Text type="secondary">交付已完成，可从 MR 入口继续查看。</Text> : null}{batch.reviewStatus === 'PENDING_CONFIRMATION' ? <div className={styles.reviewActions}>{task.capabilities.canConfirmDiffReview ? <Button type="primary" loading={confirm.isPending} disabled={pending} onClick={() => confirm.mutate(batch.taskId, { onError: handleError })}>确认交付</Button> : null}{task.capabilities.canRejectDiffReview ? <Form onFinish={() => { const trimmed = reason.trim(); if (trimmed) reject.mutate({ taskId: batch.taskId, input: { reason: trimmed } }, { onError: handleError }) }}><Form.Item label="拒绝原因" required><Input.TextArea value={reason} rows={2} maxLength={4000} disabled={pending} onChange={(event) => setReason(event.target.value)} /></Form.Item><Button danger htmlType="submit" loading={reject.isPending} disabled={pending || !reason.trim()}>拒绝交付</Button></Form> : null}</div> : null}{canRetry ? <Button size="small" loading={retry.isPending} disabled={pending} onClick={() => retry.mutate(batch.taskId, { onError: handleError })}>重试交付</Button> : null}{error ? <Alert type="error" showIcon title={diffReviewError(error)} action={error instanceof ApiError && error.status === 409 ? <Button size="small" onClick={onRefresh}>刷新</Button> : undefined} /> : null}</Card>
+  const authorizationLabel = batch.reviewStatus === 'ACCEPTED'
+    ? batch.confirmationSource === 'SYSTEM' ? '自动交付' : '已由用户确认'
+    : batch.reviewStatus
+  return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果 <Tag>{authorizationLabel}</Tag><Text type="secondary">批次 {batch.id}</Text></div><Text type="secondary">{batch.deliveryStatus} · {batch.repositoryDeliveries.length} 个仓库</Text>{task.deliveryReason ? <Text type="secondary">{task.deliveryReason}</Text> : null}{batch.reviewStatus === 'REJECTED' && batch.reviewReason ? <Text type="danger">拒绝原因：{batch.reviewReason}</Text> : null}{batch.repositoryDeliveries.length > 0 ? <div className={styles.deliverySummaryList}>{batch.repositoryDeliveries.map((delivery) => <div key={delivery.repositoryId} className={styles.deliverySummaryRow}><Text ellipsis>{delivery.repositoryName}</Text><Tag color={delivery.deliveryStatus === 'FAILED' ? 'red' : delivery.deliveryStatus === 'MR_CREATED' ? 'green' : 'orange'}>{delivery.deliveryStatus}</Tag>{delivery.failureReason ? <Text type="danger">{delivery.failureReason}</Text> : null}{delivery.mergeRequest?.webUrl ? <a href={delivery.mergeRequest.webUrl} target="_blank" rel="noreferrer">查看 MR</a> : null}</div>)}</div> : null}{batch.deliveryStatus === 'DELIVERED' ? <Text type="secondary">交付已完成，可从 MR 入口继续查看。</Text> : null}{canUserDecide ? <div className={styles.reviewActions}>{task.capabilities.canConfirmDiffReview ? <Button type="primary" loading={confirm.isPending} disabled={pending} onClick={() => confirm.mutate(batch.taskId, { onError: handleError })}>确认交付</Button> : null}{task.capabilities.canRejectDiffReview ? <Form onFinish={() => { const trimmed = reason.trim(); if (trimmed) reject.mutate({ taskId: batch.taskId, input: { reason: trimmed } }, { onError: handleError }) }}><Form.Item label="拒绝原因" required><Input.TextArea value={reason} rows={2} maxLength={4000} disabled={pending} onChange={(event) => setReason(event.target.value)} /></Form.Item><Button danger htmlType="submit" loading={reject.isPending} disabled={pending || !reason.trim()}>拒绝交付</Button></Form> : null}</div> : null}{canRetry ? <Button size="small" loading={retry.isPending} disabled={pending} onClick={() => retry.mutate(batch.taskId, { onError: handleError })}>重试交付</Button> : null}{error ? <Alert type="error" showIcon title={diffReviewError(error)} action={error instanceof ApiError && error.status === 409 ? <Button size="small" onClick={onRefresh}>刷新</Button> : undefined} /> : null}</Card>
 }
 
 function normalizeTaskForDisplay(task: Task): Task {
@@ -235,7 +252,7 @@ function SectionError({ resource, error }: { resource: string; error: Error | nu
 function CancelError({ error, onRefresh }: { error: Error; onRefresh: () => void }) { const status = error instanceof ApiError ? error.status : undefined; return <Alert className={styles.executionAlert} type="error" showIcon title={status === 409 ? '任务状态已变化，请刷新详情' : '取消任务失败'} action={status === 409 ? <Button type="link" onClick={onRefresh}>刷新</Button> : undefined} /> }
 function DetailState({ description, loading = false }: { description: string; loading?: boolean }) { return <div className={styles.page}><div className={styles.panelState}>{loading ? <Spin /> : <Result status="404" title={description} />}</div></div> }
 function DetailError({ error, resource }: { error: Error | null; resource: string }) { const status = error instanceof ApiError ? error.status : undefined; return <div className={styles.page}><Result status={status === 403 ? '403' : status === 404 ? '404' : 'error'} title={status === 403 ? `暂无权限查看${resource}` : status === 404 ? `${resource}不存在或不可见` : `${resource}加载失败`} /></div> }
-function isDiffReviewTask(status: Task['status'] | undefined): boolean { return status === 'WAITING_DIFF_CONFIRMATION' || status === 'DELIVERING' || status === 'DELIVERY_FAILED' }
+function isDiffReviewTask(status: Task['status'] | undefined): boolean { return status === 'WAITING_DIFF_CONFIRMATION' || status === 'DELIVERING' || status === 'DELIVERY_FAILED' || status === 'SUCCEEDED' }
 function getAttentionRunId(attention: Task['attention']): string | null { return attention?.taskRunId ?? null }
 function errorCode(error: Error | null): string | undefined { if (!(error instanceof ApiError) || !error.body || typeof error.body !== 'object' || !('error' in error.body)) return undefined; const bodyError = (error.body as { error?: { code?: unknown } }).error; return typeof bodyError?.code === 'string' ? bodyError.code : undefined }
 function diffReviewError(error: Error): string { const code = errorCode(error); if (code === 'DIFF_REVIEW_FORBIDDEN') return '暂无 Diff 验收权限'; if (code === 'DIFF_REVIEW_NOT_FOUND') return '最终 Diff 尚未生成'; if (code === 'DIFF_REVIEW_NOT_DECIDABLE') return 'Diff 状态已变化，请刷新后重试'; if (code === 'DIFF_DELIVERY_NOT_RETRYABLE') return '当前交付状态不可重试'; return 'Diff 操作失败' }

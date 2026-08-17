@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm } from 'antd'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Checkbox } from 'antd'
 import { App, Upload } from 'antd'
 import {
   SendOutlined,
   ThunderboltOutlined,
   FileOutlined,
+  FileAddOutlined,
   BranchesOutlined,
   CheckCircleOutlined,
   InboxOutlined,
@@ -14,7 +15,7 @@ import {
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
-import { groupApi, projectApi, agentApi, attachmentApi, uploadAttachment } from '@/api'
+import { ApiError, groupApi, projectApi, agentApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
 import { getApiBaseUrl } from '@/api/client'
 import { useUnreadStore } from '@/store/unreadStore'
 import { useAuth } from '@/context/AuthContext'
@@ -55,7 +56,15 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const [triggerOpen, setTriggerOpen] = useState(false)
   // 回复引用：选中某条消息后，输入区显示引用条，发送时以 QUOTE 类型 + replyToId 提交
   const [replyTo, setReplyTo] = useState<Message | null>(null)
+  // 消息多选模式（微信风格）：唯一批量操作是「创建 Memory」
+  const [multiSelect, setMultiSelect] = useState(false)
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set())
   const listRef = useRef<HTMLDivElement>(null)
+  // 消息列表内部真正承载消息的内容容器（ResizeObserver 监听其高度变化）
+  const contentRef = useRef<HTMLDivElement>(null)
+  // 用户是否「应该保持贴底」：发送消息/切群/首载时置 true；用户主动上滚查看历史时置 false。
+  // 图片加载完成、内容高度变化时据此决定是否自动滚到底，避免把看历史的用户拉回底部。
+  const shouldStickToBottomRef = useRef(true)
 
   const { data: groups = [] } = useQuery({
     queryKey: ['groups', projectId],
@@ -120,8 +129,20 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     })
   }, [page])
 
-  // 滚动到消息列表底部（用 rAF 等 DOM 布局完成后再滚，避免图片/内容未渲染时滚不到位）
+  // 无条件滚到底部：切群 / 首次加载 / 自己发送新消息时使用
   const scrollToBottom = useCallback(() => {
+    const el = listRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight
+    })
+  }, [])
+
+  // 单张图片加载完成：如果用户「应该保持贴底」，则重新滚到底（rAF 等布局稳定后再滚）。
+  // 多张图片时每张触发一次，第 1 张、第 2 张……依次改变高度都能重新贴底。
+  const handleImageLoad = useCallback(() => {
+    if (!shouldStickToBottomRef.current) return
     const el = listRef.current
     if (!el) return
     requestAnimationFrame(() => {
@@ -129,10 +150,46 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     })
   }, [])
 
-  // 新消息到达 / 切换群聊时自动滚动到底部（自己发消息后无需手动下拉）
+  // 用户滚动消息列表：据此更新「是否应该保持贴底」。
+  // 接近底部 → 贴底；明显上翻查看历史 → 不贴底（图片加载也不拉回）。
+  const handleScroll = useCallback(() => {
+    const el = listRef.current
+    if (!el) return
+    shouldStickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 80
+  }, [])
+
+  // ResizeObserver：监听消息内容容器高度变化（图片加载、新消息渲染都会改变高度）。
+  // 辅助机制：图片 onLoad 是主信号，RO 兜底覆盖「图片失败/懒加载等无 onLoad 场景」。
   useEffect(() => {
-    scrollToBottom()
+    const el = listRef.current
+    const content = contentRef.current
+    if (!el || !content) return
+    const observer = new ResizeObserver(() => {
+      if (shouldStickToBottomRef.current) {
+        el.scrollTop = el.scrollHeight
+      }
+    })
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [])
+
+  // 消息变化 / 切换群聊：
+  // - 切群、首次加载 → 无条件滚到底（并把贴底标志置 true）
+  // - 新消息到达（含自己发送）→ 用户之前在底部则滚，在查看历史则不打扰
+  useEffect(() => {
+    if (messages.length === 0) return
+    if (shouldStickToBottomRef.current) {
+      scrollToBottom()
+    }
+    // 切群时强制贴底：groupId 变化代表进入新群，无视历史滚动位置
+    // 通过重置标志 + 无条件滚动实现
   }, [messages.length, groupId, scrollToBottom])
+
+  // 切换群聊：进入新群一律贴底（重置用户滚动状态）
+  useEffect(() => {
+    shouldStickToBottomRef.current = true
+    scrollToBottom()
+  }, [groupId, scrollToBottom])
 
   // 进入群聊 / 群内来新消息时持续标记已读（离开后群有新活动才重新亮红点）
   useEffect(() => {
@@ -150,11 +207,15 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
 
   async function handleSend() {
     const text = draft.trim()
-    if (!text || sending) return
+    // 允许纯引用（引用 DIFF 卡等）：回复目标存在时正文可为空（B3，服务端用群描述兜底）
+    if ((!text && !replyTo) || sending) return
 
+    const hasAgentMention = mentions.some((mention) => mention.type === 'AGENT')
     setSending(true)
     setSendError(null)
     try {
+      // 自己发消息 → 应当保持贴底（新消息渲染 + 历史图片继续加载时都滚到底）
+      shouldStickToBottomRef.current = true
       // 回复引用：type=QUOTE，content 带被引用消息摘要，replyToId 指向原消息（对齐 §7 消息类型与请求体）
       const result = await groupApi.sendMessage(projectId, groupId, {
         type: replyTo ? 'QUOTE' : 'TEXT',
@@ -169,22 +230,76 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         replyToId: replyTo ? replyTo.id : null,
         clientMessageId: `cmsg_${Date.now()}`,
       })
+      const sentMessage = result.message
+      const quotedDiff = replyTo?.type === 'DIFF'
       setDraft('')
       setMentions([])
       setReplyTo(null)
       await queryClient.invalidateQueries({
         queryKey: ['groups', projectId, groupId, 'messages'],
       })
-      if (result.task) {
+      if (hasAgentMention && canOpenTaskTrigger) {
         void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
-        message.success(`${result.task.displayCode} 已创建，当前状态：${result.task.status}`)
       }
+      if (result.task) {
+        message.success(`${result.task.displayCode} 已创建，当前状态：${result.task.status}`)
+      } else if (quotedDiff && sentMessage) {
+        // 引用 DIFF 卡续作：优先走续作（复用源 Workspace，不得传 repositoryIds），后端未自动建任务时显式触发
+        triggerFromMessage.mutate(sentMessage.id)
+      } else if (hasAgentMention && canOpenTaskTrigger) {
+        try {
+          const repositories = await githubApi.listProjectRepositories(projectId)
+          const baseRef = repositories[0]?.defaultBranch
+          if (repositories.length === 0 || !baseRef) {
+            throw new Error('当前项目没有可用于创建任务的绑定仓库。')
+          }
+          await groupApi.triggerTask(projectId, groupId, sentMessage.id, {
+            title: taskTitleFromMessage(text),
+            requirement: text,
+            repositoryIds: repositories.map((repository) => repository.id),
+            baseRef,
+          })
+          void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
+          message.success('任务已创建，正在生成执行方案。')
+        } catch (triggerError) {
+          if (triggerError instanceof ApiError && triggerError.status === 409) {
+            void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
+            message.info('任务已由自动触发链创建，请在任务中心查看。')
+          } else {
+            message.warning('消息已发送，但任务触发失败，请稍后重试或联系项目管理员。')
+          }
+        }
+      }
+      return sentMessage
     } catch (error) {
       setSendError(formatApiError(error))
+      return null
     } finally {
       setSending(false)
     }
   }
+
+  // 显式触发任务（§7 从消息触发任务；续作引用时不得传 repositoryIds，C1/C2）
+  const triggerFromMessage = useMutation({
+    mutationFn: (messageId: string) =>
+      groupApi.triggerTask(projectId, groupId, messageId, {
+        title: draft.trim() || '来自群聊的任务',
+        requirement: draft.trim() || undefined,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
+      message.success('增量任务已创建，正在生成执行方案。')
+    },
+    onError: (error) => {
+      // C3：引用 DIFF 续作的 422 错误码给出明确提示；其余走通用错误文案
+      const code = error instanceof ApiError && error.body && typeof error.body === 'object' && 'error' in error.body
+        ? (error.body as { error?: { code?: unknown } }).error?.code
+        : undefined
+      if (code === 'QUOTED_DIFF_INVALID') message.error('该 Diff 已失效，请刷新消息列表后重试')
+      else if (code === 'QUOTED_DIFF_NOT_ACCESSIBLE') message.error('无权引用该 Diff，请确认项目权限')
+      else message.error(error instanceof Error ? error.message : '任务触发失败，请重试')
+    },
+  })
 
   /** 选择附件后：直传 OSS → 发送 IMAGE/FILE 消息（§18 附件链路） */
   async function handleUpload(file: File) {
@@ -233,9 +348,64 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     [projectId, message],
   )
 
+  // 进入多选模式（右上角「新建 Memory」触发）
+  function enterMultiSelect() {
+    setSelectedMessageIds(new Set())
+    setMultiSelect(true)
+  }
+
+  // 取消多选：恢复普通聊天界面
+  function exitMultiSelect() {
+    setMultiSelect(false)
+    setSelectedMessageIds(new Set())
+  }
+
+  // 切换单条消息选中状态（多选模式下点击消息调用）
+  function toggleMessageSelect(id: string) {
+    setSelectedMessageIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  // 创建 Memory（AI 草稿）：选中消息按原始列表顺序传入 generateDraft
+  const createMemory = useMutation({
+    mutationFn: async () => {
+      // messages 已按 sequence/createdAt 升序排列，过滤选中项即得到原始聊天顺序
+      const ordered = messages.filter((m) => selectedMessageIds.has(m.id))
+      if (ordered.length === 0) {
+        throw new Error('请先选择至少一条消息')
+      }
+      // instruction 后端必填（INVALID_ARGUMENT: instruction 不能为空）：
+      // 用前 2 条选中消息的摘要拼成沉淀说明
+      const instruction = `将以下 ${ordered.length} 条群聊消息沉淀为项目 Memory：${ordered
+        .slice(0, 2)
+        .map((m) => quotePreview(m))
+        .join('；')}`
+      return memoryApi.generateDraft(projectId, {
+        sourceMessages: ordered.map((m) => ({ groupId, messageId: m.id })),
+        instruction,
+      })
+    },
+    onSuccess: () => {
+      exitMultiSelect()
+      message.success('Memory 草稿已创建，可在交付中心提交审核')
+      void queryClient.invalidateQueries({ queryKey: ['memories', projectId] })
+    },
+    onError: (error) => {
+      // 失败不退出多选、保留选中，允许重试
+      message.error(error instanceof Error ? error.message : 'Memory 创建失败，请重试')
+    },
+  })
+
   return (
     <Layout style={{ height: '100%', background: token.colorBgBase }}>
-      {/* 顶部：群标题 + 发起任务入口 */}
+      {/* 顶部：群标题 + 操作入口；多选模式下切换为「取消 | 已选择 N 条」 */}
       <div
         style={{
           padding: '12px 20px',
@@ -245,47 +415,65 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           alignItems: 'center',
         }}
       >
-        <div>
-          <Text strong style={{ fontSize: 16 }}>
-            <Text type="success">#</Text> {group?.title ?? '群聊'}
-          </Text>
-          <div>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {group?.type === 'PROJECT_MAIN' ? '项目总群' : '需求群'}
-              {group?.memberCount ? ` · ${group.memberCount} 人` : ''}
+        {multiSelect ? (
+          <>
+            <Button type="text" onClick={exitMultiSelect}>
+              取消
+            </Button>
+            <Text strong style={{ fontSize: 14 }}>
+              已选择 {selectedMessageIds.size} 条
             </Text>
-          </div>
-        </div>
-        <Space size={8}>
-          {/* 归档需求群 —— 仅需求群 + 创建者可见 */}
-          {group?.type === 'REQUIREMENT' && group.createdBy === user?.id && !group.isArchived && (
-            <Popconfirm
-              title="归档需求群"
-              description="归档后该群将移入「已归档」，不可恢复。确定归档？"
-              okText="归档"
-              cancelText="取消"
-              onConfirm={() => archiveGroup.mutate()}
-            >
-              <Button
-                danger
-                ghost
-                icon={<InboxOutlined />}
-                loading={archiveGroup.isPending}
-              >
-                归档需求群
+            <span style={{ width: 44 }} />
+          </>
+        ) : (
+          <>
+            <div>
+              <Text strong style={{ fontSize: 16 }}>
+                <Text type="success">#</Text> {group?.title ?? '群聊'}
+              </Text>
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {group?.type === 'PROJECT_MAIN' ? '项目总群' : '需求群'}
+                  {group?.memberCount ? ` · ${group.memberCount} 人` : ''}
+                </Text>
+              </div>
+            </div>
+            <Space size={8}>
+              {/* 新建 Memory —— 点击进入消息多选模式 */}
+              <Button icon={<FileAddOutlined />} onClick={enterMultiSelect}>
+                新建 Memory
               </Button>
-            </Popconfirm>
-          )}
-          {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal */}
-          {canOpenTaskTrigger && <Button
-            type="primary"
-            ghost
-            icon={<ThunderboltOutlined />}
-            onClick={() => setTriggerOpen(true)}
-          >
-            发起任务
-          </Button>}
-        </Space>
+              {/* 归档需求群 —— 仅需求群 + 创建者可见 */}
+              {group?.type === 'REQUIREMENT' && group.createdBy === user?.id && !group.isArchived && (
+                <Popconfirm
+                  title="归档需求群"
+                  description="归档后该群将移入「已归档」，不可恢复。确定归档？"
+                  okText="归档"
+                  cancelText="取消"
+                  onConfirm={() => archiveGroup.mutate()}
+                >
+                  <Button
+                    danger
+                    ghost
+                    icon={<InboxOutlined />}
+                    loading={archiveGroup.isPending}
+                  >
+                    归档需求群
+                  </Button>
+                </Popconfirm>
+              )}
+              {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal */}
+              {canOpenTaskTrigger && <Button
+                type="primary"
+                ghost
+                icon={<ThunderboltOutlined />}
+                onClick={() => setTriggerOpen(true)}
+              >
+                发起任务
+              </Button>}
+            </Space>
+          </>
+        )}
       </div>
 
       {/* 消息列表 */}
@@ -297,6 +485,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           padding: '16px 20px',
           background: token.colorBgBase,
         }}
+        onScroll={handleScroll}
         aria-label="对话内容"
       >
         {isLoading ? (
@@ -308,25 +497,53 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         ) : messages.length === 0 ? (
           <Empty description="还没有消息，来说点什么吧" />
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {messages.map((m) => (
-              <MessageBubble
-                key={m.id}
-                message={m}
-                isSelf={m.senderType === 'USER' && m.senderId === user?.id}
-                projectId={projectId}
-                onReply={setReplyTo}
-                onOpenFile={openFile}
-              />
-            ))}
+          <div ref={contentRef} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {messages.map((m) => {
+              const isSelf = m.senderType === 'USER' && m.senderId === user?.id
+              return (
+                <div
+                  key={m.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    // 普通模式下让气泡按左右对齐；多选模式整行铺满便于点击选择
+                    justifyContent: multiSelect ? undefined : isSelf ? 'flex-end' : 'flex-start',
+                    cursor: multiSelect ? 'pointer' : undefined,
+                  }}
+                  onClick={multiSelect ? () => toggleMessageSelect(m.id) : undefined}
+                >
+                  {multiSelect && (
+                    <Checkbox
+                      checked={selectedMessageIds.has(m.id)}
+                      style={{ marginTop: 18, flexShrink: 0 }}
+                      onChange={() => toggleMessageSelect(m.id)}
+                    />
+                  )}
+                  {/* 内层 div 限制最大宽度 78%（相对消息列宽），气泡在内部 fit-content 铺满可用宽度，
+                      保证每行容纳更多字；左右对齐由外层 justifyContent 控制 */}
+                  <div style={{ maxWidth: '78%', minWidth: 0 }}>
+                    <MessageBubble
+                      message={m}
+                      isSelf={isSelf}
+                      projectId={projectId}
+                      onReply={multiSelect ? undefined : setReplyTo}
+                      onOpenFile={multiSelect ? undefined : openFile}
+                      onImageLoad={handleImageLoad}
+                    />
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </Layout.Content>
 
-      {/* 底部输入区 */}
-      <div style={{ position: 'relative', padding: '12px 20px 16px', borderTop: `1px solid ${token.colorBorder}` }}>
-        {/* @ 提及成员面板 */}
-        {mentionOpen && members.length > 0 && (
+      {/* 底部输入区（多选模式下隐藏，改为底部操作栏） */}
+      {!multiSelect && (
+        <div style={{ position: 'relative', padding: '12px 20px 16px', borderTop: `1px solid ${token.colorBorder}` }}>
+          {/* @ 提及成员面板 */}
+          {mentionOpen && (teamAgents.length > 0 || otherUserMembers.length > 0) && (
           <div
             style={{
               position: 'absolute',
@@ -384,6 +601,11 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
               <Text ellipsis style={{ fontSize: 12 }}>
                 {quotePreview(replyTo)}
               </Text>
+              {replyTo.type === 'DIFF' && (
+                <Text type="warning" style={{ fontSize: 12, display: 'block' }}>
+                  引用 Diff 卡将发起增量修改（复用源工作区）
+                </Text>
+              )}
             </div>
             <Button
               type="text"
@@ -425,12 +647,29 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             icon={<SendOutlined />}
             onClick={handleSend}
             loading={sending}
-            disabled={!draft.trim()}
+            disabled={!draft.trim() && !replyTo}
           >
             发送
           </Button>
         </Space.Compact>
-      </div>
+        </div>
+      )}
+
+      {/* 多选模式底部操作栏：唯一批量操作 = 创建 Memory */}
+      {multiSelect && (
+        <div style={{ padding: '12px 20px 16px', borderTop: `1px solid ${token.colorBorder}` }}>
+          <Button
+            type="primary"
+            block
+            icon={<FileAddOutlined />}
+            loading={createMemory.isPending}
+            disabled={selectedMessageIds.size === 0}
+            onClick={() => createMemory.mutate()}
+          >
+            创建 Memory（{selectedMessageIds.size}）
+          </Button>
+        </div>
+      )}
 
       {/* @Agent 发起任务弹窗（B 的 TaskTriggerModal） */}
       <TaskTriggerModal
@@ -442,6 +681,11 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       />
     </Layout>
   )
+}
+
+function taskTitleFromMessage(text: string): string {
+  const withoutLeadingMentions = text.replace(/(?:^|\s)@\S+/g, ' ').trim()
+  return (withoutLeadingMentions || text).slice(0, 80)
 }
 
 /** 时间分隔线文案：今天 HH:mm / 昨天 HH:mm / M月D日 HH:mm（气泡时间展示用） */
@@ -564,6 +808,7 @@ function MessageBubble({
   projectId,
   onReply,
   onOpenFile,
+  onImageLoad,
 }: {
   message: Message
   isSelf: boolean
@@ -572,16 +817,17 @@ function MessageBubble({
   onReply?: (m: Message) => void
   /** 打开文件消息（FILE 类型走 §18.3 预签名下载地址，避免鉴权 401） */
   onOpenFile?: (m: Message) => void
+  /** 图片真正加载完成回调（透传给 AuthedImage，供 ChatPanel 保持贴底） */
+  onImageLoad?: () => void
 }) {
   const { token } = theme.useToken()
-  const [hovered, setHovered] = useState(false)
 
   // SYSTEM 消息居中弱化展示
   if (message.senderType === 'SYSTEM') {
     return (
       <div style={{ textAlign: 'center' }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          {renderContent(message, projectId, onOpenFile)}
+          {renderContent(message, projectId, onOpenFile, onImageLoad)}
         </Text>
       </div>
     )
@@ -597,18 +843,49 @@ function MessageBubble({
 
   return (
     <div
-      style={{ display: 'flex', flexDirection: 'column', alignItems: alignSelf, maxWidth: '78%', alignSelf }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className="chat-message-bubble"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: alignSelf,
+        // fit-content：气泡宽度 = 内容自然宽度（长文本时铺满外层可用宽度，短文本贴内容）
+        // maxWidth 100%：受外层内层 div 的 78% 约束，每行可容纳更多字
+        width: 'fit-content',
+        maxWidth: '100%',
+        alignSelf,
+        minWidth: 0,
+      }}
     >
-      <div style={{ marginBottom: 2, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+      {/* sender 行：不撑满宽度，跟随气泡边缘对齐；nowrap 防止昵称/时间换行。
+          对方（气泡靠左）：昵称 时间 回复；己方（气泡靠右）：回复 时间 昵称（昵称贴气泡）
+          回复按钮始终渲染占位，用 CSS :hover + visibility 控制显隐，避免按钮出现/消失引发布局抖动 */}
+      <div
+        style={{
+          marginBottom: 2,
+          fontSize: 12,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          whiteSpace: 'nowrap',
+          maxWidth: '100%',
+        }}
+      >
         {isSelf ? (
           <>
-            {/* 己方消息：时间放左侧，昵称放右侧（贴近气泡） */}
+            {onReply && (
+              <Button
+                className="chat-message-bubble__reply"
+                type="text"
+                size="small"
+                style={{ fontSize: 11, height: 'auto', padding: '0 4px', minWidth: 0 }}
+                onClick={() => onReply(message)}
+              >
+                回复
+              </Button>
+            )}
             <Text type="secondary" style={{ fontSize: 11 }}>
               {formatClock(message.createdAt)}
             </Text>
-            <div style={{ flex: 1 }} />
             <Text type="secondary">
               {message.senderName ?? (message.senderType === 'AGENT' ? 'Agent' : '成员')}
             </Text>
@@ -622,17 +899,18 @@ function MessageBubble({
             <Text type="secondary" style={{ fontSize: 11 }}>
               {formatClock(message.createdAt)}
             </Text>
+            {onReply && (
+              <Button
+                className="chat-message-bubble__reply"
+                type="text"
+                size="small"
+                style={{ fontSize: 11, height: 'auto', padding: '0 4px', minWidth: 0 }}
+                onClick={() => onReply(message)}
+              >
+                回复
+              </Button>
+            )}
           </>
-        )}
-        {onReply && hovered && (
-          <Button
-            type="text"
-            size="small"
-            style={{ fontSize: 11, height: 'auto', padding: '0 4px', minWidth: 0 }}
-            onClick={() => onReply(message)}
-          >
-            回复
-          </Button>
         )}
       </div>
       <div
@@ -643,13 +921,19 @@ function MessageBubble({
           color: isCode && !isSelf ? '#e6edf3' : bubbleColor,
           border: isImage ? 'none' : isCode ? 'none' : bubbleBorder,
           whiteSpace: isCode ? 'pre-wrap' : 'normal',
-          wordBreak: 'break-word',
+          // 普通文本：overflowWrap 只在内容溢出容器时才断行，wordBreak normal 不拆中文短词，
+          // 保证「你好」「收到」等短文本保持一行；超长英文串溢出时可断开，不会撑破聊天区域。
+          // CODE 消息保留断行能力（wordBreak break-word），超长代码行可断开。
+          overflowWrap: 'break-word',
+          wordBreak: isCode ? 'break-word' : 'normal',
+          minWidth: 0,
+          maxWidth: '100%',
           fontFamily: isCode ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : undefined,
           fontSize: isCode ? 13 : undefined,
           overflow: 'hidden',
         }}
       >
-        {renderContent(message, projectId, onOpenFile)}
+        {renderContent(message, projectId, onOpenFile, onImageLoad)}
       </div>
     </div>
   )
@@ -660,6 +944,7 @@ function renderContent(
   message: Message,
   projectId: string,
   onOpenFile?: (m: Message) => void,
+  onImageLoad?: () => void,
 ): React.ReactNode {
   switch (message.type) {
     case 'CODE': {
@@ -675,6 +960,7 @@ function renderContent(
           height={c.height}
           style={{ borderRadius: 10, display: 'block', maxWidth: '100%' }}
           fallback="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='120'%3E%3Crect width='100%25' height='100%25' fill='%231c2128'/%3E%3C/svg%3E"
+          onLoad={onImageLoad}
         />
       )
     }

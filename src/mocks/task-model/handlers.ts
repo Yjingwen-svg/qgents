@@ -2,8 +2,6 @@ import { http, HttpResponse, type HttpHandler, type PathParams } from 'msw'
 import type {
   DiffComment,
   DiffRejectInput,
-  ExecutionContext,
-  InputRequest,
   Task,
   TaskCreateInput,
   TaskStepCreateInput,
@@ -23,7 +21,6 @@ import {
 import {
   createTaskModelScenario,
   createTaskModelScenarioByName,
-  addDiff,
   taskModelScenarioNames,
   type TaskModelScenario,
 } from './fixtures'
@@ -156,7 +153,7 @@ async function jsonObject(request: Request): Promise<Record<string, unknown>> {
 }
 
 function invalidTaskInput(body: Record<string, unknown>): string | null {
-  const allowed = new Set(['requirementGroupId', 'title', 'requirement', 'repositoryIds', 'baseRef', 'workspaceId', 'continuationOfTaskId'])
+  const allowed = new Set(['requirementGroupId', 'title', 'requirement', 'repositoryIds', 'baseRef', 'deliveryMode', 'workspaceId', 'continuationOfTaskId'])
   const unsupported = Object.keys(body).find((key) => !allowed.has(key))
   if (unsupported) return unsupported
   if (!isNonEmptyString(body.requirementGroupId)) return 'requirementGroupId'
@@ -164,6 +161,7 @@ function invalidTaskInput(body: Record<string, unknown>): string | null {
   if (!isNonEmptyString(body.requirement)) return 'requirement'
   if (!isStringArray(body.repositoryIds)) return 'repositoryIds'
   if (!isNonEmptyString(body.baseRef)) return 'baseRef'
+  if (body.deliveryMode !== undefined && body.deliveryMode !== 'DIFF_FIRST' && body.deliveryMode !== 'MR_FIRST') return 'deliveryMode'
   return null
 }
 
@@ -184,47 +182,14 @@ function taskListItem(task: Task): import('@/types/task-model').TaskListItem {
 function createTaskResources(store: TaskModelStore, input: TaskCreateInput, projectId: string): Task {
   const createdAt = new Date().toISOString()
   const id = makeId(projectId, 'task', store.tasks.size)
-  const repositoryId = input.repositoryIds[0]!
   const repositories = input.repositoryIds.map((repository) => ({ repositoryId: repository, name: 'Mock repository', fullName: `qgents/${repository}`, provider: 'GITHUB', defaultBranch: 'main', baseRef: input.baseRef, baseCommit: `base-${input.baseRef}`, sourceBranch: input.baseRef, headCommit: null }))
-  const task: Task = { id, displayCode: `T-${store.tasks.size + 1000}`, projectId, title: input.title, requirementSummary: input.requirement.slice(0, 200), status: 'PENDING', deliveryMode: 'DIFF_FIRST', requirementGroup: { id: input.requirementGroupId, name: input.requirementGroupId, status: 'ACTIVE' }, createdByUser: { id: 'mock-user', displayName: 'Mock User', avatarUrl: null }, repositories, executionSummary: { totalSteps: 0, pendingSteps: 0, runningSteps: 0, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: null, currentStageTitle: null, requiresUserAction: false }, attention: null, createdAt, updatedAt: createdAt, requirement: input.requirement, acceptanceCriteria: [], workspace: { id: input.workspaceId ?? `workspace-${id}`, status: 'READY', repositories }, capabilities: { canCancel: true, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false }, artifactSummary: { total: 0, byType: {} }, diffReviewSummary: { available: false, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 }, sourceMessage: null, triggerMessageId: null }
+  const task: Task = { id, displayCode: `T-${store.tasks.size + 1000}`, projectId, title: input.title, requirementSummary: input.requirement.slice(0, 200), status: 'PLANNING', deliveryMode: input.deliveryMode ?? null, deliveryReason: null, requirementGroup: { id: input.requirementGroupId, name: input.requirementGroupId, status: 'ACTIVE' }, createdByUser: { id: 'mock-user', displayName: 'Mock User', avatarUrl: null }, repositories, executionSummary: { totalSteps: 0, pendingSteps: 0, runningSteps: 0, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: null, currentStageTitle: '规划中', requiresUserAction: false }, attention: null, createdAt, updatedAt: createdAt, requirement: input.requirement, acceptanceCriteria: [], workspace: { id: input.workspaceId ?? `workspace-${id}`, status: 'READY', repositories }, capabilities: { canCancel: true, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false }, artifactSummary: { total: 0, byType: {} }, diffReviewSummary: { available: false, diffId: null, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 }, sourceMessage: null, triggerMessageId: null }
   store.tasks.set(task.id, task)
-
-  const planner: TaskStep = { id: `step-${id}-planner`, taskId: id, sequenceNo: 1, title: 'Planner', description: null, role: 'PLANNER', agent: null, repository: repositoriesForStep(task, repositoryId), dependencies: [], status: 'PENDING', acceptanceNotes: null, latestRun: null, runCount: 0, startedAt: null, finishedAt: null, createdAt, updatedAt: createdAt }
-  const developer: TaskStep = { ...planner, id: `step-${id}-developer`, sequenceNo: 2, title: 'Developer', role: 'DEVELOPER', dependencies: [planner.id] }
-  const tester: TaskStep = { ...planner, id: `step-${id}-tester`, sequenceNo: 3, title: 'Tester', role: 'TESTER', dependencies: [developer.id] }
-  for (const step of [planner, developer, tester]) store.taskSteps.set(step.id, step)
-
-  const inputRun: TaskRunDetail = { id: `run-${planner.id}`, taskId: id, taskStepId: planner.id, taskStepTitle: planner.title, agent: null, role: planner.role, status: 'WAITING_INPUT', retryOfTaskRunId: null, statusSummary: 'Waiting for user input', statusReason: { code: 'INPUT_REQUIRED', title: 'Input required', summary: 'Waiting for user input', retryable: false, occurredAt: createdAt }, startedAt: createdAt, finishedAt: null, durationMs: null, artifactSummary: { total: 0, diffCount: 0 }, createdAt, updatedAt: createdAt }
-  const failedRun: TaskRunDetail = { id: `run-${developer.id}`, taskId: id, taskStepId: developer.id, taskStepTitle: developer.title, agent: null, role: developer.role, status: 'FAILED', retryOfTaskRunId: null, statusSummary: 'Execution failed', statusReason: { code: 'EXECUTION_FAILED', title: 'Execution failed', summary: 'Mock execution failed', retryable: true, occurredAt: createdAt }, startedAt: createdAt, finishedAt: new Date(Date.now() + 1).toISOString(), durationMs: 1_000, artifactSummary: { total: 2, diffCount: 2 }, createdAt, updatedAt: createdAt }
-  for (const run of [inputRun, failedRun]) {
-    store.taskRuns.set(run.id, run)
-    store.taskRunLogs.set(run.id, [{
-      id: `log-${run.id}-1`, sequence: 1, node: run.role, content: `${run.role} started`, timestamp: createdAt,
-    }])
-    const context: ExecutionContext = {
-      workspaceId: task.workspace?.id ?? '',
-      sandboxStatus: 'RUNNING',
-      repositoryId,
-      baseRef: input.baseRef,
-      headRef: input.baseRef,
-      startedAt: run.startedAt,
-      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-    }
-    store.executionContexts.set(run.id, context)
-  }
-  const inputRequest: InputRequest = {
-    id: `input-${inputRun.id}`,
-    taskRunId: inputRun.id,
-    kind: 'INPUT',
-    status: 'PENDING',
-    prompt: 'Choose a base branch',
-    options: [{ value: input.baseRef, label: input.baseRef }],
-    createdAt,
-  }
-  store.inputRequests.set(inputRequest.id, inputRequest)
-  addDiff(store, task, developer, 'PENDING_REVIEW', 'created-pending-1')
-  addDiff(store, task, developer, 'PENDING_REVIEW', 'created-pending-2')
   return task
+}
+
+export function findTaskByTriggerMessageId(projectId: string, messageId: string): Task | undefined {
+  return [...getDefaultStore(projectId).tasks.values()].find((task) => task.triggerMessageId === messageId)
 }
 
 export function createTaskFromMessageIntent(
@@ -233,9 +198,6 @@ export function createTaskFromMessageIntent(
 ): Task {
   const store = getDefaultStore(projectId)
   const id = makeId(projectId, 'task', store.tasks.size)
-  const plannerStepId = `step-${id}-planner`
-  const plannerRunId = `run-${plannerStepId}`
-  const inputRequestId = `input-${plannerRunId}`
   const task: Task = {
     id,
     displayCode: `T-${store.tasks.size + 1000}`,
@@ -243,7 +205,8 @@ export function createTaskFromMessageIntent(
     title: input.title,
     requirementSummary: input.requirement.slice(0, 200),
     status: 'PLANNING',
-    deliveryMode: 'DIFF_FIRST',
+    deliveryMode: null,
+    deliveryReason: null,
     requirementGroup: { id: input.requirementGroupId, name: input.requirementGroupId, status: 'ACTIVE' },
     createdByUser: { id: 'mock-user', displayName: 'Mock User', avatarUrl: null },
     repositories: [],
@@ -256,32 +219,11 @@ export function createTaskFromMessageIntent(
     workspace: null,
     capabilities: { canCancel: true, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false },
     artifactSummary: { total: 0, byType: {} },
-    diffReviewSummary: { available: false, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 },
+    diffReviewSummary: { available: false, diffId: null, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 },
     sourceMessage: { id: input.messageId, sender: { id: 'user-001', displayName: 'Mock User', avatarUrl: null }, textExcerpt: input.requirement.slice(0, 200), createdAt: input.createdAt },
     triggerMessageId: input.messageId,
   }
   store.tasks.set(task.id, task)
-  const plannerStep: TaskStep = {
-    id: plannerStepId, taskId: task.id, sequenceNo: 1, title: 'Planner', description: null,
-    role: 'PLANNER', agent: null, repository: null, dependencies: [], status: 'PENDING',
-    acceptanceNotes: '等待补充仓库和基线分支。',
-    latestRun: { id: plannerRunId, status: 'WAITING_INPUT', startedAt: input.createdAt, finishedAt: null, durationMs: null },
-    runCount: 1, startedAt: input.createdAt, finishedAt: null, createdAt: input.createdAt, updatedAt: input.createdAt,
-  }
-  const plannerRun: TaskRunDetail = {
-    id: plannerRunId, taskId: task.id, taskStepId: plannerStep.id, taskStepTitle: plannerStep.title,
-    agent: null, role: 'PLANNER', status: 'WAITING_INPUT', retryOfTaskRunId: null,
-    statusSummary: '等待补充执行环境',
-    statusReason: { code: 'INPUT_REQUIRED', title: '需要补充执行信息', summary: '请补充仓库和基线分支。', retryable: false, occurredAt: input.createdAt },
-    startedAt: input.createdAt, finishedAt: null, durationMs: null, artifactSummary: { total: 0, diffCount: 0 }, createdAt: input.createdAt, updatedAt: input.createdAt,
-  }
-  const inputRequest: InputRequest = {
-    id: inputRequestId, taskRunId: plannerRun.id, kind: 'INPUT', status: 'PENDING',
-    prompt: '请选择执行仓库并填写基线分支。', createdAt: input.createdAt,
-  }
-  store.taskSteps.set(plannerStep.id, plannerStep)
-  store.taskRuns.set(plannerRun.id, plannerRun)
-  store.inputRequests.set(inputRequest.id, inputRequest)
   return task
 }
 
@@ -685,7 +627,7 @@ const taskArtifactAndDiffReviewHandlers: HttpHandler[] = [
     if (idempotencyResponse) return idempotencyResponse
     const batch = store.diffReviews.get(taskId)
     if (!batch) return errorResponse(404, 'DIFF_REVIEW_NOT_FOUND', 'Final Diff has not been generated')
-    if (batch.reviewStatus !== 'PENDING_CONFIRMATION') return errorResponse(409, 'DIFF_REVIEW_NOT_DECIDABLE', 'Diff review is no longer pending')
+    if (batch.reviewStatus !== 'PENDING_CONFIRMATION' || batch.confirmationSource !== 'USER') return errorResponse(409, 'DIFF_REVIEW_NOT_DECIDABLE', 'Diff review is not user-decidable')
     batch.reviewStatus = 'ACCEPTED'
     batch.deliveryStatus = 'DELIVERING'
     const task = findTask(store, taskId)
@@ -706,7 +648,7 @@ const taskArtifactAndDiffReviewHandlers: HttpHandler[] = [
     if (idempotencyResponse) return idempotencyResponse
     const batch = store.diffReviews.get(taskId)
     if (!batch) return errorResponse(404, 'DIFF_REVIEW_NOT_FOUND', 'Final Diff has not been generated')
-    if (batch.reviewStatus !== 'PENDING_CONFIRMATION') return errorResponse(409, 'DIFF_REVIEW_NOT_DECIDABLE', 'Diff review is no longer pending')
+    if (batch.reviewStatus !== 'PENDING_CONFIRMATION' || batch.confirmationSource !== 'USER') return errorResponse(409, 'DIFF_REVIEW_NOT_DECIDABLE', 'Diff review is not user-decidable')
     batch.reviewStatus = 'REJECTED'
     batch.reviewReason = reason
     const task = findTask(store, taskId)

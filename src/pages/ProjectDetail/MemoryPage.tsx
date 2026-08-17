@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Button,
   Card,
@@ -21,9 +21,9 @@ import {
   UserOutlined,
   MessageOutlined,
 } from '@ant-design/icons'
-import { groupApi, memoryApi } from '@/api'
+import { memoryApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
-import type { CreateMemoryPayload, Memory, MemoryStatus, Message } from '@/types'
+import type { CreateMemoryPayload, Memory, MemoryStatus } from '@/types'
 import './MemoryPage.css'
 
 const { Text, Paragraph } = Typography
@@ -296,36 +296,6 @@ function CreateMemoryModal({
   onCreated: () => void
 }) {
   const [form] = Form.useForm<CreateMemoryPayload>()
-  const [mode, setMode] = useState<'manual' | 'generate'>('manual')
-  const [genForm] = Form.useForm<{ groupId?: string; messageIds?: string[]; instruction?: string }>()
-  // 当前选中的群，用于拉取该群消息列表供勾选
-  const [genGroupId, setGenGroupId] = useState<string | undefined>()
-
-  const { data: groups = [] } = useQuery({
-    queryKey: ['groups', projectId],
-    queryFn: () => groupApi.listByProject(projectId),
-    enabled: !!projectId,
-  })
-
-  // 选中群后拉取该群消息，供勾选具体消息（对齐接口文档 §9 sourceMessages，精确到 messageId）
-  // 游标分页：下拉滚动到底部自动加载下一页
-  const {
-    data: messagePages,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useInfiniteQuery({
-    queryKey: ['groups', projectId, genGroupId, 'messages'],
-    queryFn: ({ pageParam }) => groupApi.listMessages(projectId, genGroupId ?? '', pageParam),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) =>
-      lastPage.page.hasMore ? (lastPage.page.nextCursor ?? undefined) : undefined,
-    enabled: !!genGroupId && mode === 'generate',
-  })
-  const groupMessages = useMemo(
-    () => messagePages?.pages.flatMap((p) => p.data) ?? [],
-    [messagePages],
-  )
 
   const save = useMutation({
     mutationFn: (payload: CreateMemoryPayload) =>
@@ -337,150 +307,59 @@ function CreateMemoryModal({
       onCreated()
     },
   })
-  const generate = useMutation({
-    mutationFn: (v: { groupId?: string; messageIds?: string[]; instruction?: string }) =>
-      memoryApi.generateDraft(projectId, {
-        // 精确到 messageId 数组，不再用 'latest' 兜底
-        sourceMessages: (v.messageIds ?? []).map((messageId) => ({
-          groupId: v.groupId ?? '',
-          messageId,
-        })),
-        instruction: v.instruction,
-      }),
-    onSuccess: () => {
-      genForm.resetFields()
-      setGenGroupId(undefined)
-      onCreated()
-    },
-  })
 
   return (
     <Modal
       title={editTarget ? '编辑 Memory' : '新建 Memory'}
       open={open}
       onCancel={onClose}
-      onOk={() => (editTarget || mode === 'manual' ? form.submit() : genForm.submit())}
+      onOk={() => form.submit()}
       okText={editTarget ? '保存' : '创建'}
-      confirmLoading={save.isPending || generate.isPending}
+      confirmLoading={save.isPending}
       destroyOnClose
     >
-      {!editTarget && (
-        <Segmented
-          options={[
-            { label: '手动创建', value: 'manual' },
-            { label: '从群消息生成', value: 'generate' },
-          ]}
-          value={mode}
-          onChange={(v) => setMode(v as 'manual' | 'generate')}
-          style={{ marginBottom: 16 }}
-        />
-      )}
-
-      {editTarget || mode === 'manual' ? (
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(v) => save.mutate(v)}
-          initialValues={
-            editTarget
-              ? {
-                  title: editTarget.title,
-                  content: editTarget.content,
-                  category: editTarget.category,
-                  tags: editTarget.tags,
-                }
-              : { category: 'ENGINEERING_DECISION' }
-          }
-        >
-          <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
-            <Input placeholder="例如：密码存储约定" maxLength={50} />
-          </Form.Item>
-          <Form.Item name="content" label="内容" rules={[{ required: true, message: '请输入内容' }]}>
-            <Input.TextArea
-              placeholder="沉淀为可复用的项目知识或约定"
-              autoSize={{ minRows: 3, maxRows: 6 }}
-            />
-          </Form.Item>
-          <Form.Item name="category" label="分类">
-            <Select
-              options={[
-                { value: 'ENGINEERING_DECISION', label: '工程决策' },
-                { value: 'PROCESS', label: '流程约定' },
-                { value: 'GENERAL', label: '通用' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item name="tags" label="标签（逗号分隔）">
-            <Select
-              mode="tags"
-              placeholder="输入后回车，如 auth / security"
-              tokenSeparators={[',']}
-              open={false}
-            />
-          </Form.Item>
-        </Form>
-      ) : (
-        <Form form={genForm} layout="vertical" onFinish={(v) => generate.mutate(v)}>
-          <Form.Item name="groupId" label="来源群聊">
-            <Select
-              placeholder="选择要沉淀的需求群"
-              options={groups
-                .filter((g) => g.type === 'REQUIREMENT')
-                .map((g) => ({ value: g.id, label: g.title }))}
-              onChange={(v) => {
-                setGenGroupId(v)
-                genForm.setFieldValue('messageIds', [])
-              }}
-            />
-          </Form.Item>
-          <Form.Item
-            name="messageIds"
-            label="选择消息"
-            rules={[{ required: true, message: '请至少选择一条消息' }]}
-          >
-            <Select
-              mode="multiple"
-              placeholder={genGroupId ? '勾选要沉淀的消息' : '先选择来源群聊'}
-              disabled={!genGroupId}
-              options={groupMessages.map((m) => ({
-                value: m.id,
-                label: formatMessagePreview(m),
-              }))}
-              optionFilterProp="label"
-              onPopupScroll={(e) => {
-                const el = e.target as HTMLElement
-                if (
-                  el.scrollTop + el.clientHeight >= el.scrollHeight - 12 &&
-                  hasNextPage &&
-                  !isFetchingNextPage
-                ) {
-                  fetchNextPage()
-                }
-              }}
-              dropdownRender={(menu) => (
-                <>
-                  {menu}
-                  {hasNextPage && (
-                    <div
-                      style={{
-                        padding: '6px 12px',
-                        textAlign: 'center',
-                        color: '#94a3b8',
-                        fontSize: 12,
-                      }}
-                    >
-                      {isFetchingNextPage ? '加载中…' : '滚动加载更多'}
-                    </div>
-                  )}
-                </>
-              )}
-            />
-          </Form.Item>
-          <Form.Item name="instruction" label="沉淀说明（可选）">
-            <Input placeholder="例如：沉淀为项目认证安全约定" />
-          </Form.Item>
-        </Form>
-      )}
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={(v) => save.mutate(v)}
+        initialValues={
+          editTarget
+            ? {
+                title: editTarget.title,
+                content: editTarget.content,
+                category: editTarget.category,
+                tags: editTarget.tags,
+              }
+            : { category: 'ENGINEERING_DECISION' }
+        }
+      >
+        <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
+          <Input placeholder="例如：密码存储约定" maxLength={50} />
+        </Form.Item>
+        <Form.Item name="content" label="内容" rules={[{ required: true, message: '请输入内容' }]}>
+          <Input.TextArea
+            placeholder="沉淀为可复用的项目知识或约定"
+            autoSize={{ minRows: 3, maxRows: 6 }}
+          />
+        </Form.Item>
+        <Form.Item name="category" label="分类">
+          <Select
+            options={[
+              { value: 'ENGINEERING_DECISION', label: '工程决策' },
+              { value: 'PROCESS', label: '流程约定' },
+              { value: 'GENERAL', label: '通用' },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item name="tags" label="标签（逗号分隔）">
+          <Select
+            mode="tags"
+            placeholder="输入后回车，如 auth / security"
+            tokenSeparators={[',']}
+            open={false}
+          />
+        </Form.Item>
+      </Form>
     </Modal>
   )
 }
@@ -488,50 +367,4 @@ function CreateMemoryModal({
 function formatDate(iso: string): string {
   const d = new Date(iso)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-/** 把消息转成下拉选项里的可读摘要（带发送者 + 时间，各类型可辨认） */
-function formatMessagePreview(message: Message): string {
-  const time = formatTime(message.createdAt)
-  const sender =
-    message.senderType === 'SYSTEM'
-      ? '系统'
-      : (message.senderName ?? (message.senderType === 'AGENT' ? 'Agent' : '成员'))
-  return `${time} ${sender}｜${messageBody(message)}`
-}
-
-/** 各类型消息的可读正文 */
-function messageBody(message: Message): string {
-  const c = message.content as Record<string, unknown>
-  switch (message.type) {
-    case 'TEXT':
-    case 'SYSTEM':
-      return typeof c.text === 'string' ? c.text : ''
-    case 'CODE':
-      return `[代码] ${typeof c.code === 'string' ? c.code.slice(0, 40) : ''}`
-    case 'IMAGE':
-      return '[图片]'
-    case 'FILE':
-      return `[文件] ${typeof c.name === 'string' ? c.name : ''}`
-    case 'DIFF':
-      return `[交付] ${typeof c.title === 'string' && c.title ? c.title : ''}`
-    case 'TASK_STATUS':
-      return `[任务] ${
-        typeof c.message === 'string' && c.message
-          ? c.message
-          : typeof c.status === 'string'
-            ? c.status
-            : ''
-      }`
-    case 'QUOTE':
-      return `[引用] ${typeof c.quotedText === 'string' ? c.quotedText : ''}`
-    default:
-      return `[${message.type}]`
-  }
-}
-
-function formatTime(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return `${formatDate(iso)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }

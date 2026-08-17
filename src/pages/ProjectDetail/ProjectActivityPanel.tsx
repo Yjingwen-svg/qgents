@@ -6,8 +6,10 @@ import {
   ClockCircleOutlined,
   ExclamationCircleFilled,
 } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
 import { groupApi, mergeRequestsApi, tasksApi } from '@/api'
 import type { TaskListItem, TaskStatus } from '@/types/task-model'
+import { PATHS } from '@/routes/paths'
 
 const { Text } = Typography
 
@@ -61,6 +63,7 @@ function groupProgress(tasks: TaskListItem[], groupId: string): GroupProgressKey
  * 需求群进度（真实接口）+ 任务动态（真实接口）+ MR 待处理（真实接口）
  */
 export function ProjectActivityPanel({ projectId }: { projectId: string }) {
+  const navigate = useNavigate()
   const { data: groups = [] } = useQuery({
     queryKey: ['groups', projectId],
     queryFn: () => groupApi.listByProject(projectId),
@@ -120,8 +123,20 @@ export function ProjectActivityPanel({ projectId }: { projectId: string }) {
           <ul className="pd-activity__list">
             {tasks.slice(0, 8).map((t) => {
               const meta = TASK_STATUS_META[t.status]
+              const batchId = t.attention?.diffReviewBatchId
               return (
-                <li key={t.id} className="pd-activity__row">
+                <li
+                  key={t.id}
+                  className="pd-activity__row"
+                  title="查看任务详情"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() =>
+                    navigate(
+                      PATHS.projectTaskDetail(projectId, t.id) +
+                        (batchId ? `?diffReviewBatchId=${encodeURIComponent(batchId)}` : ''),
+                    )
+                  }
+                >
                   <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
                     {t.title}
                   </span>
@@ -145,7 +160,13 @@ export function ProjectActivityPanel({ projectId }: { projectId: string }) {
         ) : (
           <ul className="pd-activity__list">
             {mrs.slice(0, 8).map((mr) => (
-              <li key={mr.id} className="pd-activity__row">
+              <li
+                key={mr.id}
+                className="pd-activity__row"
+                title="查看 MR 详情"
+                style={{ cursor: 'pointer' }}
+                onClick={() => navigate(PATHS.projectCodeMr(projectId, mr.id))}
+              >
                 <span
                   style={{
                     fontSize: 13,

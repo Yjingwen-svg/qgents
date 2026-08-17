@@ -6,6 +6,7 @@ import type {
   SendMessageResult,
   SendMessagePayload,
   CreateGroupPayload,
+  TaskTriggerRequest,
 } from '@/types'
 
 /** 群聊 API —— 对齐接口文档 v1.1.8 §7 */
@@ -44,5 +45,12 @@ export const groupApi = {
       if ('message' in response) return response
       return { message: response, task: null }
     })
+  },
+  /** 显式触发任务（§7；续作引用时不得传 repositoryIds，否则 409 WORKSPACE_CONTINUATION_REPOSITORIES_FORBIDDEN） */
+  async triggerTask(projectId: string, groupId: string, messageId: string, input: TaskTriggerRequest): Promise<void> {
+    await request<unknown>(
+      `/projects/${projectId}/groups/${groupId}/messages/${messageId}/trigger-task`,
+      { method: 'POST', body: input },
+    )
   },
 }

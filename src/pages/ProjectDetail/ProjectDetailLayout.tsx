@@ -7,6 +7,7 @@ import { PATHS, PROJECT_NAV } from '@/routes/paths'
 import { ApiError, groupApi, projectApi } from '@/api'
 import { useAppUiStore } from '@/store/appUiStore'
 import { hasUnread, useUnreadStore } from '@/store/unreadStore'
+import { latestMessageText } from '@/utils/messageSummary'
 import { useProjectTaskDomainEvents } from '@/realtime/useProjectTaskDomainEvents'
 import { ProjectActivityPanel } from './ProjectActivityPanel'
 import type { CreateGroupPayload, Group } from '@/types'
@@ -168,7 +169,7 @@ export default function ProjectDetailLayout() {
             {g.latestMessage ? (
               <span className="pd-nav__branch-summary">
                 {g.latestMessage.senderName ? `${g.latestMessage.senderName}: ` : ''}
-                {g.latestMessage.text}
+                {latestMessageText(g.latestMessage)}
               </span>
             ) : (
               <span className="pd-nav__branch-ref">

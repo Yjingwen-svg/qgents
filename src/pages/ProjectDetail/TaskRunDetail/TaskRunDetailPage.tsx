@@ -153,6 +153,8 @@ function InputRequestCard({ projectId, taskRunId, request, onRefresh }: { projec
 }
 
 function ExecutionContextCard({ query }: { query: ReturnType<typeof useTaskRunExecutionContext> }) {
+  const context = query.data
+  const abnormal = context?.sandboxStatus === 'FAILED' || context?.sandboxStatus === 'EXPIRED'
   if (query.isLoading) return <section className={styles.sideCard} data-testid="execution-context-card"><SectionHeading title="执行环境" /><InlineState loading /></section>
   if (query.isError) return <section className={styles.sideCard} data-testid="execution-context-card"><SectionHeading title="执行环境" /><SectionError resource="Execution Context" error={query.error} /></section>
   const context = query.data

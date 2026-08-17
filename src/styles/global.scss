@@ -191,3 +191,14 @@ img {
   white-space: nowrap;
   border: 0;
 }
+
+/* ──── 聊天消息气泡：hover 显示「回复」按钮 ────
+   回复按钮始终占据布局空间（visibility 控制显隐），
+   避免按钮出现/消失改变消息尺寸导致 hover 区域抖动循环。 */
+.chat-message-bubble__reply {
+  visibility: hidden;
+}
+
+.chat-message-bubble:hover .chat-message-bubble__reply {
+  visibility: visible;
+}

@@ -106,6 +106,7 @@ export default function DeliveryCenterPage() {
     repositoryId: searchParams.get('repositoryId') || undefined,
     status: readStatus(searchParams.get('status')),
     createdBy: searchParams.get('createdBy') || undefined,
+    keyword: searchParams.get('keyword') || undefined,
   }), [searchParams])
 
   const itemQuery = useInfiniteDeliveryItems(projectId, { ...filters, limit: PAGE_SIZE })
@@ -115,6 +116,7 @@ export default function DeliveryCenterPage() {
     status: filters.status,
     repositoryId: filters.repositoryId,
     createdBy: filters.createdBy,
+    keyword: filters.keyword,
   })
   const actionMutation = useDeliveryActionMutation()
 
@@ -153,7 +155,7 @@ export default function DeliveryCenterPage() {
     return [...grouped.values()].sort((left, right) => right.latestAt.localeCompare(left.latestAt))
   }, [items])
 
-  function updateFilter(key: 'groupId' | 'type' | 'repositoryId' | 'status', value: string | undefined) {
+  function updateFilter(key: 'groupId' | 'type' | 'repositoryId' | 'status' | 'keyword', value: string | undefined) {
     const next = new URLSearchParams(searchParams)
     if (value) next.set(key, value)
     else next.delete(key)
@@ -221,6 +223,9 @@ export default function DeliveryCenterPage() {
       <div className={styles.contentLayout}>
         <section className={styles.mainColumn}>
           <div className={styles.filterBar} aria-label="交付筛选">
+            <FilterField label="搜索交付">
+              <Input aria-label="搜索交付" allowClear value={filters.keyword} placeholder="标题、摘要或来源" onChange={(event) => updateFilter('keyword', event.target.value.trim() || undefined)} />
+            </FilterField>
             <FilterField label="需求群">
               <Select
                 aria-label="需求群"

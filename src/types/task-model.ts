@@ -108,6 +108,7 @@ export interface TaskListFilters {
   status?: TaskStatus
   createdBy?: string
   repositoryId?: string
+  keyword?: string
   cursor?: string
   limit?: number
 }

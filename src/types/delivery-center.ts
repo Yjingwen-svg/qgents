@@ -149,6 +149,7 @@ export interface DeliveryItemsFilters {
   status?: DeliveryDisplayStatus
   repositoryId?: string
   createdBy?: string
+  keyword?: string
   cursor?: string
   limit?: number
 }
@@ -200,6 +201,7 @@ export interface DeliverySummaryFilters {
   status?: DeliveryDisplayStatus
   repositoryId?: string
   createdBy?: string
+  keyword?: string
 }
 
 export type DeliveryAction =

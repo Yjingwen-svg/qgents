@@ -29,11 +29,10 @@ export interface AgentSummary {
   name: string
   avatar: string | null
   role: AgentRole
-  capabilities: string[]
+  description: string | null
   visibility: AgentVisibility
   status: AgentStatus
   createdBy: string | null
-  description: string | null
 }
 
 export interface AgentDetail extends AgentSummary {
@@ -94,7 +93,7 @@ export interface CreateAgentPayload {
   name: string
   avatar?: string
   role: AgentRole
-  capabilities: string[]
+  description: string
   prompt: string
 }
 

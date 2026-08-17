@@ -321,11 +321,13 @@ const taskCreateListDetailHandlers: HttpHandler[] = [
     const status = search.get('status')
     const createdBy = search.get('createdBy')
     const repositoryId = search.get('repositoryId')
+    const keyword = search.get('keyword')?.trim().toLocaleLowerCase()
     const tasks = [...store.tasks.values()].filter((task) =>
       (!groupId || task.requirementGroup?.id === groupId) &&
       (!status || task.status === status) &&
       (!createdBy || task.createdByUser?.id === createdBy) &&
-      (!repositoryId || task.repositories.some((repository) => repository.repositoryId === repositoryId)),
+      (!repositoryId || task.repositories.some((repository) => repository.repositoryId === repositoryId)) &&
+      (!keyword || [task.displayCode, task.title, task.requirementSummary, task.requirementGroup?.name, task.createdByUser?.displayName, ...task.repositories.map((repository) => repository.name)].filter((value): value is string => Boolean(value)).join(' ').toLocaleLowerCase().includes(keyword)),
     )
     return page(tasks.map(taskListItem), request)
   }),

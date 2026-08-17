@@ -31,11 +31,25 @@ import { findDiff, findInputRequest, findTask, findTaskRun, findTaskStep, type T
 
 const stores = new Map<string, TaskModelStore>()
 const diffReviewIdempotency = new Map<string, { fingerprint: string; batch: import('@/types/task-model').DiffReviewBatch }>()
+const cqHistories = new Map<string, CqRecord[]>()
+const cqIdempotency = new Map<string, { fingerprint: string; item: import('@/types/task-model').MergeRequestSummary }>()
 const requestId = 'task-model-mock-request'
+
+interface CqRecord {
+  id: string
+  status: 'PASSED' | 'FAILED'
+  commitSha: string | null
+  reviewedByUserId: string
+  reviewedByName: string
+  reason: string
+  completedAt: string
+}
 
 export function resetTaskModelStore(): void {
   stores.clear()
   diffReviewIdempotency.clear()
+  cqHistories.clear()
+  cqIdempotency.clear()
 }
 
 function pathParam(params: PathParams, name: string): string {
@@ -717,27 +731,99 @@ const taskArtifactAndDiffReviewHandlers: HttpHandler[] = [
   }),
 ]
 
-function mergeRequestChecks(item: import('@/types/task-model').MergeRequestSummary): import('@/types/task-model').MergeRequestCheck[] {
+function mergeRequestChecks(
+  item: import('@/types/task-model').MergeRequestSummary,
+  projectId: string,
+): import('@/types/task-model').MergeRequestCheck[] {
   const requiredChecks = item.qualityGate?.requiredChecks ?? ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE']
   const overall = item.qualityGate?.status ?? 'PENDING'
+  const history = cqHistories.get(item.id) ?? []
+  const cq = history[history.length - 1]
   return requiredChecks.flatMap((type, index) => {
     if (type !== 'TESTSET' && type !== 'AI_REVIEW' && type !== 'DRY_RUN' && type !== 'CQ_PLUS_ONE') return []
     let status: 'PENDING' | 'PASSED' | 'FAILED' = 'PENDING'
     if (overall === 'PASSED') status = 'PASSED'
     else if (overall === 'FAILED') status = type === 'CQ_PLUS_ONE' ? 'FAILED' : 'PASSED'
     else if (type === 'TESTSET' || type === 'DRY_RUN') status = 'PASSED'
+    if (type === 'CQ_PLUS_ONE' && cq) status = cq.status
+    const completed = type === 'CQ_PLUS_ONE' && cq ? cq.completedAt : status === 'PENDING' ? null : '2026-08-12T08:01:00Z'
     return [{
       id: `check-${item.id}-${index + 1}`,
       type,
       status,
       attemptNo: 1,
-      testsetId: type === 'TESTSET' ? 'testset-mock' : null,
-      commitSha: item.headCommit,
+      testsetId: type === 'TESTSET' ? `testset-${projectId}-login` : null,
+      testRunId: type === 'TESTSET' ? `testrun-${projectId}-1` : null,
+      dryRunId: type === 'DRY_RUN' ? `dryrun-${projectId}-1` : null,
+      commitSha: type === 'CQ_PLUS_ONE' && cq ? cq.commitSha : item.headCommit,
       source: 'MOCK',
       startedAt: '2026-08-12T08:00:00Z',
-      completedAt: status === 'PENDING' ? null : '2026-08-12T08:01:00Z',
+      completedAt: completed,
+      reviewedByUserId: type === 'CQ_PLUS_ONE' ? cq?.reviewedByUserId ?? null : null,
+      reviewedByName: type === 'CQ_PLUS_ONE' ? cq?.reviewedByName ?? null : null,
+      reviewReason: type === 'CQ_PLUS_ONE' ? cq?.reason ?? null : null,
     }]
   })
+}
+
+function refreshQualityGate(
+  item: import('@/types/task-model').MergeRequestSummary,
+  projectId: string,
+): void {
+  if (!item.qualityGate) return
+  const required = (item.qualityGate.requiredChecks ?? ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE']).filter(
+    (type) => type === 'TESTSET' || type === 'AI_REVIEW' || type === 'DRY_RUN' || type === 'CQ_PLUS_ONE',
+  )
+  const checks = mergeRequestChecks(item, projectId)
+  const allPassed = required.every((type) => checks.find((check) => check.type === type)?.status === 'PASSED')
+  const anyFailed = checks.some((check) => required.includes(check.type) && check.status === 'FAILED')
+  item.qualityGate.status = allPassed ? 'PASSED' : anyFailed ? 'FAILED' : 'PENDING'
+}
+
+async function writeCqDecision(
+  params: PathParams,
+  request: Request,
+  decision: 'PASSED' | 'FAILED',
+): Promise<HttpResponse<Record<string, unknown>>> {
+  const projectId = pathParam(params, 'projectId')
+  const denied = guardProject(projectId)
+  if (denied) return denied
+  const key = request.headers.get('Idempotency-Key')
+  if (!key) return errorResponse(400, 'IDEMPOTENCY_KEY_REQUIRED', 'Idempotency-Key is required')
+  const mergeRequestId = pathParam(params, 'mergeRequestId')
+  const body = await jsonObject(request)
+  const reason = body.reason
+  if (!isNonEmptyString(reason)) return errorResponse(422, 'VALIDATION_FAILED', 'reason is required', 'reason')
+  const fingerprint = `${decision}:${reason.trim()}`
+  const recordKey = `${projectId}:${mergeRequestId}:${key}`
+  const cached = cqIdempotency.get(recordKey)
+  if (cached) {
+    if (cached.fingerprint !== fingerprint) {
+      return errorResponse(409, 'IDEMPOTENCY_KEY_REUSED', 'Idempotency-Key was already used for another request')
+    }
+    return response(cached.item)
+  }
+  const store = getStore(projectId, request)
+  const item = store.mergeRequests.get(mergeRequestId)
+  if (!item) return missing('Merge request')
+  if (item.status !== 'OPEN') return errorResponse(409, 'MERGE_REQUEST_NOT_OPEN', 'Only an open MR can receive CQ')
+  if (!item.headCommit) return errorResponse(409, 'REMOTE_NOT_VERIFIED', 'Source commit has not been verified on the remote')
+  const completedAt = new Date().toISOString()
+  const history = cqHistories.get(item.id) ?? []
+  history.push({
+    id: `cq-${item.id}-${history.length + 1}`,
+    status: decision,
+    commitSha: item.headCommit,
+    reviewedByUserId: 'mock-reviewer',
+    reviewedByName: 'Mock Reviewer',
+    reason: reason.trim(),
+    completedAt,
+  })
+  cqHistories.set(item.id, history)
+  refreshQualityGate(item, projectId)
+  const snapshot = structuredClone(item)
+  cqIdempotency.set(recordKey, { fingerprint, item: snapshot })
+  return response(item)
 }
 
 const taskModelMergeRequestHandlers: HttpHandler[] = [
@@ -764,7 +850,29 @@ const taskModelMergeRequestHandlers: HttpHandler[] = [
     if (denied) return denied
     const store = getStore(projectId, request)
     const item = store.mergeRequests.get(pathParam(params, 'mergeRequestId'))
-    return item ? response(mergeRequestChecks(item)) : missing('Merge request')
+    return item ? response(mergeRequestChecks(item, projectId)) : missing('Merge request')
+  }),
+
+  http.get('*/api/projects/:projectId/merge-requests/:mergeRequestId/reviews', ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const store = getStore(projectId, request)
+    const item = store.mergeRequests.get(pathParam(params, 'mergeRequestId'))
+    if (!item) return missing('Merge request')
+    const history = [...(cqHistories.get(item.id) ?? [])].reverse()
+    return response({
+      items: history.map((entry) => ({
+        id: entry.id,
+        kind: 'CQ',
+        decision: entry.status === 'PASSED' ? 'APPROVED' : 'REJECTED',
+        reviewedByName: entry.reviewedByName,
+        reviewedByUserId: entry.reviewedByUserId,
+        reason: entry.reason,
+        createdAt: entry.completedAt,
+        commitSha: entry.commitSha,
+      })),
+    })
   }),
 
   http.get('*/api/projects/:projectId/merge-requests/:mergeRequestId', ({ params, request }) => {
@@ -774,6 +882,14 @@ const taskModelMergeRequestHandlers: HttpHandler[] = [
     const store = getStore(projectId, request)
     const item = store.mergeRequests.get(pathParam(params, 'mergeRequestId'))
     return item ? response(item) : missing('Merge request')
+  }),
+
+  http.post('*/api/projects/:projectId/merge-requests/:mergeRequestId/cq-approvals', ({ params, request }) => {
+    return writeCqDecision(params, request, 'PASSED')
+  }),
+
+  http.post('*/api/projects/:projectId/merge-requests/:mergeRequestId/cq-rejections', ({ params, request }) => {
+    return writeCqDecision(params, request, 'FAILED')
   }),
 
   http.post('*/api/projects/:projectId/merge-requests/:mergeRequestId/merge', ({ params, request }) => {

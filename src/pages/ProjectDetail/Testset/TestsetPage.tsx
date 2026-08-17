@@ -71,6 +71,7 @@ import {
   testsetStatusLabel,
 } from './testsetDisplay'
 import { pushRunHistory, readRunHistory } from './runHistory'
+import { isTestsetRunTab } from '../qualityGateNav'
 import styles from './TestsetPage.module.scss'
 
 const { Title, Text, Paragraph } = Typography
@@ -87,7 +88,7 @@ const pageTheme: ThemeConfig = {
   },
 }
 
-const SEARCH_KEYS = new Set(['repositoryId', 'status', 'testsetId', 'testRunId', 'dryRunId', 'taskId'])
+const SEARCH_KEYS = new Set(['repositoryId', 'status', 'testsetId', 'testRunId', 'dryRunId', 'taskId', 'runTab'])
 const EMPTY_TESTSETS: Testset[] = []
 const EMPTY_REPOS: ProjectBoundRepository[] = []
 
@@ -152,6 +153,8 @@ export function TestsetPage() {
   const testRunId = searchParams.get('testRunId')?.trim() || undefined
   const dryRunId = searchParams.get('dryRunId')?.trim() || undefined
   const taskId = searchParams.get('taskId')?.trim() || undefined
+  const runTabParam = searchParams.get('runTab')?.trim()
+  const runTab = isTestsetRunTab(runTabParam) ? runTabParam : 'overview'
 
   const { data: project } = useQuery({
     queryKey: ['projects', projectId],
@@ -432,6 +435,8 @@ export function TestsetPage() {
               dryRunLoading={Boolean(dryRunId) && dryRunQuery.isLoading}
               repositories={repositories}
               testsets={testsets}
+              runTab={runTab}
+              onRunTabChange={(key) => updateParams({ runTab: key === 'overview' ? undefined : key })}
             />
           </section>
 
@@ -762,6 +767,8 @@ function CurrentRunPanel({
   dryRunLoading,
   repositories,
   testsets,
+  runTab,
+  onRunTabChange,
 }: {
   projectId: string
   testRun: ReturnType<typeof useTestRun>['data']
@@ -771,6 +778,8 @@ function CurrentRunPanel({
   dryRunLoading: boolean
   repositories: ProjectBoundRepository[]
   testsets: Testset[]
+  runTab: string
+  onRunTabChange: (key: string) => void
 }) {
   if (testRunLoading || dryRunLoading) {
     return (
@@ -905,7 +914,11 @@ function CurrentRunPanel({
       {!testRun && !dryRun ? (
         <Empty description="尚未发起或选择运行。用右上角发起测试 / Dry-run；测试配方请到「管理测试集」。" />
       ) : (
-        <Tabs items={tabItems} />
+        <Tabs
+          activeKey={tabItems.some((item) => item.key === runTab) ? runTab : 'overview'}
+          onChange={onRunTabChange}
+          items={tabItems}
+        />
       )}
     </>
   )

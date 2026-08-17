@@ -23,14 +23,18 @@ import {
 } from '@ant-design/icons'
 import { githubApi } from '@/api/github'
 import { projectApi } from '@/api/project'
+import { useAuth } from '@/context/AuthContext'
 import {
   useAddDiffComment,
+  useApproveMergeRequestCq,
   useDiffComments,
   useDiffFiles,
   useDiffs,
   useMergeMergeRequest,
   useMergeRequest,
   useMergeRequestChecks,
+  useRejectMergeRequestCq,
+  useTask,
 } from '@/hooks/task-model'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
@@ -48,7 +52,10 @@ import type {
   MergeRequestSummary,
 } from '@/types/task-model'
 import { commentAuthorName, HUNK_UNAVAILABLE_HINT } from '../commentAuthor'
+import { findCqCheck, isMergeRequestAuthor } from '../cqSeal'
 import { githubPullRequestUrl } from '../mergeRequestDisplay'
+import { qualityGateNodeHref } from '../qualityGateNav'
+import { CqSealCard } from './CqSealCard'
 import styles from './MergeRequestDetailPage.module.scss'
 
 const { Text } = Typography
@@ -74,11 +81,15 @@ type DetailView = 'gate' | 'changes' | 'comments'
  *
  * GET  /projects/{projectId}/merge-requests/{mergeRequestId}
  * GET  /projects/{projectId}/merge-requests/{mergeRequestId}/checks
+ * 质量门禁 Testset / Dry-run 节点跳转 Testset 页对应运行；通过后可打开报告 Tab。
+ * POST /projects/{projectId}/merge-requests/{mergeRequestId}/cq-approvals
+ * POST /projects/{projectId}/merge-requests/{mergeRequestId}/cq-rejections
  * POST /projects/{projectId}/merge-requests/{mergeRequestId}/merge  仅 PROJECT_ADMIN，且门禁 PASSED
  *
  * 评论 / 变更没有独立 MR 评论接口，复用关联 Diff 的 files / comments。
  */
 export default function MergeRequestDetailPage() {
+  const { user } = useAuth()
   const { message, modal } = App.useApp()
   const { projectId = '', mergeRequestId = '' } = useParams<{
     projectId: string
@@ -110,9 +121,12 @@ export default function MergeRequestDetailPage() {
   const detailQuery = useMergeRequest(projectId, mergeRequestId)
   const checksQuery = useMergeRequestChecks(projectId, mergeRequestId)
   const mergeMr = useMergeMergeRequest(projectId)
+  const approveCq = useApproveMergeRequestCq(projectId)
+  const rejectCq = useRejectMergeRequestCq(projectId)
   const diffsQuery = useDiffs(projectId, { limit: FILE_PAGE_SIZE })
 
   const mr = detailQuery.data
+  const taskQuery = useTask(projectId, mr?.taskId ?? '')
   const relatedDiff = useMemo(
     () => (mr ? pickRelatedDiff(diffsQuery.data?.data ?? [], mr) : undefined),
     [diffsQuery.data, mr],
@@ -186,6 +200,41 @@ export default function MergeRequestDetailPage() {
     })
   }
 
+  function submitCq(kind: 'approve' | 'reject') {
+    if (!mr || mr.status !== 'OPEN') return
+    if (isMergeRequestAuthor(user?.id, taskQuery.data?.createdByUser?.id)) return
+    let reason = ''
+    const rejecting = kind === 'reject'
+    modal.confirm({
+      title: rejecting ? '拒绝 CQ' : '盖 CQ+1？',
+      content: (
+        <Input.TextArea
+          placeholder={rejecting ? '请填写修改意见' : '请填写审查理由'}
+          autoSize={{ minRows: 3, maxRows: 6 }}
+          onChange={(event) => {
+            reason = event.target.value
+          }}
+        />
+      ),
+      okText: rejecting ? '拒绝' : '盖章',
+      okButtonProps: rejecting ? { danger: true } : undefined,
+      onOk: () => {
+        if (!reason.trim()) {
+          message.warning(rejecting ? '修改意见不能为空' : '审查理由不能为空')
+          return Promise.reject(new Error('reason required'))
+        }
+        const mutate = rejecting ? rejectCq.mutateAsync : approveCq.mutateAsync
+        return mutate({ mergeRequestId: mr.id, input: { reason: reason.trim() } }).then(
+          () => message.success(rejecting ? '已拒绝 CQ' : '已盖 CQ+1'),
+          (error: unknown) => {
+            message.error(formatApiError(error))
+            return Promise.reject(error)
+          },
+        )
+      },
+    })
+  }
+
   async function copyLink() {
     try {
       await navigator.clipboard.writeText(window.location.href)
@@ -236,6 +285,8 @@ export default function MergeRequestDetailPage() {
   const description = mr.description?.trim() || ''
   const descriptionLong = description.length > DESCRIPTION_CLAMP
   const gateNodes = qualityGateNodes(checksQuery.data, mr)
+  const cqCheck = findCqCheck(checksQuery.data)
+  const isAuthor = isMergeRequestAuthor(user?.id, taskQuery.data?.createdByUser?.id)
 
   return (
     <div className={styles.page}>
@@ -314,16 +365,26 @@ export default function MergeRequestDetailPage() {
                   ) : (
                     <div className={styles.gate}>
                       {gateNodes.map((node) => (
-                        <div key={node.name} className={styles.gateItem}>
-                          <span className={`${styles.gateDot} ${gateDotClass(node.status)}`}>
-                            {gateIcon(node.status)}
-                          </span>
-                          <strong className={styles.gateName}>{GATE_LABEL[node.name]}</strong>
-                          <p className={styles.gateSummary}>{gateStatusLabel(node.status)}</p>
-                        </div>
+                        <GateNode
+                          key={node.name}
+                          projectId={projectId}
+                          mr={mr}
+                          node={node}
+                        />
                       ))}
                     </div>
                   )}
+                  <CqSealCard
+                    projectId={projectId}
+                    mergeRequestId={mr.id}
+                    check={cqCheck}
+                    headCommit={mr.headCommit}
+                    mrStatus={mr.status}
+                    isAuthor={isAuthor}
+                    busy={approveCq.isPending || rejectCq.isPending}
+                    onApprove={() => submitCq('approve')}
+                    onReject={() => submitCq('reject')}
+                  />
                 </section>
                 <section className={styles.card} aria-label="MR 描述">
                   <h2 className={styles.cardTitle}>MR 描述</h2>
@@ -584,7 +645,7 @@ function pickRelatedDiff(items: DiffListItem[], mr: MergeRequestSummary): DiffLi
 function qualityGateNodes(
   checks: MergeRequestCheck[] | undefined,
   mr: MergeRequestSummary,
-): Array<{ name: QualityGateName; status: MergeRequestCheck['status'] }> {
+): Array<{ name: QualityGateName; status: MergeRequestCheck['status']; check?: MergeRequestCheck }> {
   const names = (mr.qualityGate?.requiredChecks ?? QUALITY_GATE_NAMES).filter(isQualityGateName)
   const ordered = names.length > 0 ? names : [...QUALITY_GATE_NAMES]
   return ordered.map((name) => {
@@ -592,8 +653,47 @@ function qualityGateNodes(
     return {
       name,
       status: item?.status ?? 'PENDING',
+      check: item,
     }
   })
+}
+
+function GateNode({
+  projectId,
+  mr,
+  node,
+}: {
+  projectId: string
+  mr: MergeRequestSummary
+  node: { name: QualityGateName; status: MergeRequestCheck['status']; check?: MergeRequestCheck }
+}) {
+  const href = qualityGateNodeHref(projectId, node.name, mr, node.check)
+  const reportHref =
+    node.status === 'PASSED' ? qualityGateNodeHref(projectId, node.name, mr, node.check, 'report') : null
+  const reportLabel = node.name === 'TESTSET' ? '查看报告' : node.name === 'DRY_RUN' ? 'Dry-run 报告' : null
+  const body = (
+    <>
+      <span className={`${styles.gateDot} ${gateDotClass(node.status)}`}>{gateIcon(node.status)}</span>
+      <strong className={styles.gateName}>{GATE_LABEL[node.name]}</strong>
+      <p className={styles.gateSummary}>{gateStatusLabel(node.status)}</p>
+    </>
+  )
+  return (
+    <div className={styles.gateItem}>
+      {href ? (
+        <Link className={styles.gateHit} to={href} aria-label={`打开 ${GATE_LABEL[node.name]} 运行`}>
+          {body}
+        </Link>
+      ) : (
+        <div className={styles.gateHit}>{body}</div>
+      )}
+      {reportHref && reportLabel ? (
+        <Link className={styles.gateReport} to={reportHref}>
+          {reportLabel}
+        </Link>
+      ) : null}
+    </div>
+  )
 }
 
 function isQualityGateName(value: string): value is QualityGateName {

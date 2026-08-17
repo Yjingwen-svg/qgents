@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Select } from 'antd'
+import { Radio, Select, Switch } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi, githubApi } from '@/api'
@@ -21,6 +21,8 @@ export default function CreateProjectPage() {
   const [description, setDescription] = useState('')
   const [memberIds, setMemberIds] = useState<string[]>([])
   const [repositoryIds, setRepositoryIds] = useState<string[]>([])
+  const [repositoryMode, setRepositoryMode] = useState<'existing' | 'new'>('existing')
+  const [newRepository, setNewRepository] = useState({ name: '', description: '', displayName: '', isPrivate: true, installationId: '' })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -45,12 +47,25 @@ export default function CreateProjectPage() {
   const bindableRepos = teamRepos.filter((r) =>
     isGithubRepoBindable(r, installations.find((i) => i.id === r.installationId)),
   )
+  const activeInstallations = installations.filter((installation) => installation.status === 'ACTIVE')
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
-    if (repositoryIds.length === 0) {
+    if (repositoryMode === 'existing' && repositoryIds.length === 0) {
       setError('请至少绑定一个 GitHub 仓库')
+      return
+    }
+    if (repositoryMode === 'new' && !/^[a-z0-9][a-z0-9._-]*$/.test(newRepository.name.trim())) {
+      setError('新仓库名称仅支持小写字母、数字、-、_、.')
+      return
+    }
+    if (repositoryMode === 'new' && activeInstallations.length === 0) {
+      setError('当前团队没有可用的 GitHub App 安装记录，无法自动创建仓库')
+      return
+    }
+    if (repositoryMode === 'new' && activeInstallations.length > 1 && !newRepository.installationId) {
+      setError('请选择用于创建仓库的 GitHub 安装记录')
       return
     }
     setError(null)
@@ -62,7 +77,16 @@ export default function CreateProjectPage() {
         name: name.trim(),
         description: description.trim() || undefined,
         memberIds: memberIds.length > 0 ? memberIds : undefined,
-        repositoryIds,
+        repositoryIds: repositoryMode === 'existing' ? repositoryIds : undefined,
+        newRepository: repositoryMode === 'new'
+          ? {
+              name: newRepository.name.trim(),
+              description: newRepository.description.trim() || undefined,
+              displayName: newRepository.displayName.trim() || undefined,
+              isPrivate: newRepository.isPrivate,
+              installationId: activeInstallations.length === 1 ? undefined : newRepository.installationId,
+            }
+          : undefined,
       })
       // 创建成功后跳转到项目需求群聊
       navigate(PATHS.projectDetail(project.id), { replace: true })
@@ -130,7 +154,20 @@ export default function CreateProjectPage() {
           </p>
         </div>
 
+        <div className="create-project__field">
+          <span>GitHub 仓库来源 *</span>
+          <Radio.Group
+            value={repositoryMode}
+            onChange={(event) => {
+              const mode = event.target.value as 'existing' | 'new'
+              setRepositoryMode(mode)
+              if (mode === 'new') setRepositoryIds([])
+            }}
+            options={[{ value: 'existing', label: '绑定已有仓库' }, { value: 'new', label: '自动新建仓库' }]}
+          />
+        </div>
         {/* GitHub 仓库 —— 创建时必选，一并绑定 */}
+        {repositoryMode === 'existing' ? (
         <div className="create-project__field">
           <span>GitHub 仓库 *</span>
           <Select
@@ -150,6 +187,31 @@ export default function CreateProjectPage() {
             <Link to={PATHS.githubIntegration(teamId)}>完成团队 GitHub App 授权</Link>
           </p>
         </div>
+        ) : (
+          <>
+            <label className="create-project__field">
+              <span>新仓库名称 *</span>
+              <input value={newRepository.name} onChange={(event) => setNewRepository((value) => ({ ...value, name: event.target.value }))} placeholder="例如 qgents-web" required />
+            </label>
+            <label className="create-project__field">
+              <span>仓库描述</span>
+              <textarea value={newRepository.description} onChange={(event) => setNewRepository((value) => ({ ...value, description: event.target.value }))} rows={3} />
+            </label>
+            <label className="create-project__field">
+              <span>项目内显示名称</span>
+              <input value={newRepository.displayName} onChange={(event) => setNewRepository((value) => ({ ...value, displayName: event.target.value }))} />
+            </label>
+            <div className="create-project__field">
+              <span>私有仓库</span>
+              <Switch checked={newRepository.isPrivate} onChange={(isPrivate) => setNewRepository((value) => ({ ...value, isPrivate }))} />
+            </div>
+            {activeInstallations.length > 1 ? <div className="create-project__field">
+              <span>GitHub 安装记录 *</span>
+              <Select value={newRepository.installationId || undefined} onChange={(installationId) => setNewRepository((value) => ({ ...value, installationId }))} options={activeInstallations.map((installation) => ({ value: installation.id, label: installation.accountLogin }))} />
+            </div> : null}
+            {activeInstallations.length === 0 ? <p className="create-project__error">当前团队没有可用的 GitHub App 安装记录，无法自动创建仓库。</p> : null}
+          </>
+        )}
 
         <div className="create-project__actions">
           <Link
@@ -161,7 +223,7 @@ export default function CreateProjectPage() {
           <button
             type="submit"
             className="create-project__btn create-project__btn--primary"
-            disabled={submitting || !name.trim() || repositoryIds.length === 0}
+            disabled={submitting || !name.trim() || (repositoryMode === 'existing' ? repositoryIds.length === 0 : !newRepository.name.trim() || activeInstallations.length === 0 || (activeInstallations.length > 1 && !newRepository.installationId))}
           >
             {submitting ? '创建中…' : '创建项目'}
           </button>

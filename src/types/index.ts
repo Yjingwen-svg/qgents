@@ -10,6 +10,8 @@ export type {
   AuthResponse,
   RefreshResponse,
   MeResponse,
+  AvatarCredential,
+  UpdateMePayload,
 } from './auth'
 export type {
   Team,

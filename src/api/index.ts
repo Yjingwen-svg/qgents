@@ -4,7 +4,7 @@
  */
 export { request, ApiError } from './client'
 export { requestData, requestPage, withQuery, writeHeaders } from './requestHelpers'
-export { authApi } from './auth'
+export { authApi, uploadAvatar } from './auth'
 export { teamApi } from './team'
 export { projectApi } from './project'
 export { githubApi } from './github'

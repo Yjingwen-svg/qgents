@@ -32,6 +32,8 @@ interface AuthContextValue {
   logout: () => Promise<void>
   /** 设置 hasTeam（创建/加入团队后调用） */
   setHasTeam: (v: boolean) => void
+  /** 更新当前用户资料（PATCH /me 成功后同步本地 user，如昵称/头像） */
+  updateUser: (user: User) => void
 }
 
 /** 登录/注册成功后的会话结果 */
@@ -183,6 +185,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setHasTeam(session.hasTeam)
   }, [])
 
+  // ──── 更新当前用户资料（PATCH /me 成功后同步本地 user）────
+  const updateUser = useCallback((next: User) => {
+    setUser(next)
+  }, [])
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -194,8 +201,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       completeAuth,
       logout,
       setHasTeam,
+      updateUser,
     }),
-    [user, hasTeam, isBootstrapping, login, register, completeAuth, logout],
+    [user, hasTeam, isBootstrapping, login, register, completeAuth, logout, updateUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

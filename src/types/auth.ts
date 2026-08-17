@@ -52,6 +52,23 @@ export interface RefreshResponse {
   refreshTokenExpiresIn: number
 }
 
+/** POST /me/avatar/credential 响应（§4 头像直传凭证，流程镜像 §18.1 附件凭证） */
+export interface AvatarCredential {
+  /** 对象键 avatars/{userId}/{uuid}.{ext}，confirm 时原样回传，客户端不得自造 */
+  objectKey: string
+  /** 预签名 PUT 地址，直接把文件字节 PUT 到此 */
+  uploadUrl: string
+  method: 'PUT'
+  expiresAt: string
+  headers: Record<string, string>
+}
+
+/** PATCH /me 请求体（§4 修改昵称和头像） */
+export interface UpdateMePayload {
+  displayName?: string
+  avatarUrl?: string
+}
+
 /** GET /me 响应（data 层为聚合结构：user + teams + projects） */
 export interface MeResponse {
   user: User

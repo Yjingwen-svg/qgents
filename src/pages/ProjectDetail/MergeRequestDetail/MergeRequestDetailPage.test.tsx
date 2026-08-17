@@ -12,19 +12,32 @@ import MergeRequestDetailPage from './MergeRequestDetailPage'
 const useMergeRequestMock = vi.hoisted(() => vi.fn())
 const useMergeRequestChecksMock = vi.hoisted(() => vi.fn())
 const useMergeMergeRequestMock = vi.hoisted(() => vi.fn())
+const useApproveMergeRequestCqMock = vi.hoisted(() => vi.fn())
+const useRejectMergeRequestCqMock = vi.hoisted(() => vi.fn())
+const useMergeRequestReviewsMock = vi.hoisted(() => vi.fn())
+const useTaskMock = vi.hoisted(() => vi.fn())
 const useDiffsMock = vi.hoisted(() => vi.fn())
 const useDiffFilesMock = vi.hoisted(() => vi.fn())
 const useDiffCommentsMock = vi.hoisted(() => vi.fn())
 const useAddDiffCommentMock = vi.hoisted(() => vi.fn())
+const useAuthMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/task-model', () => ({
   useMergeRequest: useMergeRequestMock,
   useMergeRequestChecks: useMergeRequestChecksMock,
   useMergeMergeRequest: useMergeMergeRequestMock,
+  useApproveMergeRequestCq: useApproveMergeRequestCqMock,
+  useRejectMergeRequestCq: useRejectMergeRequestCqMock,
+  useMergeRequestReviews: useMergeRequestReviewsMock,
+  useTask: useTaskMock,
   useDiffs: useDiffsMock,
   useDiffFiles: useDiffFilesMock,
   useDiffComments: useDiffCommentsMock,
   useAddDiffComment: useAddDiffCommentMock,
+}))
+
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: () => useAuthMock(),
 }))
 
 vi.mock('@/api/project', () => ({
@@ -60,9 +73,9 @@ const mr: MergeRequestSummary = {
 }
 
 const checks: MergeRequestCheck[] = [
-  { id: 'ck-1', type: 'TESTSET', status: 'PASSED', attemptNo: 1 },
+  { id: 'ck-1', type: 'TESTSET', status: 'PASSED', attemptNo: 1, testRunId: 'testrun-1', testsetId: 'testset-demo-project-login' },
   { id: 'ck-2', type: 'AI_REVIEW', status: 'PENDING', attemptNo: 1 },
-  { id: 'ck-3', type: 'DRY_RUN', status: 'PASSED', attemptNo: 1 },
+  { id: 'ck-3', type: 'DRY_RUN', status: 'PASSED', attemptNo: 1, dryRunId: 'dryrun-1' },
   { id: 'ck-4', type: 'CQ_PLUS_ONE', status: 'PENDING', attemptNo: 1 },
 ]
 
@@ -176,6 +189,23 @@ beforeEach(() => {
     refetch: vi.fn(),
   })
   useMergeMergeRequestMock.mockReturnValue(idleMutation())
+  useApproveMergeRequestCqMock.mockReturnValue(idleMutation())
+  useRejectMergeRequestCqMock.mockReturnValue(idleMutation())
+  useMergeRequestReviewsMock.mockReturnValue({
+    data: [],
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  })
+  useAuthMock.mockReturnValue({
+    user: { id: 'user-reviewer', displayName: '审同学', email: 'reviewer@example.com' },
+  })
+  useTaskMock.mockReturnValue({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+  })
   useDiffsMock.mockReturnValue({
     data: { data: [relatedDiff], page: { nextCursor: null, hasMore: false }, requestId: 'r1' },
     isLoading: false,
@@ -208,7 +238,7 @@ describe('MergeRequestDetailPage', () => {
     expect(screen.getByText('Testset')).toBeInTheDocument()
     expect(screen.getByText('AI Review')).toBeInTheDocument()
     expect(screen.getByText('Dry-run')).toBeInTheDocument()
-    expect(screen.getByText('CQ+1')).toBeInTheDocument()
+    expect(screen.getAllByText('CQ+1').length).toBeGreaterThan(0)
     expect(screen.queryByText('仍有阻塞型评论')).not.toBeInTheDocument()
     expect(screen.getAllByText('通过').length).toBeGreaterThan(0)
     expect(screen.queryByRole('tab', { name: '检查' })).not.toBeInTheDocument()
@@ -217,6 +247,167 @@ describe('MergeRequestDetailPage', () => {
       'href',
       '/app/projects/project-1/code?tab=mr',
     )
+    expect(screen.getByRole('link', { name: 'GitHub' })).toHaveAttribute(
+      'href',
+      'https://github.com/mock/demo/pull/42',
+    )
+  })
+
+  it('shows an empty CQ seal and stamps through the API without painting the gate locally', async () => {
+    const mutateAsync = vi.fn().mockResolvedValue(mr)
+    useApproveMergeRequestCqMock.mockReturnValue(idleMutation(mutateAsync))
+    const user = userEvent.setup()
+    renderPage()
+    const seal = await screen.findByLabelText('CQ+1 印章')
+    expect(seal.querySelector('[data-appearance="empty"]')).not.toBeNull()
+    expect(screen.getByText('未盖章')).toBeInTheDocument()
+    expect(screen.getByText('尚未有人在当前 HEAD 上盖章')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'approve-cq' }))
+    await user.type(screen.getByPlaceholderText('请填写审查理由'), 'LGTM')
+    await user.click(screen.getByRole('button', { name: /盖\s*章/ }))
+    expect(mutateAsync).toHaveBeenCalledWith({ mergeRequestId: 'mr-1', input: { reason: 'LGTM' } })
+    expect(screen.getByText('未盖章')).toBeInTheDocument()
+    expect(seal.querySelector('[data-appearance="stamped"]')).toBeNull()
+  })
+
+  it('locks the empty seal when the current user authored the related task', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 'user-1', displayName: 'Mock User', email: 'mock@example.com' },
+    })
+    useMergeRequestMock.mockReturnValue({
+      data: { ...mr, taskId: 'task-1' },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    useTaskMock.mockReturnValue({
+      data: { createdByUser: { id: 'user-1', displayName: 'Mock User' } },
+      isLoading: false,
+      isError: false,
+    })
+    renderPage()
+    expect(await screen.findByText('不能给自己盖章')).toBeInTheDocument()
+    expect(screen.getByLabelText('CQ+1 印章').querySelector('[data-appearance="locked"]')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'approve-cq' })).not.toBeInTheDocument()
+  })
+
+  it('fills the seal after a CQ+1 check comes back from the server', async () => {
+    useMergeRequestChecksMock.mockReturnValue({
+      data: [
+        ...checks.slice(0, 3),
+        {
+          id: 'ck-4',
+          type: 'CQ_PLUS_ONE',
+          status: 'PASSED',
+          attemptNo: 1,
+          commitSha: 'a1b2c3d4e5f67890',
+          reviewedByName: '审同学',
+          completedAt: '2026-08-17T08:00:00Z',
+          reviewReason: 'LGTM',
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    renderPage()
+    const seal = await screen.findByLabelText('CQ+1 印章')
+    expect(seal.querySelector('[data-appearance="stamped"]')).not.toBeNull()
+    expect(screen.getByText('有效')).toBeInTheDocument()
+    expect(screen.getByText('审同学 · 2026-08-17 08:00')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'approve-cq' })).not.toBeInTheDocument()
+  })
+
+  it('cracks the seal when the stamped commit no longer matches HEAD', async () => {
+    useMergeRequestChecksMock.mockReturnValue({
+      data: [
+        ...checks.slice(0, 3),
+        {
+          id: 'ck-4',
+          type: 'CQ_PLUS_ONE',
+          status: 'PASSED',
+          attemptNo: 1,
+          commitSha: 'oldcommit',
+          reviewedByName: '审同学',
+          completedAt: '2026-08-17T08:00:00Z',
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    renderPage()
+    const seal = await screen.findByLabelText('CQ+1 印章')
+    expect(seal.querySelector('[data-appearance="cracked"]')).not.toBeNull()
+    expect(screen.getByText('已失效')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'approve-cq' })).toHaveTextContent('重新盖章')
+    expect(screen.getByText('HEAD 已更新，旧 CQ+1 可能作废')).toBeInTheDocument()
+  })
+
+  it('opens CQ history from the seal corner and lists accept / reject rows', async () => {
+    useMergeRequestReviewsMock.mockReturnValue({
+      data: [
+        {
+          id: 'rev-2',
+          decision: 'REJECTED',
+          reviewerName: '王同学',
+          reason: '缺测试',
+          createdAt: '2026-08-17T09:00:00Z',
+          commitSha: 'a1b2c3d4e5f67890',
+        },
+        {
+          id: 'rev-1',
+          decision: 'APPROVED',
+          reviewerName: '审同学',
+          reason: 'LGTM',
+          createdAt: '2026-08-17T08:00:00Z',
+          commitSha: 'a1b2c3d4e5f67890',
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'view-cq-history' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent('CQ+1 审查历史')
+    expect(useMergeRequestReviewsMock).toHaveBeenCalledWith('project-1', 'mr-1', true)
+    expect(dialog).toHaveTextContent('王同学')
+    expect(dialog).toHaveTextContent('拒绝')
+    expect(dialog).toHaveTextContent('原因：缺测试')
+    expect(dialog).toHaveTextContent('时间：2026-08-17 09:00')
+    expect(dialog).toHaveTextContent('审同学')
+    expect(dialog).toHaveTextContent('接受')
+    expect(dialog).toHaveTextContent('原因：LGTM')
+  })
+
+  it('links Testset and Dry-run gate nodes to the Testset run page, with report buttons when passed', async () => {
+    renderPage()
+    expect(await screen.findByRole('heading', { name: /MR #42/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '打开 Testset 运行' })).toHaveAttribute(
+      'href',
+      '/app/projects/project-1/testset?repositoryId=bound-demo-auth-service&testsetId=testset-demo-project-login&testRunId=testrun-1',
+    )
+    expect(screen.getByRole('link', { name: '查看报告' })).toHaveAttribute(
+      'href',
+      '/app/projects/project-1/testset?repositoryId=bound-demo-auth-service&testsetId=testset-demo-project-login&testRunId=testrun-1&runTab=report',
+    )
+    expect(screen.getByRole('link', { name: '打开 Dry-run 运行' })).toHaveAttribute(
+      'href',
+      '/app/projects/project-1/testset?repositoryId=bound-demo-auth-service&dryRunId=dryrun-1',
+    )
+    expect(screen.getByRole('link', { name: 'Dry-run 报告' })).toHaveAttribute(
+      'href',
+      '/app/projects/project-1/testset?repositoryId=bound-demo-auth-service&dryRunId=dryrun-1&runTab=report',
+    )
+    expect(screen.queryByRole('link', { name: '打开 AI Review 运行' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '打开 CQ+1 运行' })).not.toBeInTheDocument()
   })
 
   it('shows merge only for Project Admin when the gate has passed and the MR is open', async () => {
@@ -283,6 +474,21 @@ describe('MergeRequestDetailPage', () => {
     await user.click(await screen.findByRole('button', { name: 'merge-merge-request' }))
     await user.click(await screen.findByRole('button', { name: '确认合并' }))
     expect(mutateAsync).toHaveBeenCalledWith('mr-1')
+  })
+
+  it('builds a GitHub button when the MR has no webUrl', async () => {
+    useMergeRequestMock.mockReturnValue({
+      data: { ...mr, webUrl: null },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    renderPage()
+    expect(await screen.findByRole('link', { name: 'GitHub' })).toHaveAttribute(
+      'href',
+      'https://github.com/mock/auth-service/pull/42',
+    )
   })
 
   it('puts comments and changes on the detail tabs, not the list', async () => {

@@ -34,6 +34,13 @@ export const attachmentApi = {
   contentUrl(projectId: string, attachmentId: string): string {
     return `${getApiBaseUrl()}/projects/${projectId}/attachments/${attachmentId}/content`
   },
+
+  /** 临时下载地址（§18.3 预签名 GET，900 秒有效，无需 Bearer 即可打开） */
+  getDownloadUrl(projectId: string, attachmentId: string) {
+    return request<{ attachmentId: string; downloadUrl: string; expiresAt: string }>(
+      `/projects/${projectId}/attachments/${attachmentId}/download-url`,
+    )
+  },
 }
 
 /**

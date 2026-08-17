@@ -21,7 +21,7 @@ import {
   UserOutlined,
   MessageOutlined,
 } from '@ant-design/icons'
-import { groupApi, memoryApi, projectApi } from '@/api'
+import { groupApi, memoryApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
 import type { CreateMemoryPayload, Memory, MemoryStatus, Message } from '@/types'
 import './MemoryPage.css'
@@ -50,7 +50,8 @@ const STATUS_META: Record<MemoryStatus, { color: string; label: string }> = {
 
 /**
  * 共享 Memory —— 对齐接口文档 v1.1.8 §9（A 负责）
- * 列表 / 状态筛选 / 详情 / 手动创建 / 从群消息生成草稿 / 提交审核 / 批准·拒绝 / 归档
+ * 列表 / 状态筛选 / 详情 / 手动创建 / 从群消息生成草稿 / 归档
+ * 审核功能（提交审核 / 批准·拒绝）统一在交付中心处理，本页不提供
  */
 export function MemoryPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
@@ -59,14 +60,6 @@ export function MemoryPage() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
-
-  // 当前用户项目角色（判断是否可批准/拒绝/归档）
-  const { data: project } = useQuery({
-    queryKey: ['projects', projectId],
-    queryFn: () => projectApi.getById(projectId),
-    enabled: !!projectId,
-  })
-  const isAdmin = project?.role === 'PROJECT_ADMIN'
 
   const { data: memories = [], isLoading } = useQuery({
     queryKey: ['memories', projectId],
@@ -85,24 +78,10 @@ export function MemoryPage() {
   const detail = memories.find((m) => m.id === detailId) ?? null
   const editTarget = memories.find((m) => m.id === editId) ?? null
 
-  const actions = {
-    submit: useMutation({
-      mutationFn: (id: string) => memoryApi.submitReview(projectId, id),
-      onSuccess: invalidate,
-    }),
-    approve: useMutation({
-      mutationFn: (id: string) => memoryApi.approve(projectId, id),
-      onSuccess: invalidate,
-    }),
-    reject: useMutation({
-      mutationFn: (id: string) => memoryApi.reject(projectId, id, '审核未通过'),
-      onSuccess: invalidate,
-    }),
-    archive: useMutation({
-      mutationFn: (id: string) => memoryApi.archive(projectId, id),
-      onSuccess: invalidate,
-    }),
-  }
+  const archive = useMutation({
+    mutationFn: (id: string) => memoryApi.archive(projectId, id),
+    onSuccess: invalidate,
+  })
 
   if (isLoading) {
     return (
@@ -118,7 +97,7 @@ export function MemoryPage() {
     <div className="memory-page">
       <header className="memory-page__header">
         <h1 className="memory-page__title">共享 Memory</h1>
-        <p className="memory-page__desc">沉淀团队经验与约定，经审核后供项目复用（非原始聊天记录）</p>
+        <p className="memory-page__desc">沉淀团队经验与约定，审核在交付中心统一处理（非原始聊天记录）</p>
       </header>
 
       <div className="memory-page__toolbar">
@@ -136,12 +115,7 @@ export function MemoryPage() {
         <EmptyState
           icon="🧠"
           title="暂无共享 Memory"
-          description="新建一条草稿，提交审核后即可沉淀为项目共享知识"
-          // action={
-          //   <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          //     新建 Memory
-          //   </Button>
-          // }
+          description="新建一条草稿，在交付中心提交审核后即可沉淀为项目共享知识"
         />
       ) : (
         <div className="memory-page__list">
@@ -159,16 +133,15 @@ export function MemoryPage() {
       {/* 详情抽屉 */}
       <MemoryDetail
         memory={detail}
-        isAdmin={isAdmin}
         onClose={() => setDetailId(null)}
         onEdit={() => {
           setEditId(detail?.id ?? null)
           setDetailId(null)
           setCreateOpen(true)
         }}
-        onAction={async (type) => {
+        onArchive={async () => {
           if (!detail) return
-          await actions[type].mutateAsync(detail.id)
+          await archive.mutateAsync(detail.id)
         }}
       />
 
@@ -237,16 +210,14 @@ function MemoryCard({ memory, index, onClick }: { memory: Memory; index: number;
 /** 详情抽屉 */
 function MemoryDetail({
   memory,
-  isAdmin,
   onClose,
   onEdit,
-  onAction,
+  onArchive,
 }: {
   memory: Memory | null
-  isAdmin: boolean
   onClose: () => void
   onEdit: () => void
-  onAction: (type: 'submit' | 'approve' | 'reject' | 'archive') => Promise<void>
+  onArchive: () => Promise<void>
 }) {
   if (!memory) return <Drawer open={false} onClose={onClose} />
   const meta = STATUS_META[memory.status]
@@ -298,36 +269,11 @@ function MemoryDetail({
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 16 }}>
-          {memory.status === 'DRAFT' && (
-            <>
-              <Button type="primary" onClick={() => onAction('submit')}>
-                提交审核
-              </Button>
-              <Button onClick={onEdit}>编辑</Button>
-            </>
+          {(memory.status === 'DRAFT' || memory.status === 'REJECTED') && (
+            <Button type="primary" onClick={onEdit}>编辑</Button>
           )}
-          {memory.status === 'REJECTED' && (
-            <Button type="primary" onClick={onEdit}>
-              编辑后重新提交
-            </Button>
-          )}
-          {memory.status === 'PENDING_REVIEW' && isAdmin && (
-            <>
-              <Button type="primary" onClick={() => onAction('approve')}>
-                批准
-              </Button>
-              <Button danger onClick={() => onAction('reject')}>
-                拒绝
-              </Button>
-            </>
-          )}
-          {memory.status === 'APPROVED' && isAdmin && (
-            <Button onClick={() => onAction('archive')}>归档</Button>
-          )}
-          {memory.status === 'PENDING_REVIEW' && !isAdmin && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              等待 Project Admin 审核
-            </Text>
+          {memory.status === 'APPROVED' && (
+            <Button onClick={onArchive}>归档</Button>
           )}
         </div>
       </Space>

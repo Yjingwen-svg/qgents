@@ -97,6 +97,17 @@ describe('independent Task model mock chain', () => {
     expect((await tasksApi.get(projectId, task.id)).status).toBe('CANCELLED')
   })
 
+  it('seeds Code page diffs so feat/login-api can open Diff review', async () => {
+    const diffs = await diffsApi.list('demo-project')
+    const login = diffs.data.find(
+      (diff) =>
+        diff.repositoryId === 'bound-demo-auth-service' && diff.sourceBranch === 'feat/login-api',
+    )
+    expect(login?.id).toBe('diff-demo-project-login-api')
+    const detail = await diffsApi.get('demo-project', login!.id)
+    expect(detail.sourceBranch).toBe('feat/login-api')
+  })
+
   it('validates required Task fields and rejects unsupported creation fields', async () => {
     await expect(tasksApi.create('project-validation', {
       requirementGroupId: '',
@@ -393,5 +404,65 @@ describe('independent Task model mock chain', () => {
     expect(merged.status).toBe('MERGED')
     await expect(mergeRequestsApi.merge('demo-project', ready!.id)).rejects.toMatchObject({ status: 409 })
     await expect(mergeRequestsApi.get('demo-project', 'missing-mr')).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('stamps CQ+1 without passing the overall gate while AI Review is still pending', async () => {
+    const listed = await mergeRequestsApi.list('demo-project')
+    const pending = listed.data.find((item) => item.qualityGate?.status === 'PENDING')
+    expect(pending).toBeDefined()
+
+    const missingKey = await fetch(`/api/projects/demo-project/merge-requests/${pending!.id}/cq-approvals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'LGTM' }),
+    })
+    expect(missingKey.status).toBe(400)
+
+    await expect(mergeRequestsApi.approveCq('demo-project', pending!.id, { reason: '   ' })).rejects.toMatchObject({
+      status: 422,
+    })
+
+    const approved = await mergeRequestsApi.approveCq('demo-project', pending!.id, { reason: 'LGTM' })
+    expect(approved.qualityGate?.status).toBe('PENDING')
+    const checks = await mergeRequestsApi.checks('demo-project', pending!.id)
+    const cq = checks.find((item) => item.type === 'CQ_PLUS_ONE')
+    expect(cq?.status).toBe('PASSED')
+    expect(cq?.reviewedByName).toBe('Mock Reviewer')
+    expect(cq?.reviewReason).toBe('LGTM')
+    expect(cq?.commitSha).toBe(pending!.headCommit)
+    expect(checks.find((item) => item.type === 'AI_REVIEW')?.status).toBe('PENDING')
+    await expect(mergeRequestsApi.merge('demo-project', pending!.id)).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('rejects CQ and marks the quality gate failed', async () => {
+    const listed = await mergeRequestsApi.list('demo-project')
+    const pending = listed.data.find((item) => item.qualityGate?.status === 'PENDING')
+    expect(pending).toBeDefined()
+    const rejected = await mergeRequestsApi.rejectCq('demo-project', pending!.id, { reason: 'needs tests' })
+    expect(rejected.qualityGate?.status).toBe('FAILED')
+    const checks = await mergeRequestsApi.checks('demo-project', pending!.id)
+    expect(checks.find((item) => item.type === 'CQ_PLUS_ONE')?.status).toBe('FAILED')
+    expect(checks.find((item) => item.type === 'CQ_PLUS_ONE')?.reviewReason).toBe('needs tests')
+  })
+
+  it('returns CQ review history after approvals and rejections', async () => {
+    const listed = await mergeRequestsApi.list('demo-project')
+    const pending = listed.data.find((item) => item.qualityGate?.status === 'PENDING')
+    expect(pending).toBeDefined()
+    expect(await mergeRequestsApi.reviews('demo-project', pending!.id)).toEqual([])
+    await mergeRequestsApi.approveCq('demo-project', pending!.id, { reason: 'first look' })
+    await mergeRequestsApi.rejectCq('demo-project', pending!.id, { reason: 'needs tests' })
+    const history = await mergeRequestsApi.reviews('demo-project', pending!.id)
+    expect(history).toHaveLength(2)
+    expect(history[0]).toMatchObject({
+      decision: 'REJECTED',
+      reviewerName: 'Mock Reviewer',
+      reason: 'needs tests',
+    })
+    expect(history[1]).toMatchObject({
+      decision: 'APPROVED',
+      reviewerName: 'Mock Reviewer',
+      reason: 'first look',
+    })
   })
 })

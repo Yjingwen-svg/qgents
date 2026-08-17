@@ -26,10 +26,12 @@ function error(status: 404 | 409 | 422, code: string, message: string) {
 function storeFor(projectId: string): TestsetStore {
   const existing = stores.get(projectId)
   if (existing) return existing
+  const seededRun = createMockTestRun(projectId)
+  const seededDryRun = createMockDryRunReport(projectId)
   const created: TestsetStore = {
     testsets: [createMockTestset(projectId)],
-    testRuns: new Map(),
-    dryRuns: new Map(),
+    testRuns: new Map([[seededRun.id, seededRun]]),
+    dryRuns: new Map([[seededDryRun.id, seededDryRun]]),
   }
   stores.set(projectId, created)
   return created

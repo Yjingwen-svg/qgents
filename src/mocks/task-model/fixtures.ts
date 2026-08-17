@@ -39,7 +39,7 @@ export function seedCodeBranchDiffs(store: TaskModelStore, projectId: string): v
       repositoryId: entry.repositoryId,
       baseCommit: 'base-commit-1',
       sourceBranch: entry.sourceBranch,
-      headCommit: 'a1b2c3d',
+      headCommit: null,
       status: 'PENDING_REVIEW',
       changeStats: { files: files.length, additions: 54, deletions: 2 },
       createdAt: timestamp,
@@ -205,6 +205,8 @@ export function createTaskModelScenario(projectId: string): TaskModelStore {
   const partialBatchId = `review-${partial.id}`
   review(store, partial, partialDiff, 'PARTIALLY_DELIVERED', 'ACCEPTED')
   partial.attention = attention({ kind: 'DELIVERY_FAILED', title: 'DELIVERY_FAILED', summary: `Mock attention for ${partial.id}`, taskRunId: null, inputRequestId: null, diffReviewBatchId: partialBatchId, repositoryId: partial.repositories[1]?.repositoryId ?? null })
+  seedCodeBranchDiffs(store, projectId)
+  seedMergeRequests(store, projectId)
   return store
 }
 export const taskModelScenarioNames = ['DEFAULT','EMPTY'] as const

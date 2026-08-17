@@ -1168,6 +1168,7 @@ export const handlers = [
       content?: unknown
       senderId?: string
       clientMessageId?: string
+      replyToId?: string | null
       mentions?: Array<{ type?: string; id?: string }>
     }
     const projectId = params.projectId as string
@@ -1191,7 +1192,7 @@ export const handlers = [
       senderName: '陈同学',
       sequence: list.length + 1,
       createdAt: new Date().toISOString(),
-      replyToId: null,
+      replyToId: body.replyToId ?? null,
     }
     list.push(message)
     const taskRecord = mentionedAgents[0]

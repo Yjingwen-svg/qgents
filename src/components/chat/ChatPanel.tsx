@@ -10,6 +10,7 @@ import {
   CheckCircleOutlined,
   InboxOutlined,
   PaperClipOutlined,
+  CloseOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
@@ -51,6 +52,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const [mentions, setMentions] = useState<Mention[]>([])
   const [sendError, setSendError] = useState<string | null>(null)
   const [triggerOpen, setTriggerOpen] = useState(false)
+  // 回复引用：选中某条消息后，输入区显示引用条，发送时以 QUOTE 类型 + replyToId 提交
+  const [replyTo, setReplyTo] = useState<Message | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
   const { data: groups = [] } = useQuery({
@@ -144,14 +147,23 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     setSending(true)
     setSendError(null)
     try {
+      // 回复引用：type=QUOTE，content 带被引用消息摘要，replyToId 指向原消息（对齐 §7 消息类型与请求体）
       const result = await groupApi.sendMessage(projectId, groupId, {
-        type: 'TEXT',
-        content: { text },
+        type: replyTo ? 'QUOTE' : 'TEXT',
+        content: replyTo
+          ? {
+              quotedMessageId: replyTo.id,
+              quotedText: text,
+              quotedSenderName: replyTo.senderName ?? (replyTo.senderType === 'AGENT' ? 'Agent' : '成员'),
+            }
+          : { text },
         mentions: mentions.length > 0 ? mentions : undefined,
+        replyToId: replyTo ? replyTo.id : null,
         clientMessageId: `cmsg_${Date.now()}`,
       })
       setDraft('')
       setMentions([])
+      setReplyTo(null)
       await queryClient.invalidateQueries({
         queryKey: ['groups', projectId, groupId, 'messages'],
       })
@@ -287,6 +299,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                   message={m}
                   isSelf={m.senderId === user?.id}
                   projectId={projectId}
+                  onReply={setReplyTo}
                 />,
               )
               return nodes
@@ -331,6 +344,39 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                 onPick={pickMention}
               />
             )}
+          </div>
+        )}
+
+        {/* 回复引用条：选中消息后显示，可取消 */}
+        {replyTo && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginBottom: 8,
+              padding: '6px 10px',
+              border: `1px solid ${token.colorBorder}`,
+              borderLeft: '3px solid #3b82f6',
+              borderRadius: 8,
+              background: token.colorFillQuaternary,
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                回复 {replyTo.senderName ?? (replyTo.senderType === 'AGENT' ? 'Agent' : '成员')}：
+              </Text>
+              <Text ellipsis style={{ fontSize: 12 }}>
+                {quotePreview(replyTo)}
+              </Text>
+            </div>
+            <Button
+              type="text"
+              size="small"
+              icon={<CloseOutlined />}
+              onClick={() => setReplyTo(null)}
+              aria-label="取消回复"
+            />
           </div>
         )}
 
@@ -425,6 +471,29 @@ function formatClock(iso: string): string {
   return formatTimeDivider(iso)
 }
 
+/** 生成被引用消息的一行摘要（回复引用条展示用；DIFF/IMAGE/FILE 等无文本类型给占位文案） */
+function quotePreview(message: Message): string {
+  const content = message.content as Record<string, unknown> | null
+  switch (message.type) {
+    case 'CODE':
+      return `[代码块] ${typeof content?.code === 'string' ? content.code.slice(0, 40) : ''}`
+    case 'IMAGE':
+      return '[图片]'
+    case 'FILE':
+      return `[文件] ${typeof content?.name === 'string' ? content.name : ''}`
+    case 'DIFF':
+      return `[Diff] ${typeof content?.title === 'string' ? content.title : '代码变更'}`
+    case 'TASK_STATUS':
+      return `[任务状态] ${typeof content?.message === 'string' ? content.message : (typeof content?.status === 'string' ? content.status : '')}`
+    case 'QUOTE':
+      return `[引用] ${typeof content?.quotedText === 'string' ? content.quotedText : ''}`
+    default: {
+      const text = typeof content?.text === 'string' ? content.text : ''
+      return text || '[消息]'
+    }
+  }
+}
+
 /** @ 提及面板分组 */
 function MentionGroup({
   label,
@@ -475,12 +544,16 @@ function MessageBubble({
   message,
   isSelf,
   projectId,
+  onReply,
 }: {
   message: Message
   isSelf: boolean
   projectId: string
+  /** 点击「回复」时回调，用于设置回复引用（SYSTEM 消息不提供） */
+  onReply?: (m: Message) => void
 }) {
   const { token } = theme.useToken()
+  const [hovered, setHovered] = useState(false)
 
   // SYSTEM 消息居中弱化展示
   if (message.senderType === 'SYSTEM') {
@@ -502,8 +575,12 @@ function MessageBubble({
   const isImage = message.type === 'IMAGE'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: alignSelf, maxWidth: '78%', alignSelf }}>
-      <div style={{ marginBottom: 2, fontSize: 12 }}>
+    <div
+      style={{ display: 'flex', flexDirection: 'column', alignItems: alignSelf, maxWidth: '78%', alignSelf }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div style={{ marginBottom: 2, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
         <Text type="secondary">
           {message.senderType === 'AGENT' ? '🤖 ' : ''}
           {message.senderName ?? (message.senderType === 'AGENT' ? 'Agent' : '成员')}
@@ -511,6 +588,16 @@ function MessageBubble({
             {formatClock(message.createdAt)}
           </Text>
         </Text>
+        {onReply && hovered && (
+          <Button
+            type="text"
+            size="small"
+            style={{ fontSize: 11, height: 'auto', padding: '0 4px', minWidth: 0 }}
+            onClick={() => onReply(message)}
+          >
+            回复
+          </Button>
+        )}
       </div>
       <div
         style={{

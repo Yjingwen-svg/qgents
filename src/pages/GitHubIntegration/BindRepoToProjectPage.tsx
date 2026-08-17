@@ -17,6 +17,7 @@ import {
 } from 'antd'
 import { ArrowLeftOutlined, SearchOutlined } from '@ant-design/icons'
 import { projectApi } from '@/api/project'
+import { ApiError } from '@/api'
 import { githubApi } from '@/api/github'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
@@ -178,7 +179,7 @@ export default function BindRepoToProjectPage() {
       await invalidateBindings()
     },
     onError: (error) => {
-      message.error(formatApiError(error))
+      message.error(formatUnbindError(error))
     },
   })
 
@@ -443,4 +444,14 @@ export default function BindRepoToProjectPage() {
       </Card>
     </DarkPage>
   )
+}
+
+function formatUnbindError(error: unknown): string {
+  if (error instanceof ApiError && error.body && typeof error.body === 'object' && 'error' in error.body) {
+    const apiError = (error.body as { error?: { code?: unknown } }).error
+    if (apiError?.code === 'PROJECT_REPOSITORY_IN_USE') {
+      return '该仓库正被进行中的任务使用，暂时无法解除绑定。'
+    }
+  }
+  return formatApiError(error)
 }

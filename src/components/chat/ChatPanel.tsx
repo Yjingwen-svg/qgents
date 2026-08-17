@@ -169,9 +169,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       })
       if (result.task) {
         void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
-        message.success(result.task.missingFields.length > 0
-          ? `${result.task.displayCode} 已创建，等待补充执行信息`
-          : `${result.task.displayCode} 已创建并进入规划`)
+        message.success(`${result.task.displayCode} 已创建，当前状态：${result.task.status}`)
       }
     } catch (error) {
       setSendError(formatApiError(error))
@@ -297,7 +295,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                 <MessageBubble
                   key={m.id}
                   message={m}
-                  isSelf={m.senderId === user?.id}
+                  isSelf={m.senderType === 'USER' && m.senderId === user?.id}
                   projectId={projectId}
                   onReply={setReplyTo}
                 />,
@@ -329,8 +327,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
               zIndex: 10,
             }}
           >
-            {/* Agent 候选：团队 Agent 列表（项目总群 / 需求群均展示，@ 提及不依赖群成员） */}
-            {teamAgents.length > 0 && (
+            {/* Agent 候选：仅活跃需求群可 @ Agent（项目总群不提供 @Agent，发起任务必须挂 REQUIREMENT 群） */}
+            {canOpenTaskTrigger && teamAgents.length > 0 && (
               <MentionGroup
                 label="Agent"
                 members={teamAgents.map((a) => ({ id: a.id, displayName: a.name, type: 'AGENT' as const }))}

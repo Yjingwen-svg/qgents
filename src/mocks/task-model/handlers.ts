@@ -875,6 +875,24 @@ const taskModelMergeRequestHandlers: HttpHandler[] = [
     })
   }),
 
+  http.get('*/api/projects/:projectId/merge-requests/:mergeRequestId/commits', ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const store = getStore(projectId, request)
+    const mergeRequestId = pathParam(params, 'mergeRequestId')
+    const item = store.mergeRequests.get(mergeRequestId)
+    if (!item) return missing('Merge request')
+    const search = new URL(request.url).searchParams
+    const rawLimit = Number(search.get('limit') ?? '3')
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 3
+    const all = store.mergeRequestCommits.get(mergeRequestId) ?? []
+    return response({
+      totalCount: all.length,
+      items: all.slice(0, limit),
+    })
+  }),
+
   http.get('*/api/projects/:projectId/merge-requests/:mergeRequestId', ({ params, request }) => {
     const projectId = pathParam(params, 'projectId')
     const denied = guardProject(projectId)

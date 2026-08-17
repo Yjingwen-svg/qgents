@@ -15,6 +15,7 @@ const useMergeMergeRequestMock = vi.hoisted(() => vi.fn())
 const useApproveMergeRequestCqMock = vi.hoisted(() => vi.fn())
 const useRejectMergeRequestCqMock = vi.hoisted(() => vi.fn())
 const useMergeRequestReviewsMock = vi.hoisted(() => vi.fn())
+const useMergeRequestCommitsMock = vi.hoisted(() => vi.fn())
 const useTaskMock = vi.hoisted(() => vi.fn())
 const useDiffsMock = vi.hoisted(() => vi.fn())
 const useDiffFilesMock = vi.hoisted(() => vi.fn())
@@ -29,6 +30,7 @@ vi.mock('@/hooks/task-model', () => ({
   useApproveMergeRequestCq: useApproveMergeRequestCqMock,
   useRejectMergeRequestCq: useRejectMergeRequestCqMock,
   useMergeRequestReviews: useMergeRequestReviewsMock,
+  useMergeRequestCommits: useMergeRequestCommitsMock,
   useTask: useTaskMock,
   useDiffs: useDiffsMock,
   useDiffFiles: useDiffFilesMock,
@@ -198,6 +200,38 @@ beforeEach(() => {
     error: null,
     refetch: vi.fn(),
   })
+  useMergeRequestCommitsMock.mockImplementation((_projectId: string, _mrId: string, limit = 3) => ({
+    data: {
+      totalCount: 3,
+      items: [
+        {
+          sha: 'a81f3c2b4d5e6f789012345678901234567890ab',
+          message: 'feat(login): 实现登录接口与 JWT 鉴权',
+          authorName: '陈同学',
+          authorUserId: 'user-chen',
+          committedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        },
+        {
+          sha: 'b47d9e1c2a3b4c5d6e7f801234567890abcdef01',
+          message: 'refactor: 优化校验逻辑与异常处理',
+          authorName: '李同学',
+          authorUserId: 'user-li',
+          committedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+        },
+        {
+          sha: 'd2e6f0a1b2c3d4e5f678901234567890abcdef23',
+          message: 'test: 补充登录接口测试用例',
+          authorName: '张同学',
+          authorUserId: 'user-zhang',
+          committedAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+        },
+      ].slice(0, limit),
+    },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  }))
   useAuthMock.mockReturnValue({
     user: { id: 'user-reviewer', displayName: '审同学', email: 'reviewer@example.com' },
   })
@@ -234,7 +268,11 @@ describe('MergeRequestDetailPage', () => {
     expect(useMergeRequestMock).toHaveBeenCalledWith('project-1', 'mr-1')
     expect(useMergeRequestChecksMock).toHaveBeenCalledWith('project-1', 'mr-1')
     expect(screen.getByRole('heading', { name: /MR #42/ })).toBeInTheDocument()
-    expect(screen.getByText('实现登录接口，包含参数校验、账号校验、密码校验、JWT 鉴权及响应返回。')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '提交记录 (3)' })).toBeInTheDocument()
+    expect(screen.getByText('feat(login): 实现登录接口与 JWT 鉴权')).toBeInTheDocument()
+    expect(screen.getByText('陈同学')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'view-all-commits' })).toBeInTheDocument()
+    expect(screen.queryByText('实现登录接口，包含参数校验、账号校验、密码校验、JWT 鉴权及响应返回。')).not.toBeInTheDocument()
     expect(screen.getByText('Testset')).toBeInTheDocument()
     expect(screen.getByText('AI Review')).toBeInTheDocument()
     expect(screen.getByText('Dry-run')).toBeInTheDocument()

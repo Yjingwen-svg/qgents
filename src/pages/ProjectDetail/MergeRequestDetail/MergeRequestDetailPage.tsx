@@ -56,12 +56,12 @@ import { findCqCheck, isMergeRequestAuthor } from '../cqSeal'
 import { githubPullRequestUrl } from '../mergeRequestDisplay'
 import { qualityGateNodeHref } from '../qualityGateNav'
 import { CqSealCard } from './CqSealCard'
+import { CommitHistoryCard } from './CommitHistoryCard'
 import styles from './MergeRequestDetailPage.module.scss'
 
 const { Text } = Typography
 
 const FILE_PAGE_SIZE = 100
-const DESCRIPTION_CLAMP = 96
 
 const QUALITY_GATE_NAMES: MergeRequestCheckName[] = ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE']
 type QualityGateName = MergeRequestCheckName
@@ -100,7 +100,6 @@ export default function MergeRequestDetailPage() {
   const view: DetailView = isDetailView(viewParam) ? viewParam : 'gate'
   const [fileIndex, setFileIndex] = useState(0)
   const [draft, setDraft] = useState('')
-  const [descriptionOpen, setDescriptionOpen] = useState(false)
 
   const { data: project } = useQuery({
     queryKey: ['projects', projectId],
@@ -282,8 +281,6 @@ export default function MergeRequestDetailPage() {
     )
   }
 
-  const description = mr.description?.trim() || ''
-  const descriptionLong = description.length > DESCRIPTION_CLAMP
   const gateNodes = qualityGateNodes(checksQuery.data, mr)
   const cqCheck = findCqCheck(checksQuery.data)
   const isAuthor = isMergeRequestAuthor(user?.id, taskQuery.data?.createdByUser?.id)
@@ -386,23 +383,7 @@ export default function MergeRequestDetailPage() {
                     onReject={() => submitCq('reject')}
                   />
                 </section>
-                <section className={styles.card} aria-label="MR 描述">
-                  <h2 className={styles.cardTitle}>MR 描述</h2>
-                  {description ? (
-                    <>
-                      <p className={`${styles.description}${descriptionLong && !descriptionOpen ? ` ${styles.isClamped}` : ''}`}>
-                        {description}
-                      </p>
-                      {descriptionLong ? (
-                        <Button type="link" className={styles.expand} onClick={() => setDescriptionOpen((open) => !open)}>
-                          {descriptionOpen ? '收起' : '展开全文'}
-                        </Button>
-                      ) : null}
-                    </>
-                  ) : (
-                    <Text type="secondary">暂无描述</Text>
-                  )}
-                </section>
+                <CommitHistoryCard projectId={projectId} mergeRequestId={mr.id} />
               </Space>
             ),
           },

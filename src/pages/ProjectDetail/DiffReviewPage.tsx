@@ -41,6 +41,7 @@ import {
   useTask,
 } from '@/hooks/task-model'
 import { findOpenMergeRequestForDiff, githubPullRequestUrl } from './mergeRequestDisplay'
+import { isEmptyBranchDiffId } from './emptyBranchDiff'
 import { diffFileStatusLabel, diffStatusLabel } from '@/types/diff'
 import type { ProjectRole } from '@/types/project'
 import type { TeamRole } from '@/types/team'
@@ -105,11 +106,13 @@ export default function DiffReviewPage() {
     enabled: Boolean(project?.teamId),
   })
 
-  const detailQuery = useDiff(projectId, diffId)
+  const emptyBranchShell = isEmptyBranchDiffId(diffId)
+  const liveDiffId = emptyBranchShell ? '' : diffId
+  const detailQuery = useDiff(projectId, liveDiffId)
   const diffsQuery = useDiffs(projectId, { limit: 100 })
-  const filesQuery = useDiffFiles(projectId, diffId, { limit: FILE_PAGE_SIZE })
-  const commentsQuery = useDiffComments(projectId, diffId, { limit: FILE_PAGE_SIZE })
-  const addComment = useAddDiffComment(projectId, diffId)
+  const filesQuery = useDiffFiles(projectId, liveDiffId, { limit: FILE_PAGE_SIZE })
+  const commentsQuery = useDiffComments(projectId, liveDiffId, { limit: FILE_PAGE_SIZE })
+  const addComment = useAddDiffComment(projectId, liveDiffId)
   const acceptDiff = useAcceptDiff(projectId)
   const rejectDiff = useRejectDiff(projectId)
   const createMr = useCreateMergeRequest(projectId)
@@ -291,6 +294,32 @@ export default function DiffReviewPage() {
     return (
       <div className="diff-review">
         <Empty description="缺少 diffId" />
+      </div>
+    )
+  }
+
+  // 代码与 Branch：+/- 为 0 且无真实快照时进入的空壳
+  if (emptyBranchShell) {
+    return (
+      <div className="diff-review">
+        <header className="diff-review__top">
+          <Link to={PATHS.projectCode(projectId)} className="diff-review__back">
+            <ArrowLeftOutlined /> 返回 Branch
+          </Link>
+          <div className="diff-review__title-row">
+            <h1>Diff</h1>
+            <Tag>无变更</Tag>
+          </div>
+          <p className="diff-review__branch">该分支当前没有可查看的代码变更</p>
+        </header>
+        <div className="diff-review__toolbar">
+          <Text>变更文件：0</Text>
+          <Space>
+            <Text type="success">+0</Text>
+            <Text type="danger">-0</Text>
+          </Space>
+        </div>
+        <Empty style={{ margin: 48 }} description="没有文件" />
       </div>
     )
   }

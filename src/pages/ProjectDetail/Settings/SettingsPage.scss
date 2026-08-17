@@ -240,6 +240,12 @@
     border-bottom: 1px solid #e8ecf1;
   }
 
+  &__repo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
   &__repo-placeholder {
     padding: 40px 0;
     text-align: center;
@@ -247,6 +253,56 @@
     border: 1px dashed #dce0e6;
     border-radius: 8px;
     line-height: 1.8;
+  }
+
+  &__repo-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+    border: 1px solid #e8ecf1;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  &__repo-item-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  &__repo-item-icon {
+    font-size: 18px;
+    color: #0d9b8a;
+    flex-shrink: 0;
+  }
+
+  &__repo-item-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  &__repo-item-title {
+    font-size: 14px;
+    color: #1a2332;
+  }
+
+  &__repo-item-fullname {
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__repo-item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding-left: 28px;
+    font-size: 12px;
   }
 
   &__filter-tabs {

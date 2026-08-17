@@ -239,6 +239,37 @@ describe('TestsetPage', () => {
     expect(screen.getByText('权限')).toBeInTheDocument()
   })
 
+  it('deletes a local history entry from the aside without calling a backend delete API', async () => {
+    localStorage.setItem(
+      'qgents:testset-run-history:demo-project',
+      JSON.stringify([
+        {
+          kind: 'DRY_RUN',
+          id: 'dryrun-1',
+          repositoryId: 'bound-demo-auth-service',
+          createdAt: '2026-08-15T02:00:00Z',
+          label: 'Dry-run · feat/login-api',
+        },
+        {
+          kind: 'TEST_RUN',
+          id: 'testrun-1',
+          repositoryId: 'bound-demo-auth-service',
+          createdAt: '2026-08-15T01:00:00Z',
+          label: 'Test run · testrun-1',
+        },
+      ]),
+    )
+    const user = userEvent.setup()
+    renderPage('/app/projects/demo-project/testset?dryRunId=dryrun-1')
+    expect(await screen.findByText('Dry-run · feat/login-api')).toBeInTheDocument()
+    expect(screen.getByText('Test run · testrun-1')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'delete-run-dryrun-1' }))
+    expect(screen.queryByText('Dry-run · feat/login-api')).not.toBeInTheDocument()
+    expect(screen.getByText('Test run · testrun-1')).toBeInTheDocument()
+    expect(localStorage.getItem('qgents:testset-run-history:demo-project')).toContain('testrun-1')
+    expect(localStorage.getItem('qgents:testset-run-history:demo-project')).not.toContain('dryrun-1')
+  })
+
   it('shows only the current run testsets beside a selected test-run', async () => {
     useTestsetsMock.mockReturnValue({
       data: [testset, otherTestset],

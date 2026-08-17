@@ -1,14 +1,17 @@
 // src/pages/ProjectDetail/sections/SettingsPage.tsx
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Tabs, Typography, Input, Switch, Spin, message } from 'antd'
-import { SaveOutlined, LockOutlined } from '@ant-design/icons'
+import { Button, Tabs, Typography, Input, Switch, Spin, Tag, message } from 'antd'
+import { GithubOutlined, SaveOutlined, LockOutlined } from '@ant-design/icons'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { TabsProps } from 'antd'
 import { projectApi } from '@/api'
+import { githubApi } from '@/api/github'
 import { useTasks } from '@/hooks/task-model'
 import { TaskModelStatusTag } from '@/pages/ProjectDetail/TaskCenter/TaskModelStatusTag'
+import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
+import type { Project } from '@/types/project'
 import type { TaskStatus } from '@/types/task-model'
 import './SettingsPage.scss'
 
@@ -57,7 +60,13 @@ export function SettingsPage() {
     {
       key: 'repositories',
       label: '仓库',
-      children: <RepositoriesTab projectId={projectId} isEditable={isEditable} />,
+      children: (
+        <RepositoriesTab
+          projectId={projectId}
+          teamId={project?.teamId ?? ''}
+          isEditable={isEditable}
+        />
+      ),
     },
     {
       key: 'group-rules',
@@ -109,7 +118,7 @@ function BasicInfoTab({
   isEditable,
 }: {
   projectId: string
-  project?: any
+  project?: Project
   isEditable: boolean
 }) {
   const queryClient = useQueryClient()
@@ -219,36 +228,88 @@ function BasicInfoTab({
 }
 
 // ============================================================
-// Tab 2：仓库 —— 留位置给 C
+// Tab 2：仓库 —— GET /projects/{projectId}/repositories
 // ============================================================
 
 function RepositoriesTab({
-  projectId: _projectId,
+  projectId,
+  teamId,
   isEditable,
 }: {
   projectId: string
+  teamId: string
   isEditable: boolean
 }) {
+  const navigate = useNavigate()
+  const { data: repositories = [], isLoading, isError } = useQuery({
+    queryKey: queryKeys.projectRepositories(projectId),
+    queryFn: () => githubApi.listProjectRepositories(projectId),
+    enabled: Boolean(projectId),
+  })
+
+  function handleBindClick() {
+    if (!teamId) {
+      message.warning('缺少团队信息，无法跳转绑定页')
+      return
+    }
+    navigate(PATHS.teamAuthorizedRepos(teamId))
+  }
+
   return (
     <div className="settings-tab">
       <div className="settings-tab__content">
         <div className="settings-tab__section-header">
           <Text strong>已绑定仓库</Text>
           {isEditable && (
-            <Button type="primary" size="small">
+            <Button type="primary" size="small" onClick={handleBindClick}>
               + 绑定仓库
             </Button>
           )}
         </div>
 
         <div className="settings-tab__repo-list">
-          <div className="settings-tab__repo-placeholder">
-            <Text type="secondary">暂无已绑定仓库</Text>
-            <br />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {isEditable ? '点击「绑定仓库」从 GitHub 授权仓库中添加' : '请联系项目管理员绑定仓库'}
-            </Text>
-          </div>
+          {isLoading ? (
+            <div className="settings-tab__repo-placeholder">
+              <Spin />
+            </div>
+          ) : isError ? (
+            <div className="settings-tab__repo-placeholder">
+              <Text type="danger">仓库列表加载失败，请稍后重试</Text>
+            </div>
+          ) : repositories.length === 0 ? (
+            <div className="settings-tab__repo-placeholder">
+              <Text type="secondary">暂无已绑定仓库</Text>
+              <br />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {isEditable ? '点击「绑定仓库」从 GitHub 授权仓库中添加' : '请联系项目管理员绑定仓库'}
+              </Text>
+            </div>
+          ) : (
+            repositories.map((repo) => (
+              <div key={repo.id} className="settings-tab__repo-item">
+                <div className="settings-tab__repo-item-main">
+                  <GithubOutlined className="settings-tab__repo-item-icon" />
+                  <div className="settings-tab__repo-item-text">
+                    <Text strong className="settings-tab__repo-item-title">
+                      {repo.displayName || repo.fullName.split('/').pop() || repo.fullName}
+                    </Text>
+                    <Text type="secondary" className="settings-tab__repo-item-fullname">
+                      {repo.fullName}
+                    </Text>
+                  </div>
+                  <Tag color={repo.authorizationStatus === 'AUTHORIZED' ? 'success' : 'warning'}>
+                    {repo.authorizationStatus === 'AUTHORIZED' ? '已授权' : '已撤销'}
+                  </Tag>
+                </div>
+                <div className="settings-tab__repo-item-meta">
+                  <Text type="secondary">默认分支：{repo.defaultBranch || '—'}</Text>
+                  <Text type="secondary">
+                    绑定于 {repo.boundAt ? new Date(repo.boundAt).toLocaleString() : '—'}
+                  </Text>
+                </div>
+              </div>
+            ))
+          )}
         </div>
 
         {!isEditable && (

@@ -106,4 +106,46 @@ describe('CodePage', () => {
     await user.click(screen.getByRole('tab', { name: 'MR' }))
     expect(await screen.findByText('实现邮箱登录')).toBeInTheDocument()
   })
+
+  it('keeps zero-diff stats clickable into an empty review shell', async () => {
+    renderPage()
+    const zeroDiffs = await screen.findAllByTitle('该分支暂无变更，打开空 Diff')
+    expect(zeroDiffs.length).toBeGreaterThan(0)
+    expect(zeroDiffs[0]).toHaveAttribute(
+      'href',
+      expect.stringMatching(/\/app\/projects\/demo-project\/code\/diff\/empty-branch/),
+    )
+  })
+
+  it('syncs Diff changeStats onto the branch Diff column', async () => {
+    useDiffsMock.mockReturnValue({
+      data: {
+        data: [
+          {
+            id: 'diff-login',
+            projectId: 'demo-project',
+            taskId: 'task-1',
+            taskRunId: 'run-1',
+            taskStepId: 'step-1',
+            requirementGroupId: 'login',
+            workspaceId: 'ws-1',
+            repositoryId: 'bound-demo-auth-service',
+            baseCommit: 'base',
+            sourceBranch: 'feat/login-api',
+            headCommit: null,
+            status: 'PENDING_REVIEW',
+            changeStats: { files: 2, additions: 12, deletions: 3 },
+            createdAt: '2026-08-12T10:00:00Z',
+          },
+        ],
+        page: { nextCursor: null, hasMore: false },
+        requestId: 'r-diffs',
+      },
+      isLoading: false,
+    })
+    renderPage()
+    expect(await screen.findByTitle('查看该分支 Diff')).toBeInTheDocument()
+    expect(screen.getByTitle('查看该分支 Diff')).toHaveTextContent('+12')
+    expect(screen.getByTitle('查看该分支 Diff')).toHaveTextContent('-3')
+  })
 })

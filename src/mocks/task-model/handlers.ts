@@ -549,7 +549,7 @@ export const taskModelDiffHandlers: HttpHandler[] = [
       diff.reviewedAt = new Date().toISOString()
       diff.updatedAt = diff.reviewedAt
       if (!diff.headCommit) diff.headCommit = `head-${diff.id}`
-      return response(diff, 202)
+      return response(diff)
     } catch (error: unknown) {
       return transitionError(error)
     }
@@ -762,19 +762,20 @@ const taskModelMergeRequestHandlers: HttpHandler[] = [
       (item) => item.repositoryId === repositoryId && item.sourceBranch === diff.sourceBranch && item.status === 'OPEN',
     )
     if (existing) return response(existing)
+    const number = store.mergeRequests.size + 1
     const created: import('@/types/task-model').MergeRequestSummary = {
-      id: `mr-${projectId}-${store.mergeRequests.size + 1}`,
+      id: `mr-${projectId}-${number}`,
       repositoryId,
       groupIds: [],
       provider: 'GITHUB',
-      number: store.mergeRequests.size + 1,
+      number,
       title,
       description: null,
       sourceBranch: diff.sourceBranch,
       targetBranch,
       status: 'OPEN',
       headCommit: diff.headCommit,
-      webUrl: null,
+      webUrl: `https://github.com/mock/${projectId}/pull/${number}`,
       taskId,
       qualityGate: {
         status: 'PENDING',

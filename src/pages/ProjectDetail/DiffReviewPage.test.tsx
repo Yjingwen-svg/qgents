@@ -1,9 +1,11 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { App } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { githubApi } from '@/api/github'
+import { teamApi } from '@/api/team'
 import type { DiffComment, DiffDetail, DiffFile } from '@/types/task-model'
 import { projectApi } from '@/api/project'
 import DiffReviewPage from './DiffReviewPage'
@@ -15,6 +17,7 @@ const useAddDiffCommentMock = vi.hoisted(() => vi.fn())
 const useAcceptDiffMock = vi.hoisted(() => vi.fn())
 const useRejectDiffMock = vi.hoisted(() => vi.fn())
 const useTaskMock = vi.hoisted(() => vi.fn())
+const useDiffsMock = vi.hoisted(() => vi.fn())
 const useCreateMergeRequestMock = vi.hoisted(() => vi.fn())
 const authState = vi.hoisted(() => ({
   user: { id: 'user-1', email: 'demo@qgents.dev', displayName: '陈同学' },
@@ -24,6 +27,7 @@ vi.mock('@/hooks/task-model', () => ({
   useDiff: useDiffMock,
   useDiffFiles: useDiffFilesMock,
   useDiffComments: useDiffCommentsMock,
+  useDiffs: useDiffsMock,
   useAddDiffComment: useAddDiffCommentMock,
   useAcceptDiff: useAcceptDiffMock,
   useRejectDiff: useRejectDiffMock,
@@ -45,6 +49,12 @@ vi.mock('@/api/project', () => ({
 vi.mock('@/api/github', () => ({
   githubApi: {
     listProjectRepositories: vi.fn(),
+  },
+}))
+
+vi.mock('@/api/team', () => ({
+  teamApi: {
+    getById: vi.fn(),
   },
 }))
 
@@ -152,6 +162,11 @@ beforeEach(() => {
       boundAt: '2026-08-15T00:00:00Z',
     },
   ])
+  vi.mocked(teamApi.getById).mockResolvedValue({
+    id: 'team-1',
+    name: 'Demo team',
+    role: 'TEAM_MEMBER',
+  })
   useDiffMock.mockReturnValue({
     data: diff,
     isLoading: false,
@@ -170,6 +185,13 @@ beforeEach(() => {
     isLoading: false,
     isError: false,
     error: null,
+  })
+  useDiffsMock.mockReturnValue({
+    data: { data: [diff], page: { nextCursor: null, hasMore: false }, requestId: 'r3' },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
   })
   useAddDiffCommentMock.mockReturnValue(idleMutation())
   useAcceptDiffMock.mockReturnValue(idleMutation())
@@ -192,11 +214,18 @@ describe('DiffReviewPage', () => {
     expect(useDiffMock).toHaveBeenCalledWith('project-1', 'diff-1')
     expect(useDiffFilesMock).toHaveBeenCalledWith('project-1', 'diff-1', { limit: 100 })
     expect(useDiffCommentsMock).toHaveBeenCalledWith('project-1', 'diff-1', { limit: 100 })
+    expect(await screen.findByRole('heading', { name: 'Diff-登录任务' })).toBeInTheDocument()
+    expect(screen.getByText('feat/login-api')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '添加评论' })).not.toBeInTheDocument()
+    expect(screen.getByText(/基准/)).toBeInTheDocument()
+    expect(screen.getByTitle('base-1')).toHaveTextContent('base-1')
+    expect(screen.getByText(/提交结果/)).toBeInTheDocument()
+    expect(screen.getByTitle('a1b2c3d')).toHaveTextContent('a1b2c3d')
     expect(screen.getByText('AuthController.ts')).toBeInTheDocument()
     expect(screen.getByText(/loginByEmail/)).toBeInTheDocument()
     expect(screen.getByText('密码有做哈希吗？')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'accept-diff' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'create-merge-request' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'create-merge-request' })).not.toBeInTheDocument()
   })
 
   it('opens the file from the file query string', async () => {
@@ -244,12 +273,30 @@ describe('DiffReviewPage', () => {
     expect(screen.getByText('请先通过该 Diff')).toBeInTheDocument()
   })
 
-  it('shows accept and reject for the task initiator who is only a project member', async () => {
+  it('hides accept for a task initiator who is only a project member', async () => {
     vi.mocked(projectApi.getById).mockResolvedValue({
       id: 'project-1',
       teamId: 'team-1',
       name: 'Demo',
       role: 'PROJECT_MEMBER',
+    })
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'create-merge-request' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'accept-diff' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'reject-diff' })).not.toBeInTheDocument()
+  })
+
+  it('shows accept for a Team Owner who is only a project member', async () => {
+    vi.mocked(projectApi.getById).mockResolvedValue({
+      id: 'project-1',
+      teamId: 'team-1',
+      name: 'Demo',
+      role: 'PROJECT_MEMBER',
+    })
+    vi.mocked(teamApi.getById).mockResolvedValue({
+      id: 'team-1',
+      name: 'Demo team',
+      role: 'TEAM_OWNER',
     })
     renderPage()
     expect(await screen.findByRole('button', { name: 'accept-diff' })).toBeEnabled()
@@ -266,11 +313,34 @@ describe('DiffReviewPage', () => {
     })
     renderPage()
     expect(await screen.findByRole('button', { name: 'create-merge-request' })).toBeEnabled()
-    expect(await screen.findByRole('button', { name: 'accept-diff' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'accept-diff' })).not.toBeInTheDocument()
     expect(screen.getByText('创建 MR 会发起合并请求，不会直接合入目标分支')).toBeInTheDocument()
   })
 
-  it('keeps create MR disabled until the accepted Diff has a remote head commit', async () => {
+  it('shows a GitHub link under create MR when the backend returns webUrl', async () => {
+    const user = userEvent.setup()
+    const mutateAsync = vi.fn().mockResolvedValue({
+      id: 'mr-1',
+      number: 42,
+      webUrl: 'https://github.com/mock/auth-service/pull/42',
+    })
+    useDiffMock.mockReturnValue({
+      data: { ...diff, status: 'ACCEPTED' },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    useCreateMergeRequestMock.mockReturnValue({ mutate: vi.fn(), mutateAsync, isPending: false })
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'create-merge-request' }))
+    await user.click(await screen.findByRole('button', { name: '创建 MR' }))
+    const link = await screen.findByRole('link', { name: '打开 MR #42' })
+    expect(link).toHaveAttribute('href', 'https://github.com/mock/auth-service/pull/42')
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
+  it('keeps create MR disabled if an accepted Diff is missing headCommit', async () => {
     useDiffMock.mockReturnValue({
       data: { ...diff, status: 'ACCEPTED', headCommit: null },
       isLoading: false,
@@ -280,7 +350,9 @@ describe('DiffReviewPage', () => {
     })
     renderPage()
     expect(await screen.findByRole('button', { name: 'create-merge-request' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'accept-diff' })).not.toBeInTheDocument()
     expect(screen.getByText('等待远端提交核验完成')).toBeInTheDocument()
+    expect(screen.getByText(/提交结果/).closest('p')).toHaveTextContent('提交结果 -')
   })
 
   it('shows an empty hunk state when files have no structured lines', async () => {
@@ -296,5 +368,21 @@ describe('DiffReviewPage', () => {
     })
     renderPage()
     expect(await screen.findByText(/本轮未返回结构化 hunk/)).toBeInTheDocument()
+  })
+
+  it('opens the newer snapshot for the same branch instead of keeping the stale Diff', async () => {
+    useDiffsMock.mockReturnValue({
+      data: {
+        data: [diff, { ...diff, id: 'diff-2', createdAt: '2026-08-12T10:00:00Z' }],
+        page: { nextCursor: null, hasMore: false },
+        requestId: 'r3',
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    renderPage()
+    await waitFor(() => expect(useDiffMock).toHaveBeenCalledWith('project-1', 'diff-2'))
   })
 })

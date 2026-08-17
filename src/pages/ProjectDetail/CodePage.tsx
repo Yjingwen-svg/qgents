@@ -46,6 +46,7 @@ import {
   repoAlias,
 } from './codeBranchDemo'
 import { MergeRequestTab } from './MergeRequestTab'
+import { groupApi } from '@/api'
 
 const { Title, Paragraph, Text } = Typography
 // 按照仓库绑定 + 分支名对上一条 diffId,对不上就只显示数字，不跳转
@@ -70,7 +71,7 @@ export function CodePage() {
     branch: ProjectBranchRow//?
   } | null>(null)
   //  向后端要数据 写法
-  // 组件一挂上就去拉仓库列表数据
+  // 组件一挂上就去拉项目绑定仓库列表数据
   const reposQuery = useQuery({
     queryKey: queryKeys.projectRepositories(projectId),//拉到的数据的名字,相同也页面可以用缓存
     queryFn: () => githubApi.listProjectRepositories(projectId),
@@ -78,17 +79,24 @@ export function CodePage() {
   })
 
 // 筛选逻辑
+// 先拉需求群，下拉联调时再替换 PROJECT_REQUIREMENTS
+useQuery({
+  queryKey: ['groups', projectId],
+  queryFn: () => groupApi.listByProject(projectId),
+  enabled: Boolean(projectId),
+})
+//基于仓库列表拼接出来的,是因为卡片的数据源就是仓库列表。
   const repoCards = useMemo(() => {
     const list = reposQuery.data ?? []
     return list.map((repo) => {
-      const allBranches = branchesForBoundRepo(repo)//一个仓库的分支列表
+      const allBranches = branchesForBoundRepo(repo)//一个仓库的分支列表//联调的时候???????????????????
       const branches = requirementId
         ? allBranches.filter((b) => b.requirementGroupId === requirementId)
         : allBranches//如果没有筛选条件,就返回该仓库下所有分支
       return { repo, branches }
     })
   }, [reposQuery.data, requirementId])
-
+//分支的有无
   const visibleCards = requirementId//有没有暂无数据
     ? repoCards.filter((c) => c.branches.length > 0)
     : repoCards//决定卡片要不要渲染
@@ -105,13 +113,13 @@ export function CodePage() {
 
   function setTab(next: string) {
     const nextParams = new URLSearchParams(searchParams)
-    if (next === 'mr') nextParams.set('tab', 'mr')
+    if (next === 'mr') nextParams.set('tab', 'mr')//再点一次mr还是不变,这样的话刷新不会变
     else nextParams.delete('tab')
     if (next !== 'mr') {
       nextParams.delete('repositoryId')
       nextParams.delete('status')
     }
-    setSearchParams(nextParams, { replace: true })
+    setSearchParams(nextParams, { replace: true })//历史只是保留了一页
   }
 
   return (
@@ -143,9 +151,11 @@ export function CodePage() {
           allowClear
           placeholder="全部需求"
           style={{ minWidth: 180 }}
+          //requirementId只是这页自己用 useState 记「下拉框当前选中了哪一项」。
+
           value={requirementId}
           onChange={(value) => setRequirementId(value)}
-          options={PROJECT_REQUIREMENTS.map((r) => ({
+          options={PROJECT_REQUIREMENTS.map((r) => ({//联调替换requirementGroups
             value: r.id,
             label: r.title,
           }))}
@@ -269,7 +279,7 @@ function RepoBranchCard({
       dataIndex: 'healthStatus',
       key: 'healthStatus',
       width: 120,
-      render: (status: BranchHealthStatus) => <HealthTag status={status} />,
+      render: (status: BranchHealthStatus) => <HealthTag status={status} />,//渲染成标签
     },
     {
       title: '关联 Task',
@@ -512,7 +522,7 @@ function HealthTag({ status }: { status: BranchHealthStatus }) {
 }
 
 function TestStatusTag({ status }: { status: BranchTestStatus }) {
-  const label = branchTestLabel(status)
+  const label = branchTestLabel(status)//翻译成中文的
   if (status === 'PASSED') return <Tag color="success">{label}</Tag>
   if (status === 'RUNNING') return <Tag color="processing">{label}</Tag>
   if (status === 'FAILED') return <Tag color="error">{label}</Tag>

@@ -110,7 +110,7 @@ describe('new task model hooks', () => {
       repositoryId: 'repo-1',
       baseCommit: 'abc',
       sourceBranch: 'feature/login',
-      headCommit: null,
+      headCommit: 'abc123',
       status: 'ACCEPTED' as const,
       changeStats: { files: 1, additions: 1, deletions: 0 },
       createdAt: '2026-08-12T00:00:00Z',

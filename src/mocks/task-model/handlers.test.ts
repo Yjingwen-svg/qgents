@@ -97,6 +97,17 @@ describe('independent Task model mock chain', () => {
     expect((await tasksApi.get(projectId, task.id)).status).toBe('CANCELLED')
   })
 
+  it('seeds Code page diffs so feat/login-api can open Diff review', async () => {
+    const diffs = await diffsApi.list('demo-project')
+    const login = diffs.data.find(
+      (diff) =>
+        diff.repositoryId === 'bound-demo-auth-service' && diff.sourceBranch === 'feat/login-api',
+    )
+    expect(login?.id).toBe('diff-demo-project-login-api')
+    const detail = await diffsApi.get('demo-project', login!.id)
+    expect(detail.sourceBranch).toBe('feat/login-api')
+  })
+
   it('validates required Task fields and rejects unsupported creation fields', async () => {
     await expect(tasksApi.create('project-validation', {
       requirementGroupId: '',

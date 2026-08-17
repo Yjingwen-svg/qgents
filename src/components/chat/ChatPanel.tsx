@@ -17,7 +17,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
 import { ApiError, groupApi, projectApi, agentApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
 import { getApiBaseUrl } from '@/api/client'
-import { useUnreadStore } from '@/store/unreadStore'
 import { useAuth } from '@/context/AuthContext'
 import { TaskTriggerModal } from '@/components/task-domain'
 import { AuthedImage } from '@/components/AuthedImage'
@@ -47,7 +46,6 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const markRead = useUnreadStore((state) => state.markRead)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -191,10 +189,19 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     scrollToBottom()
   }, [groupId, scrollToBottom])
 
+  // 进群全读（§三）：后端按用户×群推进已读游标，成功后校准群列表 / 工作台聚合未读
+  const markGroupRead = useMutation({
+    mutationFn: () => groupApi.markRead(projectId, groupId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+    },
+  })
+  const markGroupReadMutate = markGroupRead.mutate
   // 进入群聊 / 群内来新消息时持续标记已读（离开后群有新活动才重新亮红点）
   useEffect(() => {
-    if (groupId) markRead(groupId)
-  }, [groupId, messages.length, markRead])
+    if (groupId) markGroupReadMutate()
+  }, [groupId, messages.length, markGroupReadMutate])
 
   // 输入框以 @ 结尾时弹出成员面板
   const mentionOpen = draft.endsWith('@')

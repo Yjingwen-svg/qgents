@@ -1145,6 +1145,37 @@ export const handlers = [
     return HttpResponse.json({ data: groups })
   }),
 
+  // 主群聚合（§五）：一次返回全部可见项目主群，替代 teams→projects→groups 三层串联查询
+  http.get('/api/chat/main-groups', () => {
+    const groups = Object.entries(MOCK_GROUPS)
+      .flatMap(([projectId, list]) =>
+        list
+          .filter((g) => g.type === 'PROJECT_MAIN')
+          .map((g) => ({
+            ...g,
+            projectId,
+            memberCount: getGroupMembers(projectId, g.id).length,
+            latestMessage: getLatestMessageSummary(g.id),
+          })),
+      )
+      .sort((a, b) => (b.latestActivityAt ?? '').localeCompare(a.latestActivityAt ?? ''))
+    return HttpResponse.json({ data: groups })
+  }),
+
+  // 标记已读（§三 进群全读）：后端推进已读游标到群最新消息，未读数归零
+  http.post('/api/projects/:projectId/groups/:groupId/read', ({ params }) => {
+    const projectId = params.projectId as string
+    const groupId = params.groupId as string
+    const group = (MOCK_GROUPS[projectId] ?? []).find((g) => g.id === groupId)
+    if (!group) return HttpResponse.json({ error: { code: 'GROUP_NOT_FOUND', message: '群不存在' } }, { status: 404 })
+    const lastReadSequenceNo = (MOCK_MESSAGES[groupId] ?? []).reduce(
+      (max, m) => Math.max(max, m.sequence ?? 0),
+      0,
+    )
+    group.unreadCount = 0
+    return HttpResponse.json({ data: { groupId, lastReadSequenceNo, unreadCount: 0 } })
+  }),
+
   http.post('/api/projects/:projectId/groups', async ({ params, request }) => {
     const projectId = params.projectId as string
     const body = (await request.json()) as { title?: string; description?: string; type?: string }

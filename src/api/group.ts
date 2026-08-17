@@ -2,6 +2,7 @@ import { request, requestPage } from './client'
 import type {
   Group,
   GroupMember,
+  MarkReadResult,
   Message,
   SendMessageResult,
   SendMessagePayload,
@@ -13,6 +14,14 @@ import type {
 export const groupApi = {
   listByProject(projectId: string) {
     return request<Group[]>(`/projects/${projectId}/groups`)
+  },
+  /** 主群聚合（§五）：一次返回当前用户全部可见项目主群，替代 teams→projects→groups 三层串联查询 */
+  listMainGroups() {
+    return request<Group[]>('/chat/main-groups')
+  },
+  /** 标记群已读（§三 进群全读）：后端推进已读游标到群最新消息；写操作由 client 自动带 Idempotency-Key */
+  markRead(projectId: string, groupId: string) {
+    return request<MarkReadResult>(`/projects/${projectId}/groups/${groupId}/read`, { method: 'POST' })
   },
   create(projectId: string, payload: CreateGroupPayload) {
     return request<Group>(`/projects/${projectId}/groups`, { method: 'POST', body: payload })

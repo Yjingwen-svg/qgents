@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm } from 'antd'
 import { App, Upload } from 'antd'
@@ -15,6 +15,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
 import { groupApi, projectApi, agentApi, attachmentApi, uploadAttachment } from '@/api'
+import { getApiBaseUrl } from '@/api/client'
 import { useUnreadStore } from '@/store/unreadStore'
 import { useAuth } from '@/context/AuthContext'
 import { TaskTriggerModal } from '@/components/task-domain'
@@ -119,12 +120,19 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     })
   }, [page])
 
-  // 新消息自动滚动到底部
+  // 滚动到消息列表底部（用 rAF 等 DOM 布局完成后再滚，避免图片/内容未渲染时滚不到位）
+  const scrollToBottom = useCallback(() => {
+    const el = listRef.current
+    if (!el) return
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight
+    })
+  }, [])
+
+  // 新消息到达 / 切换群聊时自动滚动到底部（自己发消息后无需手动下拉）
   useEffect(() => {
-    if (listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight
-    }
-  }, [messages.length])
+    scrollToBottom()
+  }, [messages.length, groupId, scrollToBottom])
 
   // 进入群聊 / 群内来新消息时持续标记已读（离开后群有新活动才重新亮红点）
   useEffect(() => {
@@ -203,6 +211,28 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     }
   }
 
+  /**
+   * 打开文件消息：content.url 是鉴权下载代理（§18.5，新标签页不带 Bearer 会 401），
+   * 因此先调 §18.3 download-url 拿预签名地址（900s 有效、无需 token）再打开。
+   */
+  const openFile = useCallback(
+    async (target: Message) => {
+      const c = target.content as FileMessageContent
+      const attachmentId = extractAttachmentId(c.url)
+      if (!attachmentId) {
+        message.error('无法解析附件 ID，请刷新后重试')
+        return
+      }
+      try {
+        const { downloadUrl } = await attachmentApi.getDownloadUrl(projectId, attachmentId)
+        window.open(downloadUrl, '_blank', 'noopener')
+      } catch (e) {
+        message.error(e instanceof Error ? e.message : '附件打开失败')
+      }
+    },
+    [projectId, message],
+  )
+
   return (
     <Layout style={{ height: '100%', background: token.colorBgBase }}>
       {/* 顶部：群标题 + 发起任务入口 */}
@@ -279,29 +309,16 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           <Empty description="还没有消息，来说点什么吧" />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {messages.flatMap((m, i) => {
-              const prev = i > 0 ? messages[i - 1] : null
-              const nodes: React.ReactNode[] = []
-              if (shouldShowTimeDivider(prev?.createdAt ?? null, m.createdAt)) {
-                nodes.push(
-                  <div key={`divider-${m.id}`} style={{ textAlign: 'center' }}>
-                    <Text type="secondary" style={{ fontSize: 11, color: '#94a3b8' }}>
-                      {formatTimeDivider(m.createdAt)}
-                    </Text>
-                  </div>,
-                )
-              }
-              nodes.push(
-                <MessageBubble
-                  key={m.id}
-                  message={m}
-                  isSelf={m.senderType === 'USER' && m.senderId === user?.id}
-                  projectId={projectId}
-                  onReply={setReplyTo}
-                />,
-              )
-              return nodes
-            })}
+            {messages.map((m) => (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                isSelf={m.senderType === 'USER' && m.senderId === user?.id}
+                projectId={projectId}
+                onReply={setReplyTo}
+                onOpenFile={openFile}
+              />
+            ))}
           </div>
         )}
       </Layout.Content>
@@ -427,23 +444,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   )
 }
 
-/** 判断是否需要在相邻两条消息之间插入时间分隔线 */
-function shouldShowTimeDivider(prevIso: string | null, currIso: string): boolean {
-  if (!prevIso) return true
-  const prev = new Date(prevIso).getTime()
-  const curr = new Date(currIso).getTime()
-  if (Number.isNaN(prev) || Number.isNaN(curr)) return false
-  if (curr - prev > 5 * 60 * 1000) return true
-  const pd = new Date(prev)
-  const cd = new Date(curr)
-  return (
-    pd.getFullYear() !== cd.getFullYear() ||
-    pd.getMonth() !== cd.getMonth() ||
-    pd.getDate() !== cd.getDate()
-  )
-}
-
-/** 时间分隔线文案：今天 HH:mm / 昨天 HH:mm / M月D日 HH:mm */
+/** 时间分隔线文案：今天 HH:mm / 昨天 HH:mm / M月D日 HH:mm（气泡时间展示用） */
 function formatTimeDivider(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
@@ -467,6 +468,25 @@ function formatTimeDivider(iso: string): string {
 /** 消息气泡发送时间：HH:mm（当天）/ 昨天 HH:mm / M月D日 HH:mm */
 function formatClock(iso: string): string {
   return formatTimeDivider(iso)
+}
+
+/**
+ * 附件/图片 URL 兼容（问题记录：移动端上传返回相对路径、Web 端为绝对路径）。
+ * 绝对地址（http/https/data/blob）原样返回；相对路径（/ 开头）拼 API base，
+ * 使 Web 端也能正确请求鉴权下载代理（§18.5）。
+ */
+function normalizeContentUrl(url: string | undefined | null): string {
+  if (!url) return ''
+  if (/^(https?:|data:|blob:)/i.test(url)) return url
+  if (url.startsWith('/')) return `${getApiBaseUrl()}${url}`
+  return url
+}
+
+/** 从附件 URL（§18.5 content 地址）中提取 attachmentId，供 §18.3 download-url 使用 */
+function extractAttachmentId(url: string | undefined | null): string | null {
+  if (!url) return null
+  const match = url.match(/\/attachments\/([^/?#]+)(?:\/content)?/)
+  return match ? match[1] : null
 }
 
 /** 生成被引用消息的一行摘要（回复引用条展示用；DIFF/IMAGE/FILE 等无文本类型给占位文案） */
@@ -543,12 +563,15 @@ function MessageBubble({
   isSelf,
   projectId,
   onReply,
+  onOpenFile,
 }: {
   message: Message
   isSelf: boolean
   projectId: string
   /** 点击「回复」时回调，用于设置回复引用（SYSTEM 消息不提供） */
   onReply?: (m: Message) => void
+  /** 打开文件消息（FILE 类型走 §18.3 预签名下载地址，避免鉴权 401） */
+  onOpenFile?: (m: Message) => void
 }) {
   const { token } = theme.useToken()
   const [hovered, setHovered] = useState(false)
@@ -558,7 +581,7 @@ function MessageBubble({
     return (
       <div style={{ textAlign: 'center' }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          {renderContent(message, projectId)}
+          {renderContent(message, projectId, onOpenFile)}
         </Text>
       </div>
     )
@@ -578,14 +601,29 @@ function MessageBubble({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div style={{ marginBottom: 2, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Text type="secondary">
-          {message.senderType === 'AGENT' ? '🤖 ' : ''}
-          {message.senderName ?? (message.senderType === 'AGENT' ? 'Agent' : '成员')}
-          <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
-            {formatClock(message.createdAt)}
-          </Text>
-        </Text>
+      <div style={{ marginBottom: 2, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+        {isSelf ? (
+          <>
+            {/* 己方消息：时间放左侧，昵称放右侧（贴近气泡） */}
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              {formatClock(message.createdAt)}
+            </Text>
+            <div style={{ flex: 1 }} />
+            <Text type="secondary">
+              {message.senderName ?? (message.senderType === 'AGENT' ? 'Agent' : '成员')}
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text type="secondary">
+              {message.senderType === 'AGENT' ? '🤖 ' : ''}
+              {message.senderName ?? (message.senderType === 'AGENT' ? 'Agent' : '成员')}
+            </Text>
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              {formatClock(message.createdAt)}
+            </Text>
+          </>
+        )}
         {onReply && hovered && (
           <Button
             type="text"
@@ -611,14 +649,18 @@ function MessageBubble({
           overflow: 'hidden',
         }}
       >
-        {renderContent(message, projectId)}
+        {renderContent(message, projectId, onOpenFile)}
       </div>
     </div>
   )
 }
 
 /** 按消息类型渲染 content */
-function renderContent(message: Message, projectId: string): React.ReactNode {
+function renderContent(
+  message: Message,
+  projectId: string,
+  onOpenFile?: (m: Message) => void,
+): React.ReactNode {
   switch (message.type) {
     case 'CODE': {
       const c = message.content as CodeMessageContent
@@ -628,7 +670,7 @@ function renderContent(message: Message, projectId: string): React.ReactNode {
       const c = message.content as ImageMessageContent
       return (
         <AuthedImage
-          src={c.url}
+          src={normalizeContentUrl(c.url)}
           width={c.width ?? 260}
           height={c.height}
           style={{ borderRadius: 10, display: 'block', maxWidth: '100%' }}
@@ -640,10 +682,12 @@ function renderContent(message: Message, projectId: string): React.ReactNode {
       const c = message.content as FileMessageContent
       return (
         <a
-          href={c.url}
-          target="_blank"
-          rel="noreferrer"
-          style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'inherit', textDecoration: 'none' }}
+          href="#"
+          onClick={(e) => {
+            e.preventDefault()
+            onOpenFile?.(message)
+          }}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'inherit', textDecoration: 'none', cursor: 'pointer' }}
         >
           <FileOutlined style={{ fontSize: 24, color: '#3b82f6' }} />
           <div style={{ minWidth: 0 }}>

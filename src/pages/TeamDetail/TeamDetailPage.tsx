@@ -4,7 +4,6 @@ import {
   BranchesOutlined,
   CheckCircleFilled,
   ClockCircleOutlined,
-  FolderOutlined,
   PlusOutlined,
   SettingOutlined,
   TeamOutlined,
@@ -199,14 +198,6 @@ export default function TeamDetailPage() {
           >
             <ApartmentOutlined />
             团队首页
-          </button>
-          <button
-            type="button"
-            className={`team-detail__nav-item ${activeView === 'projects' ? 'team-detail__nav-item--active-soft' : ''}`}
-            onClick={() => setActiveView('projects')}
-          >
-            <FolderOutlined />
-            项目
           </button>
           <button
             type="button"

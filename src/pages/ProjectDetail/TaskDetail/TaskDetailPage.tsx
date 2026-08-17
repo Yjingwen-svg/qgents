@@ -22,7 +22,9 @@ export default function TaskDetailPage() {
   const diffsQuery = useDiffs(projectId, { taskId, limit: 100 })
   const cancelMutation = useCancelTask(projectId)
   const completedWithoutCode = useTaskCompletedWithoutCode(projectId, taskId)
-  const reviewEnabled = isDiffReviewTask(taskQuery.data?.status) && !completedWithoutCode
+  // SUCCEEDED 也查 DiffReview：有批次 → 展示交付结果（正常完成）；404 → 无代码变更空态（§5.2，跨会话稳定）
+  const reviewEnabled =
+    (isDiffReviewTask(taskQuery.data?.status) || taskQuery.data?.status === 'SUCCEEDED') && !completedWithoutCode
   const diffReviewQuery = useTaskDiffReview(projectId, taskId, reviewEnabled)
 
   // G1：交付中心等入口带 ?diffReviewBatchId 跳转时，定位到「任务产出与交付」卡片
@@ -191,9 +193,9 @@ function DiffCard({ projectId, taskId, task, query, completedWithoutCode }: { pr
 
 function DeliveryCard({ projectId, task, query, enabled, completedWithoutCode, onRefresh }: { projectId: string; task: Task; query: ReturnType<typeof useTaskDiffReview>; enabled: boolean; completedWithoutCode: boolean; onRefresh: () => void }) {
   if (completedWithoutCode) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><Text type="secondary" className={styles.compactEmpty}>任务已完成，无代码变更，因此未生成 Diff 或 MR</Text></Card>
-  if (!enabled) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><Text type="secondary" className={styles.compactEmpty}>当前任务尚未进入代码交付确认阶段</Text></Card>
+  if (!enabled) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><Text type="secondary" className={styles.compactEmpty}>{task.status === 'SUCCEEDED' ? '任务已完成' : '当前任务尚未进入代码交付确认阶段'}</Text></Card>
   if (query.isLoading) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><InlineState loading /></Card>
-  if (query.isError) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><SectionError resource="DiffReview" error={query.error} /></Card>
+  if (query.isError) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div>{task.status === 'SUCCEEDED' && errorCode(query.error) === 'DIFF_REVIEW_NOT_FOUND' ? <Text type="secondary" className={styles.compactEmpty}>任务已完成，无代码变更，因此未生成 Diff 或 MR</Text> : <SectionError resource="DiffReview" error={query.error} />}</Card>
   if (!query.data || query.data.taskId !== task.id) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><Text type="secondary" className={styles.compactEmpty}>最终 Diff 尚未生成</Text></Card>
   return <DiffReviewPanel projectId={projectId} task={task} batch={query.data} onRefresh={onRefresh} />
 }

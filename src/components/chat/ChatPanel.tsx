@@ -1075,7 +1075,7 @@ function renderContent(
             </Text>
           </div>
           <Tag color={taskStatusColor(c.status)} style={{ margin: 0 }}>
-            {c.status}
+            {taskStatusLabel(c.status)}
           </Tag>
         </Link>
       )
@@ -1101,4 +1101,17 @@ function taskStatusColor(status: string): string {
   if (s === 'FAILED' || s === 'CANCELLED') return 'red'
   if (s === 'RUNNING' || s === 'IN_PROGRESS') return 'blue'
   return 'default'
+}
+
+/** 任务状态 → 卡片 tag 中文标签（§5.4：终态用「已完成/失败」而非英文枚举） */
+function taskStatusLabel(status: string): string {
+  const s = status.toUpperCase()
+  if (s === 'SUCCEEDED' || s === 'COMPLETED') return '已完成'
+  if (s === 'FAILED') return '失败'
+  if (s === 'CANCELLED' || s === 'CANCELLING') return '已取消'
+  if (s === 'RUNNING' || s === 'IN_PROGRESS') return '执行中'
+  if (s === 'WAITING_DIFF_CONFIRMATION') return '等待 Diff 确认'
+  if (s === 'DELIVERING') return '交付中'
+  if (s === 'DELIVERY_FAILED') return '交付失败'
+  return s
 }

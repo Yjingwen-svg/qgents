@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  App,
   Button,
   Card,
   Drawer,
@@ -278,12 +279,19 @@ function CreateSkillModal({
   onCreated: () => void
 }) {
   const [form] = Form.useForm<CreateSkillPayload>()
+  const { message } = App.useApp()
 
   const create = useMutation({
     mutationFn: (payload: CreateSkillPayload) => skillApi.create(projectId, payload),
-    onSuccess: () => {
+    onSuccess: (saved) => {
       form.resetFields()
       onCreated()
+      // PRIVATE 创建即生效；PROJECT_SHARED 的 Admin 自建免审、成员为草稿
+      if (saved.status === 'PUBLISHED') {
+        message.success(saved.visibility === 'PRIVATE' ? 'Skill 已创建（私有，仅自己可用）' : 'Skill 已创建并发布')
+      } else {
+        message.success('Skill 草稿已创建，提交审核后即可共享')
+      }
     },
   })
 
@@ -294,19 +302,20 @@ function CreateSkillModal({
       onCancel={onClose}
       onOk={() => form.submit()}
       okText={editTarget ? '保存' : '创建'}
+      cancelText="取消"
       confirmLoading={create.isPending}
       destroyOnClose
     >
       <Form
         form={form}
         layout="vertical"
-        onFinish={(v) => create.mutate(v)}
+        onFinish={(v) => create.mutate({ ...v, tags: splitTags(v.tags) })}
         initialValues={
           editTarget
             ? {
                 name: editTarget.name,
                 content: editTarget.content,
-                tags: editTarget.tags,
+                tags: (editTarget.tags ?? []).join(','),
                 visibility: editTarget.visibility,
               }
             : { visibility: 'PRIVATE' }
@@ -330,16 +339,18 @@ function CreateSkillModal({
           />
         </Form.Item>
         <Form.Item name="tags" label="标签（逗号分隔）">
-          <Select
-            mode="tags"
-            placeholder="输入后回车，如 java / backend"
-            tokenSeparators={[',']}
-            open={false}
-          />
+          <Input placeholder="如 java / backend，用逗号分隔" />
         </Form.Item>
       </Form>
     </Modal>
   )
+}
+
+/** 标签输入（逗号分隔字符串或数组）→ string[] */
+function splitTags(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((tag): tag is string => typeof tag === 'string')
+  if (typeof value === 'string') return value.split(',').map((tag) => tag.trim()).filter(Boolean)
+  return []
 }
 
 function formatDate(iso: string): string {

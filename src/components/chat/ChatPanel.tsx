@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Checkbox } from 'antd'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm } from 'antd'
 import { App, Upload } from 'antd'
 import {
   SendOutlined,
   ThunderboltOutlined,
   FileOutlined,
-  FileAddOutlined,
+  MessageOutlined,
   BranchesOutlined,
   CheckCircleOutlined,
   InboxOutlined,
@@ -234,7 +234,17 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     // 允许纯引用（引用 DIFF 卡等）：回复目标存在时正文可为空（B3，服务端用群描述兜底）
     if ((!text && !replyTo) || sending) return
 
-    const hasAgentMention = mentions.some((mention) => mention.type === 'AGENT')
+    // 提及与正文对齐：用户删除 @某某 文本后不再携带该提及（修复「删掉 @agent 仍触发建任务」）。
+    // pickMention 只在候选面板加载完成（teamAgents/userMembers 已就绪）时可点，故此处映射可靠。
+    const mentionDisplayName = (mention: Mention): string | undefined =>
+      mention.type === 'AGENT'
+        ? teamAgents.find((agent) => agent.id === mention.id)?.name
+        : userMembers.find((member) => member.id === mention.id)?.displayName
+    const effectiveMentions = mentions.filter((mention) => {
+      const displayName = mentionDisplayName(mention)
+      return !!displayName && text.includes(displayName)
+    })
+    const hasAgentMention = effectiveMentions.some((mention) => mention.type === 'AGENT')
     setSending(true)
     setSendError(null)
     try {
@@ -252,7 +262,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
               quotedSenderName: replyTo.senderName ?? (replyTo.senderType === 'AGENT' ? 'Agent' : '成员'),
             }
           : { text },
-        mentions: mentions.length > 0 ? mentions : undefined,
+        mentions: effectiveMentions.length > 0 ? effectiveMentions : undefined,
         replyToId: replyTo ? replyTo.id : null,
         clientMessageId: `cmsg_${Date.now()}`,
       })
@@ -400,65 +410,57 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           alignItems: 'center',
         }}
       >
-        {multiSelect ? (
-          <>
-            <Button type="text" onClick={exitMultiSelect}>
-              取消
-            </Button>
-            <Text strong style={{ fontSize: 14 }}>
-              已选择 {selectedMessageIds.size} 条
+        <>
+          <div>
+            <Text strong style={{ fontSize: 16 }}>
+              <Text type="success">#</Text> {group?.title ?? '群聊'}
             </Text>
-            <span style={{ width: 44 }} />
-          </>
-        ) : (
-          <>
             <div>
-              <Text strong style={{ fontSize: 16 }}>
-                <Text type="success">#</Text> {group?.title ?? '群聊'}
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {group?.type === 'PROJECT_MAIN' ? '项目总群' : '需求群'}
+                {group?.memberCount ? ` · ${group.memberCount} 人` : ''}
               </Text>
-              <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {group?.type === 'PROJECT_MAIN' ? '项目总群' : '需求群'}
-                  {group?.memberCount ? ` · ${group.memberCount} 人` : ''}
-                </Text>
-              </div>
             </div>
-            <Space size={8}>
-              {/* 新建 Memory —— 点击进入消息多选模式 */}
-              <Button icon={<FileAddOutlined />} onClick={enterMultiSelect}>
-                新建 Memory
-              </Button>
-              {/* 归档需求群 —— 仅需求群 + 创建者可见 */}
-              {group?.type === 'REQUIREMENT' && group.createdBy === user?.id && !group.isArchived && (
-                <Popconfirm
-                  title="归档需求群"
-                  description="归档后该群将移入「已归档」，不可恢复。确定归档？"
-                  okText="归档"
-                  cancelText="取消"
-                  onConfirm={() => archiveGroup.mutate()}
-                >
-                  <Button
-                    danger
-                    ghost
-                    icon={<InboxOutlined />}
-                    loading={archiveGroup.isPending}
-                  >
-                    归档需求群
-                  </Button>
-                </Popconfirm>
-              )}
-              {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal */}
-              {canOpenTaskTrigger && <Button
-                type="primary"
-                ghost
-                icon={<ThunderboltOutlined />}
-                onClick={() => setTriggerOpen(true)}
+          </div>
+          <Space size={8}>
+            {/* AI 沉淀 Memory —— 自动检索本群最近聊天生成草稿，投给用户/Admin 确认 */}
+            <Button
+              icon={<MessageOutlined />}
+              loading={createAiMemory.isPending}
+              onClick={() => createAiMemory.mutate()}
+            >
+              AI 沉淀
+            </Button>
+            {/* 归档需求群 —— 仅需求群 + 创建者可见 */}
+            {group?.type === 'REQUIREMENT' && group.createdBy === user?.id && !group.isArchived && (
+              <Popconfirm
+                title="归档需求群"
+                description="归档后该群将移入「已归档」，不可恢复。确定归档？"
+                okText="归档"
+                cancelText="取消"
+                onConfirm={() => archiveGroup.mutate()}
               >
-                发起任务
-              </Button>}
-            </Space>
-          </>
-        )}
+                <Button
+                  danger
+                  ghost
+                  icon={<InboxOutlined />}
+                  loading={archiveGroup.isPending}
+                >
+                  归档需求群
+                </Button>
+              </Popconfirm>
+            )}
+            {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal */}
+            {canOpenTaskTrigger && <Button
+              type="primary"
+              ghost
+              icon={<ThunderboltOutlined />}
+              onClick={() => setTriggerOpen(true)}
+            >
+              发起任务
+            </Button>}
+          </Space>
+        </>
       </div>
 
       {/* 消息列表 */}
@@ -492,19 +494,10 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                     display: 'flex',
                     alignItems: 'flex-start',
                     gap: 8,
-                    // 普通模式下让气泡按左右对齐；多选模式整行铺满便于点击选择
-                    justifyContent: multiSelect ? undefined : isSelf ? 'flex-end' : 'flex-start',
-                    cursor: multiSelect ? 'pointer' : undefined,
+                    // 让气泡按左右对齐
+                    justifyContent: isSelf ? 'flex-end' : 'flex-start',
                   }}
-                  onClick={multiSelect ? () => toggleMessageSelect(m.id) : undefined}
                 >
-                  {multiSelect && (
-                    <Checkbox
-                      checked={selectedMessageIds.has(m.id)}
-                      style={{ marginTop: 18, flexShrink: 0 }}
-                      onChange={() => toggleMessageSelect(m.id)}
-                    />
-                  )}
                   {/* 内层 div 限制最大宽度 78%（相对消息列宽），气泡在内部 fit-content 铺满可用宽度，
                       保证每行容纳更多字；左右对齐由外层 justifyContent 控制 */}
                   <div style={{ maxWidth: '78%', minWidth: 0 }}>
@@ -512,8 +505,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                       message={m}
                       isSelf={isSelf}
                       projectId={projectId}
-                      onReply={multiSelect ? undefined : setReplyTo}
-                      onOpenFile={multiSelect ? undefined : openFile}
+                      onReply={setReplyTo}
+                      onOpenFile={openFile}
                       onImageLoad={handleImageLoad}
                     />
                   </div>
@@ -524,8 +517,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         )}
       </Layout.Content>
 
-      {/* 底部输入区（多选模式下隐藏，改为底部操作栏） */}
-      {!multiSelect && (
+      {/* 底部输入区 */}
+
         <div style={{ position: 'relative', padding: '12px 20px 16px', borderTop: `1px solid ${token.colorBorder}` }}>
           {/* @ 提及成员面板 */}
           {mentionOpen && (teamAgents.length > 0 || otherUserMembers.length > 0) && (
@@ -638,23 +631,6 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           </Button>
         </Space.Compact>
         </div>
-      )}
-
-      {/* 多选模式底部操作栏：唯一批量操作 = 创建 Memory */}
-      {multiSelect && (
-        <div style={{ padding: '12px 20px 16px', borderTop: `1px solid ${token.colorBorder}` }}>
-          <Button
-            type="primary"
-            block
-            icon={<FileAddOutlined />}
-            loading={createMemory.isPending}
-            disabled={selectedMessageIds.size === 0}
-            onClick={() => createMemory.mutate()}
-          >
-            创建 Memory（{selectedMessageIds.size}）
-          </Button>
-        </div>
-      )}
 
       {/* @Agent 发起任务弹窗（B 的 TaskTriggerModal） */}
       <TaskTriggerModal

@@ -1,0 +1,130 @@
+/* ──── 共享 Memory 页（浅色主题，与项目设置页视觉一致）──── */
+
+.memory-page {
+  min-height: 100%;
+  padding: 24px 32px 32px;
+  background: var(--qg-bg-light);
+}
+
+.memory-page__header {
+  margin-bottom: 16px;
+}
+
+.memory-page__title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--qg-text-primary);
+}
+
+.memory-page__desc {
+  margin: 0;
+  font-size: 14px;
+  color: var(--qg-text-secondary);
+}
+
+.memory-page__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.memory-page__list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ──── 列表卡片 ──── */
+
+.memory-card {
+  border: 1px solid var(--qg-border-light);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.memory-card:hover {
+  border-color: var(--qg-teal);
+  box-shadow: 0 4px 16px rgba(17, 24, 39, 0.1);
+}
+
+.memory-card .ant-card-body {
+  padding: 16px 20px;
+}
+
+.memory-card__main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.memory-card__left {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.memory-card__index {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--qg-text-muted);
+  line-height: 22px;
+  flex-shrink: 0;
+}
+
+.memory-card__name-wrap {
+  min-width: 0;
+}
+
+.memory-card__name {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--qg-text-primary);
+}
+
+.memory-card__content {
+  margin: 2px 0 0 !important;
+  font-size: 13px;
+  color: var(--qg-text-secondary);
+}
+
+.memory-card__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.memory-card__creator {
+  font-size: 12px;
+  color: var(--qg-text-muted);
+}
+
+.memory-card__tags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--qg-border-light);
+}
+
+.memory-card__category {
+  color: var(--qg-text-secondary);
+}
+
+.memory-card__source {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--qg-text-muted);
+}

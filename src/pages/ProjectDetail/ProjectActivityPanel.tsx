@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { Typography, Tag, Empty } from 'antd'
+import { Typography, Tag } from 'antd'
 import {
   CheckCircleFilled,
   SyncOutlined,
   ClockCircleOutlined,
   ExclamationCircleFilled,
 } from '@ant-design/icons'
-import { groupApi, tasksApi } from '@/api'
+import { groupApi, mergeRequestsApi, tasksApi } from '@/api'
 import type { TaskListItem, TaskStatus } from '@/types/task-model'
 
 const { Text } = Typography
@@ -58,7 +58,7 @@ function groupProgress(tasks: TaskListItem[], groupId: string): GroupProgressKey
 
 /**
  * 项目动态面板 —— 群聊页右侧第三栏
- * 需求群进度（真实接口）+ 任务动态（真实接口）+ MR 待处理 / 异常动态（暂无接口，占位）
+ * 需求群进度（真实接口）+ 任务动态（真实接口）+ MR 待处理（真实接口）
  */
 export function ProjectActivityPanel({ projectId }: { projectId: string }) {
   const { data: groups = [] } = useQuery({
@@ -74,6 +74,13 @@ export function ProjectActivityPanel({ projectId }: { projectId: string }) {
     enabled: !!projectId,
   })
   const tasks = taskPage?.data ?? []
+
+  const { data: mrPage } = useQuery({
+    queryKey: ['merge-requests', projectId, 'open'],
+    queryFn: () => mergeRequestsApi.list(projectId, { status: 'OPEN' }),
+    enabled: !!projectId,
+  })
+  const mrs = mrPage?.data ?? []
 
   return (
     <aside className="pd-activity" aria-label="项目动态">
@@ -128,16 +135,35 @@ export function ProjectActivityPanel({ projectId }: { projectId: string }) {
         )}
       </section>
 
-      {/* 🔀 MR 待处理（暂无接口，占位） */}
+      {/* 🔀 MR 待处理 */}
       <section className="pd-activity__section">
         <h3 className="pd-activity__title">🔀 MR 待处理</h3>
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 MR 接口，待接入" />
-      </section>
-
-      {/* ⚠️ 异常动态（暂无接口，占位） */}
-      <section className="pd-activity__section">
-        <h3 className="pd-activity__title">⚠️ 异常动态</h3>
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无 Testset 接口，待接入" />
+        {mrs.length === 0 ? (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            暂无待处理 MR
+          </Text>
+        ) : (
+          <ul className="pd-activity__list">
+            {mrs.slice(0, 8).map((mr) => (
+              <li key={mr.id} className="pd-activity__row">
+                <span
+                  style={{
+                    fontSize: 13,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    maxWidth: 150,
+                  }}
+                >
+                  #{mr.number} {mr.title || 'MR'}
+                </span>
+                <Tag color="orange" style={{ margin: 0, fontSize: 11 }}>
+                  待处理
+                </Tag>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </aside>
   )

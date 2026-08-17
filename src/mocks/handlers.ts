@@ -4,6 +4,7 @@ import type { Group, GroupMember, Message } from '@/types/group'
 import type { Activity, Memory, Notification, MyTeamInvitation } from '@/types'
 import { MOCK_CURRENT_USER } from './currentUser'
 import { deliveryCenterHandlers } from './delivery-center/handlers'
+import { createTaskFromMessageIntent } from './task-model/handlers'
 
 // ══════════════════════════════════════════════
 // Mock 数据
@@ -47,15 +48,15 @@ const MOCK_TEAM_MEMBERS = [
   { userId: 'user-005', displayName: '赵架构', email: 'zhao@example.com', role: 'TEAM_MEMBER' as const },
 ]
 
-const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: string; description: string; createdAt: string; role: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'; repositoryCount: number }>> = {
+const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: string; description: string; createdAt: string; role: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'; repositoryCount: number; memberCount?: number; status?: 'ACTIVE' | 'ARCHIVED' }>> = {
   'team-owned-001': [
-    { id: 'demo-project', teamId: 'team-owned-001', name: 'Demo Project', description: 'Demo project for Mock acceptance', createdAt: '2026-08-13T00:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 1 },
-    { id: 'proj-001', teamId: 'team-owned-001', name: 'Qgents', description: '团队多人 + 多 Agent 云端协作开发平台', createdAt: '2026-07-01T08:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 3 },
-    { id: 'proj-002', teamId: 'team-owned-001', name: '宠影记', description: '宠物健康管理小程序', createdAt: '2026-07-15T08:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 1 },
+    { id: 'demo-project', teamId: 'team-owned-001', name: 'Demo Project', description: 'Demo project for Mock acceptance', createdAt: '2026-08-13T00:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 1, memberCount: 2, status: 'ACTIVE' },
+    { id: 'proj-001', teamId: 'team-owned-001', name: 'Qgents', description: '团队多人 + 多 Agent 云端协作开发平台', createdAt: '2026-07-01T08:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 3, memberCount: 5, status: 'ACTIVE' },
+    { id: 'proj-002', teamId: 'team-owned-001', name: '宠影记', description: '宠物健康管理小程序', createdAt: '2026-07-15T08:00:00Z', role: 'PROJECT_ADMIN', repositoryCount: 1, memberCount: 4, status: 'ACTIVE' },
   ],
   'team-joined-001': [
-    { id: 'proj-003', teamId: 'team-joined-001', name: 'AI 决策系统', description: '校园选课推荐与学业规划', createdAt: '2026-06-10T08:00:00Z', role: 'PROJECT_MEMBER', repositoryCount: 2 },
-    { id: 'proj-004', teamId: 'team-joined-001', name: '校园助手', description: '课表、成绩、图书馆一站式查询', createdAt: '2026-08-01T08:00:00Z', role: 'PROJECT_MEMBER', repositoryCount: 1 },
+    { id: 'proj-003', teamId: 'team-joined-001', name: 'AI 决策系统', description: '校园选课推荐与学业规划', createdAt: '2026-06-10T08:00:00Z', role: 'PROJECT_MEMBER', repositoryCount: 2, memberCount: 6, status: 'ACTIVE' },
+    { id: 'proj-004', teamId: 'team-joined-001', name: '校园助手', description: '课表、成绩、图书馆一站式查询', createdAt: '2026-08-01T08:00:00Z', role: 'PROJECT_MEMBER', repositoryCount: 1, memberCount: 3, status: 'ARCHIVED' },
   ],
 }
 
@@ -1026,6 +1027,8 @@ export const handlers = [
       createdAt: new Date().toISOString(),
       role: 'PROJECT_ADMIN' as const,
       repositoryCount: 0,
+      memberCount: 1,
+      status: 'ACTIVE' as const,
     }
     // 写回内存，保证后续 GET /projects/:id 能查到
     if (!MOCK_PROJECTS[teamId]) MOCK_PROJECTS[teamId] = []
@@ -1165,6 +1168,18 @@ export const handlers = [
       content?: unknown
       senderId?: string
       clientMessageId?: string
+      replyToId?: string | null
+      mentions?: Array<{ type?: string; id?: string }>
+    }
+    const projectId = params.projectId as string
+    const group = (MOCK_GROUPS[projectId] ?? []).find((item) => item.id === groupId)
+    if (!group) return HttpResponse.json({ error: { code: 'GROUP_NOT_FOUND', message: '需求群不存在' } }, { status: 404 })
+    const mentionedAgents = body.mentions?.filter((mention) => mention.type === 'AGENT' && typeof mention.id === 'string' && mention.id.length > 0) ?? []
+    if (mentionedAgents.length > 0 && (group.type !== 'REQUIREMENT' || group.status !== 'ACTIVE' || group.isArchived)) {
+      return HttpResponse.json({ error: { code: 'TASK_TRIGGER_GROUP_INVALID', message: '只能在活跃需求群中发起任务' } }, { status: 422 })
+    }
+    if (mentionedAgents.length > 1) {
+      return HttpResponse.json({ error: { code: 'MULTIPLE_AGENT_TASK_TRIGGER_UNSUPPORTED', message: '一条消息只能提及一个 Agent 发起任务' } }, { status: 422 })
     }
     const list = MOCK_MESSAGES[groupId] ?? (MOCK_MESSAGES[groupId] = [])
     const message: Message = {
@@ -1177,10 +1192,26 @@ export const handlers = [
       senderName: '陈同学',
       sequence: list.length + 1,
       createdAt: new Date().toISOString(),
-      replyToId: null,
+      replyToId: body.replyToId ?? null,
     }
     list.push(message)
-    return HttpResponse.json({ data: message }, { status: 201 })
+    const taskRecord = mentionedAgents[0]
+      ? createTaskFromMessageIntent(projectId, {
+          requirementGroupId: groupId,
+          title: typeof (body.content as { text?: unknown })?.text === 'string'
+            ? (body.content as { text: string }).text.slice(0, 80)
+            : '来自群聊的任务',
+          requirement: typeof (body.content as { text?: unknown })?.text === 'string'
+            ? (body.content as { text: string }).text
+            : '',
+          messageId: message.id,
+          createdAt: message.createdAt,
+        })
+      : null
+    const task = taskRecord
+      ? { id: taskRecord.id, displayCode: taskRecord.displayCode, status: taskRecord.status, missingFields: ['repositoryIds', 'baseRef'] }
+      : null
+    return HttpResponse.json({ data: { message, task } }, { status: 201 })
   }),
 
   // ── 项目仓库绑定（GitHub）──

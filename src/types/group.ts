@@ -127,11 +127,23 @@ export interface SendMessagePayload {
   clientMessageId: string
 }
 
-/** @ 提及（v1.8.0 §22）—— 对象数组，type 区分 USER / AGENT */
+/** @ 提及 —— 对象数组，type 区分 USER / AGENT（接口文档 v1.9.3 §7） */
 export type MentionType = 'USER' | 'AGENT'
 export interface Mention {
   type: MentionType
   id: string
+}
+
+export interface MessageTaskSummary {
+  id: string
+  displayCode: string
+  status: string
+  missingFields: string[]
+}
+
+export interface SendMessageResult {
+  message: Message
+  task: MessageTaskSummary | null
 }
 
 export interface CreateGroupPayload {

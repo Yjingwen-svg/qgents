@@ -126,13 +126,7 @@ export const PATHS = {
 /** 项目详情左侧导航 path 段（相对 projects/:projectId） */
 export const PROJECT_NAV = [
   { path: 'overview', label: '概览', to: PATHS.projectOverview },
-  {
-    path: 'req-chat',
-    label: '需求群聊',
-    /** 跳到项目根，由 ProjectDetailLayout 重定向到项目总群 */
-    to: (projectId: string) => PATHS.projectDetail(projectId),
-  },
-  { path: 'tasks', label: '任务中心', to: PATHS.projectTasks, badge: 3 },
+  { path: 'tasks', label: '任务中心', to: PATHS.projectTasks },
   { path: 'diffs', label: '交付中心', to: PATHS.projectDiffs },
   { path: 'workflow', label: '工作流编排', to: PATHS.projectWorkflow },
   { path: 'agents', label: 'Agent 团队', to: PATHS.projectAgents },

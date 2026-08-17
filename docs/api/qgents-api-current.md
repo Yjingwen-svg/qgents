@@ -1,11 +1,10 @@
-Qgents接口文档v1.9.1
+Qgents接口文档v1.9.4
 
-版本：v1.9.1
+版本：v1.9.4
 
 状态：第 6 节 GitHub 集成接口已冻结；通知中心（§7.1）与群列表/消息字段按 A 联调约定补全；团队邀请收件人视角与团队最近动态已落地（§19，接口表见 §5.1）；新增两个SSE事件
 
-更新日期：2026-08-15
-
+更新日期：2026-08-16
 
 ---
 
@@ -449,85 +448,53 @@ Repository.authorizationStatus = AUTHORIZED | REVOKED
 - archived=true 表示 GitHub 仓库已归档；authorizationStatus=REVOKED 表示 GitHub App 已无权访问。
   
 - 第一版不返回 authorizedRepositoryCount，客户端可按授权仓库的 installationId 统计。
-  
 安装与元数据刷新
-
-发起安装请求必须携带 Idempotency-Key。
-
-安装请求通过查询参数指定发起端，client 只允许以下值：
-
-参数
-类型
-必填
-说明
-client
-WEB 或 MOBILE
-否
-回调成功后的前端类型，省略时默认为 WEB
-
-Web 端请求：
-POST /teams/{teamId}/integrations/github/installations?client=WEB
-Idempotency-Key: <unique-key>
-Authorization: Bearer <accessToken>
-
-移动端请求：
-POST /teams/{teamId}/integrations/github/installations?client=MOBILE
-Idempotency-Key: <unique-key>
-Authorization: Bearer <accessToken>
-
-client 不是回跳 URL，前端不得传入任意 URL。后端会将该值写入签名 state，GitHub 回调时由后端验证并决定回跳地址。
-
-成功返回：
-{
-  "data": {
-    "installationUrl": "https://github.com/apps/qgents/installations/new?state=...",
-    "expiresAt": "2026-08-13T11:00:00Z"
-  },
-  "requestId": "req_01J..."
-}
-
-Installation 列表项：
-{
-  "id": "installation-local-uuid",
-  "providerInstallationId": 12345678,
-  "accountLogin": "Yjingwen-svg",
-  "accountType": "ORGANIZATION",
-  "status": "ACTIVE",
-  "installedAt": "2026-08-01T08:00:00Z",
-  "metadataSyncedAt": "2026-08-13T10:00:00Z"
-}
-
-callback 固定为：
-GET /integrations/github/callback?installation_id=...&setup_action=...&state=...
-
-其中 setup_action 由 GitHub 回调携带，常见值为 install 或 update，后端不要求前端额外处理。
-
-后端校验签名 state，保存 Installation 并刷新授权仓库元数据。state 中包含客户端类型，例如：
-{
-  "sub": "<teamId>",
-  "client": "WEB"
-}
-
-旧版本没有 client 字段的 state 默认按 WEB 处理。
-
-成功返回：
-302 Location: {FRONTEND_URL_WEB}/app/integrations/github?teamId={teamId}&installed=1
-
-当安装请求使用 client=MOBILE 时，回跳地址为：
-302 Location: {FRONTEND_URL_MOBILE}/app/integrations/github?teamId={teamId}&installed=1
-
-后端部署配置：
-FRONTEND_URL_WEB=https://qgents.dpdns.org
-FRONTEND_URL_MOBILE=https://mobile.qgents.dpdns.org
-
-Web 和移动端共用同一个 GitHub App 和同一个 callback 地址：
-https://api.qgents.dpdns.org/api/v1/integrations/github/callback
-
-区别只在于创建安装链接时传递的 client 参数。
-
-手动刷新请求中的 {installationId} 是 Installation 本地 id。该操作只刷新 GitHub Installation 与授权仓库元数据，不执行 clone/fetch，也不改变 Workspace 状态；成功返回 200 和刷新后的 Installation 对象。客户端随后重新 GET Installation 列表和授权仓库列表。
-
-解除团队 Installation 成功返回 204 No Content；仍被项目仓库绑定引用时返回 409 GITHUB_INSTALLATION_IN_USE。
+      发起安装请求必须携带 Idempotency-Key。
+      安装入口固定为 GitHub /installations/new：接口无条件返回
+      https://github.com/apps/{slug}/installations/new?state={签名 state}，
+      不查询本地已有 Installation、不根据账号状态改跳 GitHub Configure 或 settings 路径。
+      若该账号已安装，由 GitHub 自身提示；后端仍返回 /new，state 继续携带当前 teamId、发起人、client，回调语义不变。
+      前端只跳转 data.installationUrl，不自行拼接 GitHub 链接。
+      安装请求通过查询参数指定发起端，client 只允许以下值：
+      |    参数|    类型|    必填|    说明|
+      |---|---|---|---|
+      |    client|    WEB 或 MOBILE|    否|    回调成功后的前端类型，省略时默认为 WEB|
+      Web 端请求：
+      HTTP     POST /teams/{teamId}/integrations/github/installations?client=WEB     Idempotency-Key: <unique-key>     Authorization: Bearer <accessToken>     
+      移动端请求：
+      HTTP     POST /teams/{teamId}/integrations/github/installations?client=MOBILE     Idempotency-Key: <unique-key>     Authorization: Bearer <accessToken>     
+      client 不是回跳 URL，前端不得传入任意 URL。后端会将该值写入签名 state，GitHub 回调时由后端验证并决定回跳地址。
+      成功返回：
+      JSON     {       "data": {         "installationUrl": "https://github.com/apps/qgents/installations/new?state=...",         "expiresAt": "2026-08-13T11:00:00Z"       },       "requestId": "req_01J..."     }     
+      Installation 列表项：
+      JSON     {       "id": "installation-local-uuid",       "providerInstallationId": 12345678,       "accountLogin": "Yjingwen-svg",       "accountType": "ORGANIZATION",       "status": "ACTIVE",       "installedAt": "2026-08-01T08:00:00Z",       "metadataSyncedAt": "2026-08-13T10:00:00Z"     }     
+      callback 固定为：
+      HTTP     GET /integrations/github/callback?installation_id=...&setup_action=...&state=...     
+      其中 setup_action 由 GitHub 回调携带，常见值为 install 或 update，后端不要求前端额外处理。
+      后端校验签名 state，保存 Installation 并刷新授权仓库元数据。state 中包含客户端类型，例如：
+      JSON     {       "sub": "<teamId>",       "client": "WEB"     }     
+      旧版本没有 client 字段的 state 默认按 WEB 处理。
+      成功返回：
+      HTTP     302 Location: {FRONTEND_URL_WEB}/app/integrations/github?teamId={teamId}&installed=1     
+      当安装请求使用 client=MOBILE 时，回跳地址为：
+      HTTP     302 Location: {FRONTEND_URL_MOBILE}/app/integrations/github?teamId={teamId}&installed=1     
+      归属冲突回跳：同一 GitHub 账号已绑定到其他团队时，回调不保存本次安装，回跳地址携带 conflict 与 message 参数（WEB/MOBILE 均同构）：
+      HTTP     302 Location: {FRONTEND_URL_WEB}/app/integrations/github?teamId={teamId}&installed=0&conflict=GITHUB_INSTALLATION_TEAM_CONFLICT&message={URL编码的中文提示}     
+      前端应检测 conflict 参数并展示 message 中的提示，然后清理该参数；installed 为 0 表示安装未完成。
+      > 业务规则：一个 GitHub 账号只能授权给一个团队。 GitHub App 的 Installation 是「账号对 App」级别唯一的，一个 GitHub 账号对 qgents App 只有一个安装，因此只能归属一个团队。若该账号已绑定其他团队，从当前团队发起安装时会进入已有的 Installation（GitHub 侧不会新建），无法重复绑定；如需更换团队，须先到原团队解绑或卸载 GitHub App 后重新安装。仓库变更 webhook 不携带来源团队信息，故「在 GitHub 配置页直接增删仓库」作用于原 Installation，后端无法据 webhook 阻断该操作，前端应在安装入口提示该规则。
+      >
+      >
+      后端部署配置：
+      Plain Text     FRONTEND_URL_WEB=https://qgents.dpdns.org     FRONTEND_URL_MOBILE=https://mobile.qgents.dpdns.org     
+      Web 和移动端共用同一个 GitHub App 和同一个 callback 地址：
+      Plain Text     https://api.qgents.dpdns.org/api/v1/integrations/github/callback     
+      区别只在于创建安装链接时传递的 client 参数。
+      手动刷新请求中的 {installationId} 是 Installation 本地 id。该操作只刷新 GitHub Installation 与授权仓库元数据，不执行 clone/fetch，也不改变 Workspace 状态；成功返回 200 和刷新后的 Installation 对象。客户端随后重新 GET Installation 列表和授权仓库列表。
+      解除团队 Installation 成功返回 204 No Content；仍被项目仓库绑定引用时返回 409 GITHUB_INSTALLATION_IN_USE。
+      解除团队关联前需先解绑相关项目仓库；存在引用时后端返回 409 GITHUB_INSTALLATION_IN_USE，不自动解绑、不删除项目历史。
+      解除关联是「解除 Qgents 团队关联」，不是替用户去 GitHub 远程卸载 App；后端不会调用 GitHub 卸载接口。
+      无项目绑定引用的 Installation：后端会先删除其未绑定的仓库镜像，再删除安装记录。
+  
 
 授权仓库
 
@@ -850,10 +817,15 @@ POST /groups 只接受 REQUIREMENT 或省略 type；传入 PROJECT_MAIN 返回 4
 {
   "type": "TEXT",
   "content": {"text": "登录接口需要支持邮箱和密码。"},
-  "mentions": ["user-uuid"],
+  "mentions": [
+    {"type": "USER", "id": "user-uuid"},
+    {"type": "AGENT", "id": "agent-uuid"}
+  ],
   "replyToId": null,
   "clientMessageId": "cmsg_01J..."
 }
+
+mentions 为对象数组 Mention[]，每项 { "type": "USER" | "AGENT", "id": <UUID> }（type 必填枚举 USER/AGENT，id 为被提及的用户或 Agent ID）；不提及传 null 或 []。响应 MessageResponse.mentions 同构回显。
 
 
 
@@ -888,6 +860,10 @@ POST /groups 只接受 REQUIREMENT 或省略 type；传入 PROJECT_MAIN 返回 4
 - Agent 可参与项目群聊（回群消息），但私聊与 Agent 好友不在本期范围。
   
     
+  从消息触发任务：
+  
+  - 自动触发：发送消息时 mentions 含 type=AGENT 项（如 @AgentOrchestrator）→ 服务端自动从该消息创建 Task（triggerMessageId = 本次消息 ID；同一消息只建一次，幂等）。前置条件：群为 ACTIVE REQUIREMENT 且已绑定至少一个仓库（未绑仓库则跳过并记录 warn，不阻塞消息发送）；agentId 仅作调度偏好，不绕过后端角色/并发/项目可见性/仓库授权校验。任务创建后 Task 状态为 PLANNING，由编排自动推进（Planner → Developer → Tester → Reviewer）。
+  - 显式触发：POST /projects/{projectId}/groups/{groupId}/messages/{messageId}/trigger-task，对已发送消息显式创建 Task（项目成员；body 为 TaskTriggerRequest，缺省字段由服务端从消息文本/群信息提取，需 Idempotency-Key）。
   
 群列表 DTO 补充（GET /projects/{id}/groups，A 联调约定 §2）：
 
@@ -1473,6 +1449,34 @@ data: {"projectId":"project-uuid","taskId":"task-uuid","stepId":"step-uuid","tas
 - merge-request.updated
 事件仅用于刷新界面；客户端恢复连接或收到乱序事件后必须以相应的查询接口为准。受控日志不得包含 Token、密码、GitHub 安装令牌、私钥或未脱敏的环境变量。
 SSE 事件 id 即项目内单调递增 sequenceNo，作为 Last-Event-ID 续传游标；输入与审批事件必须包含 inputRequestId。
+
+项目级新增事件（前端 SSE 需求清单 ①，同一项目流）：
+
+- message.created：有人/Agent 发群消息；payload { projectId, groupId, messageId }
+- group.created / group.updated / group.archived：群创建/改名/归档；payload { projectId, groupId }
+- group.member.updated：成员进出、Agent 首次进群；payload { projectId, groupId }
+- memory.submit-review / memory.approved / memory.rejected / memory.archived：Memory 审批流转；payload { projectId, resourceType: "MEMORY", resourceId, eventVersion, updatedAt }（§20.4；前端 eventParser 映射到 memories query，不另发 memory.updated）
+  
+团队级事件流（前端 SSE 需求清单 ②，新增端点）：
+
+- 端点：GET /api/v1/teams/{teamId}/events（团队成员可订阅；Content-Type: text/event-stream）
+- 事件信封同 §12.1：id=团队内单调递增 sequenceNo（Last-Event-ID 续传，游标过期 409 EVENT_CURSOR_EXPIRED），15 秒心跳
+- 事件：
+  - project.member.added：成员被拉进项目；payload { teamId, projectId }
+  - team.member.updated：成员加入（接受邀请）/移出团队；payload { teamId, userId }
+  - activity.created：团队动态产生（暂未单独发布——团队动态由项目事件聚合，前端收项目流 task.updated/diff.created/merge-request.updated 后刷新 GET /teams/{teamId}/activities 即可）
+    
+通知级事件流（前端 SSE 需求清单 ③，新增端点）：
+
+- 端点：GET /api/v1/notifications/events（当前登录用户维度；Content-Type: text/event-stream）
+- 事件信封同 §12.1：id=用户内单调递增 sequenceNo（Last-Event-ID 续传）
+- 事件：
+  - notification.created：新通知产生（含 INVITED 邀请）；payload { notificationId, kind }
+    
+事件仅用于刷新界面；客户端恢复连接或收到乱序事件后必须以相应的查询接口为准。受控日志不得包含 Token、密码、GitHub 安装令牌、私钥或未脱敏的环境变量。
+
+SSE 事件 id 即项目内单调递增 sequenceNo，作为 Last-Event-ID 续传游标；输入与审批事件必须包含 inputRequestId。
+
 各事件 Payload 示例：
 task.updated（Task 状态变化）：
 {
@@ -3064,3 +3068,36 @@ payload 含 dryRunId + projectId/repositoryId/taskId/headCommit/targetBranch/sta
 5. Testset：响应补 scopeTags；
 6. （P1+）test-run / dry-run 历史列表、逐用例结果、报告产物 URL（前端按空态处理，不阻塞联调）。
   
+22.4 Agent 单卡详情（前端联调，已实现）
+
+GET /teams/{teamId}/agents/{agentId}（原仅有列表）新增单 Agent 详情，支持可选 projectId 参数：
+
+GET /api/v1/teams/{teamId}/agents/{agentId}?projectId={projectId}
+
+- projectId 传了：校验该 Agent 属于此项目的 Team（agents.team_id == projects.team_id）且调用者为项目成员；不传：仅团队可见性校验
+- 响应为 AgentResponse（id/name/avatar/role/capabilities/prompt/visibility/status/createdBy），PRIVATE Agent 仅创建者可见（prompt 仅创建者返回）
+- 错误：404 TEAM_RESOURCE_NOT_FOUND / 404 PROJECT_NOT_FOUND / 404 AGENT_NOT_FOUND
+  
+22.5 创建项目时绑定仓库（前端额外清单 §四，已实现）
+
+POST /teams/{teamId}/projects 请求体新增可选字段：
+
+字段
+类型
+说明
+repositoryIds
+string[] (UUID)
+GitHub 授权仓库 id 列表（github_repositories.id，授权仓本地 UUID，非绑定记录 id）
+
+创建项目时后端逐个校验并绑定（等价于创建后逐个调 POST /projects/{projectId}/repositories）：
+
+- 校验：仓库属于该团队 ACTIVE 安装、authorizationStatus=AUTHORIZED、未归档、defaultBranch 非空；
+- 重复绑定同一仓库返回 409 PROJECT_REPOSITORY_ALREADY_BOUND（整体失败回滚，项目不创建）；
+- 不传或传空：按原行为创建项目，之后单独绑定。
+  
+{
+  "name": "Qgents Web",
+  "description": "Web client",
+  "memberIds": ["user-uuid"],
+  "repositoryIds": ["repository-local-uuid-1", "repository-local-uuid-2"]
+}

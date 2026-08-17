@@ -133,4 +133,23 @@ describe('TaskDetailPage final information architecture', () => {
     await user.click(screen.getByRole('button', { name: '取消任务' }))
     expect(refetch).toHaveBeenCalled()
   })
+
+  it('keeps the detail page visible when the backend omits derived task fields', () => {
+    const incompleteTask = {
+      ...task,
+      requirement: undefined,
+      repositories: undefined,
+      acceptanceCriteria: undefined,
+      executionSummary: undefined,
+      capabilities: undefined,
+      sourceMessage: undefined,
+    } as unknown as Task
+    useTaskMock.mockReturnValue({ data: incompleteTask, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+
+    renderPage()
+
+    expect(screen.getByTestId('task-summary')).toBeInTheDocument()
+    expect(screen.getByTestId('requirement-context-row')).toBeInTheDocument()
+    expect(screen.getByTestId('output-delivery-row')).toBeInTheDocument()
+  })
 })

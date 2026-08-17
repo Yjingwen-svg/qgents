@@ -133,6 +133,52 @@ img {
   }
 }
 
+/* ──── 全局滚动条 ──── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #bbbbbb;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #888888;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* 深色背景容器（navy 侧栏 / 深色页）用半透明白滑块，避免浅色条突兀 */
+.qg-banner,
+.pd-nav,
+.qg-page-dark,
+.ant-layout-sider,
+.qg-dark-page-content {
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.qg-banner ::-webkit-scrollbar-thumb,
+.pd-nav ::-webkit-scrollbar-thumb,
+.qg-page-dark ::-webkit-scrollbar-thumb,
+.ant-layout-sider ::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.qg-banner ::-webkit-scrollbar-thumb:hover,
+.pd-nav ::-webkit-scrollbar-thumb:hover,
+.qg-page-dark ::-webkit-scrollbar-thumb:hover,
+.ant-layout-sider ::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
 /* 屏幕阅读器专用文本，视觉上隐藏 */
 .sr-only {
   position: absolute;

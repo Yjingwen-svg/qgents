@@ -41,7 +41,7 @@ describe('TaskTriggerModal', () => {
     await user.type(screen.getByLabelText('基准分支'), 'main')
     await user.click(screen.getByRole('button', { name: '创建任务' }))
     await waitFor(() => expect(mutationMock.mutateAsync).toHaveBeenCalledTimes(1))
-    expect(mutationMock.mutateAsync).toHaveBeenCalledWith({ requirementGroupId: 'group-test', title: '新任务', requirement: 'initial requirement', repositoryIds: ['repo-1'], baseRef: 'main' })
+    expect(mutationMock.mutateAsync).toHaveBeenCalledWith({ requirementGroupId: 'group-test', title: '新任务', requirement: 'initial requirement', repositoryIds: ['binding-1'], baseRef: 'main' })
     expect(navigateMock).toHaveBeenCalledWith('/app/projects/project-test/tasks?taskId=task-1')
   })
 

@@ -49,7 +49,7 @@ export function TaskTriggerModal({ open, projectId, groupId, initialInstruction,
   const failureMessage = errorMessage(mutation.error)
   const repositories = repositoriesQuery.data ?? []
   const repositoryOptions = repositories.map((repository) => ({
-    value: repository.repositoryId,
+    value: repository.id,
     label: repository.fullName || repository.repositoryId || '暂无',
   }))
 

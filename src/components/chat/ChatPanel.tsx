@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty, Image, Tag, Popconfirm } from 'antd'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm } from 'antd'
+import { App, Upload } from 'antd'
 import {
   SendOutlined,
   ThunderboltOutlined,
@@ -8,12 +9,16 @@ import {
   BranchesOutlined,
   CheckCircleOutlined,
   InboxOutlined,
+  PaperClipOutlined,
+  CloseOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { groupApi, projectApi, agentApi } from '@/api'
+import { formatApiError } from '@/utils/formatApiError'
+import { groupApi, projectApi, agentApi, attachmentApi, uploadAttachment } from '@/api'
 import { useUnreadStore } from '@/store/unreadStore'
 import { useAuth } from '@/context/AuthContext'
 import { TaskTriggerModal } from '@/components/task-domain'
+import { AuthedImage } from '@/components/AuthedImage'
 import { PATHS } from '@/routes/paths'
 import type {
   Message,
@@ -36,14 +41,19 @@ const { Text } = Typography
  */
 export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: string }) {
   const { token } = theme.useToken()
+  const { message } = App.useApp()
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const markRead = useUnreadStore((state) => state.markRead)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [mentions, setMentions] = useState<Mention[]>([])
+  const [sendError, setSendError] = useState<string | null>(null)
   const [triggerOpen, setTriggerOpen] = useState(false)
+  // 回复引用：选中某条消息后，输入区显示引用条，发送时以 QUOTE 类型 + replyToId 提交
+  const [replyTo, setReplyTo] = useState<Message | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
   const { data: groups = [] } = useQuery({
@@ -82,8 +92,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   })
   const teamId = project?.teamId
   const { data: agentsPage } = useQuery({
-    queryKey: ['teams', teamId, 'agents', projectId],
-    queryFn: () => agentApi.list(teamId ?? '', projectId),
+    queryKey: ['teams', teamId, 'agents'],
+    queryFn: () => agentApi.list(teamId ?? ''),
     enabled: !!teamId,
   })
   // 仅展示可被 @ 的 Agent（ACTIVE 状态）
@@ -123,6 +133,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
 
   // 输入框以 @ 结尾时弹出成员面板
   const mentionOpen = draft.endsWith('@')
+  const canOpenTaskTrigger = group?.type === 'REQUIREMENT' && group.status === 'ACTIVE' && !group.isArchived
 
   function pickMention(target: { id: string; displayName: string; type: MentionType }) {
     setDraft((prev) => prev + `${target.displayName} `)
@@ -134,20 +145,63 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     if (!text || sending) return
 
     setSending(true)
+    setSendError(null)
     try {
-      await groupApi.sendMessage(projectId, groupId, {
-        type: 'TEXT',
-        content: { text },
+      // 回复引用：type=QUOTE，content 带被引用消息摘要，replyToId 指向原消息（对齐 §7 消息类型与请求体）
+      const result = await groupApi.sendMessage(projectId, groupId, {
+        type: replyTo ? 'QUOTE' : 'TEXT',
+        content: replyTo
+          ? {
+              quotedMessageId: replyTo.id,
+              quotedText: text,
+              quotedSenderName: replyTo.senderName ?? (replyTo.senderType === 'AGENT' ? 'Agent' : '成员'),
+            }
+          : { text },
         mentions: mentions.length > 0 ? mentions : undefined,
+        replyToId: replyTo ? replyTo.id : null,
         clientMessageId: `cmsg_${Date.now()}`,
       })
       setDraft('')
       setMentions([])
+      setReplyTo(null)
       await queryClient.invalidateQueries({
         queryKey: ['groups', projectId, groupId, 'messages'],
       })
+      if (result.task) {
+        void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
+        message.success(result.task.missingFields.length > 0
+          ? `${result.task.displayCode} 已创建，等待补充执行信息`
+          : `${result.task.displayCode} 已创建并进入规划`)
+      }
+    } catch (error) {
+      setSendError(formatApiError(error))
     } finally {
       setSending(false)
+    }
+  }
+
+  /** 选择附件后：直传 OSS → 发送 IMAGE/FILE 消息（§18 附件链路） */
+  async function handleUpload(file: File) {
+    if (uploading) return
+    setUploading(true)
+    try {
+      const attachmentId = await uploadAttachment(projectId, file)
+      const url = attachmentApi.contentUrl(projectId, attachmentId)
+      const isImage = file.type.startsWith('image/')
+      await groupApi.sendMessage(projectId, groupId, {
+        type: isImage ? 'IMAGE' : 'FILE',
+        content: isImage
+          ? { url }
+          : { url, name: file.name, size: file.size, mimeType: file.type },
+        clientMessageId: `cmsg_${Date.now()}`,
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['groups', projectId, groupId, 'messages'],
+      })
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '附件发送失败')
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -195,14 +249,14 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             </Popconfirm>
           )}
           {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal */}
-          <Button
+          {canOpenTaskTrigger && <Button
             type="primary"
             ghost
             icon={<ThunderboltOutlined />}
             onClick={() => setTriggerOpen(true)}
           >
             发起任务
-          </Button>
+          </Button>}
         </Space>
       </div>
 
@@ -245,6 +299,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                   message={m}
                   isSelf={m.senderId === user?.id}
                   projectId={projectId}
+                  onReply={setReplyTo}
                 />,
               )
               return nodes
@@ -274,6 +329,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
               zIndex: 10,
             }}
           >
+            {/* Agent 候选：团队 Agent 列表（项目总群 / 需求群均展示，@ 提及不依赖群成员） */}
             {teamAgents.length > 0 && (
               <MentionGroup
                 label="Agent"
@@ -291,7 +347,51 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           </div>
         )}
 
+        {/* 回复引用条：选中消息后显示，可取消 */}
+        {replyTo && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginBottom: 8,
+              padding: '6px 10px',
+              border: `1px solid ${token.colorBorder}`,
+              borderLeft: '3px solid #3b82f6',
+              borderRadius: 8,
+              background: token.colorFillQuaternary,
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                回复 {replyTo.senderName ?? (replyTo.senderType === 'AGENT' ? 'Agent' : '成员')}：
+              </Text>
+              <Text ellipsis style={{ fontSize: 12 }}>
+                {quotePreview(replyTo)}
+              </Text>
+            </div>
+            <Button
+              type="text"
+              size="small"
+              icon={<CloseOutlined />}
+              onClick={() => setReplyTo(null)}
+              aria-label="取消回复"
+            />
+          </div>
+        )}
+
+        {sendError ? <Text type="danger" style={{ display: 'block', marginBottom: 8 }}>{sendError}</Text> : null}
         <Space.Compact style={{ width: '100%' }}>
+          <Upload
+            showUploadList={false}
+            multiple={false}
+            beforeUpload={(file) => {
+              void handleUpload(file)
+              return false
+            }}
+          >
+            <Button icon={<PaperClipOutlined />} loading={uploading} aria-label="发送文件" />
+          </Upload>
           <Input.TextArea
             placeholder="输入消息，@ 可提及成员或 Agent，回车发送…"
             autoSize={{ minRows: 1, maxRows: 4 }}
@@ -366,6 +466,34 @@ function formatTimeDivider(iso: string): string {
   return `${d.getMonth() + 1}月${d.getDate()}日 ${hhmm}`
 }
 
+/** 消息气泡发送时间：HH:mm（当天）/ 昨天 HH:mm / M月D日 HH:mm */
+function formatClock(iso: string): string {
+  return formatTimeDivider(iso)
+}
+
+/** 生成被引用消息的一行摘要（回复引用条展示用；DIFF/IMAGE/FILE 等无文本类型给占位文案） */
+function quotePreview(message: Message): string {
+  const content = message.content as Record<string, unknown> | null
+  switch (message.type) {
+    case 'CODE':
+      return `[代码块] ${typeof content?.code === 'string' ? content.code.slice(0, 40) : ''}`
+    case 'IMAGE':
+      return '[图片]'
+    case 'FILE':
+      return `[文件] ${typeof content?.name === 'string' ? content.name : ''}`
+    case 'DIFF':
+      return `[Diff] ${typeof content?.title === 'string' ? content.title : '代码变更'}`
+    case 'TASK_STATUS':
+      return `[任务状态] ${typeof content?.message === 'string' ? content.message : (typeof content?.status === 'string' ? content.status : '')}`
+    case 'QUOTE':
+      return `[引用] ${typeof content?.quotedText === 'string' ? content.quotedText : ''}`
+    default: {
+      const text = typeof content?.text === 'string' ? content.text : ''
+      return text || '[消息]'
+    }
+  }
+}
+
 /** @ 提及面板分组 */
 function MentionGroup({
   label,
@@ -416,12 +544,16 @@ function MessageBubble({
   message,
   isSelf,
   projectId,
+  onReply,
 }: {
   message: Message
   isSelf: boolean
   projectId: string
+  /** 点击「回复」时回调，用于设置回复引用（SYSTEM 消息不提供） */
+  onReply?: (m: Message) => void
 }) {
   const { token } = theme.useToken()
+  const [hovered, setHovered] = useState(false)
 
   // SYSTEM 消息居中弱化展示
   if (message.senderType === 'SYSTEM') {
@@ -443,12 +575,29 @@ function MessageBubble({
   const isImage = message.type === 'IMAGE'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: alignSelf, maxWidth: '78%', alignSelf }}>
-      <div style={{ marginBottom: 2, fontSize: 12 }}>
+    <div
+      style={{ display: 'flex', flexDirection: 'column', alignItems: alignSelf, maxWidth: '78%', alignSelf }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div style={{ marginBottom: 2, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
         <Text type="secondary">
           {message.senderType === 'AGENT' ? '🤖 ' : ''}
           {message.senderName ?? (message.senderType === 'AGENT' ? 'Agent' : '成员')}
+          <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
+            {formatClock(message.createdAt)}
+          </Text>
         </Text>
+        {onReply && hovered && (
+          <Button
+            type="text"
+            size="small"
+            style={{ fontSize: 11, height: 'auto', padding: '0 4px', minWidth: 0 }}
+            onClick={() => onReply(message)}
+          >
+            回复
+          </Button>
+        )}
       </div>
       <div
         style={{
@@ -480,11 +629,11 @@ function renderContent(message: Message, projectId: string): React.ReactNode {
     case 'IMAGE': {
       const c = message.content as ImageMessageContent
       return (
-        <Image
+        <AuthedImage
           src={c.url}
-          width={c.width ?? '100%'}
+          width={c.width ?? 260}
           height={c.height}
-          style={{ borderRadius: 10, display: 'block' }}
+          style={{ borderRadius: 10, display: 'block', maxWidth: '100%' }}
           fallback="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='120'%3E%3Crect width='100%25' height='100%25' fill='%231c2128'/%3E%3C/svg%3E"
         />
       )

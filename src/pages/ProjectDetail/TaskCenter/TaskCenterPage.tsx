@@ -9,6 +9,7 @@ import { PATHS } from '@/routes/paths'
 import { TaskFilters } from './TaskFilters'
 import { TaskList } from './TaskList'
 import { TASK_CENTER_STATUS_OPTIONS, type TaskCenterStatusFilter, type TaskCenterView } from './taskCenterConfig'
+import { taskRepositories } from './taskDisplay'
 import styles from './TaskCenterPage.module.scss'
 
 const { Title, Text } = Typography
@@ -38,7 +39,7 @@ export default function TaskCenterPage() {
     return [...seen.values()]
   }, [query.data])
   const groupOptions = useMemo(() => uniqueOptions(tasks.map((task) => ({ label: task.requirementGroup?.name || '暂无', value: task.requirementGroup?.id ?? '' }))), [tasks])
-  const repositoryOptions = useMemo(() => uniqueOptions(tasks.flatMap((task) => task.repositories.map((repository) => ({ label: repository.name, value: repository.repositoryId })))), [tasks])
+  const repositoryOptions = useMemo(() => uniqueOptions(tasks.flatMap((task) => taskRepositories(task).map((repository) => ({ label: repository.name, value: repository.repositoryId })))), [tasks])
   const createdByOptions = useMemo(() => uniqueOptions(tasks.flatMap((task) => task.createdByUser ? [{ label: task.createdByUser.displayName, value: task.createdByUser.id }] : [])), [tasks])
   const hasServerItems = query.data?.pages.some((page) => page.data.length > 0) ?? false
   const isUnfiltered = status === 'all' && !createdBy && !groupId && !repositoryId

@@ -195,11 +195,7 @@ function BasicInfoTab({
         <div className="settings-tab__field settings-tab__field--readonly">
           <label className="settings-tab__label">我的角色</label>
           <span className="settings-tab__text">
-            {project?.role === 'PROJECT_ADMIN'
-              ? 'Project Admin'
-              : project?.role === 'TEAM_OWNER'
-                ? 'Team Owner（只读）'
-                : 'Project Member'}
+            {project?.role === 'PROJECT_ADMIN' ? 'Project Admin' : 'Project Member'}
           </span>
         </div>
 

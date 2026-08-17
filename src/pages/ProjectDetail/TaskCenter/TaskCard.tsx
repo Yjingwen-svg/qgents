@@ -1,7 +1,7 @@
 import { Button, Card, Space, Tag, Tooltip, Typography } from 'antd'
 import type { TaskListItem } from '@/types/task-model'
 import { TaskModelStatusTag } from './TaskModelStatusTag'
-import { valueOrNone } from './taskDisplay'
+import { taskExecutionSummary, taskRepositories, valueOrNone } from './taskDisplay'
 import styles from './TaskCenterPage.module.scss'
 
 const { Text, Paragraph } = Typography
@@ -11,7 +11,23 @@ interface TaskCardProps {
   onViewDetails: (taskId: string) => void
 }
 
-export function TaskCard({ task, onViewDetails }: TaskCardProps) {
+export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
+  const task: TaskListItem = {
+    ...rawTask,
+    repositories: taskRepositories(rawTask),
+    executionSummary: taskExecutionSummary(rawTask) ?? {
+      totalSteps: 0,
+      pendingSteps: 0,
+      runningSteps: 0,
+      waitingSteps: 0,
+      blockedSteps: 0,
+      succeededSteps: 0,
+      failedSteps: 0,
+      currentStage: null,
+      currentStageTitle: null,
+      requiresUserAction: false,
+    },
+  }
   return (
     <Card
       className={styles.taskCard}

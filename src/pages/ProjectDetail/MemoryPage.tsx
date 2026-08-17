@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Button,
+  Card,
   Drawer,
   Form,
   Input,
@@ -13,7 +14,6 @@ import {
   Spin,
   Tag,
   Typography,
-  theme,
 } from 'antd'
 import {
   PlusOutlined,
@@ -24,6 +24,7 @@ import {
 import { groupApi, memoryApi, projectApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
 import type { CreateMemoryPayload, Memory, MemoryStatus, Message } from '@/types'
+import './MemoryPage.css'
 
 const { Text, Paragraph } = Typography
 
@@ -105,7 +106,7 @@ export function MemoryPage() {
 
   if (isLoading) {
     return (
-      <div className="pd-section">
+      <div className="memory-page">
         <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
           <Spin size="large" />
         </div>
@@ -114,45 +115,46 @@ export function MemoryPage() {
   }
 
   return (
-    <div className="pd-section">
-      <header className="pd-section__header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <h1>共享 Memory</h1>
-            <p>沉淀团队经验与约定，经审核后供项目复用（非原始聊天记录）</p>
-          </div>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-            新建 Memory
-          </Button>
-        </div>
+    <div className="memory-page">
+      <header className="memory-page__header">
+        <h1 className="memory-page__title">共享 Memory</h1>
+        <p className="memory-page__desc">沉淀团队经验与约定，经审核后供项目复用（非原始聊天记录）</p>
       </header>
 
-      <div className="pd-section__body">
+      <div className="memory-page__toolbar">
         <Segmented
           options={FILTERS.map((f) => ({ label: `${f.label}`, value: f.key }))}
           value={filter}
           onChange={(v) => setFilter(v as FilterKey)}
-          style={{ marginBottom: 20 }}
         />
-
-        {filtered.length === 0 ? (
-          <EmptyState
-            icon="🧠"
-            title="暂无 Memory"
-            description="新建一条草稿，提交审核后即可沉淀为项目共享知识"
-          />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {filtered.map((m) => (
-              <MemoryCard
-                key={m.id}
-                memory={m}
-                onClick={() => setDetailId(m.id)}
-              />
-            ))}
-          </div>
-        )}
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+          新建 Memory
+        </Button>
       </div>
+
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon="🧠"
+          title="暂无共享 Memory"
+          description="新建一条草稿，提交审核后即可沉淀为项目共享知识"
+          // action={
+          //   <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+          //     新建 Memory
+          //   </Button>
+          // }
+        />
+      ) : (
+        <div className="memory-page__list">
+          {filtered.map((m, i) => (
+            <MemoryCard
+              key={m.id}
+              memory={m}
+              index={i + 1}
+              onClick={() => setDetailId(m.id)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* 详情抽屉 */}
       <MemoryDetail
@@ -190,58 +192,45 @@ export function MemoryPage() {
 }
 
 /** 列表卡片 */
-function MemoryCard({ memory, onClick }: { memory: Memory; onClick: () => void }) {
-  const { token } = theme.useToken()
+function MemoryCard({ memory, index, onClick }: { memory: Memory; index: number; onClick: () => void }) {
   const meta = STATUS_META[memory.status]
   return (
-    <div
-      onClick={onClick}
-      style={{
-        padding: '16px 20px',
-        background: 'rgba(255,255,255,0.04)',
-        borderRadius: 10,
-        border: '1px solid rgba(255,255,255,0.06)',
-        cursor: 'pointer',
-        transition: 'border-color 0.15s',
-      }}
-      onMouseEnter={(e) => {
-        ;(e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(13,155,138,0.5)'
-      }}
-      onMouseLeave={(e) => {
-        ;(e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,0.06)'
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <Text strong style={{ fontSize: 15, color: '#e2e8f0' }}>
-          {memory.title}
-        </Text>
-        <Tag color={meta.color} style={{ margin: 0 }}>
-          {meta.label}
-        </Tag>
+    <Card className="memory-card" onClick={onClick}>
+      <div className="memory-card__main">
+        <div className="memory-card__left">
+          <span className="memory-card__index">{String(index).padStart(2, '0')}</span>
+          <div className="memory-card__name-wrap">
+            <Text className="memory-card__name">{memory.title}</Text>
+            <Paragraph ellipsis={{ rows: 1 }} className="memory-card__content">
+              {memory.content}
+            </Paragraph>
+          </div>
+        </div>
+        <div className="memory-card__right">
+          <Tag color={meta.color} style={{ margin: 0 }}>
+            {meta.label}
+          </Tag>
+          <Text className="memory-card__creator">
+            {memory.creator?.displayName ?? '未知'}
+          </Text>
+        </div>
       </div>
-      <Paragraph
-        ellipsis={{ rows: 1 }}
-        style={{ color: '#94a3b8', fontSize: 13, marginBottom: 8 }}
-      >
-        {memory.content}
-      </Paragraph>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <Tag bordered={false} style={{ color: token.colorTextSecondary }}>
+      <div className="memory-card__tags">
+        <Tag bordered={false} className="memory-card__category">
           {memory.category}
         </Tag>
         {(memory.tags ?? []).map((t) => (
-          <Tag key={t} icon={<TagsOutlined />} bordered={false} style={{ color: '#9aa3b5' }}>
+          <Tag key={t} icon={<TagsOutlined />} bordered={false}>
             {t}
           </Tag>
         ))}
-        <Space size={4} style={{ marginLeft: 'auto' }}>
-          {memory.source === 'MESSAGE' && <MessageOutlined style={{ color: '#94a3b8', fontSize: 12 }} />}
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {memory.creator?.displayName ?? '未知'}
-          </Text>
-        </Space>
+        {memory.source === 'MESSAGE' && (
+          <span className="memory-card__source">
+            <MessageOutlined /> 来自群消息
+          </span>
+        )}
       </div>
-    </div>
+    </Card>
   )
 }
 

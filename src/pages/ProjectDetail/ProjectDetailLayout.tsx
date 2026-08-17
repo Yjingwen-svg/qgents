@@ -122,6 +122,7 @@ export default function ProjectDetailLayout() {
 
   // 单个群列表项：置顶标记 + 标题 + 未读数 + 最新消息摘要
   function renderBranch(g: Group, pinned = false) {
+    const isMain = g.type === 'PROJECT_MAIN'
     return (
       <li key={g.id}>
         <NavLink
@@ -135,6 +136,7 @@ export default function ProjectDetailLayout() {
             <span className="pd-nav__branch-title-row">
               {pinned && <PushpinOutlined className="pd-nav__branch-pin" />}
               <span className="pd-nav__branch-title">{g.title}</span>
+              {isMain && <span className="pd-nav__branch-main-tag">总群</span>}
               {hasUnread(readAt, g) ? <span className="pd-nav__branch-dot" /> : null}
             </span>
             {g.latestMessage ? (
@@ -144,7 +146,7 @@ export default function ProjectDetailLayout() {
               </span>
             ) : (
               <span className="pd-nav__branch-ref">
-                {g.type === 'PROJECT_MAIN' ? '项目总群' : '需求群'}
+                {isMain ? '项目总群' : '需求群'}
               </span>
             )}
           </span>
@@ -181,9 +183,9 @@ export default function ProjectDetailLayout() {
               className={({ isActive }) => {
                 // 需求群聊：任意 /req-chat/* 都高亮该导航项
                 const active =
-                  item.path === 'req-chat'
-                    ? onReqChat
-                    : item.path === 'code'
+                  // item.path === 'req-chat'
+                  //   ? onReqChat
+                     item.path === 'code'
                       ? onCode
                       : isActive
                 return `pd-nav__item${active ? ' is-active' : ''}`
@@ -191,9 +193,6 @@ export default function ProjectDetailLayout() {
             >
               <NavIcon id={item.path} />
               <span className="pd-nav__label">{item.label}</span>
-              {'badge' in item && item.badge != null ? (
-                <span className="pd-nav__badge">{item.badge}</span>
-              ) : null}
             </NavLink>
           ))}
         </nav>

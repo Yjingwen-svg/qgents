@@ -15,6 +15,10 @@ export interface Project {
   role?: ProjectRole
   /** 绑定的仓库数量 */
   repositoryCount?: number
+  /** 项目成员数（后端列表接口若返回则展示；未返回时前端隐藏该项，不显示占位） */
+  memberCount?: number
+  /** 项目状态（接口文档 §3.2：ACTIVE -> ARCHIVED；未返回时前端隐藏状态项） */
+  status?: 'ACTIVE' | 'ARCHIVED'
 }
 
 export interface ProjectMember {

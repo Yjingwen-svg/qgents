@@ -7,5 +7,5 @@ import { ChatPanel } from '@/components/chat/ChatPanel'
  */
 export default function RequirementChatPage() {
   const { projectId = '', groupId = '' } = useParams<{ projectId: string; groupId: string }>()
-  return <ChatPanel projectId={projectId} groupId={groupId} />
+  return <ChatPanel key={groupId} projectId={projectId} groupId={groupId} />
 }

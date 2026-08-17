@@ -3,6 +3,7 @@ import type {
   Group,
   GroupMember,
   Message,
+  SendMessageResult,
   SendMessagePayload,
   CreateGroupPayload,
 } from '@/types'
@@ -35,10 +36,13 @@ export const groupApi = {
     )
   },
   sendMessage(projectId: string, groupId: string, payload: SendMessagePayload) {
-    return request<Message>(`/projects/${projectId}/groups/${groupId}/messages`, {
+    return request<Message | SendMessageResult>(`/projects/${projectId}/groups/${groupId}/messages`, {
       method: 'POST',
       body: payload,
       headers: { 'Idempotency-Key': payload.clientMessageId },
+    }).then((response): SendMessageResult => {
+      if ('message' in response) return response
+      return { message: response, task: null }
     })
   },
 }

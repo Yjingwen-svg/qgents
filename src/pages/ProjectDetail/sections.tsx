@@ -1,13 +1,11 @@
-import { Link, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { Spin } from 'antd'
+import { useParams } from 'react-router-dom'
 import { PROJECT_NAV } from '@/routes/paths'
-import { projectApi } from '@/api'
-import { EmptyState } from '@/components/EmptyState'
 import { MemoryPage as MemoryPageImpl } from './MemoryPage'
 import { SkillPage as SkillPageImpl } from './SkillPage'
 import { MembersPage as MembersPageImpl } from './MembersPage'
 import { SettingsPage as SettingsPageImpl } from './Settings/SettingsPage'
+
+export { OverviewPage } from './OverviewPage'
 
 /**
  * 项目详情其它导航子页的统一占位壳
@@ -44,97 +42,6 @@ export function ProjectSectionPage({
         ) : null}
       </div>
     </div>
-  )
-}
-
-/** ──── 项目概览 —— A 负责 ──── */
-export function OverviewPage() {
-  const { projectId = '' } = useParams<{ projectId: string }>()
-
-  const { data: project, isLoading } = useQuery({
-    queryKey: ['projects', projectId],
-    queryFn: () => projectApi.getById(projectId),
-    enabled: !!projectId,
-  })
-
-  if (isLoading) {
-    return (
-      <div className="pd-section">
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
-          <Spin size="large" />
-        </div>
-      </div>
-    )
-  }
-
-  if (!project) {
-    return (
-      <div className="pd-section">
-        <EmptyState icon="🔍" title="项目未找到" />
-      </div>
-    )
-  }
-
-  return (
-    <div className="pd-section">
-      <header className="pd-section__header">
-        <h1>{project.name}</h1>
-        <p>{project.description || '暂无简介'}</p>
-      </header>
-
-      <div className="pd-section__body">
-        {/* 基础统计卡片 */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
-          <StatCard label="仓库" value={String(project.repositoryCount ?? 0)} />
-          <StatCard label="我的角色" value={project.role === 'PROJECT_ADMIN' ? 'Admin' : 'Member'} />
-          <StatCard label="项目 ID" value={project.id} mono />
-        </div>
-
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e2e8f0', marginBottom: 12 }}>快捷入口</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
-          <QuickLink label="需求群聊" desc="查看项目总群和需求群" to={`/app/projects/${projectId}/req-chat`} />
-          <QuickLink label="任务中心" desc="查看任务与执行状态" to={`/app/projects/${projectId}/tasks`} />
-          <QuickLink label="代码 & MR" desc="分支、Diff、MR 审查" to={`/app/projects/${projectId}/code`} />
-          <QuickLink label="项目成员" desc="管理成员与权限" to={`/app/projects/${projectId}/members`} />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/** 统计数字卡片 */
-function StatCard({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div style={{ padding: '16px 20px', background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
-      <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: mono ? 14 : 22, fontWeight: 700, color: '#e2e8f0', fontFamily: mono ? 'monospace' : undefined }}>
-        {value}
-      </div>
-    </div>
-  )
-}
-
-/** 快捷入口卡片 */
-function QuickLink({ label, desc, to }: { label: string; desc: string; to: string }) {
-  return (
-    <Link
-      to={to}
-      style={{
-        display: 'block',
-        padding: '12px 16px',
-        background: 'rgba(13,155,138,0.08)',
-        borderRadius: 8,
-        border: '1px solid rgba(13,155,138,0.15)',
-        textDecoration: 'none',
-        color: '#e2e8f0',
-        transition: 'background 0.15s',
-      }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(13,155,138,0.14)' }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(13,155,138,0.08)' }}
-    >
-      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 12, color: '#94a3b8' }}>{desc}</div>
-    </Link>
   )
 }
 

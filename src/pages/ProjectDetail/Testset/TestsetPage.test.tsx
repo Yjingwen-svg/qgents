@@ -239,6 +239,37 @@ describe('TestsetPage', () => {
     expect(screen.getByText('权限')).toBeInTheDocument()
   })
 
+  it('deletes a local history entry from the aside without calling a backend delete API', async () => {
+    localStorage.setItem(
+      'qgents:testset-run-history:demo-project',
+      JSON.stringify([
+        {
+          kind: 'DRY_RUN',
+          id: 'dryrun-1',
+          repositoryId: 'bound-demo-auth-service',
+          createdAt: '2026-08-15T02:00:00Z',
+          label: 'Dry-run · feat/login-api',
+        },
+        {
+          kind: 'TEST_RUN',
+          id: 'testrun-1',
+          repositoryId: 'bound-demo-auth-service',
+          createdAt: '2026-08-15T01:00:00Z',
+          label: 'Test run · testrun-1',
+        },
+      ]),
+    )
+    const user = userEvent.setup()
+    renderPage('/app/projects/demo-project/testset?dryRunId=dryrun-1')
+    expect(await screen.findByText('Dry-run · feat/login-api')).toBeInTheDocument()
+    expect(screen.getByText('Test run · testrun-1')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'delete-run-dryrun-1' }))
+    expect(screen.queryByText('Dry-run · feat/login-api')).not.toBeInTheDocument()
+    expect(screen.getByText('Test run · testrun-1')).toBeInTheDocument()
+    expect(localStorage.getItem('qgents:testset-run-history:demo-project')).toContain('testrun-1')
+    expect(localStorage.getItem('qgents:testset-run-history:demo-project')).not.toContain('dryrun-1')
+  })
+
   it('shows only the current run testsets beside a selected test-run', async () => {
     useTestsetsMock.mockReturnValue({
       data: [testset, otherTestset],
@@ -280,6 +311,35 @@ describe('TestsetPage', () => {
     expect(screen.queryByText('dry-run')).not.toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '用例详情' })).toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: '冲突结果' })).not.toBeInTheDocument()
+  })
+
+  it('opens the report tab when the URL asks for runTab=report', async () => {
+    useTestRunMock.mockReturnValue({
+      data: {
+        id: 'testrun-1',
+        projectId: 'demo-project',
+        repositoryId: 'bound-demo-auth-service',
+        testsetIds: ['testset-demo-project-login'],
+        taskId: null,
+        ref: 'feat/login-api',
+        status: 'PASSED',
+        summary: '',
+        createdBy: 'user-001',
+        createdAt: '2026-08-15T02:00:00Z',
+        caseSummary: null,
+        cases: [],
+        artifacts: [],
+        reportUrl: null,
+        pdfUrl: null,
+        startedAt: null,
+        finishedAt: null,
+        sandboxId: null,
+      },
+      isLoading: false,
+    })
+    renderPage('/app/projects/demo-project/testset?testRunId=testrun-1&runTab=report')
+    expect(await screen.findByRole('tab', { name: '测试报告', selected: true })).toBeInTheDocument()
+    expect(screen.getByText(/本轮不提供测试报告/)).toBeInTheDocument()
   })
 
   it('shows case detail rows on the 用例详情 tab', async () => {

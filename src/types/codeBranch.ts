@@ -1,8 +1,9 @@
 /**
  * 项目「代码与 Branch」页的分支行模型
  *
- * TODO[后端联调] 接口文档写明「分支查询」暂不在本轮范围，本页分支行先用前端演示数据。
- * 仓库卡片本身应对齐 GET /projects/{projectId}/repositories（绑定记录 id = project_repositories.id）。
+ * 分支查询接口本轮不做：分支骨架可用演示数据。
+ * Diff 列 +/- 必须以 GET /projects/{projectId}/diffs 的 changeStats 为准（与群 DIFF 卡 / Agent 产出同步）。
+ * 仓库卡片应对齐 GET /projects/{projectId}/repositories（绑定记录 id = project_repositories.id）。
  */
 
 /** 相对默认分支 / 交付链路是否还能继续开发，不是 GitHub 受保护标记，也不是 Testset */

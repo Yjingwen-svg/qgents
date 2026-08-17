@@ -38,6 +38,9 @@ import type {
   DiffReviewBatch,
   MergeRequestCheck,
   MergeRequestCreateInput,
+  MergeRequestCqInput,
+  MergeRequestCqReview,
+  MergeRequestCommitList,
   MergeRequestListFilters,
   MergeRequestSummary,
 } from '@/types/task-model'
@@ -329,11 +332,12 @@ export function useCreateMergeRequest(
 export function useMergeRequests(
   projectId: string,
   filters: MergeRequestListFilters = {},
+  options?: { enabled?: boolean },
 ): UseQueryResult<Page<MergeRequestSummary>> {
   return useQuery({
     queryKey: taskModelQueryKeys.mergeRequests.list(projectId, filters),
     queryFn: () => mergeRequestsApi.list(projectId, filters),
-    enabled: Boolean(projectId),
+    enabled: Boolean(projectId) && (options?.enabled ?? true),
   })
 }
 
@@ -359,16 +363,71 @@ export function useMergeRequestChecks(
   })
 }
 
+export function useMergeRequestReviews(
+  projectId: string,
+  mergeRequestId: string,
+  enabled = true,
+): UseQueryResult<MergeRequestCqReview[]> {
+  return useQuery({
+    queryKey: taskModelQueryKeys.mergeRequests.reviews(projectId, mergeRequestId),
+    queryFn: () => mergeRequestsApi.reviews(projectId, mergeRequestId),
+    enabled: Boolean(projectId && mergeRequestId && enabled),
+  })
+}
+
+export function useMergeRequestCommits(
+  projectId: string,
+  mergeRequestId: string,
+  limit = 3,
+  enabled = true,
+): UseQueryResult<MergeRequestCommitList> {
+  return useQuery({
+    queryKey: taskModelQueryKeys.mergeRequests.commits(projectId, mergeRequestId, limit),
+    queryFn: () => mergeRequestsApi.commits(projectId, mergeRequestId, limit),
+    enabled: Boolean(projectId && mergeRequestId && enabled),
+  })
+}
+
 export function useMergeMergeRequest(
   projectId: string,
 ): UseMutationResult<MergeRequestSummary, Error, string> {
   return useMutation({
     mutationFn: (mergeRequestId) => mergeRequestsApi.merge(projectId, mergeRequestId),
     onSuccess: (mr) => {
-      queryClient.setQueryData(taskModelQueryKeys.mergeRequests.detail(projectId, mr.id), mr)
-      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.all(projectId) })
+      rememberMergeRequest(projectId, mr)
     },
   })
+}
+
+type MergeRequestCqMutationInput = { mergeRequestId: string; input: MergeRequestCqInput }
+
+export function useApproveMergeRequestCq(
+  projectId: string,
+): UseMutationResult<MergeRequestSummary, Error, MergeRequestCqMutationInput> {
+  return useMutation({
+    mutationFn: ({ mergeRequestId, input }) => mergeRequestsApi.approveCq(projectId, mergeRequestId, input),
+    onSuccess: (mr) => {
+      rememberMergeRequest(projectId, mr)
+    },
+  })
+}
+
+export function useRejectMergeRequestCq(
+  projectId: string,
+): UseMutationResult<MergeRequestSummary, Error, MergeRequestCqMutationInput> {
+  return useMutation({
+    mutationFn: ({ mergeRequestId, input }) => mergeRequestsApi.rejectCq(projectId, mergeRequestId, input),
+    onSuccess: (mr) => {
+      rememberMergeRequest(projectId, mr)
+    },
+  })
+}
+
+function rememberMergeRequest(projectId: string, mr: MergeRequestSummary): void {
+  if (mr.id) {
+    queryClient.setQueryData(taskModelQueryKeys.mergeRequests.detail(projectId, mr.id), mr)
+  }
+  void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.all(projectId) })
 }
 
 type TaskDiffReviewRejectInput = { taskId: string; input: DiffRejectInput }

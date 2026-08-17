@@ -11,6 +11,7 @@ import type {
   TaskStep,
   TaskArtifact,
   DiffReviewBatch,
+  MergeRequestCommit,
   MergeRequestSummary,
 } from '@/types/task-model'
 
@@ -28,6 +29,7 @@ export interface TaskModelStore {
   diffFiles: Map<string, DiffFile[]>
   diffComments: Map<string, DiffComment[]>
   mergeRequests: Map<string, MergeRequestSummary>
+  mergeRequestCommits: Map<string, MergeRequestCommit[]>
 }
 
 export function createTaskModelStore(): TaskModelStore {
@@ -45,6 +47,7 @@ export function createTaskModelStore(): TaskModelStore {
     diffFiles: new Map(),
     diffComments: new Map(),
     mergeRequests: new Map(),
+    mergeRequestCommits: new Map(),
   }
 }
 

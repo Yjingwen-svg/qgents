@@ -1,5 +1,5 @@
-import { Alert, Breadcrumb, Button, Card, Form, Input, Modal, Result, Spin, Tag, Typography } from 'antd'
-import { ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined, CodeOutlined, CopyOutlined, FileTextOutlined, LinkOutlined } from '@ant-design/icons'
+import { Alert, Breadcrumb, Button, Card, Form, Input, Modal, Result, Spin, Tag, Tooltip, Typography } from 'antd'
+import { ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined, CodeOutlined, CopyOutlined, ExperimentOutlined, FileTextOutlined, LinkOutlined, TeamOutlined } from '@ant-design/icons'
 import { useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '@/api'
@@ -62,16 +62,20 @@ function CompactTaskHeader({ task, projectId, location, onCancel, cancelPending 
     <header className={styles.taskHeader} data-testid="task-summary">
       <div className={styles.headerPrimary}>
         <Button type="text" size="small" icon={<ArrowLeftOutlined />} onClick={() => navigate(resolveReturnPath(from, projectId, task.id))}>返回任务中心</Button>
-        <Text className={styles.taskCode}>{task.displayCode}</Text>
-        <Title level={2} className={styles.taskTitle}>{display(task.title)}</Title>
-        <Button type="text" size="small" className={styles.copyButton} icon={<CopyOutlined />} aria-label="复制任务 ID" title={`复制任务 ID：${task.id}`} onClick={() => void navigator.clipboard?.writeText(task.id)} />
-        {task.status === 'PLANNING' ? <Text type="secondary">任务 ID：{task.id}</Text> : null}
         <div className={styles.headerActions}>
           {task.requirementGroup ? <Button size="small" onClick={() => navigate(PATHS.projectReqChat(projectId, task.requirementGroup!.id))}>返回需求群</Button> : null}
           <Button size="small" type="primary" onClick={() => navigate(`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(task.id)}`)}>查看交付</Button>
           {task.capabilities.canCancel ? <Button size="small" danger loading={cancelPending} disabled={cancelPending} onClick={onCancel}>取消任务</Button> : null}
           <TaskModelStatusTag status={task.status} />
         </div>
+      </div>
+      <div className={styles.headerTitleBlock}>
+        <Text className={styles.taskCode}>{task.displayCode}</Text>
+        <div className={styles.headerTitleLine}>
+          <Title level={2} className={styles.taskTitle}>{display(task.title)}</Title>
+          <Button type="text" size="small" className={styles.copyButton} icon={<CopyOutlined />} aria-label="复制任务 ID" title={`复制任务 ID：${task.id}`} onClick={() => void navigator.clipboard?.writeText(task.id)} />
+        </div>
+        {task.status === 'PLANNING' ? <Text type="secondary">任务 ID：{task.id}</Text> : null}
       </div>
       <div className={styles.headerMeta}>
         <HeaderMeta label="需求群" value={task.requirementGroup?.name} />
@@ -109,7 +113,27 @@ function ExecutionFlowRow({ projectId, taskId, task, query, steps }: { projectId
 }
 
 function StepCard({ step, onRun }: { step: TaskStep; onRun: (runId: string) => void }) {
-  return <article className={`${styles.stepCard} ${step.status === 'RUNNING' ? styles.stepCardCurrent : ''}`}><div className={styles.stepHeading}><span className={styles.stepNumber}>{step.sequenceNo}</span><Text strong className={styles.stepTitle}>{display(step.title)}</Text><Tag>{step.status}</Tag></div><div className={styles.stepDetails}><Text>Agent：{display(step.agent?.name)}</Text><Text>仓库：{display(step.repository?.name)}{step.repository?.sourceBranch ? ` / ${step.repository.sourceBranch}` : ''}</Text><Text ellipsis>验收：{display(step.acceptanceNotes)}</Text><Text>运行 {step.runCount} 次</Text></div><div className={styles.stepFooter}>{step.latestRun ? <Button type="link" size="small" onClick={() => onRun(step.latestRun!.id)}>查看最新运行</Button> : <Text type="secondary">尚未运行</Text>}{step.latestRun ? <ArrowRightOutlined /> : null}</div></article>
+  const current = step.status === 'RUNNING'
+  return <article className={`${styles.stepCard} ${current ? styles.stepCardCurrent : ''}`}><div className={styles.stepHeading}><span className={styles.stepIcon}>{stepIcon(step.role)}</span><span className={styles.stepNumber}>{step.sequenceNo}.</span><Tooltip title={display(step.title)}><Text strong className={styles.stepTitle}>{display(step.title)}</Text></Tooltip><Tag color={stepStatusColor(step.status)}>{step.status}</Tag></div><div className={styles.stepDetails}><StepInfo label="Agent" value={display(step.agent?.name)} /><StepInfo label="仓库" value={display(step.repository?.name)} /><StepInfo label="验收" value={display(step.acceptanceNotes)} /><StepInfo label="运行" value={`${step.runCount} 次`} /></div><div className={styles.stepFooter}>{step.latestRun ? <Button type="link" size="small" onClick={() => onRun(step.latestRun!.id)}>查看最新运行</Button> : <Text type="secondary">尚未运行</Text>}{step.latestRun ? <ArrowRightOutlined /> : null}</div></article>
+}
+
+function StepInfo({ label, value }: { label: string; value: string }) {
+  return <Tooltip title={`${label}：${value}`}><Text ellipsis><span className={styles.stepInfoBullet}>·</span> {label}：{value}</Text></Tooltip>
+}
+
+function stepStatusColor(status: TaskStep['status']): 'default' | 'processing' | 'success' | 'error' | 'warning' {
+  if (status === 'RUNNING') return 'processing'
+  if (status === 'SUCCEEDED') return 'success'
+  if (status === 'FAILED') return 'error'
+  if (status === 'PENDING') return 'warning'
+  return 'default'
+}
+
+function stepIcon(role: TaskStep['role']) {
+  if (role === 'PLANNER') return <FileTextOutlined />
+  if (role === 'DEVELOPER') return <CodeOutlined />
+  if (role === 'TESTER') return <ExperimentOutlined />
+  return <TeamOutlined />
 }
 
 function RequirementContextRow({ projectId, task }: { projectId: string; task: Task }) {

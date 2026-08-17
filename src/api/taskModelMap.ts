@@ -7,6 +7,10 @@ import type {
   DiffLineKind,
   MergeRequestCheck,
   MergeRequestCheckName,
+  MergeRequestCqDecision,
+  MergeRequestCqReview,
+  MergeRequestCommit,
+  MergeRequestCommitList,
   MergeRequestStatus,
   MergeRequestSummary,
   TaskModelPage,
@@ -19,6 +23,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function readString(row: Record<string, unknown>, key: string): string {
   const value = row[key]
   return typeof value === 'string' ? value : ''
+}
+
+function readOptionalString(row: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = row[key]
+    if (typeof value === 'string' && value.trim()) return value
+  }
+  return null
 }
 
 function readNumber(row: Record<string, unknown>, key: string): number {
@@ -126,16 +138,39 @@ export function mapMergeRequestCheck(raw: unknown): MergeRequestCheck | null {
   const row = isRecord(raw) ? raw : {}
   const type = mapCheckName(row.type ?? row.name)
   if (!type) return null
+  const reviewer = mapCheckReviewer(row)
   return {
     id: readString(row, 'id'),
     type,
     status: mapCheckStatus(row.status),
     attemptNo: typeof row.attemptNo === 'number' ? row.attemptNo : null,
     testsetId: typeof row.testsetId === 'string' ? row.testsetId : null,
+    testRunId: typeof row.testRunId === 'string' ? row.testRunId : null,
+    dryRunId: typeof row.dryRunId === 'string' ? row.dryRunId : null,
     commitSha: typeof row.commitSha === 'string' ? row.commitSha : null,
     source: typeof row.source === 'string' ? row.source : null,
     startedAt: typeof row.startedAt === 'string' ? row.startedAt : null,
     completedAt: typeof row.completedAt === 'string' ? row.completedAt : null,
+    reviewedByUserId: reviewer.id,
+    reviewedByName: reviewer.name,
+    reviewReason: readOptionalString(row, 'reviewReason', 'reason'),
+  }
+}
+
+function mapCheckReviewer(row: Record<string, unknown>): { id: string | null; name: string | null } {
+  const nested = isRecord(row.reviewedBy) ? row.reviewedBy : isRecord(row.reviewer) ? row.reviewer : null
+  const nestedId = nested && typeof nested.id === 'string' ? nested.id : null
+  const nestedName =
+    nested && typeof nested.displayName === 'string'
+      ? nested.displayName
+      : nested && typeof nested.name === 'string'
+        ? nested.name
+        : null
+  return {
+    id: readOptionalString(row, 'reviewedByUserId', 'reviewerUserId')
+      ?? nestedId
+      ?? (typeof row.reviewedBy === 'string' ? row.reviewedBy : null),
+    name: readOptionalString(row, 'reviewedByName', 'reviewerName', 'authorName') ?? nestedName,
   }
 }
 
@@ -150,6 +185,102 @@ export function mapMergeRequestChecks(raw: unknown): MergeRequestCheck[] {
     const mapped = mapMergeRequestCheck(item)
     return mapped ? [mapped] : []
   })
+}
+
+function mapCqDecision(value: unknown): MergeRequestCqDecision | null {
+  if (value === 'APPROVED' || value === 'ACCEPTED' || value === 'PASSED' || value === 'APPROVE') return 'APPROVED'
+  if (value === 'REJECTED' || value === 'FAILED' || value === 'REJECT') return 'REJECTED'
+  return null
+}
+
+export function mapMergeRequestCqReview(raw: unknown): MergeRequestCqReview | null {
+  const row = isRecord(raw) ? raw : {}
+  const kind = readOptionalString(row, 'kind', 'type', 'source')
+  if (kind && kind !== 'CQ' && kind !== 'CQ_PLUS_ONE' && kind !== 'HUMAN' && kind !== 'MANUAL') {
+    return null
+  }
+  const decision =
+    mapCqDecision(row.decision)
+    ?? mapCqDecision(row.status)
+    ?? mapCqDecision(row.result)
+    ?? mapCqDecision(row.outcome)
+  if (!decision) return null
+  const reviewer = mapCheckReviewer(row)
+  const name = reviewer.name?.trim() || '未知审查者'
+  const createdAt =
+    readOptionalString(row, 'createdAt', 'completedAt', 'reviewedAt', 'decidedAt')
+  return {
+    id: readString(row, 'id') || `${decision}-${createdAt ?? 'unknown'}-${name}`,
+    decision,
+    reviewerName: name,
+    reason: readOptionalString(row, 'reason', 'reviewReason', 'comment'),
+    createdAt,
+    commitSha: readOptionalString(row, 'commitSha', 'headCommit'),
+  }
+}
+
+/** GET /reviews：扁平数组，或 {items|reviews|cqReviews[]}。只展示人工 CQ 决策。 */
+export function mapMergeRequestCqReviews(raw: unknown): MergeRequestCqReview[] {
+  const root = isRecord(raw) ? raw : null
+  const list = Array.isArray(raw)
+    ? raw
+    : root && Array.isArray(root.items)
+      ? root.items
+      : root && Array.isArray(root.reviews)
+        ? root.reviews
+        : root && Array.isArray(root.cqReviews)
+          ? root.cqReviews
+          : root && Array.isArray(root.cqApprovals)
+            ? root.cqApprovals
+            : []
+  return list.flatMap((item) => {
+    const mapped = mapMergeRequestCqReview(item)
+    return mapped ? [mapped] : []
+  })
+}
+
+export function mapMergeRequestCommit(raw: unknown): MergeRequestCommit | null {
+  const row = isRecord(raw) ? raw : {}
+  const sha = readOptionalString(row, 'sha', 'commitSha', 'id')
+  const message = readOptionalString(row, 'message', 'title', 'subject')
+  const committedAt = readOptionalString(row, 'committedAt', 'authoredAt', 'createdAt')
+  if (!sha || !message || !committedAt) return null
+  const author = isRecord(row.author) ? row.author : isRecord(row.committer) ? row.committer : null
+  const authorName =
+    readOptionalString(row, 'authorName', 'authorDisplayName')
+    ?? (author && typeof author.displayName === 'string' ? author.displayName : null)
+    ?? (author && typeof author.name === 'string' ? author.name : null)
+    ?? '未知作者'
+  const authorUserId =
+    readOptionalString(row, 'authorUserId')
+    ?? (author && typeof author.id === 'string' ? author.id : null)
+  return {
+    sha,
+    message,
+    authorName,
+    authorUserId,
+    committedAt,
+  }
+}
+
+export function mapMergeRequestCommitList(raw: unknown): MergeRequestCommitList {
+  const root = isRecord(raw) ? raw : null
+  const list = Array.isArray(raw)
+    ? raw
+    : root && Array.isArray(root.items)
+      ? root.items
+      : root && Array.isArray(root.commits)
+        ? root.commits
+        : []
+  const items = list.flatMap((item) => {
+    const mapped = mapMergeRequestCommit(item)
+    return mapped ? [mapped] : []
+  })
+  const totalCount =
+    root && typeof root.totalCount === 'number' && Number.isFinite(root.totalCount)
+      ? root.totalCount
+      : items.length
+  return { totalCount, items }
 }
 
 function mapMrStatus(value: unknown): MergeRequestStatus {

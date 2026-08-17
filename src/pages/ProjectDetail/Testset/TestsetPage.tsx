@@ -26,6 +26,7 @@ import {
   theme,
   type ThemeConfig,
 } from 'antd'
+import { DeleteOutlined } from '@ant-design/icons'
 import { diffsApi, githubApi, projectApi } from '@/api'
 import { isTestsetEnabled } from '@/api/testset'
 import { tasksApi } from '@/api/taskModel'
@@ -70,7 +71,8 @@ import {
   testRunStatusLabel,
   testsetStatusLabel,
 } from './testsetDisplay'
-import { pushRunHistory, readRunHistory } from './runHistory'
+import { pushRunHistory, readRunHistory, removeRunHistory } from './runHistory'
+import { isTestsetRunTab } from '../qualityGateNav'
 import styles from './TestsetPage.module.scss'
 
 const { Title, Text, Paragraph } = Typography
@@ -87,7 +89,7 @@ const pageTheme: ThemeConfig = {
   },
 }
 
-const SEARCH_KEYS = new Set(['repositoryId', 'status', 'testsetId', 'testRunId', 'dryRunId', 'taskId'])
+const SEARCH_KEYS = new Set(['repositoryId', 'status', 'testsetId', 'testRunId', 'dryRunId', 'taskId', 'runTab'])
 const EMPTY_TESTSETS: Testset[] = []
 const EMPTY_REPOS: ProjectBoundRepository[] = []
 
@@ -152,6 +154,8 @@ export function TestsetPage() {
   const testRunId = searchParams.get('testRunId')?.trim() || undefined
   const dryRunId = searchParams.get('dryRunId')?.trim() || undefined
   const taskId = searchParams.get('taskId')?.trim() || undefined
+  const runTabParam = searchParams.get('runTab')?.trim()
+  const runTab = isTestsetRunTab(runTabParam) ? runTabParam : 'overview'
 
   const { data: project } = useQuery({
     queryKey: ['projects', projectId],
@@ -245,6 +249,17 @@ export function TestsetPage() {
     setHistory(pushRunHistory(projectId, item))
     if (kind === 'TEST_RUN') updateParams({ testRunId: item.id, dryRunId: undefined })
     else updateParams({ dryRunId: item.id, testRunId: undefined })
+  }
+
+  /** 删除本地历史项；若正打开该运行，一并清掉 URL 选中 */
+  function forgetRun(item: LocalRunHistoryItem): void {
+    setHistory(removeRunHistory(projectId, item.id))
+    if (item.kind === 'TEST_RUN' && testRunId === item.id) {
+      updateParams({ testRunId: undefined, runTab: undefined })
+    }
+    if (item.kind === 'DRY_RUN' && dryRunId === item.id) {
+      updateParams({ dryRunId: undefined, runTab: undefined })
+    }
   }
 
   async function handleSaveTestset(values: TestsetFormValues): Promise<void> {
@@ -432,6 +447,8 @@ export function TestsetPage() {
               dryRunLoading={Boolean(dryRunId) && dryRunQuery.isLoading}
               repositories={repositories}
               testsets={testsets}
+              runTab={runTab}
+              onRunTabChange={(key) => updateParams({ runTab: key === 'overview' ? undefined : key })}
             />
           </section>
 
@@ -441,6 +458,10 @@ export function TestsetPage() {
               onSelect={(item) => {
                 if (item.kind === 'TEST_RUN') updateParams({ testRunId: item.id, dryRunId: undefined })
                 else updateParams({ dryRunId: item.id, testRunId: undefined })
+              }}
+              onDelete={(item) => {
+                forgetRun(item)
+                message.success('已从历史记录移除')
               }}
             />
             <Text strong>权限</Text>
@@ -762,6 +783,8 @@ function CurrentRunPanel({
   dryRunLoading,
   repositories,
   testsets,
+  runTab,
+  onRunTabChange,
 }: {
   projectId: string
   testRun: ReturnType<typeof useTestRun>['data']
@@ -771,6 +794,8 @@ function CurrentRunPanel({
   dryRunLoading: boolean
   repositories: ProjectBoundRepository[]
   testsets: Testset[]
+  runTab: string
+  onRunTabChange: (key: string) => void
 }) {
   if (testRunLoading || dryRunLoading) {
     return (
@@ -905,7 +930,11 @@ function CurrentRunPanel({
       {!testRun && !dryRun ? (
         <Empty description="尚未发起或选择运行。用右上角发起测试 / Dry-run；测试配方请到「管理测试集」。" />
       ) : (
-        <Tabs items={tabItems} />
+        <Tabs
+          activeKey={tabItems.some((item) => item.key === runTab) ? runTab : 'overview'}
+          onChange={onRunTabChange}
+          items={tabItems}
+        />
       )}
     </>
   )
@@ -1143,9 +1172,11 @@ function MetaCell({
 function RunHistoryPanel({
   history,
   onSelect,
+  onDelete,
 }: {
   history: LocalRunHistoryItem[]
   onSelect: (item: LocalRunHistoryItem) => void
+  onDelete: (item: LocalRunHistoryItem) => void
 }) {
   return (
     <div className={styles.historyPanel}>
@@ -1158,18 +1189,32 @@ function RunHistoryPanel({
       ) : (
         <div className={styles.historyList}>
           {history.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={styles.historyItem}
-              onClick={() => onSelect(item)}
-            >
-              <div className={styles.historyHeading}>
-                <Tag>{item.kind === 'DRY_RUN' ? 'dry-run' : 'test-run'}</Tag>
-                <Text ellipsis>{item.label}</Text>
-              </div>
-              <span className={styles.historyTime}>{formatDateTime(item.createdAt)}</span>
-            </button>
+            <div key={item.id} className={styles.historyItem}>
+              <button
+                type="button"
+                className={styles.historyHit}
+                onClick={() => onSelect(item)}
+                aria-label={`open-run-${item.id}`}
+              >
+                <div className={styles.historyHeading}>
+                  <Tag>{item.kind === 'DRY_RUN' ? 'dry-run' : 'test-run'}</Tag>
+                  <Text ellipsis>{item.label}</Text>
+                </div>
+                <span className={styles.historyTime}>{formatDateTime(item.createdAt)}</span>
+              </button>
+              <Button
+                type="text"
+                size="small"
+                danger
+                className={styles.historyDelete}
+                icon={<DeleteOutlined />}
+                aria-label={`delete-run-${item.id}`}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onDelete(item)
+                }}
+              />
+            </div>
           ))}
         </div>
       )}

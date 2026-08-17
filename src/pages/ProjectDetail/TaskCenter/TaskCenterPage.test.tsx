@@ -37,7 +37,7 @@ beforeEach(() => {
 describe('TaskCenterPage', () => {
   it('requests only the Task list with official filters', () => {
     renderPage('/app/projects/project-test/tasks?groupId=group-1&status=RUNNING&createdBy=creator-1')
-    expect(useInfiniteTasksMock).toHaveBeenCalledWith('project-test', { groupId: 'group-1', status: 'RUNNING', createdBy: 'creator-1', repositoryId: undefined, limit: 20 })
+    expect(useInfiniteTasksMock).toHaveBeenCalledWith('project-test', { groupId: 'group-1', status: 'RUNNING', createdBy: 'creator-1', repositoryId: undefined, keyword: undefined, limit: 20 })
     expect(useTaskMock).not.toHaveBeenCalled()
     expect(useTaskStepsMock).not.toHaveBeenCalled()
     expect(useTaskRunsMock).not.toHaveBeenCalled()
@@ -67,18 +67,23 @@ describe('TaskCenterPage', () => {
     expect(screen.getByText('暂无权限查看任务')).toBeInTheDocument()
   })
 
-  it('moves through loaded tasks with pagination', async () => {
+  it('uses selected page numbers and a quick-jump control for loaded tasks', async () => {
     const user = userEvent.setup()
     const tasks = Array.from({ length: 9 }, (_, index) => ({ ...task, id: `task-${index + 1}`, title: `Task ${index + 1}` }))
     useInfiniteTasksMock.mockReturnValue(result({ data: { pages: [page(tasks)], pageParams: [undefined] } }))
 
-    renderPage()
+    const { container } = renderPage()
 
-    expect(screen.getByText('第 1 页')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '下一页' }))
-    expect(screen.getByText('第 2 页')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '上一页' }))
-    expect(screen.getByText('第 1 页')).toBeInTheDocument()
+    expect(container.querySelector('.ant-pagination-item-active')).toHaveTextContent('1')
+    expect(container.querySelector('.ant-pagination-options-quick-jumper input')).toBeInTheDocument()
+    const pageTwo = container.querySelector<HTMLElement>('.ant-pagination-item-2')
+    if (!pageTwo) throw new Error('Expected page 2 control')
+    await user.click(pageTwo)
+    expect(container.querySelector('.ant-pagination-item-active')).toHaveTextContent('2')
+    const pageOne = container.querySelector<HTMLElement>('.ant-pagination-item-1')
+    if (!pageOne) throw new Error('Expected page 1 control')
+    await user.click(pageOne)
+    expect(container.querySelector('.ant-pagination-item-active')).toHaveTextContent('1')
   })
 
   it('keeps rendering when a new Task list item lacks derived summaries', () => {
@@ -96,6 +101,6 @@ describe('TaskCenterPage', () => {
     renderPage()
 
     expect(screen.getByText('新创建任务')).toBeInTheDocument()
-    expect(screen.getByText('暂无')).toBeInTheDocument()
+    expect(screen.getAllByText('暂无').length).toBeGreaterThan(0)
   })
 })

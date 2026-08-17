@@ -45,17 +45,21 @@ import {
   branchesForBoundRepo,
   repoAlias,
 } from './codeBranchDemo'
+import { syncBranchesWithDiffs } from './branchDiffSync'
+import { toEmptyBranchDiffId } from './emptyBranchDiff'
 import { MergeRequestTab } from './MergeRequestTab'
+import { groupApi } from '@/api'
 
 const { Title, Paragraph, Text } = Typography
-// 按照仓库绑定 + 分支名对上一条 diffId,对不上就只显示数字，不跳转
+// 分支行仍用演示骨架（文档：分支查询本轮不做）；+/- 与 diffId 对齐 GET /diffs（Agent 产出）
 /**
  * 代码与 Branch
- * TODO: 仓库绑定 / 分支列表
  *
  * 仓库列表：GET /projects/{projectId}/repositories（绑定记录 id）。
- * 分支行：文档暂无分支查询接口，当前为页面演示数据。
+ * 分支行：文档暂无分支查询接口，骨架用演示数据；+/- 以 Diff 列表 changeStats 为准。
  * MR 列表：GET /projects/{projectId}/merge-requests；创建入口在 Diff 评审页。
+ * Diff 列：有快照则进详情；+/- 为 0 且无快照也可点进空页。
+ * Agent 新 Diff 经项目 SSE diff.created → invalidate → 本页 useDiffs 自动刷新。
  */
 export function CodePage() {
   const { token } = theme.useToken()
@@ -70,25 +74,37 @@ export function CodePage() {
     branch: ProjectBranchRow//?
   } | null>(null)
   //  向后端要数据 写法
-  // 组件一挂上就去拉仓库列表数据
+  // 组件一挂上就去拉项目绑定仓库列表数据
   const reposQuery = useQuery({
     queryKey: queryKeys.projectRepositories(projectId),//拉到的数据的名字,相同也页面可以用缓存
     queryFn: () => githubApi.listProjectRepositories(projectId),
     enabled: Boolean(projectId),//只有projectId有值才执行
   })
 
+  // Agent / 受控执行产出的 Diff；与群 DIFF 卡同一 diffId；SSE 会 invalidate 本 query
+  const diffsQuery = useDiffs(projectId, { limit: 100 })
+
 // 筛选逻辑
+// 先拉需求群，下拉联调时再替换 PROJECT_REQUIREMENTS
+useQuery({
+  queryKey: ['groups', projectId],
+  queryFn: () => groupApi.listByProject(projectId),
+  enabled: Boolean(projectId),
+})
+//基于仓库列表拼接出来的,是因为卡片的数据源就是仓库列表。
   const repoCards = useMemo(() => {
     const list = reposQuery.data ?? []
+    const diffs = diffsQuery.data?.data ?? []
     return list.map((repo) => {
-      const allBranches = branchesForBoundRepo(repo)//一个仓库的分支列表
+      const demoBranches = branchesForBoundRepo(repo)
+      const allBranches = syncBranchesWithDiffs(demoBranches, diffs, repo.id)
       const branches = requirementId
         ? allBranches.filter((b) => b.requirementGroupId === requirementId)
-        : allBranches//如果没有筛选条件,就返回该仓库下所有分支
+        : allBranches
       return { repo, branches }
     })
-  }, [reposQuery.data, requirementId])
-
+  }, [reposQuery.data, diffsQuery.data, requirementId])
+//分支的有无
   const visibleCards = requirementId//有没有暂无数据
     ? repoCards.filter((c) => c.branches.length > 0)
     : repoCards//决定卡片要不要渲染
@@ -105,13 +121,13 @@ export function CodePage() {
 
   function setTab(next: string) {
     const nextParams = new URLSearchParams(searchParams)
-    if (next === 'mr') nextParams.set('tab', 'mr')
+    if (next === 'mr') nextParams.set('tab', 'mr')//再点一次mr还是不变,这样的话刷新不会变
     else nextParams.delete('tab')
     if (next !== 'mr') {
       nextParams.delete('repositoryId')
       nextParams.delete('status')
     }
-    setSearchParams(nextParams, { replace: true })
+    setSearchParams(nextParams, { replace: true })//历史只是保留了一页
   }
 
   return (
@@ -143,9 +159,11 @@ export function CodePage() {
           allowClear
           placeholder="全部需求"
           style={{ minWidth: 180 }}
+          //requirementId只是这页自己用 useState 记「下拉框当前选中了哪一项」。
+
           value={requirementId}
           onChange={(value) => setRequirementId(value)}
-          options={PROJECT_REQUIREMENTS.map((r) => ({
+          options={PROJECT_REQUIREMENTS.map((r) => ({//联调替换requirementGroups
             value: r.id,
             label: r.title,
           }))}
@@ -157,7 +175,7 @@ export function CodePage() {
         showIcon
         style={{ marginBottom: 16 }}
         message="分支由需求任务在受控 Workspace 中产生，不代表 Git 上的任意远程分支。"
-        description="「状态」表示该分支相对默认分支是否还能继续开发：正常、落后基线、冲突、已合并。受保护标记、Testset、MR 数量是另外几列，不要混在一起。"
+        description="Diff 列的 +/- 来自项目 Diff 列表（与群内 Agent 产出的 diffId / changeStats 同步）。「状态」表示相对默认分支是否还能继续开发；受保护标记、Testset、MR 是另外几列。"
       />
 
       {reposQuery.isLoading ? (
@@ -269,7 +287,7 @@ function RepoBranchCard({
       dataIndex: 'healthStatus',
       key: 'healthStatus',
       width: 120,
-      render: (status: BranchHealthStatus) => <HealthTag status={status} />,
+      render: (status: BranchHealthStatus) => <HealthTag status={status} />,//渲染成标签
     },
     {
       title: '关联 Task',
@@ -459,22 +477,35 @@ function DiffStatLink({
       <Text type="danger">-{branch.diffDeletions}</Text>
     </>
   )
-  const hasDiff = branch.diffAdditions > 0 || branch.diffDeletions > 0
-  if (!hasDiff) {
-    return <Text type="secondary">{inner}</Text>
+  const linkStyle = { display: 'inline-block' as const, padding: '2px 4px', borderRadius: 4 }
+  const isZeroDiff = branch.diffAdditions === 0 && branch.diffDeletions === 0
+
+  if (diffId) {
+    return (
+      <Link
+        to={PATHS.projectCodeDiff(projectId, diffId)}
+        title="查看该分支 Diff"
+        style={linkStyle}
+      >
+        {inner}
+      </Link>
+    )
   }
-  if (!diffId) {
-    return <Text type="secondary" title="后端尚未生成该分支的 Diff 快照">{inner}</Text>
+
+  // +/- 为 0 且尚无快照：仍可进入空 Diff 页
+  if (isZeroDiff) {
+    return (
+      <Link
+        to={PATHS.projectCodeDiff(projectId, toEmptyBranchDiffId(branch.id))}
+        title="该分支暂无变更，打开空 Diff"
+        style={linkStyle}
+      >
+        {inner}
+      </Link>
+    )
   }
-  return (
-    <Link
-      to={PATHS.projectCodeDiff(projectId, diffId)}
-      title="查看该分支 Diff"
-      style={{ display: 'inline-block', padding: '2px 4px', borderRadius: 4 }}
-    >
-      {inner}
-    </Link>
-  )
+
+  return <Text type="secondary" title="后端尚未生成该分支的 Diff 快照">{inner}</Text>
 }
 
 function HealthTag({ status }: { status: BranchHealthStatus }) {
@@ -512,7 +543,7 @@ function HealthTag({ status }: { status: BranchHealthStatus }) {
 }
 
 function TestStatusTag({ status }: { status: BranchTestStatus }) {
-  const label = branchTestLabel(status)
+  const label = branchTestLabel(status)//翻译成中文的
   if (status === 'PASSED') return <Tag color="success">{label}</Tag>
   if (status === 'RUNNING') return <Tag color="processing">{label}</Tag>
   if (status === 'FAILED') return <Tag color="error">{label}</Tag>

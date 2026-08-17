@@ -1,4 +1,4 @@
-import { Button, Col, Row, Select, Space, Typography } from 'antd'
+import { Button, Col, Input, Row, Select, Space, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import type { TaskCenterStatusFilter } from './taskCenterConfig'
 import { TASK_CENTER_STATUS_OPTIONS } from './taskCenterConfig'
@@ -11,6 +11,7 @@ interface TaskFiltersProps {
   groupId?: string
   repositoryId?: string
   createdBy?: string
+  search?: string
   groupOptions: Array<{ label: string; value: string }>
   repositoryOptions: Array<{ label: string; value: string }>
   createdByOptions: Array<{ label: string; value: string }>
@@ -18,6 +19,7 @@ interface TaskFiltersProps {
   onGroupChange: (value: string | undefined) => void
   onRepositoryChange: (value: string | undefined) => void
   onCreatedByChange: (value: string | undefined) => void
+  onSearchChange: (value: string) => void
   onReset: () => void
 }
 
@@ -26,6 +28,7 @@ export function TaskFilters({
   groupId,
   repositoryId,
   createdBy,
+  search,
   groupOptions,
   repositoryOptions,
   createdByOptions,
@@ -33,6 +36,7 @@ export function TaskFilters({
   onGroupChange,
   onRepositoryChange,
   onCreatedByChange,
+  onSearchChange,
   onReset,
 }: TaskFiltersProps) {
   return (
@@ -55,6 +59,10 @@ export function TaskFilters({
           <Select aria-label="状态筛选" value={status} options={TASK_CENTER_STATUS_OPTIONS} onChange={onStatusChange} className={styles.statusControl} />
           <Button aria-label="重置筛选" icon={<ReloadOutlined />} onClick={onReset}>重置</Button>
         </Space.Compact>
+      </Col>
+      <Col xs={24} sm={12} lg={6}>
+        <Text type="secondary" className={styles.filterLabel}>搜索任务</Text>
+        <Input aria-label="搜索任务" allowClear value={search} placeholder="编号、标题或需求说明" onChange={(event) => onSearchChange(event.target.value)} className={styles.searchControl} />
       </Col>
     </Row>
   )

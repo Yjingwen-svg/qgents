@@ -157,4 +157,47 @@ describe('new task model API', () => {
       headers: expect.objectContaining({ 'Idempotency-Key': 'idempotency-key' }),
     }))
   })
+
+  it('posts CQ approvals and rejections with Idempotency-Key and reason', async () => {
+    const fetchMock = vi.mocked(fetch)
+    await mergeRequestsApi.approveCq('project-1', 'mr-1', { reason: 'LGTM' })
+    await mergeRequestsApi.rejectCq('project-1', 'mr-1', { reason: 'needs tests' })
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/projects/project-1/merge-requests/mr-1/cq-approvals',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'idempotency-key' }),
+        body: JSON.stringify({ reason: 'LGTM' }),
+      }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/projects/project-1/merge-requests/mr-1/cq-rejections',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'idempotency-key' }),
+        body: JSON.stringify({ reason: 'needs tests' }),
+      }),
+    )
+  })
+
+  it('loads MR reviews through the documented path', async () => {
+    const fetchMock = vi.mocked(fetch)
+    await mergeRequestsApi.reviews('project-1', 'mr-1')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/project-1/merge-requests/mr-1/reviews',
+      expect.objectContaining({ body: undefined }),
+    )
+  })
+
+  it('loads MR commits through the provisional path with limit', async () => {
+    const fetchMock = vi.mocked(fetch)
+    await mergeRequestsApi.commits('project-1', 'mr-1', 3)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/project-1/merge-requests/mr-1/commits?limit=3',
+      expect.objectContaining({ body: undefined }),
+    )
+  })
 })

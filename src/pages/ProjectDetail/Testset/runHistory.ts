@@ -28,10 +28,20 @@ export function readRunHistory(projectId: string): LocalRunHistoryItem[] {
 /** 把一次新发起的运行记入本地历史（最新在前） */
 export function pushRunHistory(projectId: string, item: LocalRunHistoryItem): LocalRunHistoryItem[] {
   const next = [item, ...readRunHistory(projectId).filter((row) => row.id !== item.id)].slice(0, MAX_ITEMS)
+  return writeRunHistory(projectId, next)
+}
+
+/** 从本地历史里删掉一条（只清浏览器记录，不调后端删除接口） */
+export function removeRunHistory(projectId: string, runId: string): LocalRunHistoryItem[] {
+  const next = readRunHistory(projectId).filter((row) => row.id !== runId)
+  return writeRunHistory(projectId, next)
+}
+
+function writeRunHistory(projectId: string, next: LocalRunHistoryItem[]): LocalRunHistoryItem[] {
   try {
     localStorage.setItem(storageKey(projectId), JSON.stringify(next))
   } catch {
-    /* 配额满时忽略，页面仍能展示本次运行 */
+    /* 配额满时忽略，页面仍能展示当前列表 */
   }
   return next
 }

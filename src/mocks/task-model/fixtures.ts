@@ -39,7 +39,7 @@ export function seedCodeBranchDiffs(store: TaskModelStore, projectId: string): v
       repositoryId: entry.repositoryId,
       baseCommit: 'base-commit-1',
       sourceBranch: entry.sourceBranch,
-      headCommit: 'a1b2c3d',
+      headCommit: null,
       status: 'PENDING_REVIEW',
       changeStats: { files: files.length, additions: 54, deletions: 2 },
       createdAt: timestamp,
@@ -107,7 +107,7 @@ export function seedMergeRequests(store: TaskModelStore, projectId: string): voi
       sourceBranch: item.sourceBranch,
       targetBranch: 'main',
       status: item.status,
-      headCommit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+      headCommit: 'a81f3c2b4d5e6f789012345678901234567890ab',
       webUrl: null,
       taskId: `task-${projectId}-main`,
       qualityGate: {
@@ -115,7 +115,39 @@ export function seedMergeRequests(store: TaskModelStore, projectId: string): voi
         requiredChecks: ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE'],
       },
     })
+    store.mergeRequestCommits.set(item.id, mockMergeRequestCommits(item.id))
   }
+}
+
+function mockMergeRequestCommits(mergeRequestId: string): import('@/types/task-model').MergeRequestCommit[] {
+  const now = Date.now()
+  return [
+    {
+      sha: 'a81f3c2b4d5e6f789012345678901234567890ab',
+      message: 'feat(login): 实现登录接口与 JWT 鉴权',
+      authorName: '陈同学',
+      authorUserId: 'user-chen',
+      committedAt: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      sha: 'b47d9e1c2a3b4c5d6e7f801234567890abcdef01',
+      message: 'refactor: 优化校验逻辑与异常处理',
+      authorName: '李同学',
+      authorUserId: 'user-li',
+      committedAt: new Date(now - 4 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      sha: 'd2e6f0a1b2c3d4e5f678901234567890abcdef23',
+      message: 'test: 补充登录接口测试用例',
+      authorName: '张同学',
+      authorUserId: 'user-zhang',
+      committedAt: new Date(now - 6 * 60 * 60 * 1000).toISOString(),
+    },
+  ].map((entry, index) => ({
+    ...entry,
+    // 保证同一次 seed 内不同 MR 的 id 不冲突即可；sha 仍按设计稿
+    authorUserId: `${entry.authorUserId}-${mergeRequestId}-${index}`,
+  }))
 }
 function artifacts(store: TaskModelStore, value: Task, r: TaskRunDetail | undefined) { const a: TaskArtifact[] = [{id:`artifact-${value.id}-plan`,taskId:value.id,taskRunId:null,taskStepId:null,sequenceNo:1,artifactType:'PLAN',title:'计划',description:null,status:null,summary:{},resources:[],createdAt:timestamp}]; if(r) for(const [n,type,title] of [[2,'CODING','代码编写'],[3,'REVIEWING','代码审查']] as const) a.push({id:`artifact-${value.id}-${type.toLowerCase()}`,taskId:value.id,taskRunId:r.id,taskStepId:r.taskStepId,sequenceNo:n,artifactType:type,title,description:null,status:r.status === 'SUCCEEDED' ? 'SUCCEEDED' : null,summary:{},resources:[],createdAt:laterTimestamp}); store.taskArtifacts.set(value.id,a) }
 function review(store: TaskModelStore, value: Task, d: DiffDetail, delivery: DiffReviewBatch['deliveryStatus'] = 'NOT_STARTED', status: DiffReviewBatch['reviewStatus'] = 'PENDING_CONFIRMATION') { store.diffReviews.set(value.id,{id:`review-${value.id}`,taskId:value.id,reviewStatus:status,deliveryStatus:delivery,aggregateHash:`hash-${value.id}`,reviewReason:null,diffs:[d],repositoryDeliveries:value.repositories.map((repository,index)=>({repositoryId:repository.repositoryId,repositoryName:repository.name,diffId:d.id,deliveryStatus:delivery === 'FAILED' ? 'FAILED' : delivery === 'PARTIALLY_DELIVERED' && index > 0 ? 'FAILED' : delivery === 'PARTIALLY_DELIVERED' ? 'MR_CREATED' : 'NOT_STARTED',failureCode:delivery === 'FAILED' || delivery === 'PARTIALLY_DELIVERED' && index > 0 ? 'DELIVERY_FAILED' : null,failureReason:delivery === 'FAILED' || delivery === 'PARTIALLY_DELIVERED' && index > 0 ? 'Mock delivery failed' : null,mergeRequest:null,updatedAt:laterTimestamp}))}) }
@@ -205,6 +237,8 @@ export function createTaskModelScenario(projectId: string): TaskModelStore {
   const partialBatchId = `review-${partial.id}`
   review(store, partial, partialDiff, 'PARTIALLY_DELIVERED', 'ACCEPTED')
   partial.attention = attention({ kind: 'DELIVERY_FAILED', title: 'DELIVERY_FAILED', summary: `Mock attention for ${partial.id}`, taskRunId: null, inputRequestId: null, diffReviewBatchId: partialBatchId, repositoryId: partial.repositories[1]?.repositoryId ?? null })
+  seedCodeBranchDiffs(store, projectId)
+  seedMergeRequests(store, projectId)
   return store
 }
 export const taskModelScenarioNames = ['DEFAULT','EMPTY'] as const

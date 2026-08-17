@@ -5,6 +5,8 @@ import {
   mapDiffFilePage,
   mapMergeRequest,
   mapMergeRequestChecks,
+  mapMergeRequestCqReviews,
+  mapMergeRequestCommitList,
   mapMergeRequestPage,
 } from './taskModelMap'
 import type {
@@ -32,6 +34,7 @@ import type {
   TaskArtifact,
   DiffReviewBatch,
   MergeRequestCreateInput,
+  MergeRequestCqInput,
   MergeRequestListFilters,
 } from '@/types/task-model'
 
@@ -243,6 +246,19 @@ export const mergeRequestsApi = {
     ).then(mapMergeRequestChecks)
   },
 
+  reviews(projectId: string, mergeRequestId: string) {
+    return requestModelData<unknown>(
+      `/projects/${projectId}/merge-requests/${mergeRequestId}/reviews`,
+    ).then(mapMergeRequestCqReviews)
+  },
+
+  /** 暂定路径：官方契约尚未冻结 MR commits */
+  commits(projectId: string, mergeRequestId: string, limit = 3) {
+    return requestModelData<unknown>(
+      withModelQuery(`/projects/${projectId}/merge-requests/${mergeRequestId}/commits`, { limit }),
+    ).then(mapMergeRequestCommitList)
+  },
+
   create(projectId: string, input: MergeRequestCreateInput) {
     return requestModelData<unknown>(`/projects/${projectId}/merge-requests`, {
       method: 'POST',
@@ -256,5 +272,27 @@ export const mergeRequestsApi = {
       method: 'POST',
       headers: writeModelHeaders(),
     }).then(mapMergeRequest)
+  },
+
+  approveCq(projectId: string, mergeRequestId: string, input: MergeRequestCqInput) {
+    return requestModelData<unknown>(
+      `/projects/${projectId}/merge-requests/${mergeRequestId}/cq-approvals`,
+      {
+        method: 'POST',
+        headers: writeModelHeaders(),
+        body: input,
+      },
+    ).then(mapMergeRequest)
+  },
+
+  rejectCq(projectId: string, mergeRequestId: string, input: MergeRequestCqInput) {
+    return requestModelData<unknown>(
+      `/projects/${projectId}/merge-requests/${mergeRequestId}/cq-rejections`,
+      {
+        method: 'POST',
+        headers: writeModelHeaders(),
+        body: input,
+      },
+    ).then(mapMergeRequest)
   },
 }

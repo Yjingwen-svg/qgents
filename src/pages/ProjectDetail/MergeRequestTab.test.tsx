@@ -60,6 +60,19 @@ function renderTab(path = '/code?tab=mr') {
             metadataSyncedAt: '2026-08-15T00:00:00Z',
             boundAt: '2026-08-15T00:00:00Z',
           },
+          {
+            id: 'bound-demo-web-console',
+            repositoryId: 'repo-3',
+            installationId: 'install-1',
+            providerRepositoryId: 2,
+            fullName: 'mock/web-console',
+            githubUrl: 'https://github.com/mock/web-console',
+            displayName: 'web-console',
+            defaultBranch: 'main',
+            authorizationStatus: 'AUTHORIZED',
+            metadataSyncedAt: '2026-08-15T00:00:00Z',
+            boundAt: '2026-08-15T00:00:00Z',
+          },
         ]}
       />
     </MemoryRouter>,
@@ -90,10 +103,10 @@ describe('MergeRequestTab', () => {
       'href',
       '/app/projects/demo-project/code/mr/mr-1',
     )
-    expect(screen.getByRole('link', { name: 'GitHub' })).toHaveAttribute(
-      'href',
-      'https://github.com/mock/demo/pull/42',
-    )
+    const githubLinks = screen.getAllByRole('link', { name: 'GitHub' })
+    expect(githubLinks).toHaveLength(2)
+    expect(githubLinks[0]).toHaveAttribute('href', 'https://github.com/mock/demo/pull/42')
+    expect(githubLinks[1]).toHaveAttribute('href', 'https://github.com/mock/web-console/pull/18')
   })
 
   it('forwards repository and status filters from the query string', () => {

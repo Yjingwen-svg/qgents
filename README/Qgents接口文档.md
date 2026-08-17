@@ -1,11 +1,10 @@
-Qgents接口文档v1.9.0
+Qgents接口文档v1.9.7
 
-版本：v1.9.0
+版本：v1.9.7
 
 状态：第 6 节 GitHub 集成接口已冻结；通知中心（§7.1）与群列表/消息字段按 A 联调约定补全；团队邀请收件人视角与团队最近动态已落地（§19，接口表见 §5.1）；新增两个SSE事件
 
-更新日期：2026-08-15
-
+更新日期：2026-08-17
 
 ---
 
@@ -304,6 +303,8 @@ GET
 }
 
 受邀邮箱尚未注册时，系统发送注册链接和邀请令牌；用户以相同邮箱注册后可接受邀请。
+创建邀请错误：400 INVALID_ARGUMENT（role 仅支持 TEAM_MEMBER；expiresInDays 不能超过 30 天）、403 TEAM_OWNER_REQUIRED（非 Team Owner）、409 ALREADY_TEAM_MEMBER（该邮箱对应用户已是团队成员）、409 INVITATION_ALREADY_PENDING（该邮箱在本团队已有待处理邀请；需重新邀请时先调用撤销接口）。
+撤销邀请错误：404 NOT_FOUND（邀请不存在）、409 INVITATION_EXPIRED（邀请已过期，后端先置 EXPIRED 再返回）、409 INVITATION_NOT_PENDING（邀请已被接受或已撤销，仅能撤销待处理邀请）。
 
 5.2 项目与项目成员
 
@@ -390,9 +391,7 @@ ProjectRepository
 id
 project_repositories.id，项目仓库绑定 UUID
 PATCH、DELETE，以及 Task/Workspace/Diff/MR 等开发链路
-
 绑定请求不得传 providerInstallationId 或 providerRepositoryId。绑定成功后，下游接口中名为 repositoryId / repositoryIds 的字段均表示 project_repositories.id。
-
 方法
 路径
 权限
@@ -426,6 +425,7 @@ GET
 项目成员
 获取项目已绑定仓库
 POST
+
 /projects/{projectId}/repositories
 Project Admin
 绑定团队已授权仓库
@@ -449,85 +449,53 @@ Repository.authorizationStatus = AUTHORIZED | REVOKED
 - archived=true 表示 GitHub 仓库已归档；authorizationStatus=REVOKED 表示 GitHub App 已无权访问。
   
 - 第一版不返回 authorizedRepositoryCount，客户端可按授权仓库的 installationId 统计。
-  
 安装与元数据刷新
-
-发起安装请求必须携带 Idempotency-Key。
-
-安装请求通过查询参数指定发起端，client 只允许以下值：
-
-参数
-类型
-必填
-说明
-client
-WEB 或 MOBILE
-否
-回调成功后的前端类型，省略时默认为 WEB
-
-Web 端请求：
-POST /teams/{teamId}/integrations/github/installations?client=WEB
-Idempotency-Key: <unique-key>
-Authorization: Bearer <accessToken>
-
-移动端请求：
-POST /teams/{teamId}/integrations/github/installations?client=MOBILE
-Idempotency-Key: <unique-key>
-Authorization: Bearer <accessToken>
-
-client 不是回跳 URL，前端不得传入任意 URL。后端会将该值写入签名 state，GitHub 回调时由后端验证并决定回跳地址。
-
-成功返回：
-{
-  "data": {
-    "installationUrl": "https://github.com/apps/qgents/installations/new?state=...",
-    "expiresAt": "2026-08-13T11:00:00Z"
-  },
-  "requestId": "req_01J..."
-}
-
-Installation 列表项：
-{
-  "id": "installation-local-uuid",
-  "providerInstallationId": 12345678,
-  "accountLogin": "Yjingwen-svg",
-  "accountType": "ORGANIZATION",
-  "status": "ACTIVE",
-  "installedAt": "2026-08-01T08:00:00Z",
-  "metadataSyncedAt": "2026-08-13T10:00:00Z"
-}
-
-callback 固定为：
-GET /integrations/github/callback?installation_id=...&setup_action=...&state=...
-
-其中 setup_action 由 GitHub 回调携带，常见值为 install 或 update，后端不要求前端额外处理。
-
-后端校验签名 state，保存 Installation 并刷新授权仓库元数据。state 中包含客户端类型，例如：
-{
-  "sub": "<teamId>",
-  "client": "WEB"
-}
-
-旧版本没有 client 字段的 state 默认按 WEB 处理。
-
-成功返回：
-302 Location: {FRONTEND_URL_WEB}/app/integrations/github?teamId={teamId}&installed=1
-
-当安装请求使用 client=MOBILE 时，回跳地址为：
-302 Location: {FRONTEND_URL_MOBILE}/app/integrations/github?teamId={teamId}&installed=1
-
-后端部署配置：
-FRONTEND_URL_WEB=https://qgents.dpdns.org
-FRONTEND_URL_MOBILE=https://mobile.qgents.dpdns.org
-
-Web 和移动端共用同一个 GitHub App 和同一个 callback 地址：
-https://api.qgents.dpdns.org/api/v1/integrations/github/callback
-
-区别只在于创建安装链接时传递的 client 参数。
-
-手动刷新请求中的 {installationId} 是 Installation 本地 id。该操作只刷新 GitHub Installation 与授权仓库元数据，不执行 clone/fetch，也不改变 Workspace 状态；成功返回 200 和刷新后的 Installation 对象。客户端随后重新 GET Installation 列表和授权仓库列表。
-
-解除团队 Installation 成功返回 204 No Content；仍被项目仓库绑定引用时返回 409 GITHUB_INSTALLATION_IN_USE。
+      发起安装请求必须携带 Idempotency-Key。
+      安装入口固定为 GitHub /installations/new：接口无条件返回
+      https://github.com/apps/{slug}/installations/new?state={签名 state}，
+      不查询本地已有 Installation、不根据账号状态改跳 GitHub Configure 或 settings 路径。
+      若该账号已安装，由 GitHub 自身提示；后端仍返回 /new，state 继续携带当前 teamId、发起人、client，回调语义不变。
+      前端只跳转 data.installationUrl，不自行拼接 GitHub 链接。
+      安装请求通过查询参数指定发起端，client 只允许以下值：
+      |    参数|    类型|    必填|    说明|
+      |---|---|---|---|
+      |    client|    WEB 或 MOBILE|    否|    回调成功后的前端类型，省略时默认为 WEB|
+      Web 端请求：
+      HTTP     POST /teams/{teamId}/integrations/github/installations?client=WEB     Idempotency-Key: <unique-key>     Authorization: Bearer <accessToken>     
+      移动端请求：
+      HTTP     POST /teams/{teamId}/integrations/github/installations?client=MOBILE     Idempotency-Key: <unique-key>     Authorization: Bearer <accessToken>     
+      client 不是回跳 URL，前端不得传入任意 URL。后端会将该值写入签名 state，GitHub 回调时由后端验证并决定回跳地址。
+      成功返回：
+      JSON     {       "data": {         "installationUrl": "https://github.com/apps/qgents/installations/new?state=...",         "expiresAt": "2026-08-13T11:00:00Z"       },       "requestId": "req_01J..."     }     
+      Installation 列表项：
+      JSON     {       "id": "installation-local-uuid",       "providerInstallationId": 12345678,       "accountLogin": "Yjingwen-svg",       "accountType": "ORGANIZATION",       "status": "ACTIVE",       "installedAt": "2026-08-01T08:00:00Z",       "metadataSyncedAt": "2026-08-13T10:00:00Z"     }     
+      callback 固定为：
+      HTTP     GET /integrations/github/callback?installation_id=...&setup_action=...&state=...     
+      其中 setup_action 由 GitHub 回调携带，常见值为 install 或 update，后端不要求前端额外处理。
+      后端校验签名 state，保存 Installation 并刷新授权仓库元数据。state 中包含客户端类型，例如：
+      JSON     {       "sub": "<teamId>",       "client": "WEB"     }     
+      旧版本没有 client 字段的 state 默认按 WEB 处理。
+      成功返回：
+      HTTP     302 Location: {FRONTEND_URL_WEB}/app/integrations/github?teamId={teamId}&installed=1     
+      当安装请求使用 client=MOBILE 时，回跳地址为：
+      HTTP     302 Location: {FRONTEND_URL_MOBILE}/app/integrations/github?teamId={teamId}&installed=1     
+      归属冲突回跳：同一 GitHub 账号已绑定到其他团队时，回调不保存本次安装，回跳地址携带 conflict 与 message 参数（WEB/MOBILE 均同构）：
+      HTTP     302 Location: {FRONTEND_URL_WEB}/app/integrations/github?teamId={teamId}&installed=0&conflict=GITHUB_INSTALLATION_TEAM_CONFLICT&message={URL编码的中文提示}     
+      前端应检测 conflict 参数并展示 message 中的提示，然后清理该参数；installed 为 0 表示安装未完成。
+      > 业务规则：一个 GitHub 账号只能授权给一个团队。 GitHub App 的 Installation 是「账号对 App」级别唯一的，一个 GitHub 账号对 qgents App 只有一个安装，因此只能归属一个团队。若该账号已绑定其他团队，从当前团队发起安装时会进入已有的 Installation（GitHub 侧不会新建），无法重复绑定；如需更换团队，须先到原团队解绑或卸载 GitHub App 后重新安装。仓库变更 webhook 不携带来源团队信息，故「在 GitHub 配置页直接增删仓库」作用于原 Installation，后端无法据 webhook 阻断该操作，前端应在安装入口提示该规则。
+      >
+      >
+      后端部署配置：
+      Plain Text     FRONTEND_URL_WEB=https://qgents.dpdns.org     FRONTEND_URL_MOBILE=https://mobile.qgents.dpdns.org     
+      Web 和移动端共用同一个 GitHub App 和同一个 callback 地址：
+      Plain Text     https://api.qgents.dpdns.org/api/v1/integrations/github/callback     
+      区别只在于创建安装链接时传递的 client 参数。
+      手动刷新请求中的 {installationId} 是 Installation 本地 id。该操作只刷新 GitHub Installation 与授权仓库元数据，不执行 clone/fetch，也不改变 Workspace 状态；成功返回 200 和刷新后的 Installation 对象。客户端随后重新 GET Installation 列表和授权仓库列表。
+      解除团队 Installation 成功返回 204 No Content；仍被项目仓库绑定引用时返回 409 GITHUB_INSTALLATION_IN_USE。
+      解除团队关联前需先解绑相关项目仓库；存在引用时后端返回 409 GITHUB_INSTALLATION_IN_USE，不自动解绑、不删除项目历史。
+      解除关联是「解除 Qgents 团队关联」，不是替用户去 GitHub 远程卸载 App；后端不会调用 GitHub 卸载接口。
+      无项目绑定引用的 Installation：后端会先删除其未绑定的仓库镜像，再删除安装记录。
+  
 
 授权仓库
 
@@ -548,8 +516,8 @@ https://api.qgents.dpdns.org/api/v1/integrations/github/callback
 客户端只允许绑定 authorizationStatus=AUTHORIZED、archived=false、defaultBranch 非空且对应 Installation 为 ACTIVE 的仓库。defaultBranch 缺失时不得回退为固定的 main。
 
 项目仓库绑定
-
 项目仓库绑定列表项及绑定成功响应：
+
 {
   "id": "project-repository-binding-uuid",
   "repositoryId": "repository-local-uuid",
@@ -563,12 +531,11 @@ https://api.qgents.dpdns.org/api/v1/integrations/github/callback
   "metadataSyncedAt": "2026-08-13T10:00:00Z",
   "boundAt": "2026-08-13T10:00:00Z"
 }
-
 项目绑定 DTO 不返回代码含义的 syncStatus、lastSyncedAt 或 syncError。项目上下文已由路径确定，不重复返回 boundProjectId / boundProjectName。第一版不提供按授权仓库批量反查所有已绑定项目的接口。
-
+列表默认只返回 ACTIVE（生效中）绑定；软解绑（UNBOUND）的绑定不出现在列表中。
 绑定仓库请求：
-
 一个项目可绑定多个仓库，前端如需批量绑定，可循环调用本接口，每次传入不同的 repositoryId 即可。
+
 {
   "installationId": "installation-local-uuid",
   "repositoryId": "repository-local-uuid",
@@ -578,7 +545,9 @@ https://api.qgents.dpdns.org/api/v1/integrations/github/callback
 
 defaultBranch 是可选兼容字段。后端始终以授权仓库元数据中的真实默认分支为可信来源，忽略客户端覆盖值；真实默认分支缺失时拒绝绑定。成功返回 200 和完整 ProjectRepository 对象，其中 id 是后续 PATCH、DELETE 和 Task 创建使用的项目仓库绑定 ID。
 
-PATCH 与 DELETE 路径中的 {projectRepositoryId} 均为 ProjectRepository 响应的 id，不是授权仓库 repositoryId 或 GitHub 数字 ID。第一版前端不调用 PATCH 修改默认分支。DELETE 成功返回 204 No Content，客户端随后重新 GET 项目绑定列表。
+软解绑后重新绑定：同项目、同授权仓库若已存在 UNBOUND 绑定记录，重新绑定会将该记录恢复为 ACTIVE 并复用原 project_repositories.id（保留历史 Task/Workspace/Diff/MR 关联），而不是新建记录。若已存在 ACTIVE 绑定，仍返回 409 PROJECT_REPOSITORY_ALREADY_BOUND。
+PATCH 与 DELETE 路径中的 {projectRepositoryId} 均为 ProjectRepository 响应的 id，不是授权仓库 repositoryId 或 GitHub 数字 ID。第一版前端不调用 PATCH 修改默认分支。
+DELETE 采用软解绑：不物理删除绑定记录，仅标记为 UNBOUND，保留历史 Task/Workspace/Diff/MR/分支配置等关联。成功返回 204 No Content，客户端随后重新 GET 项目绑定列表。重复解绑（已 UNBOUND）幂等，仍返回 204。若该绑定正被进行中的任务使用，返回 409 PROJECT_REPOSITORY_IN_USE（该活动占用校验待后端接入后生效）。
 
 GitHub 写接口幂等与主要错误
 
@@ -719,7 +688,7 @@ added/removed 按 provider repository id upsert 或标记 REVOKED，校验 insta
 pull_request
 opened/reopened/synchronize → OPEN，closed+merged → MERGED，closed+未 merged → CLOSED；按 provider repository + PR number 幂等更新全部项目绑定 MR 镜像
 每个成功更新的项目一次
-投递审计表 github_webhook_deliveries：以 provider_delivery_id 唯一，状态 RECEIVED → PROCESSED/IGNORED/FAILED，只存原始 body 的 SHA-256 摘要；attempt_count 记录同一 delivery 实际处理次数；已完成记录保留 30 天后由定时任务清理，RECEIVED 不清理。
+投递审计表 github_webhook_deliveries：以 provider_delivery_id 唯一，状态 RECEIVED → PROCESSED/IGNORED/FAILED，只存原始 body 的 SHA-256 摘要；attempt_count 记录同一 delivery 实际处理次数；RECEIVED 超过 5 分钟视为处理中断，允许后续投递重新领取处理；已完成记录保留 30 天后由定时任务清理，超过 30 天的孤儿 RECEIVED 一并清除。
 
 
 SSE 事件契约补充：
@@ -850,10 +819,15 @@ POST /groups 只接受 REQUIREMENT 或省略 type；传入 PROJECT_MAIN 返回 4
 {
   "type": "TEXT",
   "content": {"text": "登录接口需要支持邮箱和密码。"},
-  "mentions": ["user-uuid"],
+  "mentions": [
+    {"type": "USER", "id": "user-uuid"},
+    {"type": "AGENT", "id": "agent-uuid"}
+  ],
   "replyToId": null,
   "clientMessageId": "cmsg_01J..."
 }
+
+mentions 为对象数组 Mention[]，每项 { "type": "USER" | "AGENT", "id": <UUID> }（type 必填枚举 USER/AGENT，id 为被提及的用户或 Agent ID）；不提及传 null 或 []。响应 MessageResponse.mentions 同构回显。
 
 
 
@@ -873,9 +847,11 @@ POST /groups 只接受 REQUIREMENT 或省略 type；传入 PROJECT_MAIN 返回 4
   
     
   
+
 - TASK_STATUS（任务状态卡片）content 至少含 taskId、status，如 {"taskId":"...","status":"RUNNING","node":"DEVELOPER","message":"正在执行测试"}。
-  
-    
+  默认代码交付工作流的任务进度、终态和 Diff 审核卡片，统一由任务所属 Team 的 ORCHESTRATOR Agent 发送。该 Agent 只是卡片发送身份，不表示其实际执行了 TaskStep；客户端不得据此推断 Developer、Tester 或 Reviewer 的执行者。
+  正常情况下，卡片消息的 senderType=AGENT，senderId 为该 Team 的 ORCHESTRATOR Agent ID。首次以该身份在群内发消息时，后端可能额外发布既有 group.member.updated 事件。
+  若 Team 暂无可用 ORCHESTRATOR Agent，后端仍会写入同一内容的 TASK_STATUS 卡片，但消息为 senderType=SYSTEM，senderId 与 senderName 均为 null。该降级不新增 SSE 事件，客户端仍通过既有 message.created 刷新消息列表。
   
 - IMAGE/FILE（图片/文件消息）content 至少含 url（展示/下载地址），如 {"url":"/projects/{projectId}/attachments/{attachmentId}/content"}。url 填附件稳定展示地址（服务端强校验 url 必填），获取方式见 §18.5。
   
@@ -888,7 +864,20 @@ POST /groups 只接受 REQUIREMENT 或省略 type；传入 PROJECT_MAIN 返回 4
 - Agent 可参与项目群聊（回群消息），但私聊与 Agent 好友不在本期范围。
   
     
+  从消息触发任务：
   
+  - 自动触发：发送消息时 mentions 含 type=AGENT 项（如 @AgentOrchestrator）→ 服务端自动从该消息创建 Task（triggerMessageId = 本次消息 ID；同一消息只建一次，幂等）。前置条件：群为 ACTIVE REQUIREMENT 且已绑定至少一个仓库（未绑仓库则跳过并记录 warn，不阻塞消息发送）；agentId 仅作调度偏好，不绕过后端角色/并发/项目可见性/仓库授权校验。任务创建后 Task 状态为 PLANNING，由编排自动推进（Planner → Developer → Tester → Reviewer）。
+  - Task 创建事务提交后，后端异步启动编排。客户端不调用 orchestrate、start 或任何“推进任务”的接口。
+    Sandbox、工作流图等启动阶段发生意外失败时，Task 会置为 FAILED。客户端通过既有 task.updated、message.created（失败 TASK_STATUS 卡片）和 notification.created（kind=TASK_FAILED）获知结果；断线重连或收到乱序事件后，仍应以 Task、消息和通知查询接口返回的数据为准。
+  - 显式触发：POST /projects/{projectId}/groups/{groupId}/messages/{messageId}/trigger-task，对已发送消息显式创建 Task（项目成员；body 为 TaskTriggerRequest，缺省字段由服务端从消息文本/群信息提取，需 Idempotency-Key）。
+
+    - 引用 DIFF 卡续作（增量修改）：当发送（或显式触发）的消息 replyToId 指向一条 type=DIFF
+消息时，服务端从该 DIFF 卡 content.diffId 定位源 Task 与源 Workspace，自动创建**复用同一 Workspace*
+*、continuationOfTaskId=源Task 的增量任务，仓库范围由该 Workspace 继承。客户端不得提交 `workspa
+ceId/continuationOfTaskId`，这两个字段只能由服务端从被引用的 DIFF 卡推导。追问文本（消息正文）作为
+新任务 requirement/defaultRequirement 进入；被引用的 DIFF 卡若在最近 50 条群消息内，其内容也随群
+聊上下文注入。DIFF 卡与用户追问消息的 replyToId 关系是续作判定的唯一依据（非消息正文文本）。
+
 群列表 DTO 补充（GET /projects/{id}/groups，A 联调约定 §2）：
 
 
@@ -1200,7 +1189,9 @@ Project Member 可查看并在未来任务计划中选择 ENABLED Testset；受�
 
 11. Agent、团队工作流与任务拆分
 
-系统随每个团队提供不可修改的“新手大礼包”：AgentOrchestrator、Planner、Developer、Tester、Reviewer 及内置默认代码交付工作流。用户不配置任何内容时，在需求群中 @ AgentOrchestrator 即可运行该默认流程：Planner 拆分 TaskStep → Developer 实现 → Tester 执行 Testset → Reviewer 审查 → 质量门禁汇总。
+系统内置默认代码交付工作流：PLANNER → DEVELOPER → TESTER → REVIEWER。用户不配置自定义 Agent 时，步骤可由对应的内置执行 Agent 兜底；配置了符合角色和权限的团队/个人 Agent 时，系统按步骤分配并执行。一个 TaskStep 只绑定一个执行 Agent，任务的计划、开发、测试和审查仍是独立步骤，不能把完整交付伪装为单个 Agent 的执行结果。
+
+每个 Team 还拥有一个 ORCHESTRATOR Agent（展示名称为“编排助手”）。它仅负责在需求群发送任务进度、终态和 Diff 审核卡片，不参与 TaskStep 分配，也不替代 PLANNER、DEVELOPER、TESTER 或 REVIEWER 的执行职责。其资源 ID 是 Team 级数据，客户端不得硬编码；缺失时任务状态卡按 §7 的 SYSTEM 消息规则降级。
 
 团队成员可创建仅自己可用的 Agent；发布后成为团队可用资源。产品界面至少展示每张 Agent 身份卡的昵称、头像、角色、能力标签、可用状态、创建者和可访问的 Skill 摘要；不得向其他成员泄露私有提示词或凭据。
 
@@ -1248,7 +1239,7 @@ Agent 创建者或 Project Admin
   "name": "Java 后端 Agent",
   "avatar": "https://cdn.example.com/avatars/java.png",
   "role": "DEVELOPER",
-  "capabilities": ["java", "spring-boot", "api"],
+  "description": "负责开发实现需求中的代码改动，按计划修改工作区文件并完成自检",
   "prompt": "遵循项目 API 规范和测试要求。"
 }
 
@@ -1258,16 +1249,17 @@ Agent 卡响应示例（GET/PATCH /teams/{teamId}/agents/{agentId} 返回）：
   "name": "Java 后端 Agent",
   "avatar": "https://cdn.example.com/avatars/java.png",
   "role": "DEVELOPER",
-  "capabilities": ["java", "spring-boot", "api"],
+  "description": "负责开发实现需求中的代码改动，按计划修改工作区文件并完成自检",
   "prompt": "遵循项目 API 规范和测试要求。",
   "visibility": "PRIVATE",
   "status": "ACTIVE",
   "createdBy": "user-uuid"
 }
 
-身份卡字段由 agents 表持久化（产品需求 §2.3）：name（昵称）、avatar（头像）、role（角色标签）、capabilities（能力标签，JSON 数组）、prompt（系统提示词）。私有提示词与私有可见性仅创建者可见，不得向其他成员泄露。
+身份卡字段由 agents 表持久化（产品需求 §2\.3）：name（昵称）、avatar（头像）、role（角色标签
+）、description（用途描述）、prompt（系统提示词）。私有提示词与私有可见性仅创建者可见，不得向其他成员泄露。
 
-role 为 ORCHESTRATOR、PLANNER、DEVELOPER、TESTER、REVIEWER 或 GENERAL。角色和能力是身份卡上的调度线索，不是权限绕过手段；工作流节点可按角色选择 Agent，调度器再从可用 Agent 中选择实际执行者。
+role 为 ORCHESTRATOR、PLANNER、DEVELOPER、TESTER、REVIEWER 或 GENERAL。角色与用途描述是身份卡上的调度线索，不是权限绕过手段；工作流节点可按角色选择 Agent，决策 Agent 依据角色与用途描述从可用 Agent 中选用实际执行者。
 
 11.1.1 Agent-Skill 绑定
 
@@ -1473,6 +1465,34 @@ data: {"projectId":"project-uuid","taskId":"task-uuid","stepId":"step-uuid","tas
 - merge-request.updated
 事件仅用于刷新界面；客户端恢复连接或收到乱序事件后必须以相应的查询接口为准。受控日志不得包含 Token、密码、GitHub 安装令牌、私钥或未脱敏的环境变量。
 SSE 事件 id 即项目内单调递增 sequenceNo，作为 Last-Event-ID 续传游标；输入与审批事件必须包含 inputRequestId。
+
+项目级新增事件（前端 SSE 需求清单 ①，同一项目流）：
+
+- message.created：有人/Agent 发群消息；payload { projectId, groupId, messageId }
+- group.created / group.updated / group.archived：群创建/改名/归档；payload { projectId, groupId }
+- group.member.updated：成员进出、Agent 首次进群；payload { projectId, groupId }
+- memory.submit-review / memory.approved / memory.rejected / memory.archived：Memory 审批流转；payload { projectId, resourceType: "MEMORY", resourceId, eventVersion, updatedAt }（§20.4；前端 eventParser 映射到 memories query，不另发 memory.updated）
+  
+团队级事件流（前端 SSE 需求清单 ②，新增端点）：
+
+- 端点：GET /api/v1/teams/{teamId}/events（团队成员可订阅；Content-Type: text/event-stream）
+- 事件信封同 §12.1：id=团队内单调递增 sequenceNo（Last-Event-ID 续传，游标过期 409 EVENT_CURSOR_EXPIRED），15 秒心跳
+- 事件：
+  - project.member.added：成员被拉进项目；payload { teamId, projectId }
+  - team.member.updated：成员加入（接受邀请）/移出团队；payload { teamId, userId }
+  - activity.created：团队动态产生（暂未单独发布——团队动态由项目事件聚合，前端收项目流 task.updated/diff.created/merge-request.updated 后刷新 GET /teams/{teamId}/activities 即可）
+    
+通知级事件流（前端 SSE 需求清单 ③，新增端点）：
+
+- 端点：GET /api/v1/notifications/events（当前登录用户维度；Content-Type: text/event-stream）
+- 事件信封同 §12.1：id=用户内单调递增 sequenceNo（Last-Event-ID 续传）
+- 事件：
+  - notification.created：新通知产生（含 INVITED 邀请）；payload { notificationId, kind }
+    
+事件仅用于刷新界面；客户端恢复连接或收到乱序事件后必须以相应的查询接口为准。受控日志不得包含 Token、密码、GitHub 安装令牌、私钥或未脱敏的环境变量。
+
+SSE 事件 id 即项目内单调递增 sequenceNo，作为 Last-Event-ID 续传游标；输入与审批事件必须包含 inputRequestId。
+
 各事件 Payload 示例：
 task.updated（Task 状态变化）：
 {
@@ -2180,9 +2200,12 @@ canCancel、canReplacePendingStepAgent、canConfirmDiffReview、canRejectDiffRev
 
 - artifactSummary：{ total, byType }，按产物类型（PLAN/CODING/TESTING/REVIEWING）计数。
   
-- diffReviewSummary：{ available, reviewStatus, deliveryStatus, repositoryCount, filesChanged, additions, deletions }；
-  
-available=false 表示无总 Diff 批次。
+- diffReviewSummary：`{ available, diffId, reviewStatus, deliveryStatus, repositoryCount, filesChan
+ged, additions, deletions }`；
+
+available=false 表示无总 Diff 批次。diffId 为可空字段：批次内按 projectRepositoryId 升序第一条
+Diff 的 ID（单仓库 Diff 语义，非批次 ID），用于 App 端定位待确认的总 Diff 并跳转到该批次的一个代表性
+Diff；无批次或无 Diff 时为 null。
 
 - sourceMessage：{ id, sender: UserSummary, textExcerpt, createdAt }，由 triggerMessageId 派生；
   
@@ -2955,9 +2978,103 @@ PUBLISHED（前端按 PUBLISHED 消费；旧 APPROVED 不作为 Skill 状态）
 前端如何判断操作权
 不解析成员角色，统一消费后端返回的 capabilities
 
-20.10 P2：DeliveryCenter 导出（延期）
+20.10 P2：DeliveryCenter 导出 GET /api/v1/projects/{projectId}/delivery-items/export（已实现）
 
-GET /delivery-items/export（CSV + Content-Disposition）不阻塞首轮联调，待 P0/P1 稳定后实现；导出范围仍限列表摘要，不含完整内容/Prompt/凭据/Patch。
+
+
+GET /delivery-items/export（CSV + Content-Disposition）已实现。导出范围仍限列表摘要，不含完整 Memory/Skill 内容、Prompt、Token、凭据或代码 Patch。
+
+
+
+查询参数（与 delivery-items 一致）：
+
+
+
+参数
+类型
+必填
+说明
+groupId
+UUID
+否
+按需求群筛选（CODE 按 Task 群来源、MEMORY 按来源消息群匹配；SKILL 无来源不匹配）
+type
+string
+否
+资源类型：CODE / MEMORY / SKILL；省略导出全部三类
+status
+string
+否
+按展示状态 displayStatus 筛选（枚举见 §20\.3）
+repositoryId
+UUID
+否
+按项目仓库绑定 ID 筛选（仅 CODE 匹配）
+createdBy
+UUID
+否
+按创建者筛选
+
+
+
+响应：200 text/csv; charset=UTF-8，Content-Disposition: attachment; filename="delivery-items-<yyyyMMdd-HHmmss>.csv"；正文为 UTF-8 CSV（含 BOM，便于 Excel 识别中文），首行为表头，之后每行一个交付项。空数据集只返回表头行。
+
+
+
+CSV 列（脱敏摘要，与列表 DTO 一致）：
+
+
+
+列
+来源
+说明
+类型
+resourceType
+CODE / MEMORY / SKILL
+标题
+title
+展示标题
+摘要
+summary
+≤200 字符脱敏摘要
+展示状态
+displayStatus
+后端派生（§20\.3）
+资源状态
+resourceStatus
+真实资源状态
+需求群
+requirementGroup.name
+无群来源时为空
+来源任务编号
+source.taskDisplayCode
+仅 CODE
+来源任务标题
+source.taskTitle
+仅 CODE
+创建人
+creator.displayName
+
+审核人
+reviewer.displayName
+
+驳回原因
+reviewReason
+未拒绝时为空
+创建时间 / 审核时间 / 更新时间
+createdAt / reviewedAt / updatedAt
+ISO8601 UTC
+变更文件数 / 新增行数 / 删除行数
+filesChanged / additions / deletions
+仅 CODE，其他类型为空
+仓库
+repositories[].name
+仅 CODE，分号连接，去重
+
+
+
+CSV 转义：遵循 RFC 4180（字段含逗号/双引号/换行时用双引号包裹，内部引号翻倍转义）。权限：项目成员可导出。
+
 
 21. v1.9.0 补充：Diff / MR / Testset 页面缺口确认
 
@@ -3064,3 +3181,64 @@ payload 含 dryRunId + projectId/repositoryId/taskId/headCommit/targetBranch/sta
 5. Testset：响应补 scopeTags；
 6. （P1+）test-run / dry-run 历史列表、逐用例结果、报告产物 URL（前端按空态处理，不阻塞联调）。
   
+22.4 Agent 单卡详情（前端联调，已实现）
+
+GET /teams/{teamId}/agents/{agentId}（原仅有列表）新增单 Agent 详情，支持可选 projectId 参数：
+
+GET /api/v1/teams/{teamId}/agents/{agentId}?projectId={projectId}
+
+- projectId 传了：校验该 Agent 属于此项目的 Team（agents.team_id == projects.team_id）且调用者为项目成员；不传：仅团队可见性校验
+- 响应为 AgentResponse（id/name/avatar/role/description/prompt/visibility/status/createdBy），PRIVATE Agent 仅创建者可见（prompt 仅创建者返回）
+- 错误：404 TEAM_RESOURCE_NOT_FOUND / 404 PROJECT_NOT_FOUND / 404 AGENT_NOT_FOUND
+22.5 创建项目时绑定仓库 / 自动新建仓库（前端额外清单 §四，已实现）
+POST /teams/{teamId}/projects 请求体新增可选字段：
+字段
+类型
+说明
+repositoryIds
+string\[\] $$UUID$$
+GitHub 授权仓库 id 列表（github_repositories.id，授权仓本地 UUID，非绑定记录 id）
+newRepository
+object
+自动新建一个 GitHub 仓库并绑定；与 repositoryIds 互斥（二选一）
+自动新建仓库：后端建仓时固定传 auto_init: true，GitHub 会自动生成初始 README 提交并据此建立默认分支（一般是 main）。建仓返回的元数据中带有真实 defaultBranch，并直接写入本地仓库镜像，因此新建仓库立即可绑定、可克隆，不会出现空仓库缺默认分支的问题。前端无需额外处理。
+绑定已有仓库时后端逐个校验并绑定（等价于创建后逐个调 POST /projects/{projectId}/repositories）：
+- 校验：仓库属于该团队 ACTIVE 安装、authorizationStatus=AUTHORIZED、未归档、defaultBranch 非空；
+- 重复绑定同一仓库返回 409 PROJECT_REPOSITORY_ALREADY_BOUND（整体失败回滚，项目不创建）；
+- 不传或传空：按原行为创建项目，之后单独绑定。
+newRepository 自动建仓（题目 §2\.1「项目创建时自动新建一个 git 仓库并绑定」）：
+- 建仓在事务外执行（不持有数据库事务或行锁，AGENTS §3\.4），用团队 ACTIVE 安装账号发起；auto_init=true 使仓库创建即带默认分支（main），避免空仓库缺少 defaultBranch；
+- 建仓成功后事务内落 github_repositories 镜像 + project_repositories 绑定，与项目落库同事务原子提交；
+- 团队有多个 ACTIVE 安装时须指定 newRepository.installationId，否则返回 422 GITHUB_INSTALLATION_REQUIRED；
+- 仓库名冲突返回 409 GITHUB_REPOSITORY_CREATE_CONFLICT。
+newRepository 字段：
+字段
+类型
+说明
+name
+string
+仓库名，必填，符合 GitHub 命名约束
+description
+string
+仓库描述，可选
+isPrivate
+boolean
+是否私有，默认 true
+installationId
+string $$UUID$$
+建仓使用的安装记录 ID，团队仅一个 ACTIVE 安装时可省略
+displayName
+string
+项目内显示名称，默认取仓库名
+
+{
+  "name": "Qgents Web",
+  "description": "Web client",
+  "memberIds": ["user-uuid"],
+  "newRepository": {
+    "name": "qgents-web",
+    "description": "Web client repository",
+    "isPrivate": true,
+    "displayName": "Web 前端"
+  }
+}

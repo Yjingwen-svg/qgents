@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
-import { Alert, Button, ConfigProvider, Empty, Result, Segmented, Space, Spin, theme, Typography, type ThemeConfig } from 'antd'
+import { Alert, Button, ConfigProvider, Empty, Pagination, Result, Segmented, Space, Spin, theme, Typography, type ThemeConfig } from 'antd'
 import { AppstoreOutlined, UnorderedListOutlined } from '@ant-design/icons'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/api'
@@ -17,7 +17,7 @@ const PAGE_SIZE = 20
 const DEFAULT_VISIBLE_TASKS = 8
 const TASK_CARD_WIDTH = 285
 const MIN_TASK_CARD_GAP = 16
-const SEARCH_PARAMS = new Set(['status', 'groupId', 'createdBy', 'repositoryId', 'view'])
+const SEARCH_PARAMS = new Set(['status', 'groupId', 'createdBy', 'repositoryId', 'view', 'keyword'])
 
 const taskCenterTheme: ThemeConfig = {
   algorithm: theme.defaultAlgorithm,
@@ -32,9 +32,10 @@ export default function TaskCenterPage() {
   const groupId = searchParams.get('groupId') ?? undefined
   const createdBy = searchParams.get('createdBy') ?? undefined
   const repositoryId = searchParams.get('repositoryId') ?? undefined
+  const search = searchParams.get('keyword') ?? ''
   const legacyTaskId = searchParams.get('taskId')?.trim() || undefined
   const view = searchParams.get('view') === 'table' ? 'table' : 'board'
-  const query = useInfiniteTasks(projectId, { groupId, status: status === 'all' ? undefined : status, createdBy, repositoryId, limit: PAGE_SIZE })
+  const query = useInfiniteTasks(projectId, { groupId, status: status === 'all' ? undefined : status, createdBy, repositoryId, keyword: search || undefined, limit: PAGE_SIZE })
   const mainRef = useRef<HTMLElement>(null)
   const { visibleTaskCount, cardGap } = useTaskBoardLayout(mainRef)
   const [currentPage, setCurrentPage] = useState(1)
@@ -51,9 +52,8 @@ export default function TaskCenterPage() {
   const isUnfiltered = status === 'all' && !createdBy && !groupId && !repositoryId
   const pageStart = (currentPage - 1) * visibleTaskCount
   const visibleTasks = tasks.slice(pageStart, pageStart + visibleTaskCount)
-  const hasPreviousPage = currentPage > 1
-  const hasLoadedNextPage = pageStart + visibleTaskCount < tasks.length
-  const hasNextPage = hasLoadedNextPage || query.hasNextPage
+  const loadedPageCount = Math.max(1, Math.ceil(tasks.length / visibleTaskCount))
+  const paginationTotal = tasks.length + (query.hasNextPage ? visibleTaskCount : 0)
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams)
@@ -74,7 +74,7 @@ export default function TaskCenterPage() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [groupId, status, createdBy, repositoryId, visibleTaskCount])
+  }, [groupId, status, createdBy, repositoryId, search, visibleTaskCount])
 
   function updateParam(key: string, value: string | undefined) {
     const next = new URLSearchParams(searchParams)
@@ -85,6 +85,7 @@ export default function TaskCenterPage() {
   function resetFilters() {
     const next = new URLSearchParams(searchParams)
     for (const key of ['status', 'createdBy', 'groupId', 'repositoryId']) next.delete(key)
+    next.delete('keyword')
     setSearchParams(next, { replace: true })
   }
 
@@ -94,17 +95,18 @@ export default function TaskCenterPage() {
     navigate(`${PATHS.projectTaskDetail(projectId, taskId)}${search ? `?${search}` : ''}`, { state: { from } })
   }
 
-  async function showNextPage() {
-    if (hasLoadedNextPage) {
-      setCurrentPage((page) => page + 1)
+  async function changePage(nextPage: number) {
+    if (nextPage <= loadedPageCount) {
+      setCurrentPage(nextPage)
       return
     }
-    if (!query.hasNextPage || query.isFetchingNextPage) return
-    try {
-      await query.fetchNextPage()
-      setCurrentPage((page) => page + 1)
-    } catch {
-      // The existing inline next-page error keeps the current page visible.
+    if (nextPage === loadedPageCount + 1 && query.hasNextPage && !query.isFetchingNextPage) {
+      try {
+        await query.fetchNextPage()
+        setCurrentPage(nextPage)
+      } catch {
+        // The existing inline next-page error keeps the current page visible.
+      }
     }
   }
 
@@ -116,10 +118,10 @@ export default function TaskCenterPage() {
             <Title level={2} className={styles.title}>任务中心 <Text type="secondary">（按需求分组）</Text></Title>
             {query.isFetching && !query.isLoading ? <Spin size="small" /> : null}
           </header>
-          <TaskFilters status={status} groupId={groupId} repositoryId={repositoryId} createdBy={createdBy} groupOptions={groupOptions} repositoryOptions={repositoryOptions} createdByOptions={createdByOptions} onStatusChange={(value) => updateParam('status', value === 'all' ? undefined : value)} onGroupChange={(value) => updateParam('groupId', value)} onRepositoryChange={(value) => updateParam('repositoryId', value)} onCreatedByChange={(value) => updateParam('createdBy', value)} onReset={resetFilters} />
+          <TaskFilters status={status} groupId={groupId} repositoryId={repositoryId} createdBy={createdBy} search={search} groupOptions={groupOptions} repositoryOptions={repositoryOptions} createdByOptions={createdByOptions} onStatusChange={(value) => updateParam('status', value === 'all' ? undefined : value)} onGroupChange={(value) => updateParam('groupId', value)} onRepositoryChange={(value) => updateParam('repositoryId', value)} onCreatedByChange={(value) => updateParam('createdBy', value)} onSearchChange={(value) => updateParam('keyword', value.trim() || undefined)} onReset={resetFilters} />
           <div className={styles.listHeading}><Space><Text strong>任务列表</Text><Text type="secondary">{tasks.length} 项</Text></Space><Segmented<TaskCenterView> aria-label="任务视图" value={view} onChange={(nextView) => updateParam('view', nextView)} options={[{ value: 'board', label: '看板', icon: <AppstoreOutlined /> }, { value: 'table', label: '表格', icon: <UnorderedListOutlined /> }]} /></div>
           <TaskCenterContent query={query} tasks={visibleTasks} hasServerItems={hasServerItems} isUnfiltered={isUnfiltered} view={view} onViewDetails={viewTask} onRetry={() => void query.refetch()} />
-          {!query.isLoading && tasks.length > 0 ? <nav className={styles.pagination} aria-label="任务列表分页"><Button disabled={!hasPreviousPage} onClick={() => setCurrentPage((page) => page - 1)}>上一页</Button><Text type="secondary">第 {currentPage} 页</Text><Button disabled={!hasNextPage} loading={query.isFetchingNextPage} onClick={() => void showNextPage()}>下一页</Button></nav> : null}
+          {!query.isLoading && tasks.length > 0 ? <nav className={styles.pagination} aria-label="任务列表分页"><Pagination current={currentPage} pageSize={visibleTaskCount} total={paginationTotal} showSizeChanger={false} showQuickJumper={{ goButton: '跳转' }} showLessItems disabled={query.isFetchingNextPage} onChange={(page) => void changePage(page)} /></nav> : null}
           {!query.isLoading && query.hasNextPage ? <div className={styles.loadMore}><Button onClick={() => void query.fetchNextPage()} loading={query.isFetchingNextPage}>加载更多</Button></div> : null}
         </main>
       </div>
@@ -163,8 +165,14 @@ function useTaskBoardLayout(mainRef: RefObject<HTMLElement | null>) {
     if (!element || typeof ResizeObserver === 'undefined') return
 
     const update = () => {
-      const width = element.clientWidth
-      const contentWidth = Math.max(width - 64, 1)
+      const computedStyle = window.getComputedStyle(element)
+      const paddingLeft = Number.parseFloat(computedStyle.paddingLeft) || 0
+      const paddingRight = Number.parseFloat(computedStyle.paddingRight) || 0
+      const contentWidth = Math.max(element.clientWidth - paddingLeft - paddingRight, 1)
+      if (contentWidth <= 620) {
+        setLayout({ visibleTaskCount: 2, cardGap: MIN_TASK_CARD_GAP })
+        return
+      }
       const columns = Math.max(1, Math.floor((contentWidth + MIN_TASK_CARD_GAP) / (TASK_CARD_WIDTH + MIN_TASK_CARD_GAP)))
       const cardGap = columns > 1 ? Math.max(MIN_TASK_CARD_GAP, (contentWidth - columns * TASK_CARD_WIDTH) / (columns - 1)) : MIN_TASK_CARD_GAP
       setLayout({ visibleTaskCount: columns * 2, cardGap })

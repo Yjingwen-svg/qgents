@@ -11,12 +11,19 @@ const diffAcceptMock = vi.hoisted(() => vi.fn())
 const taskRunGetMock = vi.hoisted(() => vi.fn())
 const mergeRequestCreateMock = vi.hoisted(() => vi.fn())
 const mergeRequestMergeMock = vi.hoisted(() => vi.fn())
+const mergeRequestApproveCqMock = vi.hoisted(() => vi.fn())
+const mergeRequestRejectCqMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api/taskModel', () => ({
   diffsApi: { accept: diffAcceptMock },
   tasksApi: { create: taskCreateMock, cancel: taskCancelMock },
   taskRunsApi: { get: taskRunGetMock, retry: taskRunRetryMock },
-  mergeRequestsApi: { create: mergeRequestCreateMock, merge: mergeRequestMergeMock },
+  mergeRequestsApi: {
+    create: mergeRequestCreateMock,
+    merge: mergeRequestMergeMock,
+    approveCq: mergeRequestApproveCqMock,
+    rejectCq: mergeRequestRejectCqMock,
+  },
 }))
 
 import { queryClient, taskModelQueryKeys } from '@/query'
@@ -26,6 +33,7 @@ import {
   useCreateMergeRequest,
   useCreateTask,
   useMergeMergeRequest,
+  useApproveMergeRequestCq,
   useRetryTaskRunModel,
   useTaskRun,
 } from './task-model'
@@ -52,6 +60,8 @@ beforeEach(() => {
   taskRunGetMock.mockReset()
   mergeRequestCreateMock.mockReset()
   mergeRequestMergeMock.mockReset()
+  mergeRequestApproveCqMock.mockReset()
+  mergeRequestRejectCqMock.mockReset()
   queryClient.clear()
 })
 
@@ -110,7 +120,7 @@ describe('new task model hooks', () => {
       repositoryId: 'repo-1',
       baseCommit: 'abc',
       sourceBranch: 'feature/login',
-      headCommit: null,
+      headCommit: 'abc123',
       status: 'ACCEPTED' as const,
       changeStats: { files: 1, additions: 1, deletions: 0 },
       createdAt: '2026-08-12T00:00:00Z',
@@ -204,6 +214,35 @@ describe('new task model hooks', () => {
     })
     expect(mergeRequestMergeMock).toHaveBeenCalledWith('project-1', 'mr-1')
     expect(queryClient.getQueryData(taskModelQueryKeys.mergeRequests.detail('project-1', 'mr-1'))).toEqual(merged)
+    expect(queryClient.getQueryState(taskModelQueryKeys.mergeRequests.all('project-1'))?.isInvalidated).toBe(true)
+  })
+
+  it('invalidates MR detail and checks after a CQ+1 stamp', async () => {
+    const stamped = {
+      id: 'mr-1',
+      repositoryId: 'repo-1',
+      groupIds: ['group-1'],
+      provider: 'GITHUB',
+      number: 42,
+      sourceBranch: 'feat/login-api',
+      targetBranch: 'main',
+      status: 'OPEN' as const,
+      headCommit: 'abc123',
+      webUrl: null,
+      qualityGate: { status: 'PENDING', requiredChecks: ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE'] },
+    }
+    mergeRequestApproveCqMock.mockResolvedValue(stamped)
+    const list = queryClient.getQueryCache().build(queryClient, {
+      queryKey: taskModelQueryKeys.mergeRequests.all('project-1'),
+      queryFn: async () => [],
+    })
+    list.setData([])
+    const { result } = renderHook(() => useApproveMergeRequestCq('project-1'), { wrapper: wrapper(queryClient) })
+    await act(async () => {
+      await result.current.mutateAsync({ mergeRequestId: 'mr-1', input: { reason: 'LGTM' } })
+    })
+    expect(mergeRequestApproveCqMock).toHaveBeenCalledWith('project-1', 'mr-1', { reason: 'LGTM' })
+    expect(queryClient.getQueryData(taskModelQueryKeys.mergeRequests.detail('project-1', 'mr-1'))).toEqual(stamped)
     expect(queryClient.getQueryState(taskModelQueryKeys.mergeRequests.all('project-1'))?.isInvalidated).toBe(true)
   })
 })

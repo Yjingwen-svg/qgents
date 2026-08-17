@@ -31,11 +31,19 @@ function filterItems(items: DeliveryItem[], searchParams: URLSearchParams): Deli
   const groupId = searchParams.get('groupId')
   const repositoryId = searchParams.get('repositoryId')
   const createdBy = searchParams.get('createdBy')
+  const keyword = searchParams.get('keyword')?.trim().toLocaleLowerCase()
   return items.filter((item) => {
     if (type && item.resourceType !== type) return false
     if (status && item.displayStatus !== status) return false
     if (groupId && item.requirementGroup?.id !== groupId) return false
     if (createdBy && item.creator.id !== createdBy) return false
+    if (keyword) {
+      const searchable = [item.title, item.summary, item.source.taskDisplayCode, item.source.taskTitle, item.creator.displayName]
+        .filter((value): value is string => Boolean(value))
+        .join(' ')
+        .toLocaleLowerCase()
+      if (!searchable.includes(keyword)) return false
+    }
     if (repositoryId && (item.resourceType !== 'CODE' || !item.repositories.some((repository) => repository.repositoryId === repositoryId))) return false
     return true
   })

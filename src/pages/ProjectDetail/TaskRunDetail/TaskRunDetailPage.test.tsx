@@ -117,6 +117,7 @@ describe('TaskRunDetailPage execution observability workspace', () => {
     expect(screen.queryByText('diff-1')).not.toBeInTheDocument()
   })
 
+
   it('preserves retry, cancel and TaskRun ownership validation', async () => {
     const user = userEvent.setup()
     const next = { ...run, id: 'run-2', status: 'QUEUED' as const, retryOfTaskRunId: run.id }

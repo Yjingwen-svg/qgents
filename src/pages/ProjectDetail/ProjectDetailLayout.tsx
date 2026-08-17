@@ -102,10 +102,10 @@ export default function ProjectDetailLayout() {
   const projectName = project?.name ?? projectId
 
   // 群列表（项目总群 + 需求群）
-  const { data: groups = [] } = useQuery({
+  const { data: groups = [] } = useQuery({//没回来或失败时当空数组,1 个项目总群 + 若干需求群
     queryKey: ['groups', projectId],
     queryFn: () => groupApi.listByProject(projectId),
-    enabled: !!projectId,
+    enabled: !!projectId,//!! 把值变成 true/false
   })
   const mainGroup = groups.find((g) => g.type === 'PROJECT_MAIN') ?? groups[0]
 

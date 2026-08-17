@@ -18,7 +18,7 @@ const agent: AgentSummary = {
   name: 'Agent One',
   avatar: null,
   role: 'DEVELOPER',
-  capabilities: ['TypeScript'],
+  description: '负责 TypeScript 开发',
   visibility: 'PRIVATE',
   status: 'ACTIVE',
   createdBy: 'user-one',
@@ -50,7 +50,7 @@ describe('useAgents', () => {
     agentListMock.mockResolvedValue({ data: [agent], page: { nextCursor: null, hasMore: false } })
     const { result } = renderHook(() => useAgents('project-one', 'team-one'), { wrapper })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(agentListMock).toHaveBeenCalledWith('team-one', 'project-one', undefined)
+    expect(agentListMock).toHaveBeenCalledWith('team-one', undefined)
     expect(result.current.data?.data).toEqual([agent])
   })
 

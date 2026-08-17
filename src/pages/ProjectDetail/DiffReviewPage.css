@@ -23,10 +23,10 @@
   color: var(--qg-teal-dark);
 }
 
-.diff-review__crumb {
-  margin: 0 0 10px;
+.diff-review__branch {
+  margin: 6px 0 0;
   color: #5b6b82;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .diff-review__title-row {
@@ -218,8 +218,7 @@
   font-size: 13px;
 }
 
-.diff-review__aside p,
-.diff-review__aside span {
+.diff-review__aside p {
   color: #5b6b82;
   font-size: 13px;
 }
@@ -229,6 +228,20 @@
   flex-direction: column;
   gap: 8px;
   margin-top: 16px;
+}
+
+.diff-review__actions .ant-btn {
+  width: 100%;
+}
+
+.diff-review__action-wrap {
+  display: block;
+  width: 100%;
+}
+
+.diff-review__github-mr {
+  display: inline-block;
+  font-size: 13px;
 }
 
 .diff-review__empty {

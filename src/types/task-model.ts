@@ -108,6 +108,7 @@ export interface TaskListFilters {
   status?: TaskStatus
   createdBy?: string
   repositoryId?: string
+  keyword?: string
   cursor?: string
   limit?: number
 }
@@ -312,6 +313,11 @@ export interface MergeRequestCreateInput {
   title: string
 }
 
+/** POST /merge-requests/{id}/cq-approvals 与 cq-rejections */
+export interface MergeRequestCqInput {
+  reason: string
+}
+
 export type MergeRequestStatus = 'OPEN' | 'MERGED' | 'CLOSED'
 
 export interface MergeRequestListFilters {
@@ -349,10 +355,44 @@ export interface MergeRequestCheck {
   status: 'PENDING' | 'PASSED' | 'FAILED'
   attemptNo?: number | null
   testsetId?: string | null
+  testRunId?: string | null
+  dryRunId?: string | null
   commitSha?: string | null
   source?: string | null
   startedAt?: string | null
   completedAt?: string | null
+  reviewedByUserId?: string | null
+  reviewedByName?: string | null
+  reviewReason?: string | null
+}
+
+/** GET /merge-requests/{id}/reviews 中人工 CQ 决策（文档无固定样例，前端宽松收） */
+export type MergeRequestCqDecision = 'APPROVED' | 'REJECTED'
+
+export interface MergeRequestCqReview {
+  id: string
+  decision: MergeRequestCqDecision
+  reviewerName: string
+  reason: string | null
+  createdAt: string | null
+  commitSha: string | null
+}
+
+/**
+ * GET /merge-requests/{id}/commits（暂定：官方契约尚未冻结该路径与字段）
+ * 列表预览用 totalCount + items；相对时间由前端用 committedAt 计算。
+ */
+export interface MergeRequestCommit {
+  sha: string
+  message: string
+  authorName: string
+  authorUserId: string | null
+  committedAt: string
+}
+
+export interface MergeRequestCommitList {
+  totalCount: number
+  items: MergeRequestCommit[]
 }
 
 export interface DiffReviewBatch {

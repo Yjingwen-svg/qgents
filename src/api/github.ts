@@ -246,7 +246,7 @@ export const githubApi = {
       { unwrapData: false },
     ).then((res) => asList(res.data).map(mapAuthorizedRepository))
   }, //只要请求回来的仓库数组
-
+//拉项目的仓库
   /** GET /projects/{projectId}/repositories */
   listProjectRepositories(projectId: string) {
     return request<ApiEnvelope<unknown>>(

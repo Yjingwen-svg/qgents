@@ -73,6 +73,7 @@ export function queryKeysForProjectTaskEvent(
       if (!taskId) return []
       addKey(keys, taskModelQueryKeys.tasks.all(projectId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      addKey(keys, queryKeys.workBranches.all(projectId))
       break
     case 'task-step.updated':
       if (!taskId || !taskStepId) return []
@@ -104,6 +105,7 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.diffs.detail(projectId, diffId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.taskDiffReview.detail(projectId, taskId))
+      addKey(keys, queryKeys.workBranches.all(projectId))
       if (taskRunId) {
         addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
         addKey(keys, taskModelQueryKeys.taskRuns.all(projectId, taskId))
@@ -137,6 +139,7 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.tasks.all(projectId))
       addKey(keys, taskModelQueryKeys.taskDiffReview.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      addKey(keys, queryKeys.workBranches.all(projectId))
       addDeliveryQueries()
       break
     case 'delivery.repository.updated':
@@ -160,6 +163,7 @@ export function queryKeysForProjectTaskEvent(
       if (!stringId(payload, 'mergeRequestId')) return []
       addKey(keys, deliveryCenterKeys.all(projectId))
       addKey(keys, taskModelQueryKeys.mergeRequests.all(projectId))
+      addKey(keys, queryKeys.workBranches.all(projectId))
       if (taskId) {
         addKey(keys, taskModelQueryKeys.tasks.all(projectId))
         addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))

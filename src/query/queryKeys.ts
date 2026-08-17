@@ -30,6 +30,13 @@ export const queryKeys = {
   teamProjects: (teamId: string) => ['qgents', 'teams', teamId, 'projects'] as const,
   projectRepositories: (projectId: string) =>
     ['qgents', 'projects', projectId, 'repositories'] as const,
+  workBranches: {
+    all: (projectId: string) => ['qgents', 'projects', projectId, 'work-branches'] as const,
+    list: (
+      projectId: string,
+      filters: { repositoryId?: string; requirementGroupId?: string; cursor?: string; limit?: number } = {},
+    ) => ['qgents', 'projects', projectId, 'work-branches', 'list', filters] as const,
+  },
   testsets: {
     all: (projectId: string) => ['qgents', 'projects', projectId, 'testsets'] as const,
     list: (projectId: string, filters: { repositoryId?: string; status?: string } = {}) =>

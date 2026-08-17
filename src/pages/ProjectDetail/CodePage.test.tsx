@@ -5,20 +5,33 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { githubApi } from '@/api/github'
+import { groupApi } from '@/api/group'
+import { workBranchesApi } from '@/api/workBranches'
 import type { MergeRequestSummary } from '@/types/task-model'
+import type { WorkBranch } from '@/types/workBranch'
 import { CodePage } from './CodePage'
 
-const useDiffsMock = vi.hoisted(() => vi.fn())
 const useMergeRequestsMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/task-model', () => ({
-  useDiffs: useDiffsMock,
   useMergeRequests: useMergeRequestsMock,
 }))
 
 vi.mock('@/api/github', () => ({
   githubApi: {
     listProjectRepositories: vi.fn(),
+  },
+}))
+
+vi.mock('@/api/group', () => ({
+  groupApi: {
+    listByProject: vi.fn(),
+  },
+}))
+
+vi.mock('@/api/workBranches', () => ({
+  workBranchesApi: {
+    list: vi.fn(),
   },
 }))
 
@@ -39,6 +52,43 @@ const mergeRequests: MergeRequestSummary[] = [
   },
 ]
 
+const workBranches: WorkBranch[] = [
+  {
+    id: 'wb-1',
+    projectRepositoryId: 'bound-demo-auth-service',
+    name: 'feat/login-api',
+    workspaceId: 'ws-1',
+    lastKnownHead: 'a1b2c3d',
+    latestTask: { id: 'task-1', displayCode: 'T-1024', title: '登录接口开发' },
+    requirementGroups: [{ id: 'group-login', title: '登录功能' }],
+    latestDiff: {
+      id: 'diff-login',
+      taskId: 'task-1',
+      status: 'PENDING_REVIEW',
+      changeStats: { additions: 12, deletions: 3 },
+    },
+    openMergeRequest: { id: 'mr-1', number: 42, status: 'OPEN' },
+    lastVerification: {
+      kind: 'TEST_RUN',
+      status: 'PASSED',
+      commitSha: 'a1b2c3d',
+      completedAt: '2026-08-17T12:00:00Z',
+    },
+  },
+  {
+    id: 'wb-2',
+    projectRepositoryId: 'bound-demo-auth-service',
+    name: 'feat/no-diff',
+    workspaceId: 'ws-2',
+    lastKnownHead: null,
+    latestTask: null,
+    requirementGroups: [],
+    latestDiff: null,
+    openMergeRequest: null,
+    lastVerification: null,
+  },
+]
+
 function renderPage(path = '/app/projects/demo-project/code') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -47,6 +97,9 @@ function renderPage(path = '/app/projects/demo-project/code') {
         <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/app/projects/:projectId/code" element={<CodePage />} />
+            <Route path="/app/projects/:projectId/tasks/:taskId" element={<div>task detail</div>} />
+            <Route path="/app/projects/:projectId/code/diff/:diffId" element={<div>diff detail</div>} />
+            <Route path="/app/projects/:projectId/code/mr/:mergeRequestId" element={<div>mr detail</div>} />
           </Routes>
         </MemoryRouter>
       </App>
@@ -70,7 +123,24 @@ beforeEach(() => {
       boundAt: '2026-08-15T00:00:00Z',
     },
   ])
-  useDiffsMock.mockReturnValue({ data: { data: [] }, isLoading: false })
+  vi.mocked(groupApi.listByProject).mockResolvedValue([
+    {
+      id: 'group-login',
+      projectId: 'demo-project',
+      type: 'REQUIREMENT',
+      title: '登录功能',
+      status: 'ACTIVE',
+      latestActivityAt: '2026-08-12T10:00:00Z',
+      unreadCount: 0,
+      isPinned: false,
+      isArchived: false,
+    },
+  ])
+  vi.mocked(workBranchesApi.list).mockResolvedValue({
+    data: workBranches,
+    page: { nextCursor: null, hasMore: false },
+    requestId: 'req_work_branches',
+  })
   useMergeRequestsMock.mockReturnValue({
     data: { data: mergeRequests, page: { nextCursor: null, hasMore: false }, requestId: 'r1' },
     isLoading: false,
@@ -84,7 +154,14 @@ describe('CodePage', () => {
   it('shows the branch workspace by default', async () => {
     renderPage()
     expect(await screen.findByText('需求过滤')).toBeInTheDocument()
+    expect(await screen.findByText('feat/login-api')).toBeInTheDocument()
     expect(screen.queryByText('实现邮箱登录')).not.toBeInTheDocument()
+  })
+
+  it('loads requirement filters from groups API', async () => {
+    renderPage()
+    await screen.findByText('需求过滤')
+    expect(groupApi.listByProject).toHaveBeenCalledWith('demo-project')
   })
 
   it('opens the MR list tab from the documented query string', async () => {
@@ -107,45 +184,19 @@ describe('CodePage', () => {
     expect(await screen.findByText('实现邮箱登录')).toBeInTheDocument()
   })
 
-  it('keeps zero-diff stats clickable into an empty review shell', async () => {
+  it('links Diff only when latestDiff.id is present', async () => {
     renderPage()
-    const zeroDiffs = await screen.findAllByTitle('该分支暂无变更，打开空 Diff')
-    expect(zeroDiffs.length).toBeGreaterThan(0)
-    expect(zeroDiffs[0]).toHaveAttribute(
-      'href',
-      expect.stringMatching(/\/app\/projects\/demo-project\/code\/diff\/empty-branch/),
-    )
+    const linked = await screen.findByTitle('查看该分支最新 Diff')
+    expect(linked).toHaveAttribute('href', '/app/projects/demo-project/code/diff/diff-login')
+    expect(linked).toHaveTextContent('+12')
+    expect(linked).toHaveTextContent('-3')
+    expect(screen.queryByTitle('该分支暂无变更，打开空 Diff')).not.toBeInTheDocument()
+    expect(screen.getByTitle('该工作分支暂无 Diff 快照')).toBeInTheDocument()
   })
 
-  it('syncs Diff changeStats onto the branch Diff column', async () => {
-    useDiffsMock.mockReturnValue({
-      data: {
-        data: [
-          {
-            id: 'diff-login',
-            projectId: 'demo-project',
-            taskId: 'task-1',
-            taskRunId: 'run-1',
-            taskStepId: 'step-1',
-            requirementGroupId: 'login',
-            workspaceId: 'ws-1',
-            repositoryId: 'bound-demo-auth-service',
-            baseCommit: 'base',
-            sourceBranch: 'feat/login-api',
-            headCommit: null,
-            status: 'PENDING_REVIEW',
-            changeStats: { files: 2, additions: 12, deletions: 3 },
-            createdAt: '2026-08-12T10:00:00Z',
-          },
-        ],
-        page: { nextCursor: null, hasMore: false },
-        requestId: 'r-diffs',
-      },
-      isLoading: false,
-    })
+  it('shows open MR from the work-branch row', async () => {
     renderPage()
-    expect(await screen.findByTitle('查看该分支 Diff')).toBeInTheDocument()
-    expect(screen.getByTitle('查看该分支 Diff')).toHaveTextContent('+12')
-    expect(screen.getByTitle('查看该分支 Diff')).toHaveTextContent('-3')
+    const mr = await screen.findByRole('link', { name: '#42' })
+    expect(mr).toHaveAttribute('href', '/app/projects/demo-project/code/mr/mr-1')
   })
 })

@@ -19,47 +19,30 @@ import {
   theme,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import {
-  GithubOutlined,
-  MoreOutlined,
-  CheckCircleFilled,
-  WarningFilled,
-  CloseCircleFilled,
-  CheckCircleOutlined,
-} from '@ant-design/icons'
+import { GithubOutlined, MoreOutlined } from '@ant-design/icons'
 import { githubApi } from '@/api/github'
-import { useDiffs } from '@/hooks/task-model'
+import { workBranchesApi } from '@/api/workBranches'
+import { groupApi } from '@/api'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
 import type { ProjectBoundRepository } from '@/types/github'
-import {
-  branchHealthLabel,
-  branchTestLabel,
-  type BranchHealthStatus,
-  type BranchTestStatus,
-  type ProjectBranchRow,
-} from '@/types/codeBranch'
-import { PROJECT_REQUIREMENTS } from './requirements'
-import {
-  branchesForBoundRepo,
-  repoAlias,
-} from './codeBranchDemo'
-import { syncBranchesWithDiffs } from './branchDiffSync'
-import { toEmptyBranchDiffId } from './emptyBranchDiff'
+import type { WorkBranch } from '@/types/workBranch'
+import { workBranchRowKey } from '@/types/workBranch'
 import { MergeRequestTab } from './MergeRequestTab'
-import { groupApi } from '@/api'
 
 const { Title, Paragraph, Text } = Typography
-// 分支行仍用演示骨架（文档：分支查询本轮不做）；+/- 与 diffId 对齐 GET /diffs（Agent 产出）
+
 /**
  * 代码与 Branch
  *
- * 仓库列表：GET /projects/{projectId}/repositories（绑定记录 id）。
- * 分支行：文档暂无分支查询接口，骨架用演示数据；+/- 以 Diff 列表 changeStats 为准。
- * MR 列表：GET /projects/{projectId}/merge-requests；创建入口在 Diff 评审页。
- * Diff 列：有快照则进详情；+/- 为 0 且无快照也可点进空页。
- * Agent 新 Diff 经项目 SSE diff.created → invalidate → 本页 useDiffs 自动刷新。
+ * 仓库卡片：GET /projects/{projectId}/repositories
+ * 工作分支：GET /projects/{projectId}/work-branches（行内 latestDiff / latestTask / openMergeRequest）
+ * 需求筛选：GET /projects/{projectId}/groups（REQUIREMENT + Group UUID）
+ * Diff 跳转：仅使用行内 latestDiff.id，禁止按分支名反查
+ * MR Tab：GET /projects/{projectId}/merge-requests
+ *
+ * 口径：docs/frontend/code-branch-backend-confirm.md
  */
 export function CodePage() {
   const { token } = theme.useToken()
@@ -68,47 +51,57 @@ export function CodePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = searchParams.get('tab') === 'mr' ? 'mr' : 'branches'
 
-  const [requirementId, setRequirementId] = useState<string | undefined>()
+  const [requirementGroupId, setRequirementGroupId] = useState<string | undefined>()
   const [drawer, setDrawer] = useState<{
-    repo: ProjectBoundRepository//项目绑定到仓库的选择,主要涵盖的是仓库的信息
-    branch: ProjectBranchRow//?
+    repo: ProjectBoundRepository
+    branch: WorkBranch
   } | null>(null)
-  //  向后端要数据 写法
-  // 组件一挂上就去拉项目绑定仓库列表数据
+
   const reposQuery = useQuery({
-    queryKey: queryKeys.projectRepositories(projectId),//拉到的数据的名字,相同也页面可以用缓存
+    queryKey: queryKeys.projectRepositories(projectId),
     queryFn: () => githubApi.listProjectRepositories(projectId),
-    enabled: Boolean(projectId),//只有projectId有值才执行
+    enabled: Boolean(projectId),
   })
 
-  // Agent / 受控执行产出的 Diff；与群 DIFF 卡同一 diffId；SSE 会 invalidate 本 query
-  const diffsQuery = useDiffs(projectId, { limit: 100 })
+  const groupsQuery = useQuery({
+    queryKey: ['groups', projectId],
+    queryFn: () => groupApi.listByProject(projectId),
+    enabled: Boolean(projectId),
+  })
 
-// 筛选逻辑
-// 先拉需求群，下拉联调时再替换 PROJECT_REQUIREMENTS
-useQuery({
-  queryKey: ['groups', projectId],
-  queryFn: () => groupApi.listByProject(projectId),
-  enabled: Boolean(projectId),
-})
-//基于仓库列表拼接出来的,是因为卡片的数据源就是仓库列表。
+  const workBranchesQuery = useQuery({
+    queryKey: queryKeys.workBranches.list(projectId, {
+      requirementGroupId,
+      limit: 100,
+    }),
+    queryFn: () =>
+      workBranchesApi.list(projectId, {
+        requirementGroupId,
+        limit: 100,
+      }),
+    enabled: Boolean(projectId),
+  })
+
+  const requirementOptions = useMemo(() => {
+    const groups = groupsQuery.data ?? []
+    return groups
+      .filter((group) => group.type === 'REQUIREMENT' && group.status !== 'ARCHIVED')
+      .map((group) => ({ value: group.id, label: group.title }))
+  }, [groupsQuery.data])
+
   const repoCards = useMemo(() => {
-    const list = reposQuery.data ?? []
-    const diffs = diffsQuery.data?.data ?? []
-    return list.map((repo) => {
-      const demoBranches = branchesForBoundRepo(repo)
-      const allBranches = syncBranchesWithDiffs(demoBranches, diffs, repo.id)
-      const branches = requirementId
-        ? allBranches.filter((b) => b.requirementGroupId === requirementId)
-        : allBranches
-      return { repo, branches }
-    })
-  }, [reposQuery.data, diffsQuery.data, requirementId])
-//分支的有无
-  const visibleCards = requirementId//有没有暂无数据
-    ? repoCards.filter((c) => c.branches.length > 0)
-    : repoCards//决定卡片要不要渲染
-//需求组（requirementId 存在），就只保留「里面有匹配分支」的仓库卡片；没选需求组，全部卡片原样保留。
+    const repos = reposQuery.data ?? []
+    const branches = workBranchesQuery.data?.data ?? []
+    return repos.map((repo) => ({
+      repo,
+      branches: branches.filter((branch) => branch.projectRepositoryId === repo.id),
+    }))
+  }, [reposQuery.data, workBranchesQuery.data])
+
+  const visibleCards = requirementGroupId
+    ? repoCards.filter((card) => card.branches.length > 0)
+    : repoCards
+
   async function copyBranchName(name: string) {
     try {
       await navigator.clipboard.writeText(name)
@@ -117,18 +110,21 @@ useQuery({
       message.error('复制失败，请手动复制')
     }
   }
-  // navigator.clipboard.writeText(name)：浏览器原生剪贴板 API，把分支名写入剪贴板
 
   function setTab(next: string) {
     const nextParams = new URLSearchParams(searchParams)
-    if (next === 'mr') nextParams.set('tab', 'mr')//再点一次mr还是不变,这样的话刷新不会变
+    if (next === 'mr') nextParams.set('tab', 'mr')
     else nextParams.delete('tab')
     if (next !== 'mr') {
       nextParams.delete('repositoryId')
       nextParams.delete('status')
     }
-    setSearchParams(nextParams, { replace: true })//历史只是保留了一页
+    setSearchParams(nextParams, { replace: true })
   }
+
+  const branchesLoading = reposQuery.isLoading || workBranchesQuery.isLoading
+  const branchesError = reposQuery.isError || workBranchesQuery.isError
+  const branchesErrorObj = reposQuery.error ?? workBranchesQuery.error
 
   return (
     <div style={{ padding: 24 }}>
@@ -153,93 +149,103 @@ useQuery({
         <MergeRequestTab projectId={projectId} repositories={reposQuery.data ?? []} />
       ) : (
         <>
-      <Space wrap style={{ marginBottom: 16 }}>
-        <Text type="secondary">需求过滤</Text>
-        <Select
-          allowClear
-          placeholder="全部需求"
-          style={{ minWidth: 180 }}
-          //requirementId只是这页自己用 useState 记「下拉框当前选中了哪一项」。
-
-          value={requirementId}
-          onChange={(value) => setRequirementId(value)}
-          options={PROJECT_REQUIREMENTS.map((r) => ({//联调替换requirementGroups
-            value: r.id,
-            label: r.title,
-          }))}
-        />
-      </Space>
-
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message="分支由需求任务在受控 Workspace 中产生，不代表 Git 上的任意远程分支。"
-        description="Diff 列的 +/- 来自项目 Diff 列表（与群内 Agent 产出的 diffId / changeStats 同步）。「状态」表示相对默认分支是否还能继续开发；受保护标记、Testset、MR 是另外几列。"
-      />
-
-      {reposQuery.isLoading ? (
-        <div style={{ textAlign: 'center', padding: 48 }}>
-          <Spin />
-        </div>
-      ) : reposQuery.isError ? (
-        <Alert
-          type="error"
-          showIcon
-          message={formatApiError(reposQuery.error)}
-          action={
-            <Button size="small" onClick={() => void reposQuery.refetch()}>
-              重试
-            </Button>
-          }
-        />
-      ) : visibleCards.length === 0 ? (
-        <Card>
-          <Empty
-            description={
-              requirementId ? '没有匹配该需求的分支' : '当前项目尚未绑定仓库'
-            }
-          />
-        </Card>
-      ) : (
-        <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          {visibleCards.map(({ repo, branches }) => (
-            <RepoBranchCard
-              key={repo.id}
-              projectId={projectId}
-              repo={repo}
-              branches={branches}
-              tokenColorBorder={token.colorBorder}
-              onOpenDrawer={(branch) => setDrawer({ repo, branch })}
+          <Space wrap style={{ marginBottom: 16 }}>
+            <Text type="secondary">需求过滤</Text>
+            <Select
+              allowClear
+              placeholder="全部需求群"
+              style={{ minWidth: 200 }}
+              loading={groupsQuery.isLoading}
+              value={requirementGroupId}
+              onChange={(value) => setRequirementGroupId(value)}
+              options={requirementOptions}
             />
-          ))}
-        </Space>
-      )}
+          </Space>
 
-      <Drawer
-        title="Branch 详情"
-        width={420}
-        open={Boolean(drawer)}
-        onClose={() => setDrawer(null)}
-        destroyOnHidden
-        footer={
-          drawer ? (
-            <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-              <Button onClick={() => void copyBranchName(drawer.branch.name)}>
-                复制 Branch 名称
-              </Button>
-            </Space>
-          ) : null
-        }
-      >
-        {drawer ? (
-          <BranchDetailBody
-            repo={drawer.repo}
-            branch={drawer.branch}
-            projectId={projectId}
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="仅展示 Qgents 可追溯的工作分支，不是 GitHub 全量远程分支。"
+            description="Diff 列仅在后端给出 latestDiff.id 时可进入详情；+/- 来自行内 latestDiff.changeStats。无 Diff 时不可跳转。需求筛选使用需求群 UUID。"
           />
-        ) : null}
-      </Drawer>
+
+          {branchesLoading ? (
+            <div style={{ textAlign: 'center', padding: 48 }}>
+              <Spin />
+            </div>
+          ) : branchesError ? (
+            <Alert
+              type="error"
+              showIcon
+              message={formatApiError(branchesErrorObj)}
+              action={
+                <Button
+                  size="small"
+                  onClick={() => {
+                    void reposQuery.refetch()
+                    void workBranchesQuery.refetch()
+                  }}
+                >
+                  重试
+                </Button>
+              }
+            />
+          ) : (reposQuery.data?.length ?? 0) === 0 ? (
+            <Card>
+              <Empty description="当前项目尚未绑定仓库" />
+            </Card>
+          ) : visibleCards.every((card) => card.branches.length === 0) ? (
+            <Card>
+              <Empty
+                description={
+                  requirementGroupId
+                    ? '没有匹配该需求群的工作分支'
+                    : '暂无工作分支（等待 Task / Workspace 产出）'
+                }
+              />
+            </Card>
+          ) : (
+            <Space direction="vertical" size={16} style={{ width: '100%' }}>
+              {visibleCards.map(({ repo, branches }) =>
+                branches.length === 0 && requirementGroupId ? null : (
+                  <RepoBranchCard
+                    key={repo.id}
+                    projectId={projectId}
+                    repo={repo}
+                    branches={branches}
+                    tokenColorBorder={token.colorBorder}
+                    onOpenDrawer={(branch) => setDrawer({ repo, branch })}
+                  />
+                ),
+              )}
+            </Space>
+          )}
+
+          <Drawer
+            title="Branch 详情"
+            width={420}
+            open={Boolean(drawer)}
+            onClose={() => setDrawer(null)}
+            destroyOnHidden
+            footer={
+              drawer ? (
+                <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+                  <Button onClick={() => void copyBranchName(drawer.branch.name)}>
+                    复制 Branch 名称
+                  </Button>
+                </Space>
+              ) : null
+            }
+          >
+            {drawer ? (
+              <BranchDetailBody
+                repo={drawer.repo}
+                branch={drawer.branch}
+                projectId={projectId}
+              />
+            ) : null}
+          </Drawer>
         </>
       )}
     </div>
@@ -255,82 +261,57 @@ function RepoBranchCard({
 }: {
   projectId: string
   repo: ProjectBoundRepository
-  branches: ProjectBranchRow[]
+  branches: WorkBranch[]
   tokenColorBorder: string
-  onOpenDrawer: (branch: ProjectBranchRow) => void//子向父通信：子组件不维护抽屉状态，只触发回调，状态交给父组件管理
+  onOpenDrawer: (branch: WorkBranch) => void
 }) {
-  const alias = repoAlias(repo)
   const titleName = repo.displayName || repo.fullName.split('/').pop() || repo.fullName
 
-
-
-
-
-
-
-
-//type:类型
-  const columns: ColumnsType<ProjectBranchRow> = [
+  const columns: ColumnsType<WorkBranch> = [
     {
       title: 'Branch',
       dataIndex: 'name',
       key: 'name',
-      render: (name: string, record) => (
-        <Space>
-          <Text code>{name}</Text>
-          {record.protected ? <Tag color="blue">受保护</Tag> : null}
-        </Space>
-      ),
+      render: (name: string) => <Text code>{name}</Text>,
     },
     {
-      title: '状态',
-      dataIndex: 'healthStatus',
-      key: 'healthStatus',
-      width: 120,
-      render: (status: BranchHealthStatus) => <HealthTag status={status} />,//渲染成标签
-    },
-    {
-      title: '关联 Task',
-      key: 'task',
+      title: '最近 Task',
+      key: 'latestTask',
       render: (_value, record) =>
-        record.relatedTask ? (
-          <Text>
-            <Text type="success">{record.relatedTask.code}</Text>
+        record.latestTask ? (
+          <Link to={PATHS.projectTaskDetail(projectId, record.latestTask.id)}>
+            <Text type="success">{record.latestTask.displayCode}</Text>
             {'  '}
-            {record.relatedTask.title}
-          </Text>
+            {record.latestTask.title}
+          </Link>
         ) : (
           <Text type="secondary">—</Text>
         ),
     },
     {
-      title: '提交',
-      dataIndex: 'commitCount',
-      key: 'commitCount',
-      width: 80,
-      align: 'right',
-    },
-    {
       title: 'Diff',
       key: 'diff',
-      width: 120,
-      render: (_value, record) => (
-        <DiffStatLink projectId={projectId} branch={record} />
-      ),
+      width: 140,
+      render: (_value, record) => <DiffStatCell projectId={projectId} branch={record} />,
     },
     {
-      title: 'MR',
-      dataIndex: 'mrCount',
-      key: 'mrCount',
-      width: 64,
-      align: 'right',
-    },
-    {
-      title: 'Testset',
-      dataIndex: 'testStatus',
-      key: 'testStatus',
+      title: 'Open MR',
+      key: 'openMr',
       width: 100,
-      render: (status: BranchTestStatus) => <TestStatusTag status={status} />,
+      render: (_value, record) =>
+        record.openMergeRequest ? (
+          <Link to={PATHS.projectCodeMr(projectId, record.openMergeRequest.id)}>
+            #{record.openMergeRequest.number}
+          </Link>
+        ) : (
+          <Text type="secondary">—</Text>
+        ),
+    },
+    {
+      title: '最近验证',
+      key: 'verification',
+      width: 160,
+      render: (_value, record) => <VerificationCell branch={record} />,
     },
     {
       title: '',
@@ -356,7 +337,9 @@ function RepoBranchCard({
         <Space>
           <GithubOutlined />
           <Text strong>{titleName}</Text>
-          {alias ? <Text type="secondary">（{alias}）</Text> : null}
+          {repo.defaultBranch ? (
+            <Text type="secondary">默认分支 {repo.defaultBranch}</Text>
+          ) : null}
         </Space>
       }
       extra={
@@ -365,14 +348,18 @@ function RepoBranchCard({
         </a>
       }
     >
-      <Table
-        rowKey="id"
-        size="middle"
-        pagination={false}
-        columns={columns}
-        dataSource={branches}
-        scroll={{ x: 860 }}
-      />
+      {branches.length === 0 ? (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该仓库暂无工作分支" />
+      ) : (
+        <Table
+          rowKey={workBranchRowKey}
+          size="middle"
+          pagination={false}
+          columns={columns}
+          dataSource={branches}
+          scroll={{ x: 720 }}
+        />
+      )}
     </Card>
   )
 }
@@ -383,7 +370,7 @@ function BranchDetailBody({
   projectId,
 }: {
   repo: ProjectBoundRepository
-  branch: ProjectBranchRow
+  branch: WorkBranch
   projectId: string
 }) {
   const titleName = repo.displayName || repo.fullName.split('/').pop() || repo.fullName
@@ -396,156 +383,116 @@ function BranchDetailBody({
       </Space>
       <Descriptions column={1} size="small">
         <Descriptions.Item label="Branch">{branch.name}</Descriptions.Item>
-        <Descriptions.Item label="状态">
-          <HealthTag status={branch.healthStatus} />
+        <Descriptions.Item label="Workspace">{branch.workspaceId || '—'}</Descriptions.Item>
+        <Descriptions.Item label="HEAD">
+          {branch.lastKnownHead ? <Text code>{branch.lastKnownHead}</Text> : '—'}
         </Descriptions.Item>
-        <Descriptions.Item label="受保护">{branch.protected ? '是' : '否'}</Descriptions.Item>
-        <Descriptions.Item label="关联 Task">
-          {branch.relatedTask ? (
-            <Link to={PATHS.projectTasks(projectId)}>
-              {branch.relatedTask.code} {branch.relatedTask.title}
+        <Descriptions.Item label="最近 Task">
+          {branch.latestTask ? (
+            <Link to={PATHS.projectTaskDetail(projectId, branch.latestTask.id)}>
+              {branch.latestTask.displayCode} {branch.latestTask.title}
             </Link>
           ) : (
             '—'
           )}
         </Descriptions.Item>
-        <Descriptions.Item label="需求群">
-          {branch.requirementTitle ? (
-            <Tag>{branch.requirementTitle}</Tag>
-          ) : (
-            '—'
-          )}
-        </Descriptions.Item>
-        <Descriptions.Item label="Workspace">{branch.workspaceName || '—'}</Descriptions.Item>
-        <Descriptions.Item label="创建者">{branch.createdBy || '—'}</Descriptions.Item>
-        <Descriptions.Item label="创建时间">
-          {branch.createdAt ? branch.createdAt.replace('T', ' ').replace('Z', '') : '—'}
-        </Descriptions.Item>
-        <Descriptions.Item label="最新提交">
-          {branch.latestCommitSha ? (
-            <span>
-              <Text code>{branch.latestCommitSha}</Text>
-              {branch.latestCommitMessage ? ` ${branch.latestCommitMessage}` : ''}
-            </span>
-          ) : (
-            '—'
-          )}
-        </Descriptions.Item>
-        <Descriptions.Item label="构建产物">
-          {branch.artifactName ? (
-            <Space>
-              {branch.artifactPublished ? (
-                <Tag color="success">已发布</Tag>
-              ) : (
-                <Tag>未发布</Tag>
-              )}
-              <Text>{branch.artifactName}</Text>
+        <Descriptions.Item label="相关需求群">
+          {branch.requirementGroups.length > 0 ? (
+            <Space wrap size={[4, 4]}>
+              {branch.requirementGroups.map((group) => (
+                <Tag key={group.id}>{group.title}</Tag>
+              ))}
             </Space>
           ) : (
             '—'
           )}
         </Descriptions.Item>
-        <Descriptions.Item label="Testset">
-          <TestStatusTag status={branch.testStatus} />
-        </Descriptions.Item>
-        <Descriptions.Item label="提交数">{branch.commitCount}</Descriptions.Item>
         <Descriptions.Item label="Diff">
-          <DiffStatLink projectId={projectId} branch={branch} />
+          <DiffStatCell projectId={projectId} branch={branch} />
         </Descriptions.Item>
-        <Descriptions.Item label="MR">{branch.mrCount}</Descriptions.Item>
+        {branch.latestDiff?.taskId ? (
+          <Descriptions.Item label="Diff 所属 Task">
+            <Space wrap size={4}>
+              <Link to={PATHS.projectTaskDetail(projectId, branch.latestDiff.taskId)}>
+                {branch.latestDiff.taskId}
+              </Link>
+              {branch.latestTask && branch.latestDiff.taskId !== branch.latestTask.id ? (
+                <Text type="secondary">（与最近 Task 不同，为历史快照）</Text>
+              ) : null}
+            </Space>
+          </Descriptions.Item>
+        ) : null}
+        {branch.latestTask && branch.latestTask.finalDiff === null ? (
+          <Descriptions.Item label="最近 Task 最终 Diff">
+            <Text type="secondary">无变更（finalDiff = null）</Text>
+          </Descriptions.Item>
+        ) : null}
+        <Descriptions.Item label="Open MR">
+          {branch.openMergeRequest ? (
+            <Link to={PATHS.projectCodeMr(projectId, branch.openMergeRequest.id)}>
+              #{branch.openMergeRequest.number} ({branch.openMergeRequest.status})
+            </Link>
+          ) : (
+            '—'
+          )}
+        </Descriptions.Item>
+        <Descriptions.Item label="最近验证">
+          <VerificationCell branch={branch} />
+        </Descriptions.Item>
       </Descriptions>
     </>
   )
 }
 
-function DiffStatLink({
-  projectId,
-  branch,
-}: {
-  projectId: string
-  branch: ProjectBranchRow
-}) {
-  const diffsQuery = useDiffs(projectId, { limit: 100 })
-  const diffId = (diffsQuery.data?.data ?? []).find(
-    (item) => item.repositoryId === branch.projectRepositoryId && item.sourceBranch === branch.name,
-  )?.id
-    ?? (diffsQuery.data?.data ?? []).find((item) => item.sourceBranch === branch.name)?.id
+/** 仅使用行内 latestDiff；无 id 时不可跳转 */
+function DiffStatCell({ projectId, branch }: { projectId: string; branch: WorkBranch }) {
+  const diff = branch.latestDiff
+  const additions = diff?.changeStats.additions ?? 0
+  const deletions = diff?.changeStats.deletions ?? 0
   const inner = (
     <>
-      <Text type="success">+{branch.diffAdditions}</Text>
+      <Text type="success">+{additions}</Text>
       {' / '}
-      <Text type="danger">-{branch.diffDeletions}</Text>
+      <Text type="danger">-{deletions}</Text>
     </>
   )
-  const linkStyle = { display: 'inline-block' as const, padding: '2px 4px', borderRadius: 4 }
-  const isZeroDiff = branch.diffAdditions === 0 && branch.diffDeletions === 0
-
-  if (diffId) {
-    return (
-      <Link
-        to={PATHS.projectCodeDiff(projectId, diffId)}
-        title="查看该分支 Diff"
-        style={linkStyle}
-      >
-        {inner}
-      </Link>
-    )
+  if (!diff?.id) {
+    return <Text type="secondary" title="该工作分支暂无 Diff 快照">{inner}</Text>
   }
-
-  // +/- 为 0 且尚无快照：仍可进入空 Diff 页
-  if (isZeroDiff) {
-    return (
-      <Link
-        to={PATHS.projectCodeDiff(projectId, toEmptyBranchDiffId(branch.id))}
-        title="该分支暂无变更，打开空 Diff"
-        style={linkStyle}
-      >
-        {inner}
-      </Link>
-    )
-  }
-
-  return <Text type="secondary" title="后端尚未生成该分支的 Diff 快照">{inner}</Text>
+  return (
+    <Link
+      to={PATHS.projectCodeDiff(projectId, diff.id)}
+      title="查看该分支最新 Diff"
+      style={{ display: 'inline-block', padding: '2px 4px', borderRadius: 4 }}
+    >
+      {inner}
+    </Link>
+  )
 }
 
-function HealthTag({ status }: { status: BranchHealthStatus }) {
-  const label = branchHealthLabel(status)
-  switch (status) {
-    case 'HEALTHY':
-      return (
-        <Space size={6}>
-          <CheckCircleFilled style={{ color: '#3fb950' }} />
-          <Text>{label}</Text>
-        </Space>
-      )
-    case 'BEHIND':
-      return (
-        <Space size={6}>
-          <WarningFilled style={{ color: '#d29922' }} />
-          <Text>{label}</Text>
-        </Space>
-      )
-    case 'CONFLICT':
-      return (
-        <Space size={6}>
-          <CloseCircleFilled style={{ color: '#f85149' }} />
-          <Text>{label}</Text>
-        </Space>
-      )
-    case 'MERGED':
-      return (
-        <Space size={6}>
-          <CheckCircleOutlined />
-          <Text type="secondary">{label}</Text>
-        </Space>
-      )
-  }
+function VerificationCell({ branch }: { branch: WorkBranch }) {
+  const verification = branch.lastVerification
+  if (!verification) return <Text type="secondary">—</Text>
+  const shortSha = verification.commitSha.slice(0, 7)
+  const stale =
+    Boolean(branch.lastKnownHead) &&
+    Boolean(verification.commitSha) &&
+    !branch.lastKnownHead!.startsWith(verification.commitSha) &&
+    !verification.commitSha.startsWith(branch.lastKnownHead!)
+  return (
+    <Space size={4} wrap>
+      {verification.kind ? <Tag>{verification.kind}</Tag> : null}
+      <Tag color={verificationColor(verification.status)}>{verification.status}</Tag>
+      <Text code>{shortSha}</Text>
+      {stale ? <Tag>非当前版本</Tag> : null}
+    </Space>
+  )
 }
 
-function TestStatusTag({ status }: { status: BranchTestStatus }) {
-  const label = branchTestLabel(status)//翻译成中文的
-  if (status === 'PASSED') return <Tag color="success">{label}</Tag>
-  if (status === 'RUNNING') return <Tag color="processing">{label}</Tag>
-  if (status === 'FAILED') return <Tag color="error">{label}</Tag>
-  return <Tag>{label}</Tag>
+function verificationColor(status: string): string {
+  const upper = status.toUpperCase()
+  if (upper === 'PASSED' || upper === 'SUCCEEDED') return 'success'
+  if (upper === 'FAILED') return 'error'
+  if (upper === 'RUNNING' || upper === 'PENDING') return 'processing'
+  return 'default'
 }

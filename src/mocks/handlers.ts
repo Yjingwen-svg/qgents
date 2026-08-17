@@ -5,6 +5,7 @@ import type { Activity, Memory, Notification, MyTeamInvitation } from '@/types'
 import { MOCK_CURRENT_USER } from './currentUser'
 import { deliveryCenterHandlers } from './delivery-center/handlers'
 import { createTaskFromMessageIntent } from './task-model/handlers'
+import { createWorkBranchHandlers } from './workBranches'
 
 // ══════════════════════════════════════════════
 // Mock 数据
@@ -1259,6 +1260,8 @@ export const handlers = [
 
   // ── 项目仓库绑定（GitHub）──
   ...createRepoBindingHandlers(),
+  // ── 工作分支（代码与 Branch）──
+  ...createWorkBranchHandlers(),
 
   // ── 通知中心（本轮前端 Mock）──
   http.get('/api/notifications', () => HttpResponse.json({ data: MOCK_NOTIFICATIONS })),

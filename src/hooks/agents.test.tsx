@@ -22,7 +22,6 @@ const agent: AgentSummary = {
   visibility: 'PRIVATE',
   status: 'ACTIVE',
   createdBy: 'user-one',
-  description: null,
 }
 
 const detail = (id: string): AgentDetail => ({ ...agent, id, description: id, prompt: `${id} prompt`, tools: [], memoryAccess: [] })

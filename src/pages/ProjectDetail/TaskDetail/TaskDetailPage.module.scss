@@ -326,6 +326,10 @@
   color: #1269c7;
 }
 
+.outputCard[data-testid='delivery-card'] .cardHeading:has(> :nth-child(3)) > :nth-child(3) {
+  display: none;
+}
+
 .requirementSummary {
   display: -webkit-box;
   min-height: 0;

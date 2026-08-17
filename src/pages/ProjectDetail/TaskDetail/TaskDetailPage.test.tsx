@@ -179,6 +179,20 @@ describe('TaskDetailPage final information architecture', () => {
     expect(refetch).toHaveBeenCalled()
   })
 
+  it('uses workspace repository summaries and never exposes a raw repository id in the diff card', () => {
+    const rawRepositoryId = '01a00fee-02ca-7a1c-b3fd-5d2aecd5bc58'
+    const diff: DiffListItem = { id: 'diff-1', projectId: task.projectId, taskId: task.id, taskRunId: run.id, taskStepId: step.id, requirementGroupId: 'group-1', workspaceId: 'workspace-1', repositoryId: rawRepositoryId, baseCommit: 'base-1', sourceBranch: 'main', headCommit: 'head-1', status: 'PENDING_REVIEW', changeStats: { files: 1, additions: 8, deletions: 0 }, createdAt: run.createdAt }
+    useTaskMock.mockReturnValue({ data: { ...task, repositories: [], workspace: { id: 'workspace-1', status: 'PROVISIONING', repositories: task.repositories } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useDiffsMock.mockReturnValue({ data: page([diff]), error: null, isError: false, isLoading: false })
+
+    renderPage()
+
+    expect(screen.getByText('1 个')).toBeInTheDocument()
+    expect(within(screen.getByTestId('diff-card')).getByText(task.title)).toBeInTheDocument()
+    expect(screen.queryByText(rawRepositoryId)).not.toBeInTheDocument()
+    expect(screen.queryByText(/PROVISIONING/)).not.toBeInTheDocument()
+  })
+
   it('keeps the detail page visible when the backend omits derived task fields', () => {
     const incompleteTask = {
       ...task,

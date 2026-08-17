@@ -4,6 +4,11 @@
  */
 
 export type {
+  RealtimeScope,
+  RealtimeFrame,
+  RealtimeHelloFrame,
+} from './event'
+export type {
   User,
   LoginPayload,
   RegisterPayload,

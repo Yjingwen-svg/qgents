@@ -144,6 +144,8 @@ export default defineConfig(({ mode }) => {
               // target: 'https://api.qgents.dpdns.org',
               target: 'http://47.113.224.195:32500',//内网
               changeOrigin: true,
+              // WebSocket 实时通道（/api/v1/ws/realtime）握手升级需要转发
+              ws: true,
               rewrite: (path) => path.replace(/^\/api/, '/api/v1'),
             },
           },

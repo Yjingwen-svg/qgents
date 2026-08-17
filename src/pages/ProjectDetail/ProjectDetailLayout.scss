@@ -255,6 +255,20 @@
   white-space: nowrap;
 }
 
+/* 项目总群标记 —— 小圆角标签，与需求群区分 */
+.pd-nav__branch-main-tag {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border: 1px solid rgba(34, 197, 94, 0.45);
+  border-radius: 4px;
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--qg-mint);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
 .pd-nav__branch-unread {
   flex-shrink: 0;
   min-width: 18px;

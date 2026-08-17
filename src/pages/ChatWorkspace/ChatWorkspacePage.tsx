@@ -10,6 +10,8 @@ import type { Group } from '@/types'
 const { Text } = Typography
 
 interface MainGroupSession {
+  teamId: string
+  teamName: string
   projectId: string
   projectName: string
   groupId: string
@@ -48,6 +50,13 @@ export default function ChatWorkspacePage() {
     [projectQueries],
   )
 
+  // teamId → 团队名，用于左侧群聊项显示所属团队
+  const teamNameById = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const t of teams) map.set(t.id, t.name)
+    return map
+  }, [teams])
+
   // 每个项目的主群
   const groupQueries = useQueries({
     queries: projects.map((p) => ({
@@ -65,6 +74,8 @@ export default function ChatWorkspacePage() {
         if (!main) return []
         return [
           {
+            teamId: p.teamId,
+            teamName: teamNameById.get(p.teamId) ?? '',
             projectId: p.id,
             projectName: p.name,
             groupId: main.id,
@@ -75,7 +86,7 @@ export default function ChatWorkspacePage() {
         ]
       })
       .sort((a, b) => (b.latestActivityAt ?? '').localeCompare(a.latestActivityAt ?? ''))
-  }, [projects, groupQueries])
+  }, [projects, groupQueries, teamNameById])
 
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase()
@@ -133,20 +144,27 @@ export default function ChatWorkspacePage() {
                   <List.Item.Meta
                     avatar={<Avatar style={{ background: '#3b82f6' }} icon={<TeamOutlined />} size={36} />}
                     title={
-                      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                        <Text strong ellipsis style={{ maxWidth: 150 }}>
-                          {s.projectName}
-                        </Text>
-                        {hasUnread(readAt, { id: s.groupId, latestActivityAt: s.latestActivityAt }) ? (
-                          <span
-                            style={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: '50%',
-                              background: '#ef4444',
-                              flexShrink: 0,
-                            }}
-                          />
+                      <Space direction="vertical" size={0} style={{ width: '100%' }}>
+                        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                          <Text strong ellipsis style={{ maxWidth: 150 }}>
+                            {s.projectName}
+                          </Text>
+                          {hasUnread(readAt, { id: s.groupId, latestActivityAt: s.latestActivityAt }) ? (
+                            <span
+                              style={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: '50%',
+                                background: '#ef4444',
+                                flexShrink: 0,
+                              }}
+                            />
+                          ) : null}
+                        </Space>
+                        {s.teamName ? (
+                          <Text type="secondary" ellipsis style={{ fontSize: 11, lineHeight: '16px' }}>
+                            {s.teamName}
+                          </Text>
                         ) : null}
                       </Space>
                     }
@@ -166,7 +184,7 @@ export default function ChatWorkspacePage() {
       </Layout.Sider>
 
       {selected ? (
-        <ChatPanel projectId={selected.projectId} groupId={selected.groupId} />
+        <ChatPanel key={selected.groupId} projectId={selected.projectId} groupId={selected.groupId} />
       ) : (
         <Layout style={{ background: token.colorBgBase }}>
           <div

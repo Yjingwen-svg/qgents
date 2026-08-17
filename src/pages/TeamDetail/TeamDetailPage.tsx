@@ -6,7 +6,6 @@ import {
   ClockCircleOutlined,
   FolderOutlined,
   PlusOutlined,
-  RobotOutlined,
   SettingOutlined,
   TeamOutlined,
 } from '@ant-design/icons'
@@ -85,18 +84,19 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
         </div>
         <p>{project.description || '暂无项目简介'}</p>
         <div className="team-detail__project-meta">
-          <span>
-            <TeamOutlined /> 项目成员
-          </span>
-          <span>
-            <RobotOutlined /> Agent 待配置
-          </span>
+          {project.memberCount != null && (
+            <span>
+              <TeamOutlined /> {project.memberCount} 名成员
+            </span>
+          )}
           <span>
             <BranchesOutlined /> {repositoryCount} 个仓库
           </span>
-          <span>
-            <ClockCircleOutlined /> 协作中
-          </span>
+          {project.status && (
+            <span>
+              <ClockCircleOutlined /> {project.status === 'ARCHIVED' ? '已归档' : '进行中'}
+            </span>
+          )}
         </div>
       </div>
       <Link to={PATHS.projectDetail(project.id)} className="team-detail__enter-project">

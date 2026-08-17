@@ -5,7 +5,6 @@ import {
   Drawer,
   Avatar,
   Typography,
-  Input,
   Button,
   Space,
   Divider,
@@ -95,8 +94,6 @@ export function PersonalCenter() {
       <Title level={5} style={{ marginBottom: 12 }}>
         切换团队或项目
       </Title>
-
-      <Input.Search placeholder="搜索团队或项目" disabled style={{ marginBottom: 16 }} />
 
       <div style={{ maxHeight: 280, overflow: 'auto', marginBottom: 16 }}>
         {teams.length === 0 ? (

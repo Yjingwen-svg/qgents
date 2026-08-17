@@ -153,7 +153,7 @@ async function jsonObject(request: Request): Promise<Record<string, unknown>> {
 }
 
 function invalidTaskInput(body: Record<string, unknown>): string | null {
-  const allowed = new Set(['requirementGroupId', 'title', 'requirement', 'repositoryIds', 'baseRef', 'workspaceId', 'continuationOfTaskId'])
+  const allowed = new Set(['requirementGroupId', 'title', 'requirement', 'repositoryIds', 'baseRef', 'deliveryMode', 'workspaceId', 'continuationOfTaskId'])
   const unsupported = Object.keys(body).find((key) => !allowed.has(key))
   if (unsupported) return unsupported
   if (!isNonEmptyString(body.requirementGroupId)) return 'requirementGroupId'
@@ -161,6 +161,7 @@ function invalidTaskInput(body: Record<string, unknown>): string | null {
   if (!isNonEmptyString(body.requirement)) return 'requirement'
   if (!isStringArray(body.repositoryIds)) return 'repositoryIds'
   if (!isNonEmptyString(body.baseRef)) return 'baseRef'
+  if (body.deliveryMode !== undefined && body.deliveryMode !== 'DIFF_FIRST' && body.deliveryMode !== 'MR_FIRST') return 'deliveryMode'
   return null
 }
 
@@ -182,7 +183,7 @@ function createTaskResources(store: TaskModelStore, input: TaskCreateInput, proj
   const createdAt = new Date().toISOString()
   const id = makeId(projectId, 'task', store.tasks.size)
   const repositories = input.repositoryIds.map((repository) => ({ repositoryId: repository, name: 'Mock repository', fullName: `qgents/${repository}`, provider: 'GITHUB', defaultBranch: 'main', baseRef: input.baseRef, baseCommit: `base-${input.baseRef}`, sourceBranch: input.baseRef, headCommit: null }))
-  const task: Task = { id, displayCode: `T-${store.tasks.size + 1000}`, projectId, title: input.title, requirementSummary: input.requirement.slice(0, 200), status: 'PLANNING', deliveryMode: 'DIFF_FIRST', requirementGroup: { id: input.requirementGroupId, name: input.requirementGroupId, status: 'ACTIVE' }, createdByUser: { id: 'mock-user', displayName: 'Mock User', avatarUrl: null }, repositories, executionSummary: { totalSteps: 0, pendingSteps: 0, runningSteps: 0, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: null, currentStageTitle: '规划中', requiresUserAction: false }, attention: null, createdAt, updatedAt: createdAt, requirement: input.requirement, acceptanceCriteria: [], workspace: { id: input.workspaceId ?? `workspace-${id}`, status: 'READY', repositories }, capabilities: { canCancel: true, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false }, artifactSummary: { total: 0, byType: {} }, diffReviewSummary: { available: false, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 }, sourceMessage: null, triggerMessageId: null }
+  const task: Task = { id, displayCode: `T-${store.tasks.size + 1000}`, projectId, title: input.title, requirementSummary: input.requirement.slice(0, 200), status: 'PLANNING', deliveryMode: input.deliveryMode ?? null, deliveryReason: null, requirementGroup: { id: input.requirementGroupId, name: input.requirementGroupId, status: 'ACTIVE' }, createdByUser: { id: 'mock-user', displayName: 'Mock User', avatarUrl: null }, repositories, executionSummary: { totalSteps: 0, pendingSteps: 0, runningSteps: 0, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: null, currentStageTitle: '规划中', requiresUserAction: false }, attention: null, createdAt, updatedAt: createdAt, requirement: input.requirement, acceptanceCriteria: [], workspace: { id: input.workspaceId ?? `workspace-${id}`, status: 'READY', repositories }, capabilities: { canCancel: true, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false }, artifactSummary: { total: 0, byType: {} }, diffReviewSummary: { available: false, diffId: null, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 }, sourceMessage: null, triggerMessageId: null }
   store.tasks.set(task.id, task)
   return task
 }
@@ -204,7 +205,8 @@ export function createTaskFromMessageIntent(
     title: input.title,
     requirementSummary: input.requirement.slice(0, 200),
     status: 'PLANNING',
-    deliveryMode: 'DIFF_FIRST',
+    deliveryMode: null,
+    deliveryReason: null,
     requirementGroup: { id: input.requirementGroupId, name: input.requirementGroupId, status: 'ACTIVE' },
     createdByUser: { id: 'mock-user', displayName: 'Mock User', avatarUrl: null },
     repositories: [],
@@ -217,7 +219,7 @@ export function createTaskFromMessageIntent(
     workspace: null,
     capabilities: { canCancel: true, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false },
     artifactSummary: { total: 0, byType: {} },
-    diffReviewSummary: { available: false, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 },
+    diffReviewSummary: { available: false, diffId: null, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 },
     sourceMessage: { id: input.messageId, sender: { id: 'user-001', displayName: 'Mock User', avatarUrl: null }, textExcerpt: input.requirement.slice(0, 200), createdAt: input.createdAt },
     triggerMessageId: input.messageId,
   }
@@ -625,7 +627,7 @@ const taskArtifactAndDiffReviewHandlers: HttpHandler[] = [
     if (idempotencyResponse) return idempotencyResponse
     const batch = store.diffReviews.get(taskId)
     if (!batch) return errorResponse(404, 'DIFF_REVIEW_NOT_FOUND', 'Final Diff has not been generated')
-    if (batch.reviewStatus !== 'PENDING_CONFIRMATION') return errorResponse(409, 'DIFF_REVIEW_NOT_DECIDABLE', 'Diff review is no longer pending')
+    if (batch.reviewStatus !== 'PENDING_CONFIRMATION' || batch.confirmationSource !== 'USER') return errorResponse(409, 'DIFF_REVIEW_NOT_DECIDABLE', 'Diff review is not user-decidable')
     batch.reviewStatus = 'ACCEPTED'
     batch.deliveryStatus = 'DELIVERING'
     const task = findTask(store, taskId)
@@ -646,7 +648,7 @@ const taskArtifactAndDiffReviewHandlers: HttpHandler[] = [
     if (idempotencyResponse) return idempotencyResponse
     const batch = store.diffReviews.get(taskId)
     if (!batch) return errorResponse(404, 'DIFF_REVIEW_NOT_FOUND', 'Final Diff has not been generated')
-    if (batch.reviewStatus !== 'PENDING_CONFIRMATION') return errorResponse(409, 'DIFF_REVIEW_NOT_DECIDABLE', 'Diff review is no longer pending')
+    if (batch.reviewStatus !== 'PENDING_CONFIRMATION' || batch.confirmationSource !== 'USER') return errorResponse(409, 'DIFF_REVIEW_NOT_DECIDABLE', 'Diff review is not user-decidable')
     batch.reviewStatus = 'REJECTED'
     batch.reviewReason = reason
     const task = findTask(store, taskId)

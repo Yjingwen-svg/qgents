@@ -36,6 +36,8 @@ export type DiffStatus = 'PENDING_REVIEW' | 'ACCEPTED' | 'REJECTED'
 export type TaskArtifactType = 'PLAN' | 'CODING' | 'TESTING' | 'REVIEWING'
 export type DiffReviewStatus = 'PENDING_CONFIRMATION' | 'ACCEPTED' | 'REJECTED'
 export type DiffReviewDeliveryStatus = 'NOT_STARTED' | 'DELIVERING' | 'DELIVERED' | 'PARTIALLY_DELIVERED' | 'FAILED'
+export type TaskDeliveryMode = 'DIFF_FIRST' | 'MR_FIRST'
+export type DiffReviewConfirmationSource = 'USER' | 'SYSTEM'
 
 export interface TaskRequirementGroupSummary { id: string; name: string; status: string }
 export interface TaskUserSummary { id: string; displayName: string; avatarUrl: string | null }
@@ -60,7 +62,10 @@ export interface TaskListItem {
   title: string
   requirementSummary: string
   status: TaskStatus
-  deliveryMode: 'DIFF_FIRST'
+  /** null until the server has materialized the plan and selected a delivery mode. */
+  deliveryMode: TaskDeliveryMode | null
+  /** Server-generated explanation of the selected delivery mode; never client input. */
+  deliveryReason: string | null
   requirementGroup: TaskRequirementGroupSummary | null
   createdByUser: TaskUserSummary | null
   repositories: TaskRepositorySummary[]
@@ -74,7 +79,7 @@ export interface TaskAcceptanceCriterion { id: string; title: string; descriptio
 export interface TaskWorkspace { id: string; status: string; repositories: TaskRepositorySummary[] }
 export interface TaskCapabilities { canCancel: boolean; canCancelDisabledReason?: string | null; canReplacePendingStepAgent: boolean; canReplacePendingStepAgentDisabledReason?: string | null; canConfirmDiffReview: boolean; canConfirmDiffReviewDisabledReason?: string | null; canRejectDiffReview: boolean; canRejectDiffReviewDisabledReason?: string | null; canRetryDelivery: boolean; canRetryDeliveryDisabledReason?: string | null }
 export interface TaskArtifactSummary { total: number; byType: Partial<Record<TaskArtifactType, number>> }
-export interface TaskDiffReviewSummary { available: boolean; reviewStatus: DiffReviewStatus | null; deliveryStatus: DiffReviewDeliveryStatus | null; repositoryCount: number; filesChanged: number; additions: number; deletions: number }
+export interface TaskDiffReviewSummary { available: boolean; /** Representative Diff ID only; null when the batch has none. */ diffId?: string | null; reviewStatus: DiffReviewStatus | null; deliveryStatus: DiffReviewDeliveryStatus | null; repositoryCount: number; filesChanged: number; additions: number; deletions: number }
 export interface TaskSourceMessage { id: string; sender: TaskUserSummary; textExcerpt: string; createdAt: string }
 export interface Task extends TaskListItem { requirement: string; acceptanceCriteria: TaskAcceptanceCriterion[]; workspace: TaskWorkspace | null; capabilities: TaskCapabilities; artifactSummary: TaskArtifactSummary; diffReviewSummary: TaskDiffReviewSummary; sourceMessage: TaskSourceMessage | null; triggerMessageId: string | null }
 
@@ -99,6 +104,8 @@ export interface TaskCreateInput {
   requirement: string
   repositoryIds: string[]
   baseRef: string
+  /** Explicit user preference. Omit to let the planner/server decide. */
+  deliveryMode?: TaskDeliveryMode
   workspaceId?: string
   continuationOfTaskId?: string
 }
@@ -399,6 +406,8 @@ export interface DiffReviewBatch {
   id: string
   taskId: string
   reviewStatus: DiffReviewStatus
+  /** Read-only authorization source; SYSTEM represents MR_FIRST auto-delivery. */
+  confirmationSource: DiffReviewConfirmationSource
   deliveryStatus: DiffReviewDeliveryStatus
   aggregateHash: string
   reviewReason: string | null

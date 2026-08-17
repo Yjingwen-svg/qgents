@@ -20,7 +20,7 @@ vi.mock('@/hooks/task-model', () => ({ useTask: useTaskMock, useTaskSteps: useTa
 import TaskDetailPage from './TaskDetailPage'
 
 const task: Task = {
-  id: 'task-1', displayCode: 'T-1', projectId: 'project-test', title: '登录任务', requirementSummary: '实现登录功能', status: 'RUNNING', deliveryMode: 'DIFF_FIRST', requirementGroup: { id: 'group-1', name: 'Login', status: 'ACTIVE' }, createdByUser: { id: 'user-1', displayName: 'User', avatarUrl: null }, repositories: [{ repositoryId: 'repo-1', name: 'Repo', fullName: 'mock/repo', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'main', baseCommit: 'base-1', sourceBranch: 'main', headCommit: 'head-1' }], executionSummary: { totalSteps: 1, pendingSteps: 0, runningSteps: 1, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: 'DEVELOPER', currentStageTitle: 'Developer', requiresUserAction: false }, attention: null, createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z', requirement: '实现登录功能', acceptanceCriteria: [], workspace: null, capabilities: { canCancel: true, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false }, artifactSummary: { total: 0, byType: {} }, diffReviewSummary: { available: false, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 }, sourceMessage: null, triggerMessageId: null,
+  id: 'task-1', displayCode: 'T-1', projectId: 'project-test', title: '登录任务', requirementSummary: '实现登录功能', status: 'RUNNING', deliveryMode: 'DIFF_FIRST', deliveryReason: null, requirementGroup: { id: 'group-1', name: 'Login', status: 'ACTIVE' }, createdByUser: { id: 'user-1', displayName: 'User', avatarUrl: null }, repositories: [{ repositoryId: 'repo-1', name: 'Repo', fullName: 'mock/repo', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'main', baseCommit: 'base-1', sourceBranch: 'main', headCommit: 'head-1' }], executionSummary: { totalSteps: 1, pendingSteps: 0, runningSteps: 1, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: 'DEVELOPER', currentStageTitle: 'Developer', requiresUserAction: false }, attention: null, createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z', requirement: '实现登录功能', acceptanceCriteria: [], workspace: null, capabilities: { canCancel: true, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false }, artifactSummary: { total: 0, byType: {} }, diffReviewSummary: { available: false, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 }, sourceMessage: null, triggerMessageId: null,
 }
 const run: TaskRunSummary = { id: 'run-1', taskId: 'task-1', taskStepId: 'step-1', taskStepTitle: 'Developer', agent: null, role: 'DEVELOPER', status: 'RUNNING', retryOfTaskRunId: null, statusSummary: null, statusReason: null, startedAt: '2026-08-11T08:00:00Z', finishedAt: null, durationMs: null, artifactSummary: { total: 0, diffCount: 0 }, createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z' }
 const step: TaskStep = { id: 'step-1', taskId: 'task-1', sequenceNo: 1, title: 'Developer', description: null, role: 'DEVELOPER', agent: { id: 'agent-1', name: 'Agent One', role: 'DEVELOPER', avatarUrl: null, status: 'ACTIVE' }, repository: { repositoryId: 'repo-1', name: 'Repo', sourceBranch: 'main' }, dependencies: [], status: 'RUNNING', acceptanceNotes: '覆盖登录场景', latestRun: { id: run.id, status: run.status, startedAt: run.startedAt, finishedAt: run.finishedAt, durationMs: run.durationMs }, runCount: 1, startedAt: run.startedAt, finishedAt: run.finishedAt, createdAt: run.createdAt, updatedAt: run.updatedAt }
@@ -120,13 +120,25 @@ describe('TaskDetailPage final information architecture', () => {
 
   it('keeps review mutation validation and status actions in the delivery card', async () => {
     const user = userEvent.setup()
-    const batch: DiffReviewBatch = { id: 'batch-1', taskId: task.id, reviewStatus: 'PENDING_CONFIRMATION', deliveryStatus: 'NOT_STARTED', aggregateHash: 'hash', reviewReason: null, diffs: [], repositoryDeliveries: [] }
+    const batch: DiffReviewBatch = { id: 'batch-1', taskId: task.id, reviewStatus: 'PENDING_CONFIRMATION', confirmationSource: 'USER', deliveryStatus: 'NOT_STARTED', aggregateHash: 'hash', reviewReason: null, diffs: [], repositoryDeliveries: [] }
     useTaskMock.mockReturnValue({ data: { ...task, status: 'WAITING_DIFF_CONFIRMATION', capabilities: { ...task.capabilities, canConfirmDiffReview: true, canRejectDiffReview: true } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
     useTaskDiffReviewMock.mockReturnValue({ data: batch, error: null, isError: false, isLoading: false, refetch: vi.fn() })
     renderPage()
     expect(screen.getByRole('button', { name: '确认交付' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '拒绝交付' }))
     expect(screen.getByRole('button', { name: '拒绝交付' })).toBeDisabled()
+  })
+
+  it('renders MR_FIRST as automatic delivery without user Diff actions', () => {
+    const batch: DiffReviewBatch = { id: 'batch-system', taskId: task.id, reviewStatus: 'ACCEPTED', confirmationSource: 'SYSTEM', deliveryStatus: 'DELIVERING', aggregateHash: 'hash', reviewReason: 'MR_FIRST 自动交付', diffs: [], repositoryDeliveries: [] }
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'DELIVERING', deliveryMode: 'MR_FIRST', deliveryReason: 'Planner 选择 MR_FIRST', capabilities: { ...task.capabilities, canConfirmDiffReview: true, canRejectDiffReview: true } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskDiffReviewMock.mockReturnValue({ data: batch, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+
+    renderPage()
+
+    expect(screen.getByText('自动交付')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '确认交付' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '拒绝交付' })).not.toBeInTheDocument()
   })
 
   it('renders artifact summaries once and keeps multi-repository diff totals in the code card', () => {

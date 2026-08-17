@@ -48,7 +48,7 @@ export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
       </div>
       <Space wrap size={[6, 6]} className={styles.taskCardTags}>
         <Tag className={styles.groupTag}>{valueOrNone(task.requirementGroup?.name)}</Tag>
-        <Tag className={styles.deliveryTag}>{task.deliveryMode}</Tag>
+        <Tag className={styles.deliveryTag}>{task.deliveryMode ?? '待判定'}</Tag>
       </Space>
       <Paragraph ellipsis={{ rows: 2, tooltip: valueOrNone(task.requirementSummary) }} className={styles.taskCardCopy}>{valueOrNone(task.requirementSummary)}</Paragraph>
       <div className={styles.taskCardInfoGrid}>

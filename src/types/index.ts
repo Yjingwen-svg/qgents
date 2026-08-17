@@ -194,7 +194,9 @@ export type {
   InputRequestDecision,
   TaskArtifact,
   TaskArtifactType,
+  TaskDeliveryMode,
   DiffReviewDeliveryStatus,
+  DiffReviewConfirmationSource,
   DiffReviewBatch,
 } from './task-model'
 export type { ApiErrorDetail, ApiErrorResponse, ApiResponse, CursorPage } from './api'

@@ -185,7 +185,7 @@ describe('independent Task model mock chain', () => {
     expect(artifacts.data.slice(1).every((artifact) => artifact.taskRunId)).toBe(true)
 
     const batch = await tasksApi.diffReview(projectId, taskId)
-    expect(batch).toMatchObject({ taskId, reviewStatus: 'PENDING_CONFIRMATION', deliveryStatus: 'NOT_STARTED' })
+    expect(batch).toMatchObject({ taskId, reviewStatus: 'PENDING_CONFIRMATION', confirmationSource: 'USER', deliveryStatus: 'NOT_STARTED' })
     const diffId = batch.diffs[0]!.id
     await expect(diffsApi.accept(projectId, diffId)).rejects.toMatchObject({ status: 409 })
     const confirmed = await tasksApi.confirmDiffReview(projectId, taskId)
@@ -218,7 +218,7 @@ describe('independent Task model mock chain', () => {
     const projectId = 'project-review'
     const taskId = 'task-project-review-delivering'
     expect((await tasksApi.get(projectId, taskId)).status).toBe('DELIVERING')
-    expect(await tasksApi.diffReview(projectId, taskId)).toMatchObject({ reviewStatus: 'ACCEPTED', deliveryStatus: 'DELIVERING' })
+    expect(await tasksApi.diffReview(projectId, taskId)).toMatchObject({ reviewStatus: 'ACCEPTED', confirmationSource: 'SYSTEM', deliveryStatus: 'DELIVERING' })
   })
 
   it('walks the v1.3 Artifact and DiffReview resources by returned IDs', async () => {

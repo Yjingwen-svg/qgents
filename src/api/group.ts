@@ -7,12 +7,14 @@ import type {
   SendMessagePayload,
   CreateGroupPayload,
 } from '@/types'
+import type { TaskDeliveryMode } from '@/types/task-model'
 
 export interface TriggerTaskInput {
   title: string
   requirement: string
   repositoryIds: string[]
   baseRef: string
+  deliveryMode?: TaskDeliveryMode
 }
 
 /** 群聊 API —— 对齐接口文档 v1.1.8 §7 */

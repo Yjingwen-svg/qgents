@@ -21,6 +21,7 @@ export const PROJECT_TASK_EVENT_TYPES = [
   'diff-review.rejected',
   'diff-review.skipped',
   'delivery.repository.updated',
+  'delivery.started',
   'delivery.completed',
   'delivery.failed',
   'task.diff-review.failed',
@@ -82,6 +83,7 @@ function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPay
     'diff-review.rejected': ['taskId', 'reviewBatchId'],
     'diff-review.skipped': ['taskId', 'reason'],
     'delivery.repository.updated': ['taskId', 'diffId', 'deliveryStatus'],
+    'delivery.started': ['taskId', 'reviewBatchId', 'deliveryMode', 'operationId'],
     'delivery.completed': ['taskId', 'reviewBatchId', 'deliveryStatus'],
     'delivery.failed': ['taskId', 'reviewBatchId', 'deliveryStatus'],
     'task.diff-review.failed': ['taskId', 'reason'],
@@ -110,6 +112,9 @@ function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPay
   }
   if (type === 'task.diff-review.failed') {
     return typeof payload.reviewBatchId === 'string' && payload.reviewBatchId.length > 0
+  }
+  if (type === 'delivery.started') {
+    return payload.deliveryMode === 'DIFF_FIRST' || payload.deliveryMode === 'MR_FIRST'
   }
   if (type === 'task.artifact.created' || type === 'task-run.artifact.created') {
     return typeof payload.sequenceNo === 'number' && Number.isInteger(payload.sequenceNo) && payload.sequenceNo >= 0

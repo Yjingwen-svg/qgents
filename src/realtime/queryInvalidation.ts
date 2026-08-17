@@ -150,6 +150,7 @@ export function queryKeysForProjectTaskEvent(
       break
     case 'delivery.completed':
     case 'delivery.failed':
+    case 'delivery.started':
       if (!taskId) return []
       addKey(keys, taskModelQueryKeys.tasks.all(projectId))
       addKey(keys, taskModelQueryKeys.taskDiffReview.detail(projectId, taskId))

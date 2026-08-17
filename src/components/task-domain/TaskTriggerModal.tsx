@@ -53,6 +53,12 @@ export function TaskTriggerModal({ open, projectId, groupId, initialInstruction,
     label: repository.fullName || repository.repositoryId || '暂无',
   }))
 
+  function handleRepositoryChange(repositoryIds: string[]): void {
+    const repository = repositories.find((item) => item.id === repositoryIds[0])
+    form.setFieldValue('repositoryIds', repositoryIds)
+    if (repository?.defaultBranch) form.setFieldValue('baseRef', repository.defaultBranch)
+  }
+
   useEffect(() => {
     if (!open) return
     form.setFieldsValue({ title: '', requirement: initialInstruction, repositoryIds: [], baseRef: '' })
@@ -118,7 +124,7 @@ export function TaskTriggerModal({ open, projectId, groupId, initialInstruction,
           <Input.TextArea rows={5} placeholder="描述希望交付的任务" />
         </Form.Item>
         <Form.Item label="仓库" name="repositoryIds" rules={[{ required: true, type: 'array', min: 1, message: '至少选择一个仓库' }]}>
-          <Select mode="multiple" options={repositoryOptions} placeholder="请选择仓库" />
+          <Select mode="multiple" options={repositoryOptions} placeholder="请选择仓库" onChange={handleRepositoryChange} />
         </Form.Item>
         <Form.Item label="基准分支" name="baseRef" rules={[{ required: true, whitespace: true, message: '请输入基准分支' }]}>
           <Input placeholder="例如 main" />

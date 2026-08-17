@@ -34,6 +34,16 @@ export interface CreateProjectPayload {
   memberIds?: string[]
   /** 创建时一并绑定的 GitHub 授权仓库 id 列表（github_repositories.id，授权仓本地 UUID） */
   repositoryIds?: string[]
+  /** 创建项目时由后端新建并绑定的 GitHub 仓库；与 repositoryIds 互斥。 */
+  newRepository?: NewProjectRepositoryInput
+}
+
+export interface NewProjectRepositoryInput {
+  name: string
+  description?: string
+  isPrivate?: boolean
+  installationId?: string
+  displayName?: string
 }
 
 /** 项目设置（GET/PATCH /projects/{projectId}/settings，§22.2）—— 需求群规则开关 */

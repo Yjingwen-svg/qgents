@@ -12,14 +12,16 @@ export function formatApiError(error: unknown): string {
   // 这个 error 对象是不是由 ApiError new 出来的实例，返回 boolean true / false。
   if (error instanceof ApiError) {
     const body = error.body as
-      | { error?: { code?: string; message?: string } } // 错误体的类型
+      | { error?: { code?: string; message?: string }; requestId?: string }
       | undefined
     const code = body?.error?.code
     const msg = body?.error?.message
-    if (code && msg) return `[${code}] ${msg}`
-    if (msg) return msg
-    if (error.message) return error.message
-    return `请求失败 (HTTP ${error.status})`
+    const text = code && msg
+      ? `[${code}] ${msg}`
+      : msg || error.message || `请求失败 (HTTP ${error.status})`
+    return error.status >= 500 && body?.requestId
+      ? `${text}（请求 ID：${body.requestId}）`
+      : text
   }
   if (error instanceof Error) return error.message // http 笼统报错
   return '未知错误'

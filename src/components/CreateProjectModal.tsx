@@ -1,13 +1,17 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Modal, Form, Input, Select, Empty, Typography } from 'antd'
+import { Modal, Form, Input, Select, Empty, Radio, Switch, Typography } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { projectApi, teamApi, githubApi } from '@/api'
 import { PATHS } from '@/routes/paths'
 import { isGithubRepoBindable } from '@/types/github'
-import type { CreateProjectPayload } from '@/types'
+import type { CreateProjectPayload, NewProjectRepositoryInput } from '@/types'
 
 const { Text, Link: TextLink } = Typography
+
+interface CreateProjectFormValues extends Omit<CreateProjectPayload, 'teamId' | 'newRepository'> {
+  newRepository?: NewProjectRepositoryInput
+}
 
 /**
  * 创建项目弹窗 —— 复用给团队详情页 / 个人中心
@@ -28,7 +32,8 @@ export function CreateProjectModal({
 }) {
   const navigate = useNavigate()
   const queryClient=useQueryClient()
-  const [form] = Form.useForm<CreateProjectPayload>()
+  const [form] = Form.useForm<CreateProjectFormValues>()
+  const [repositoryMode, setRepositoryMode] = useState<'existing' | 'new'>('existing')
 
   // 团队成员列表（作为「初始成员」多选候选）
   const { data: teamMembers = [] } = useQuery({
@@ -53,6 +58,7 @@ export function CreateProjectModal({
   const bindableRepos = teamRepos.filter((r) =>
     isGithubRepoBindable(r, installations.find((i) => i.id === r.installationId)),
   )
+  const activeInstallations = installations.filter((installation) => installation.status === 'ACTIVE')
 
   const createProject = useMutation({
     mutationFn: (payload: CreateProjectPayload) => projectApi.create(payload),
@@ -66,7 +72,11 @@ export function CreateProjectModal({
 
   // 弹窗打开时重置表单
   useEffect(() => {
-    if (open) form.resetFields()
+    if (open) {
+      form.resetFields()
+      form.setFieldsValue({ newRepository: { isPrivate: true } })
+      setRepositoryMode('existing')
+    }
   }, [open, form])
 
   return (
@@ -83,7 +93,27 @@ export function CreateProjectModal({
       <Form
         form={form}
         layout="vertical"
-        onFinish={(values) => createProject.mutate({ ...values, teamId })}
+        onFinish={(values) => {
+          const newRepository = values.newRepository
+          createProject.mutate({
+            teamId,
+            name: values.name,
+            description: values.description,
+            memberIds: values.memberIds,
+            repositoryIds: repositoryMode === 'existing' ? values.repositoryIds : undefined,
+            newRepository: repositoryMode === 'new' && newRepository
+              ? {
+                  name: newRepository.name.trim(),
+                  description: newRepository.description?.trim() || undefined,
+                  isPrivate: newRepository.isPrivate ?? true,
+                  installationId: activeInstallations.length === 1
+                    ? undefined
+                    : newRepository.installationId,
+                  displayName: newRepository.displayName?.trim() || undefined,
+                }
+              : undefined,
+          })
+        }}
       >
         <Form.Item
           name="name"
@@ -111,11 +141,27 @@ export function CreateProjectModal({
             allowClear
           />
         </Form.Item>
-        {/* GitHub 仓库 —— 创建时必选，一并绑定 */}
+        <Form.Item label="GitHub 仓库来源">
+          <Radio.Group
+            value={repositoryMode}
+            onChange={(event) => {
+              const mode = event.target.value as 'existing' | 'new'
+              setRepositoryMode(mode)
+              if (mode === 'existing') form.setFieldsValue({ newRepository: { isPrivate: true } })
+              else form.setFieldValue('repositoryIds', undefined)
+            }}
+            options={[
+              { value: 'existing', label: '绑定已有仓库' },
+              { value: 'new', label: '自动新建仓库' },
+            ]}
+          />
+        </Form.Item>
+        {/* GitHub 仓库 —— 创建时可选，一并绑定 */}
         <Form.Item
           name="repositoryIds"
           label="GitHub 仓库"
-          rules={[{ required: true, message: '请至少绑定一个 GitHub 仓库' }]}
+          hidden={repositoryMode !== 'existing'}
+          rules={repositoryMode === 'existing' ? [{ required: true, message: '请至少绑定一个 GitHub 仓库' }] : []}
         >
           <Select
             mode="multiple"
@@ -141,7 +187,25 @@ export function CreateProjectModal({
             optionFilterProp="label"
           />
         </Form.Item>
-        <Form.Item noStyle>
+        {repositoryMode === 'new' ? <>
+          <Form.Item name={['newRepository', 'name']} label="新仓库名称" rules={[{ required: true, pattern: /^[a-z0-9][a-z0-9._-]*$/, message: '仅支持小写字母、数字、-、_、.' }]}>
+            <Input placeholder="例如 qgents-web" maxLength={100} />
+          </Form.Item>
+          <Form.Item name={['newRepository', 'description']} label="仓库描述（可选）">
+            <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} maxLength={200} />
+          </Form.Item>
+          <Form.Item name={['newRepository', 'displayName']} label="项目内显示名称（可选）">
+            <Input maxLength={100} />
+          </Form.Item>
+          <Form.Item name={['newRepository', 'isPrivate']} label="私有仓库" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          {activeInstallations.length > 1 ? <Form.Item name={['newRepository', 'installationId']} label="GitHub 安装记录" rules={[{ required: true, message: '请选择用于创建仓库的 GitHub 安装记录' }]}>
+            <Select options={activeInstallations.map((installation) => ({ value: installation.id, label: installation.accountLogin }))} />
+          </Form.Item> : null}
+          {activeInstallations.length === 0 ? <Text type="danger">当前团队没有可用的 GitHub App 安装记录，无法自动创建仓库。</Text> : null}
+        </> : null}
+        <Form.Item noStyle hidden={repositoryMode !== 'existing'}>
           <Text type="secondary" style={{ fontSize: 12, marginTop: -16 }}>
             创建项目需绑定至少一个 GitHub 仓库；若列表为空请先完成团队 GitHub App 授权
           </Text>

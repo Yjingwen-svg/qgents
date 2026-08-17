@@ -64,7 +64,8 @@ function CompactTaskHeader({ task, projectId, location, onCancel, cancelPending 
         <Button type="text" size="small" icon={<ArrowLeftOutlined />} onClick={() => navigate(resolveReturnPath(from, projectId, task.id))}>返回任务中心</Button>
         <Text className={styles.taskCode}>{task.displayCode}</Text>
         <Title level={2} className={styles.taskTitle}>{display(task.title)}</Title>
-        <Button type="text" size="small" className={styles.copyButton} icon={<CopyOutlined />} aria-label="复制任务 ID" title="复制任务 ID" onClick={() => void navigator.clipboard?.writeText(task.id)} />
+        <Button type="text" size="small" className={styles.copyButton} icon={<CopyOutlined />} aria-label="复制任务 ID" title={`复制任务 ID：${task.id}`} onClick={() => void navigator.clipboard?.writeText(task.id)} />
+        {task.status === 'PLANNING' ? <Text type="secondary">任务 ID：{task.id}</Text> : null}
         <div className={styles.headerActions}>
           {task.requirementGroup ? <Button size="small" onClick={() => navigate(PATHS.projectReqChat(projectId, task.requirementGroup!.id))}>返回需求群</Button> : null}
           <Button size="small" type="primary" onClick={() => navigate(`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(task.id)}`)}>查看交付</Button>

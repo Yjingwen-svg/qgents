@@ -101,7 +101,7 @@ function CompactTaskHeader({ task, projectId, location, onCancel, cancelPending,
         <HeaderMeta label="创建者" value={task.createdByUser?.displayName} />
         <HeaderMeta label="创建时间" value={formatDate(task.createdAt)} />
         <HeaderMeta label="更新时间" value={formatDate(task.updatedAt)} />
-        <HeaderMeta label="仓库" value={`${task.repositories.length || task.repositoryIds.length} 个`} />
+        <HeaderMeta label="仓库" value={`${task.repositories.length} 个`} />
       </div>
     </header>
   )
@@ -224,7 +224,6 @@ function normalizeTaskForDisplay(task: Task): Task {
     repositories: Array.isArray(task.repositories) && task.repositories.length > 0
       ? task.repositories
       : Array.isArray(task.workspace?.repositories) ? task.workspace.repositories : [],
-    repositoryIds: Array.isArray(task.repositoryIds) ? task.repositoryIds : [],
     executionSummary: task.executionSummary && typeof task.executionSummary === 'object'
       ? task.executionSummary
       : {

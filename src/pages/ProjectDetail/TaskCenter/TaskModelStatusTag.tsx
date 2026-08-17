@@ -14,7 +14,7 @@ const STATUS_META: Record<TaskStatus, { color: string; label: string }> = {
   CANCELLED: { color: 'default', label: '已取消' },
 }
 
-export function TaskModelStatusTag({ status }: { status: TaskStatus }) {
+export function TaskModelStatusTag({ status, completedWithoutCode = false }: { status: TaskStatus; completedWithoutCode?: boolean }) {
   const meta = STATUS_META[status]
-  return <Tag color={meta.color}>{meta.label}</Tag>
+  return <Tag color={meta.color}>{completedWithoutCode && status === 'SUCCEEDED' ? '已完成，无代码变更' : meta.label}</Tag>
 }

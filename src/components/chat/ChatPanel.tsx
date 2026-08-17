@@ -14,7 +14,7 @@ import {
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
-import { groupApi, projectApi, agentApi, attachmentApi, githubApi, uploadAttachment } from '@/api'
+import { ApiError, groupApi, projectApi, agentApi, attachmentApi, githubApi, uploadAttachment } from '@/api'
 import { getApiBaseUrl } from '@/api/client'
 import { useUnreadStore } from '@/store/unreadStore'
 import { useAuth } from '@/context/AuthContext'

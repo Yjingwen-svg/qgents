@@ -2,8 +2,6 @@ import { http, HttpResponse, type HttpHandler, type PathParams } from 'msw'
 import type {
   DiffComment,
   DiffRejectInput,
-  ExecutionContext,
-  InputRequest,
   Task,
   TaskCreateInput,
   TaskStepCreateInput,
@@ -23,7 +21,6 @@ import {
 import {
   createTaskModelScenario,
   createTaskModelScenarioByName,
-  addDiff,
   taskModelScenarioNames,
   type TaskModelScenario,
 } from './fixtures'

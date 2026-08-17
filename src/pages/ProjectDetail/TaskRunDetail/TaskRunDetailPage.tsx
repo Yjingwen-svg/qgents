@@ -153,6 +153,8 @@ function InputRequestCard({ projectId, taskRunId, request, onRefresh }: { projec
 }
 
 function ExecutionContextCard({ query }: { query: ReturnType<typeof useTaskRunExecutionContext> }) {
+  const context = query.data
+  const abnormal = context?.sandboxStatus === 'FAILED' || context?.sandboxStatus === 'EXPIRED'
   if (query.isLoading) return <section className={styles.sideCard} data-testid="execution-context-card"><SectionHeading title="执行环境" /><InlineState loading /></section>
   if (query.isError) return <section className={styles.sideCard} data-testid="execution-context-card"><SectionHeading title="执行环境" /><SectionError resource="Execution Context" error={query.error} /></section>
   if (!context) return <section className={styles.sideCard} data-testid="execution-context-card"><SectionHeading title="执行环境" /><InlineState text="暂无执行环境摘要" /></section>
@@ -176,5 +178,4 @@ function shortId(value: string | null | undefined): string { if (!value) return 
 function display(value: string | number | null | undefined): string { return value === null || value === undefined || value === '' ? '暂无' : String(value) }
 function formatDate(value: string | null | undefined): string { if (!value) return '暂无'; const date = new Date(value); return Number.isNaN(date.getTime()) ? '暂无' : new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date) }
 function formatDuration(value: number | null | undefined): string { if (value === null || value === undefined) return '暂无'; if (value < 1000) return `${value} 毫秒`; const seconds = value / 1000; if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)} 秒`; const minutes = Math.floor(seconds / 60); const remainder = Math.round(seconds % 60); return `${minutes} 分 ${remainder} 秒` }
-function isRoutineRun(taskRun: TaskRunDetail): boolean { return taskRun.status === 'SUCCEEDED' && taskRun.statusReason === null }
 function resolveReturnPath(state: unknown, projectId: string, taskId: string): string { const fallback = PATHS.projectTaskDetail(projectId, taskId); return state && typeof state === 'object' && 'from' in state && typeof state.from === 'string' && state.from.startsWith(fallback) ? state.from : fallback }

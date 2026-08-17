@@ -33,6 +33,8 @@ describe('project SSE event parsing', () => {
                       ? { taskId: 'task-1', reviewBatchId: 'batch-1' }
                       : eventType === 'delivery.repository.updated'
                         ? { taskId: 'task-1', diffId: 'diff-1', deliveryStatus: 'DELIVERED' }
+                        : eventType === 'delivery.started'
+                          ? { taskId: 'task-1', reviewBatchId: 'batch-1', deliveryMode: 'MR_FIRST', operationId: 'operation-1', reason: '自动交付' }
                         : eventType === 'delivery.completed' || eventType === 'delivery.failed'
                           ? { taskId: 'task-1', reviewBatchId: 'batch-1', deliveryStatus: 'DELIVERED' }
                           : eventType === 'task.diff-review.failed'
@@ -93,5 +95,9 @@ describe('project SSE event parsing', () => {
 
   it('does not silently accept taskStepId for the progress event schema', () => {
     expect(parseProjectTaskEvent({ id: 'evt-conflict', event: 'task-run.step.progress', data: JSON.stringify({ projectId: 'project-1', taskId: 'task-1', taskRunId: 'run-1', taskStepId: 'step-1' }) })).toBeNull()
+  })
+
+  it('requires a supported delivery mode for delivery.started', () => {
+    expect(parseProjectTaskEvent({ id: 'evt-delivery', event: 'delivery.started', data: JSON.stringify({ projectId: 'project-1', taskId: 'task-1', reviewBatchId: 'batch-1', deliveryMode: 'UNKNOWN', operationId: 'operation-1' }) })).toBeNull()
   })
 })

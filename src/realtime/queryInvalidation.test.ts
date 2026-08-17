@@ -68,7 +68,7 @@ describe('project SSE Task model query invalidation mapping', () => {
   })
 
   it('maps Diff review and delivery events to Task and batch queries', () => {
-    for (const type of ['diff-review.created', 'task.awaiting-diff-confirmation', 'diff-review.confirmed', 'diff-review.rejected', 'delivery.completed', 'delivery.failed', 'task.diff-review.failed'] as const) {
+    for (const type of ['diff-review.created', 'task.awaiting-diff-confirmation', 'diff-review.confirmed', 'diff-review.rejected', 'delivery.started', 'delivery.completed', 'delivery.failed', 'task.diff-review.failed'] as const) {
       const keys = keysFor(type, { taskId: 'task-1', reviewBatchId: 'batch-1', deliveryStatus: 'FAILED', reason: 'failed' })
       expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks']))
       expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-diff-review', 'task-1']))

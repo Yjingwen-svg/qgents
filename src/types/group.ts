@@ -157,11 +157,6 @@ export interface TaskTriggerRequest {
   deliveryMode?: 'DIFF_FIRST' | 'MR_FIRST'
 }
 
-/** 显式触发任务响应 */
-export interface TaskTriggerResult {
-  task: MessageTaskSummary
-}
-
 export interface CreateGroupPayload {
   title: string
   description?: string

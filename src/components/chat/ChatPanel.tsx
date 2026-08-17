@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
-import { ApiError, groupApi, projectApi, agentApi, attachmentApi, uploadAttachment, memoryApi } from '@/api'
+import { ApiError, groupApi, projectApi, agentApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
 import { getApiBaseUrl } from '@/api/client'
 import { useUnreadStore } from '@/store/unreadStore'
 import { useAuth } from '@/context/AuthContext'
@@ -210,6 +210,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     // 允许纯引用（引用 DIFF 卡等）：回复目标存在时正文可为空（B3，服务端用群描述兜底）
     if ((!text && !replyTo) || sending) return
 
+    const hasAgentMention = mentions.some((mention) => mention.type === 'AGENT')
     setSending(true)
     setSendError(null)
     try {
@@ -237,12 +238,37 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       await queryClient.invalidateQueries({
         queryKey: ['groups', projectId, groupId, 'messages'],
       })
-      if (result.task) {
+      if (hasAgentMention && canOpenTaskTrigger) {
         void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
+      }
+      if (result.task) {
         message.success(`${result.task.displayCode} 已创建，当前状态：${result.task.status}`)
       } else if (quotedDiff && sentMessage) {
-        // 引用 DIFF 卡续作：后端未在 @Agent 路径自动建任务时，用新消息显式触发（§7 续作，复用源 Workspace）
+        // 引用 DIFF 卡续作：优先走续作（复用源 Workspace，不得传 repositoryIds），后端未自动建任务时显式触发
         triggerFromMessage.mutate(sentMessage.id)
+      } else if (hasAgentMention && canOpenTaskTrigger) {
+        try {
+          const repositories = await githubApi.listProjectRepositories(projectId)
+          const baseRef = repositories[0]?.defaultBranch
+          if (repositories.length === 0 || !baseRef) {
+            throw new Error('当前项目没有可用于创建任务的绑定仓库。')
+          }
+          await groupApi.triggerTask(projectId, groupId, sentMessage.id, {
+            title: taskTitleFromMessage(text),
+            requirement: text,
+            repositoryIds: repositories.map((repository) => repository.id),
+            baseRef,
+          })
+          void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
+          message.success('任务已创建，正在生成执行方案。')
+        } catch (triggerError) {
+          if (triggerError instanceof ApiError && triggerError.status === 409) {
+            void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
+            message.info('任务已由自动触发链创建，请在任务中心查看。')
+          } else {
+            message.warning('消息已发送，但任务触发失败，请稍后重试或联系项目管理员。')
+          }
+        }
       }
       return sentMessage
     } catch (error) {
@@ -260,9 +286,9 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         title: draft.trim() || '来自群聊的任务',
         requirement: draft.trim() || undefined,
       }),
-    onSuccess: (data) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
-      message.success(`${data.task.displayCode} 已创建，当前状态：${data.task.status}`)
+      message.success('增量任务已创建，正在生成执行方案。')
     },
     onError: (error) => {
       // C3：引用 DIFF 续作的 422 错误码给出明确提示；其余走通用错误文案
@@ -517,7 +543,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       {!multiSelect && (
         <div style={{ position: 'relative', padding: '12px 20px 16px', borderTop: `1px solid ${token.colorBorder}` }}>
           {/* @ 提及成员面板 */}
-          {mentionOpen && members.length > 0 && (
+          {mentionOpen && (teamAgents.length > 0 || otherUserMembers.length > 0) && (
           <div
             style={{
               position: 'absolute',
@@ -655,6 +681,11 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       />
     </Layout>
   )
+}
+
+function taskTitleFromMessage(text: string): string {
+  const withoutLeadingMentions = text.replace(/(?:^|\s)@\S+/g, ' ').trim()
+  return (withoutLeadingMentions || text).slice(0, 80)
 }
 
 /** 时间分隔线文案：今天 HH:mm / 昨天 HH:mm / M月D日 HH:mm（气泡时间展示用） */

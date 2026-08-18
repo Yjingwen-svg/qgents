@@ -205,10 +205,13 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const markGroupReadNow = useCallback(async (): Promise<void> => {
     if (!projectId || !groupId) return
     // 乐观清零当前群未读：红点立即消失，不等后端往返
+    // 注意：必须用 setQueryData（精确匹配）——setQueriesData 是前缀模糊匹配，
+    // 会把 ['groups', projectId, groupId, 'messages'] 的分页信封对象也喂给 updater，
+    // groups.map 直接崩掉，导致 read 请求在发出前就被中断。
     const clearCurrent = (groups: Group[] | undefined): Group[] | undefined =>
       groups ? groups.map((g) => (g.id === groupId ? { ...g, unreadCount: 0 } : g)) : groups
-    queryClient.setQueriesData<Group[]>({ queryKey: ['groups', projectId] }, clearCurrent)
-    queryClient.setQueriesData<Group[]>({ queryKey: ['chat', 'main-groups'] }, clearCurrent)
+    queryClient.setQueryData<Group[]>(['groups', projectId], clearCurrent)
+    queryClient.setQueryData<Group[]>(['chat', 'main-groups'], clearCurrent)
     try {
       const data = await groupApi.markRead(projectId, groupId)
       // 记录已读游标：后续新消息 seq > 游标 且 @ 我 的才触发「有人@我」提示

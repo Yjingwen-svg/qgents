@@ -33,6 +33,7 @@ export interface TeamMember {
 export interface CreateTeamPayload {
   name: string
   description?: string
+  /** 团队头像 URL（由团队头像上传 confirm 返回，可选） */
   avatarUrl?: string
 }
 

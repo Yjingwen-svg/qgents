@@ -1,7 +1,5 @@
 import { request, requestPage } from './client'
-import { writeHeaders } from './requestHelpers'
 import type {
-  AvatarCredential,
   CreateTeamPayload,
   CreateInvitationPayload,
   Team,
@@ -51,6 +49,20 @@ export const teamApi = {
     return request<Team>('/teams', { method: 'POST', body: payload })
   },
 
+  /** POST /teams/{teamId}/avatar/credential — 签发团队头像直传凭证（§5.1；OSS 未启用时 501） */
+  avatarCredential(teamId: string, input: { mediaType: string; sizeBytes: number }) {
+    return request<{ objectKey: string; uploadUrl: string; method: string; headers: Record<string, string>; expiresAt: string }>(
+      `/teams/${teamId}/avatar/credential`, { method: 'POST', body: input })
+  },
+
+  /** POST /teams/{teamId}/avatar/confirm — 确认团队头像上传并返回公共读 URL */
+  avatarConfirm(teamId: string, objectKey: string) {
+    return request<{ avatarUrl: string }>(`/teams/${teamId}/avatar/confirm`, {
+      method: 'POST',
+      body: { objectKey },
+    })
+  },
+
   /** GET /teams/{teamId} — 获取团队资料 */
   getById(teamId: string) {
     return request<Team>(`/teams/${teamId}`).then(normalizeTeam)
@@ -59,28 +71,6 @@ export const teamApi = {
   /** PATCH /teams/{teamId} — 修改团队资料（仅 Team Owner） */
   update(teamId: string, payload: Partial<CreateTeamPayload>) {
     return request<Team>(`/teams/${teamId}`, { method: 'PATCH', body: payload })
-  },
-
-  /**
-   * POST /teams/{teamId}/avatar/credential — 签发团队头像直传凭证（§28.1，仅 Team Owner）。
-   * 错误：403 AVATAR_OBJECT_KEY_FORBIDDEN（前缀不匹配 teams/{teamId}/）/
-   *       409 AVATAR_NOT_UPLOADED（对象未真实上传）/ 501 AVATAR_STORAGE_NOT_CONFIGURED（OSS 未启用）。
-   */
-  avatarCredential(teamId: string, input: { mediaType: string; sizeBytes: number }) {
-    return request<AvatarCredential>(`/teams/${teamId}/avatar/credential`, {
-      method: 'POST',
-      headers: writeHeaders(),
-      body: input,
-    })
-  },
-
-  /** POST /teams/{teamId}/avatar/confirm — 确认团队头像上传，写入 teams.avatar_url 并返回公共读 URL（§28.1） */
-  avatarConfirm(teamId: string, objectKey: string) {
-    return request<{ avatarUrl: string }>(`/teams/${teamId}/avatar/confirm`, {
-      method: 'POST',
-      headers: writeHeaders(),
-      body: { objectKey },
-    })
   },
 
   /** GET /teams/{teamId}/members — 团队成员列表 */

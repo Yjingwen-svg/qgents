@@ -14,7 +14,6 @@ import { useQuery } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
-import { AuthedImage } from '@/components/AuthedImage'
 import { CreateProjectModal } from '@/components/CreateProjectModal'
 import { useAppUiStore } from '@/store/appUiStore'
 import { useTeamEvents } from '@/realtime/useTeamEvents'
@@ -57,13 +56,7 @@ function MemberPreview({ member }: { member: TeamMember }) {
   return (
     <li className="team-detail__member-row">
       {member.avatarUrl ? (
-        <AuthedImage
-          src={member.avatarUrl}
-          className="team-detail__member-avatar team-detail__member-avatar--img"
-          alt={`${displayName} 的头像`}
-          fallback={undefined}
-          preview={false}
-        />
+        <img className="team-detail__member-avatar team-detail__member-avatar--img" src={member.avatarUrl} alt={displayName} aria-hidden />
       ) : (
         <span className="team-detail__member-avatar" aria-hidden>
           {displayName.slice(0, 1)}
@@ -194,12 +187,11 @@ export default function TeamDetailPage() {
       <aside className="team-detail__sidebar" aria-label="团队导航">
         <div className="team-detail__team-card">
           {team.avatarUrl ? (
-            <AuthedImage
-              src={team.avatarUrl}
+            <img
               className="team-detail__team-logo team-detail__team-logo--img"
+              src={team.avatarUrl}
               alt={`${team.name} 的团队头像`}
-              fallback={undefined}
-              preview={false}
+              aria-hidden
             />
           ) : (
             <div className="team-detail__team-logo">{team.name.slice(0, 1)}</div>

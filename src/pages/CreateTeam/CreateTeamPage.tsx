@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { PATHS } from '@/routes/paths'
 import { useAuth } from '@/context/AuthContext'
@@ -9,10 +9,9 @@ import './CreateTeamPage.css'
 /**
  * 创建新团队 —— 对齐接口文档 §5.1 / §28.3（团队头像）
  *
- * §28.3 头像流程：创建页选图预览 → POST /teams 创建（无 teamId 无法先传）→
- * 用返回的 teamId 走 credential → OSS PUT → confirm 拿 avatarUrl →
- * PATCH /teams/{teamId} 回写 → 跳转团队详情。
- * 头像上传失败不阻断团队创建（提示后继续跳转）。
+ * POST /teams 创建团队（创建者自动成为 TEAM_OWNER）
+ * 头像：创建成功后以返回的 teamId 走 credential → OSS 直传 → confirm，再 PATCH 回写
+ * 邀请成员是后续操作（POST /teams/{teamId}/invitations），创建后跳团队详情再操作
  */
 export default function CreateTeamPage() {
   const navigate = useNavigate()
@@ -21,20 +20,23 @@ export default function CreateTeamPage() {
   const [description, setDescription] = useState('')
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  /** 选图：本地预览（上传在创建成功后按 §28.3 执行） */
-  function pickAvatar(file: File | undefined) {
-    if (!file) return
+  async function handleAvatarPick(file: File) {
     if (!file.type.startsWith('image/')) {
-      setError('仅支持图片文件')
-      return
+      setError('头像必须是图片文件')
+      return false
     }
-    setError(null)
+    if (file.size > 5 * 1024 * 1024) {
+      setError('头像大小不能超过 5MB')
+      return false
+    }
     setAvatarFile(file)
     setAvatarPreview(URL.createObjectURL(file))
+    setError(null)
+    return false
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -43,29 +45,32 @@ export default function CreateTeamPage() {
     setError(null)
     setSubmitting(true)
 
-    let teamId = ''
     try {
       const team = await teamApi.create({
         name: name.trim(),
         description: description.trim() || undefined,
       })
-      teamId = team.id
-      setHasTeam(true)
-
-      // §28.3：创建成功后再上传头像并回写；失败不阻断跳转
+      // 选了头像：创建成功后用返回的 teamId 上传并回写（§28.3）
       if (avatarFile) {
+        setAvatarUploading(true)
         try {
-          const avatarUrl = await teamApi.uploadAvatar(teamId, avatarFile)
-          if (avatarUrl) await teamApi.update(teamId, { avatarUrl })
+          const credential = await teamApi.avatarCredential(team.id, {
+            mediaType: avatarFile.type,
+            sizeBytes: avatarFile.size,
+          })
+          const putRes = await fetch(credential.uploadUrl, { method: 'PUT', body: await avatarFile.arrayBuffer() })
+          if (!putRes.ok) throw new Error(`头像上传失败（${putRes.status}）`)
+          const result = await teamApi.avatarConfirm(team.id, credential.objectKey)
+          await teamApi.update(team.id, { avatarUrl: result.avatarUrl })
         } catch (avatarError) {
-          // 头像失败不阻断：提示后继续跳转
-          setError(
-            `团队已创建，但头像上传失败：${avatarError instanceof Error ? avatarError.message : '请稍后到团队设置重试'}`,
-          )
+          // 头像上传失败不阻断创建：提示但继续跳转
+          setError(avatarError instanceof Error ? `团队已创建，但头像上传失败：${avatarError.message}` : '团队已创建，但头像上传失败')
+        } finally {
+          setAvatarUploading(false)
         }
       }
-
-      navigate(PATHS.teamDetail(teamId, true), { replace: true })
+      setHasTeam(true)
+      navigate(PATHS.teamDetail(team.id, true), { replace: true })
     } catch (err) {
       setError(formatApiError(err))
     } finally {
@@ -85,29 +90,28 @@ export default function CreateTeamPage() {
       <h1 className="create-team__title">创建新团队</h1>
 
       <form className="create-team__card" onSubmit={handleSubmit}>
-        {/* 团队头像（§28.3：选图本地预览，创建成功后上传并回写） */}
+        {/* 头像 —— 创建成功后回写；本地先预览 */}
         <div className="create-team__avatar-row">
-          <button
-            type="button"
-            className="create-team__avatar-btn"
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="上传团队头像"
-          >
+          <label className="create-team__avatar-btn">
             {avatarPreview ? (
               <img className="create-team__avatar-preview" src={avatarPreview} alt="团队头像预览" />
             ) : (
               <CameraIcon />
             )}
-            <span>{avatarPreview ? '更换头像' : '上传头像'}</span>
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            hidden
-            onChange={(event) => pickAvatar(event.target.files?.[0])}
-          />
-          <p className="create-team__hint">支持 JPG / PNG，建议 200×200 方形图片</p>
+            <input
+              type="file"
+              accept="image/*"
+              hidden
+              disabled={avatarUploading}
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) void handleAvatarPick(file)
+                e.target.value = ''
+              }}
+            />
+            <span>{avatarUploading ? '上传中…' : avatarPreview ? '更换头像' : '上传头像'}</span>
+          </label>
+          <p className="create-team__hint">支持 JPG / PNG / WEBP，建议 200×200 方形图片，≤5MB</p>
         </div>
 
         {/* —— 错误提示 —— */}
@@ -137,11 +141,6 @@ export default function CreateTeamPage() {
             placeholder="描述团队用途、协作方向"
             rows={3}
           />
-        </label>
-
-        <label className="create-team__field">
-          <span className="create-team__label">团队成立时间</span>
-          <input value="创建后自动生成" disabled readOnly />
         </label>
 
         {/* 邀请成员 —— 创建完成后在团队详情页操作，此处仅提示 */}

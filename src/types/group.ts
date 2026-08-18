@@ -75,16 +75,20 @@ export interface CodeMessageContent {
   language?: string
 }
 
-/** IMAGE 消息内容 */
+/** IMAGE 消息内容（增量契约 §6：attachmentId 必填，服务端按它回源并喂给多模态模型） */
 export interface ImageMessageContent {
   url: string
+  /** 已确认上传（READY）的附件 ID（增量契约 §6.2，必填） */
+  attachmentId: string
   width?: number
   height?: number
 }
 
-/** FILE 消息内容 */
+/** FILE 消息内容（增量契约 §6：attachmentId 必填；name/mediaType/sizeBytes 建议携带） */
 export interface FileMessageContent {
   url: string
+  /** 已确认上传（READY）的附件 ID（增量契约 §6.2，必填） */
+  attachmentId: string
   name: string
   size: number
   mimeType: string

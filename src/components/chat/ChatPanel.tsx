@@ -474,7 +474,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     },
   })
 
-  /** 选择附件后：直传 OSS → 发送 IMAGE/FILE 消息（§18 附件链路） */
+  /** 选择附件后：直传 OSS → 发送 IMAGE/FILE 消息（§18 附件链路 + 增量契约 §6 attachmentId） */
   async function handleUpload(file: File) {
     if (uploading) return
     setUploading(true)
@@ -485,8 +485,9 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       await groupApi.sendMessage(projectId, groupId, {
         type: isImage ? 'IMAGE' : 'FILE',
         content: isImage
-          ? { url }
-          : { url, name: file.name, size: file.size, mimeType: file.type },
+          ? // §6.2：IMAGE content 必须带 attachmentId（多模态输入依赖）
+            { url, attachmentId }
+          : { url, attachmentId, name: file.name, size: file.size, mimeType: file.type },
         clientMessageId: `cmsg_${Date.now()}`,
       })
       await queryClient.invalidateQueries({

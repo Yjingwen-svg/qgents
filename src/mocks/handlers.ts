@@ -1402,6 +1402,17 @@ export const handlers = [
     })
   }),
 
+  // 单条消息定位（通知「@ 提及」跳转用）：目标消息不在已加载分页时拉取
+  http.get('/api/projects/:projectId/groups/:groupId/messages/:messageId', ({ params }) => {
+    const message = (MOCK_MESSAGES[params.groupId as string] ?? []).find(
+      (m) => m.id === params.messageId,
+    )
+    if (!message) {
+      return HttpResponse.json({ error: { code: 'MESSAGE_NOT_FOUND', message: '消息不存在' } }, { status: 404 })
+    }
+    return HttpResponse.json({ data: message })
+  }),
+
   http.post('/api/projects/:projectId/groups/:groupId/messages', async ({ params, request }) => {
     const groupId = params.groupId as string
     const body = (await request.json()) as {

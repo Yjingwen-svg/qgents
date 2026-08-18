@@ -27,6 +27,7 @@ import type {
   Message,
   Mention,
   MentionType,
+  Page,
   TextMessageContent,
   CodeMessageContent,
   ImageMessageContent,
@@ -299,15 +300,16 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
 
   // 从「@ 提及」通知跳转过来：自动滚动到被 @ 的消息并高亮（模拟点击提示条）。
   // 通知带 resourceId=messageId → 精确定位；缺 messageId（旧数据）→ 兜底跳到最上面（最早）一条被 @ 的消息。
-  // 只执行一次，随后消费掉导航 state，避免重渲染重复触发。
+  // 精确目标不在已加载分页窗口时，拉单条（GET .../messages/{messageId}）合并进列表后再跳转。
+  // 跳转成功后才消费导航 state，避免重渲染重复触发。
   const autoMentionJumpedRef = useRef(false)
+  const autoMentionFetchingRef = useRef(false)
   useEffect(() => {
     if (autoMentionJumpedRef.current || messages.length === 0 || !currentUserId) return
     const mentionMessageId = (location.state as { mentionMessageId?: string } | null)?.mentionMessageId
     const hasAutoJumpFlag =
       typeof mentionMessageId === 'string' || (location.state as { autoJumpMention?: boolean } | null)?.autoJumpMention === true
     if (!hasAutoJumpFlag) return
-    autoMentionJumpedRef.current = true
     const target = mentionMessageId
       ? messages.find((m) => m.id === mentionMessageId)
       : messages.find(
@@ -315,8 +317,27 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             m.senderId !== currentUserId &&
             (m.mentions ?? []).some((mention) => mention.type === 'USER' && mention.id === currentUserId),
         )
-    if (target) flashMention(target.id)
-    navigate(location.pathname, { replace: true, state: {} })
+    if (target) {
+      autoMentionJumpedRef.current = true
+      flashMention(target.id)
+      navigate(location.pathname, { replace: true, state: {} })
+      return
+    }
+    // 精确目标不在已加载窗口：拉单条并合并（只拉一次；失败保持现状，状态不消费）
+    if (typeof mentionMessageId === 'string' && !autoMentionFetchingRef.current) {
+      autoMentionFetchingRef.current = true
+      void groupApi
+        .getMessage(projectId, groupId, mentionMessageId)
+        .then((msg) => {
+          queryClient.setQueryData<Page<Message>>(['groups', projectId, groupId, 'messages'], (prev) => {
+            if (!prev || prev.data.some((m) => m.id === msg.id)) return prev
+            return { ...prev, data: [...prev.data, msg] }
+          })
+        })
+        .catch(() => {
+          // 单条拉取失败：静默，不阻塞聊天
+        })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, location.pathname, navigate, location.state, currentUserId])
 

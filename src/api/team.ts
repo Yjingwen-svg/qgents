@@ -49,6 +49,20 @@ export const teamApi = {
     return request<Team>('/teams', { method: 'POST', body: payload })
   },
 
+  /** POST /teams/{teamId}/avatar/credential — 签发团队头像直传凭证（§5.1；OSS 未启用时 501） */
+  avatarCredential(teamId: string, input: { mediaType: string; sizeBytes: number }) {
+    return request<{ objectKey: string; uploadUrl: string; method: string; headers: Record<string, string>; expiresAt: string }>(
+      `/teams/${teamId}/avatar/credential`, { method: 'POST', body: input })
+  },
+
+  /** POST /teams/{teamId}/avatar/confirm — 确认团队头像上传并返回公共读 URL */
+  avatarConfirm(teamId: string, objectKey: string) {
+    return request<{ avatarUrl: string }>(`/teams/${teamId}/avatar/confirm`, {
+      method: 'POST',
+      body: { objectKey },
+    })
+  },
+
   /** GET /teams/{teamId} — 获取团队资料 */
   getById(teamId: string) {
     return request<Team>(`/teams/${teamId}`).then(normalizeTeam)

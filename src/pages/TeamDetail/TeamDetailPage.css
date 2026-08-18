@@ -406,6 +406,11 @@
   font-weight: 800;
 }
 
+.team-detail__member-avatar--img {
+  object-fit: cover;
+  background: transparent;
+}
+
 .team-detail__member-copy {
   min-width: 0;
 }

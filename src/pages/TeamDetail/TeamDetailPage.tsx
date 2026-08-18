@@ -55,9 +55,13 @@ function MemberPreview({ member }: { member: TeamMember }) {
   const email = member.email || '—'
   return (
     <li className="team-detail__member-row">
-      <span className="team-detail__member-avatar" aria-hidden>
-        {displayName.slice(0, 1)}
-      </span>
+      {member.avatarUrl ? (
+        <img className="team-detail__member-avatar team-detail__member-avatar--img" src={member.avatarUrl} alt={displayName} aria-hidden />
+      ) : (
+        <span className="team-detail__member-avatar" aria-hidden>
+          {displayName.slice(0, 1)}
+        </span>
+      )}
       <div className="team-detail__member-copy">
         <strong>{displayName}</strong>
         <span>{email}</span>

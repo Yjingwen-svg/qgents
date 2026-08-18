@@ -106,7 +106,13 @@ export function NotificationCenter() {
     if (!n.isRead) markRead.mutate(n.id)
     setOpen(false)
     const to = notificationTargetPath(n)
-    if (to) navigate(to)
+    if (!to) return
+    if (n.kind === 'MESSAGE_MENTION') {
+      // 带被 @ 的消息 id 跳转：ChatPanel 收到后自动滚动高亮到该消息（无 id 时兜底跳到最上面一条被 @ 消息）
+      navigate(to, { state: { mentionMessageId: n.resourceId } })
+    } else {
+      navigate(to)
+    }
   }
 
   return (

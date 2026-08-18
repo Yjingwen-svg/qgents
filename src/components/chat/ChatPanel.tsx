@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Drawer, Divider } from 'antd'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Drawer, Divider, Avatar } from 'antd'
 import { App, Upload } from 'antd'
 import {
   SendOutlined,
@@ -18,6 +18,7 @@ import { formatApiError } from '@/utils/formatApiError'
 import { ApiError, groupApi, projectApi, agentApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
 import { getApiBaseUrl } from '@/api/client'
 import { useAuth } from '@/context/AuthContext'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { TaskTriggerModal } from '@/components/task-domain'
 import { GroupMemberSettings } from '@/pages/ProjectDetail/GroupMemberSettings'
 import { AuthedImage } from '@/components/AuthedImage'
@@ -27,6 +28,7 @@ import type {
   Message,
   Mention,
   MentionType,
+  Page,
   TextMessageContent,
   CodeMessageContent,
   ImageMessageContent,
@@ -48,6 +50,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const location = useLocation()
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -62,6 +65,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   // 群聊 @ 提及：已读游标（markRead 返回）与「有人@我」提示条
   const [lastReadSeq, setLastReadSeq] = useState<number | null>(null)
   const [mentionFlashId, setMentionFlashId] = useState<string | null>(null)
+  // 已点击忽略的「有人@你」消息 id：点击跳转后按钮消失，新 @ 消息再来时重新出现
+  const [dismissedMentionId, setDismissedMentionId] = useState<string | null>(null)
   // 消息列表内部真正承载消息的内容容器（ResizeObserver 监听其高度变化）
   const contentRef = useRef<HTMLDivElement>(null)
   // 用户是否「应该保持贴底」：发送消息/切群/首载时置 true；用户主动上滚查看历史时置 false。
@@ -132,6 +137,16 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     })
   }, [page])
+
+  // 发送者头像（微信式，边缘展示）：优先群成员 avatarUrl，自己用当前用户头像；SYSTEM 无头像
+  const memberAvatarById = new Map(
+    members.filter((mem) => mem.avatarUrl).map((mem) => [mem.id, mem.avatarUrl as string]),
+  )
+  function resolveSenderAvatar(m: Message): string | undefined {
+    if (m.senderType === 'SYSTEM') return undefined
+    if (m.senderType === 'USER' && m.senderId === user?.id) return user?.avatarUrl
+    return m.senderId ? memberAvatarById.get(m.senderId) : undefined
+  }
 
   // 无条件滚到底部：切群 / 首次加载 / 自己发送新消息时使用
   const scrollToBottom = useCallback(() => {
@@ -264,27 +279,78 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     (m) => !mentionQuery || m.displayName.toLowerCase().includes(mentionQuery),
   )
 
-  // 未读「@ 我」的最新消息：seq > 已读游标 且 mentions 含我 且非本人发送；
+  // 未读「@ 我」消息列表（升序）：seq > 已读游标 且 mentions 含我 且非本人发送；
   // lastReadSeq 为空（进群全读完成前）不提示，避免把历史 @ 消息当未读
-  const mentionMessage = useMemo(() => {
-    if (lastReadSeq == null || !currentUserId) return null
-    const mentioned = messages.filter(
+  const mentionMessages = useMemo(() => {
+    if (lastReadSeq == null || !currentUserId) return []
+    return messages.filter(
       (m) =>
         m.senderId !== currentUserId &&
         (m.sequence ?? 0) > lastReadSeq &&
         (m.mentions ?? []).some((mention) => mention.type === 'USER' && mention.id === currentUserId),
     )
-    return mentioned.length === 0 ? null : mentioned[mentioned.length - 1]
   }, [messages, lastReadSeq, currentUserId])
+  // 提示条跳转目标 = 最新一条未读 @ 消息
+  const mentionMessage = mentionMessages.length === 0 ? null : mentionMessages[mentionMessages.length - 1]
 
-  /** 点击「有人@我」：滚动到该消息并临时高亮 */
-  function jumpToMention() {
-    if (!mentionMessage) return
-    setMentionFlashId(mentionMessage.id)
-    document.getElementById(`msg-${mentionMessage.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  /** 滚动到指定消息并临时高亮（复用「有人@你」点击效果） */
+  function flashMention(messageId: string): void {
+    setMentionFlashId(messageId)
+    setDismissedMentionId(messageId)
+    document.getElementById(`msg-${messageId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     window.setTimeout(() => setMentionFlashId(null), 2200)
   }
+
+  /** 点击「有人@你」：滚动到该消息并临时高亮；同时忽略该条，按钮消失（新 @ 消息再来时重新出现） */
+  function jumpToMention() {
+    if (!mentionMessage) return
+    flashMention(mentionMessage.id)
+  }
+  const showMentionBar = mentionMessage !== null && mentionMessage.id !== dismissedMentionId
   const canOpenTaskTrigger = group?.type === 'REQUIREMENT' && group.status === 'ACTIVE' && !group.isArchived
+
+  // 从「@ 提及」通知跳转过来：自动滚动到被 @ 的消息并高亮（模拟点击提示条）。
+  // 通知带 resourceId=messageId → 精确定位；缺 messageId（旧数据）→ 兜底跳到最上面（最早）一条被 @ 的消息。
+  // 精确目标不在已加载分页窗口时，拉单条（GET .../messages/{messageId}）合并进列表后再跳转。
+  // 跳转成功后才消费导航 state，避免重渲染重复触发。
+  const autoMentionJumpedRef = useRef(false)
+  const autoMentionFetchingRef = useRef(false)
+  useEffect(() => {
+    if (autoMentionJumpedRef.current || messages.length === 0 || !currentUserId) return
+    const mentionMessageId = (location.state as { mentionMessageId?: string } | null)?.mentionMessageId
+    const hasAutoJumpFlag =
+      typeof mentionMessageId === 'string' || (location.state as { autoJumpMention?: boolean } | null)?.autoJumpMention === true
+    if (!hasAutoJumpFlag) return
+    const target = mentionMessageId
+      ? messages.find((m) => m.id === mentionMessageId)
+      : messages.find(
+          (m) =>
+            m.senderId !== currentUserId &&
+            (m.mentions ?? []).some((mention) => mention.type === 'USER' && mention.id === currentUserId),
+        )
+    if (target) {
+      autoMentionJumpedRef.current = true
+      flashMention(target.id)
+      navigate(location.pathname, { replace: true, state: {} })
+      return
+    }
+    // 精确目标不在已加载窗口：拉单条并合并（只拉一次；失败保持现状，状态不消费）
+    if (typeof mentionMessageId === 'string' && !autoMentionFetchingRef.current) {
+      autoMentionFetchingRef.current = true
+      void groupApi
+        .getMessage(projectId, groupId, mentionMessageId)
+        .then((msg) => {
+          queryClient.setQueryData<Page<Message>>(['groups', projectId, groupId, 'messages'], (prev) => {
+            if (!prev || prev.data.some((m) => m.id === msg.id)) return prev
+            return { ...prev, data: [...prev.data, msg] }
+          })
+        })
+        .catch(() => {
+          // 单条拉取失败：静默，不阻塞聊天
+        })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, location.pathname, navigate, location.state, currentUserId])
 
   function pickMention(target: { id: string; displayName: string; type: MentionType }) {
     // 用「@显示名 + 空格」替换掉最后一个 @ 及其后的过滤字符，避免残留查询词
@@ -465,13 +531,13 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     },
   })
 
-  // 任务运行状态卡置顶：TASK_STATUS 从消息流中抽出，固定在列表顶部；
-  // 后端单卡持续更新（message.updated → 重查消息列表），置顶卡随 content 实时刷新
-  const statusCards = messages.filter((m) => m.type === 'TASK_STATUS')
-  const listMessages = messages.filter((m) => m.type !== 'TASK_STATUS')
+  // TASK_STATUS 任务状态卡按消息流时间位置渲染（不置顶）；
+  // 后端单卡持续更新（message.updated → 重查消息列表），content 原地刷新
 
   return (
-    <Layout style={{ height: '100%', background: token.colorBgBase }}>
+    // 聊天区错误边界：渲染崩溃只挂聊天区，侧栏/动态面板不受影响；切群自动复位
+    <ErrorBoundary resetKey={groupId}>
+      <Layout style={{ height: '100%', background: token.colorBgBase }}>
       {/* 顶部：群标题 + 操作入口；多选模式下切换为「取消 | 已选择 N 条」 */}
       <div
         style={{
@@ -536,13 +602,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           <Empty description="还没有消息，来说点什么吧" />
         ) : (
           <div ref={contentRef} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {/* 置顶：任务运行状态卡（后端单卡持续更新，message.updated 实时刷新） */}
-            {statusCards.map((m) => (
-              <div key={m.id} id={`msg-${m.id}`}>
-                {renderContent(m, projectId)}
-              </div>
-            ))}
-            {listMessages.map((m) => {
+            {messages.map((m) => {
               const isSelf = m.senderType === 'USER' && m.senderId === user?.id
               const flashing = mentionFlashId === m.id
               return (
@@ -563,6 +623,16 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                     transition: 'background 0.4s ease',
                   }}
                 >
+                  {/* 他人消息：头像在左边缘；自己消息：头像在右边缘（微信式） */}
+                  {!isSelf && m.senderType !== 'SYSTEM' && (
+                    <Avatar
+                      size={32}
+                      src={resolveSenderAvatar(m)}
+                      style={{ flexShrink: 0, background: '#3b82f6', marginTop: 2 }}
+                    >
+                      {(m.senderName ?? '?').slice(0, 1)}
+                    </Avatar>
+                  )}
                   {/* 内层 div 限制最大宽度 78%（相对消息列宽），气泡在内部 fit-content 铺满可用宽度，
                       保证每行容纳更多字；左右对齐由外层 justifyContent 控制 */}
                   <div style={{ maxWidth: '78%', minWidth: 0 }}>
@@ -575,11 +645,20 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                       onImageLoad={handleImageLoad}
                     />
                   </div>
+                  {isSelf && (
+                    <Avatar
+                      size={32}
+                      src={user?.avatarUrl}
+                      style={{ flexShrink: 0, background: '#f97316', marginTop: 2 }}
+                    >
+                      {(user?.displayName ?? '我').slice(0, 1)}
+                    </Avatar>
+                  )}
                 </div>
               )
             })}
-            {/* 未读「@ 我」提示条：点击跳到被 @ 的那条消息 */}
-            {mentionMessage ? (
+            {/* 未读「@ 我」提示条：点击跳到被 @ 的那条消息，点击后按钮消失 */}
+            {showMentionBar ? (
               <div
                 onClick={jumpToMention}
                 role="button"
@@ -604,7 +683,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                   cursor: 'pointer',
                 }}
               >
-                ↑ 有人@了我
+                ↑ 有人@你
               </div>
             ) : null}
           </div>
@@ -778,7 +857,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           )}
         </Space>
       </Drawer>
-    </Layout>
+      </Layout>
+    </ErrorBoundary>
   )
 }
 

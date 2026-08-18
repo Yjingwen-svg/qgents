@@ -107,6 +107,8 @@ const MOCK_GROUPS: Record<string, Group[]> = {
       createdBy: 'user-001',
       latestActivityAt: '2026-08-12T10:03:00Z',
       unreadCount: 2,
+      // 有 @ 当前用户（user-001）的未读消息 → 侧栏「有人@你」角标
+      mentionedUnread: 1,
       isPinned: true,
       isArchived: false,
     },
@@ -323,6 +325,20 @@ const MOCK_MESSAGES: Record<string, Message[]> = {
       createdAt: '2026-08-12T10:35:00Z',
       replyToId: null,
     },
+    {
+      // 演示「有人@你」：张工 @ 了当前用户（user-001）
+      id: 'msg-login-010',
+      groupId: 'group-login-proj-001',
+      type: 'TEXT',
+      content: { text: '@陈同学 登录接口的校验逻辑麻烦确认一下' },
+      senderType: 'USER',
+      senderId: 'user-002',
+      senderName: '张工',
+      sequence: 10,
+      createdAt: '2026-08-12T10:40:00Z',
+      replyToId: null,
+      mentions: [{ type: 'USER', id: 'user-001' }],
+    },
   ],
 }
 
@@ -335,14 +351,15 @@ interface MockProjectMember {
   displayName: string
   email: string
   role: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'
+  avatarUrl?: string
 }
 
 // 项目成员（按项目隔离，作为群 USER 成员来源；同时供 GET /projects/:id/members 复用）
 const MOCK_PROJECT_MEMBERS: Record<string, MockProjectMember[]> = {
   'proj-001': [
-    { userId: 'user-001', displayName: '陈同学', email: 'demo@qgents.dev', role: 'PROJECT_ADMIN' },
-    { userId: 'user-002', displayName: '张工', email: 'zhang@example.com', role: 'PROJECT_MEMBER' },
-    { userId: 'user-003', displayName: '李设计', email: 'li@example.com', role: 'PROJECT_MEMBER' },
+    { userId: 'user-001', displayName: '陈同学', email: 'demo@qgents.dev', role: 'PROJECT_ADMIN', avatarUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=陈同学' },
+    { userId: 'user-002', displayName: '张工', email: 'zhang@example.com', role: 'PROJECT_MEMBER', avatarUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=张工' },
+    { userId: 'user-003', displayName: '李设计', email: 'li@example.com', role: 'PROJECT_MEMBER', avatarUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=李设计' },
   ],
 }
 
@@ -382,7 +399,7 @@ function getGroupMembers(projectId: string, groupId: string): GroupMember[] {
   const users: GroupMember[] = (MOCK_GROUP_USER_MEMBERS[groupId] ?? [])
     .map((userId) => membersById.get(userId))
     .filter((m): m is MockProjectMember => Boolean(m))
-    .map((m): GroupMember => ({ id: m.userId, displayName: m.displayName, email: m.email, memberType: 'USER' }))
+    .map((m): GroupMember => ({ id: m.userId, displayName: m.displayName, email: m.email, avatarUrl: m.avatarUrl, memberType: 'USER' }))
   return [...users, ...(MOCK_GROUP_AGENTS[groupId] ?? [])]
 }
 
@@ -456,6 +473,17 @@ const MOCK_NOTIFICATIONS: Notification[] = [
     projectId: 'proj-001',
     groupId: 'group-login-proj-001',
     resourceId: 'task-001',
+  },
+  {
+    id: 'notif-6',
+    kind: 'MESSAGE_MENTION',
+    title: '张工在「登录功能」群里 @ 了你',
+    description: '登录接口的校验逻辑麻烦确认一下',
+    isRead: false,
+    createdAt: '2026-08-12T10:41:00Z',
+    projectId: 'proj-001',
+    groupId: 'group-login-proj-001',
+    resourceId: 'msg-login-010',
   },
 ]
 
@@ -1260,10 +1288,13 @@ export const handlers = [
     const groupId = params.groupId as string
     const group = (MOCK_GROUPS[projectId] ?? []).find((g) => g.id === groupId)
     if (!group) return HttpResponse.json({ error: { code: 'GROUP_NOT_FOUND', message: '群不存在' } }, { status: 404 })
-    const lastReadSequenceNo = (MOCK_MESSAGES[groupId] ?? []).reduce(
+    // 演示用：游标停在最新一条之前，让最新消息高于已读游标，便于观察「↑ 有人@你」提示条。
+    // 真实后端按「进群全读」推进到最新即可。
+    const maxSeq = (MOCK_MESSAGES[groupId] ?? []).reduce(
       (max, m) => Math.max(max, m.sequence ?? 0),
       0,
     )
+    const lastReadSequenceNo = Math.max(0, maxSeq - 1)
     group.unreadCount = 0
     return HttpResponse.json({ data: { groupId, lastReadSequenceNo, unreadCount: 0 } })
   }),
@@ -1370,6 +1401,17 @@ export const handlers = [
       data: messages,
       page: { nextCursor: null, hasMore: false },
     })
+  }),
+
+  // 单条消息定位（通知「@ 提及」跳转用）：目标消息不在已加载分页时拉取
+  http.get('/api/projects/:projectId/groups/:groupId/messages/:messageId', ({ params }) => {
+    const message = (MOCK_MESSAGES[params.groupId as string] ?? []).find(
+      (m) => m.id === params.messageId,
+    )
+    if (!message) {
+      return HttpResponse.json({ error: { code: 'MESSAGE_NOT_FOUND', message: '消息不存在' } }, { status: 404 })
+    }
+    return HttpResponse.json({ data: message })
   }),
 
   http.post('/api/projects/:projectId/groups/:groupId/messages', async ({ params, request }) => {

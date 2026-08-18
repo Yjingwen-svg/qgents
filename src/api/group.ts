@@ -58,6 +58,10 @@ export const groupApi = {
       `/projects/${projectId}/groups/${groupId}/messages?${params.toString()}`,
     )
   },
+  /** 单条消息定位（通知「@ 提及」跳转用，§群聊@提及补充）：目标消息不在已加载分页时拉取 */
+  getMessage(projectId: string, groupId: string, messageId: string) {
+    return request<Message>(`/projects/${projectId}/groups/${groupId}/messages/${messageId}`)
+  },
   sendMessage(projectId: string, groupId: string, payload: SendMessagePayload) {
     return request<Message | SendMessageResult>(`/projects/${projectId}/groups/${groupId}/messages`, {
       method: 'POST',

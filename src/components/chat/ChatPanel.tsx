@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Drawer, Divider } from 'antd'
 import { App, Upload } from 'antd'
 import {
@@ -48,6 +48,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const location = useLocation()
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -62,6 +63,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   // 群聊 @ 提及：已读游标（markRead 返回）与「有人@我」提示条
   const [lastReadSeq, setLastReadSeq] = useState<number | null>(null)
   const [mentionFlashId, setMentionFlashId] = useState<string | null>(null)
+  // 已点击忽略的「有人@你」消息 id：点击跳转后按钮消失，新 @ 消息再来时重新出现
+  const [dismissedMentionId, setDismissedMentionId] = useState<string | null>(null)
   // 消息列表内部真正承载消息的内容容器（ResizeObserver 监听其高度变化）
   const contentRef = useRef<HTMLDivElement>(null)
   // 用户是否「应该保持贴底」：发送消息/切群/首载时置 true；用户主动上滚查看历史时置 false。
@@ -264,27 +267,58 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     (m) => !mentionQuery || m.displayName.toLowerCase().includes(mentionQuery),
   )
 
-  // 未读「@ 我」的最新消息：seq > 已读游标 且 mentions 含我 且非本人发送；
+  // 未读「@ 我」消息列表（升序）：seq > 已读游标 且 mentions 含我 且非本人发送；
   // lastReadSeq 为空（进群全读完成前）不提示，避免把历史 @ 消息当未读
-  const mentionMessage = useMemo(() => {
-    if (lastReadSeq == null || !currentUserId) return null
-    const mentioned = messages.filter(
+  const mentionMessages = useMemo(() => {
+    if (lastReadSeq == null || !currentUserId) return []
+    return messages.filter(
       (m) =>
         m.senderId !== currentUserId &&
         (m.sequence ?? 0) > lastReadSeq &&
         (m.mentions ?? []).some((mention) => mention.type === 'USER' && mention.id === currentUserId),
     )
-    return mentioned.length === 0 ? null : mentioned[mentioned.length - 1]
   }, [messages, lastReadSeq, currentUserId])
+  // 提示条跳转目标 = 最新一条未读 @ 消息
+  const mentionMessage = mentionMessages.length === 0 ? null : mentionMessages[mentionMessages.length - 1]
 
-  /** 点击「有人@我」：滚动到该消息并临时高亮 */
-  function jumpToMention() {
-    if (!mentionMessage) return
-    setMentionFlashId(mentionMessage.id)
-    document.getElementById(`msg-${mentionMessage.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  /** 滚动到指定消息并临时高亮（复用「有人@你」点击效果） */
+  function flashMention(messageId: string): void {
+    setMentionFlashId(messageId)
+    setDismissedMentionId(messageId)
+    document.getElementById(`msg-${messageId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     window.setTimeout(() => setMentionFlashId(null), 2200)
   }
+
+  /** 点击「有人@你」：滚动到该消息并临时高亮；同时忽略该条，按钮消失（新 @ 消息再来时重新出现） */
+  function jumpToMention() {
+    if (!mentionMessage) return
+    flashMention(mentionMessage.id)
+  }
+  const showMentionBar = mentionMessage !== null && mentionMessage.id !== dismissedMentionId
   const canOpenTaskTrigger = group?.type === 'REQUIREMENT' && group.status === 'ACTIVE' && !group.isArchived
+
+  // 从「@ 提及」通知跳转过来：自动滚动到被 @ 的消息并高亮（模拟点击提示条）。
+  // 通知带 resourceId=messageId → 精确定位；缺 messageId（旧数据）→ 兜底跳到最上面（最早）一条被 @ 的消息。
+  // 只执行一次，随后消费掉导航 state，避免重渲染重复触发。
+  const autoMentionJumpedRef = useRef(false)
+  useEffect(() => {
+    if (autoMentionJumpedRef.current || messages.length === 0 || !currentUserId) return
+    const mentionMessageId = (location.state as { mentionMessageId?: string } | null)?.mentionMessageId
+    const hasAutoJumpFlag =
+      typeof mentionMessageId === 'string' || (location.state as { autoJumpMention?: boolean } | null)?.autoJumpMention === true
+    if (!hasAutoJumpFlag) return
+    autoMentionJumpedRef.current = true
+    const target = mentionMessageId
+      ? messages.find((m) => m.id === mentionMessageId)
+      : messages.find(
+          (m) =>
+            m.senderId !== currentUserId &&
+            (m.mentions ?? []).some((mention) => mention.type === 'USER' && mention.id === currentUserId),
+        )
+    if (target) flashMention(target.id)
+    navigate(location.pathname, { replace: true, state: {} })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, location.pathname, navigate, location.state, currentUserId])
 
   function pickMention(target: { id: string; displayName: string; type: MentionType }) {
     // 用「@显示名 + 空格」替换掉最后一个 @ 及其后的过滤字符，避免残留查询词
@@ -465,10 +499,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     },
   })
 
-  // 任务运行状态卡置顶：TASK_STATUS 从消息流中抽出，固定在列表顶部；
-  // 后端单卡持续更新（message.updated → 重查消息列表），置顶卡随 content 实时刷新
-  const statusCards = messages.filter((m) => m.type === 'TASK_STATUS')
-  const listMessages = messages.filter((m) => m.type !== 'TASK_STATUS')
+  // TASK_STATUS 任务状态卡按消息流时间位置渲染（不置顶）；
+  // 后端单卡持续更新（message.updated → 重查消息列表），content 原地刷新
 
   return (
     <Layout style={{ height: '100%', background: token.colorBgBase }}>
@@ -536,13 +568,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           <Empty description="还没有消息，来说点什么吧" />
         ) : (
           <div ref={contentRef} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {/* 置顶：任务运行状态卡（后端单卡持续更新，message.updated 实时刷新） */}
-            {statusCards.map((m) => (
-              <div key={m.id} id={`msg-${m.id}`}>
-                {renderContent(m, projectId)}
-              </div>
-            ))}
-            {listMessages.map((m) => {
+            {messages.map((m) => {
               const isSelf = m.senderType === 'USER' && m.senderId === user?.id
               const flashing = mentionFlashId === m.id
               return (
@@ -578,8 +604,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                 </div>
               )
             })}
-            {/* 未读「@ 我」提示条：点击跳到被 @ 的那条消息 */}
-            {mentionMessage ? (
+            {/* 未读「@ 我」提示条：点击跳到被 @ 的那条消息，点击后按钮消失 */}
+            {showMentionBar ? (
               <div
                 onClick={jumpToMention}
                 role="button"
@@ -604,7 +630,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                   cursor: 'pointer',
                 }}
               >
-                ↑ 有人@了我
+                ↑ 有人@你
               </div>
             ) : null}
           </div>

@@ -107,6 +107,8 @@ const MOCK_GROUPS: Record<string, Group[]> = {
       createdBy: 'user-001',
       latestActivityAt: '2026-08-12T10:03:00Z',
       unreadCount: 2,
+      // 有 @ 当前用户（user-001）的未读消息 → 侧栏「有人@你」角标
+      mentionedUnread: 1,
       isPinned: true,
       isArchived: false,
     },
@@ -323,6 +325,20 @@ const MOCK_MESSAGES: Record<string, Message[]> = {
       createdAt: '2026-08-12T10:35:00Z',
       replyToId: null,
     },
+    {
+      // 演示「有人@你」：张工 @ 了当前用户（user-001）
+      id: 'msg-login-010',
+      groupId: 'group-login-proj-001',
+      type: 'TEXT',
+      content: { text: '@陈同学 登录接口的校验逻辑麻烦确认一下' },
+      senderType: 'USER',
+      senderId: 'user-002',
+      senderName: '张工',
+      sequence: 10,
+      createdAt: '2026-08-12T10:40:00Z',
+      replyToId: null,
+      mentions: [{ type: 'USER', id: 'user-001' }],
+    },
   ],
 }
 
@@ -456,6 +472,17 @@ const MOCK_NOTIFICATIONS: Notification[] = [
     projectId: 'proj-001',
     groupId: 'group-login-proj-001',
     resourceId: 'task-001',
+  },
+  {
+    id: 'notif-6',
+    kind: 'MESSAGE_MENTION',
+    title: '张工在「登录功能」群里 @ 了你',
+    description: '登录接口的校验逻辑麻烦确认一下',
+    isRead: false,
+    createdAt: '2026-08-12T10:41:00Z',
+    projectId: 'proj-001',
+    groupId: 'group-login-proj-001',
+    resourceId: 'msg-login-010',
   },
 ]
 
@@ -1260,10 +1287,13 @@ export const handlers = [
     const groupId = params.groupId as string
     const group = (MOCK_GROUPS[projectId] ?? []).find((g) => g.id === groupId)
     if (!group) return HttpResponse.json({ error: { code: 'GROUP_NOT_FOUND', message: '群不存在' } }, { status: 404 })
-    const lastReadSequenceNo = (MOCK_MESSAGES[groupId] ?? []).reduce(
+    // 演示用：游标停在最新一条之前，让最新消息高于已读游标，便于观察「↑ 有人@你」提示条。
+    // 真实后端按「进群全读」推进到最新即可。
+    const maxSeq = (MOCK_MESSAGES[groupId] ?? []).reduce(
       (max, m) => Math.max(max, m.sequence ?? 0),
       0,
     )
+    const lastReadSequenceNo = Math.max(0, maxSeq - 1)
     group.unreadCount = 0
     return HttpResponse.json({ data: { groupId, lastReadSequenceNo, unreadCount: 0 } })
   }),

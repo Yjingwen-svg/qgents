@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
-import { Layout, Input, List, Avatar, Typography, Space, theme, Empty, Badge } from 'antd'
+import { useEffect, useMemo, useState } from 'react'
+import { Layout, Input, List, Avatar, Typography, Space, theme, Empty, Badge, Spin } from 'antd'
 import { SearchOutlined, TeamOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
-import { groupApi } from '@/api'
+import { groupApi, projectApi, teamApi } from '@/api'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { latestMessageText } from '@/utils/messageSummary'
+import { useCurrentTeamId } from '@/store/appUiStore'
 import type { Group } from '@/types'
 
 const { Text } = Typography
@@ -20,24 +21,43 @@ interface MainGroupSession {
 }
 
 /**
- * 项目群聊工作台 —— 左边聚合「所有项目的主群」，右边内嵌聊天面板。
- * 数据：GET /chat/main-groups 主群聚合（§五），一次返回全部可见项目主群，
- * 替代原来 teams → projects → groups 三层串联查询（消除 N+1）。
+ * 项目群聊工作台 —— 左边聚合「**当前团队**的所有项目主群」，右边内嵌聊天面板。
+ * 数据：GET /chat/main-groups 主群聚合（含全部可见项目）+ GET /teams/{id}/projects 按团队过滤；
+ * 数据加载完成后自动选中第一个主群，避免刚进入时的空态闪烁。
  */
 export default function ChatWorkspacePage() {
   const { token } = theme.useToken()
+  const currentTeamId = useCurrentTeamId()
   const [selected, setSelected] = useState<MainGroupSession | null>(null)
   const [keyword, setKeyword] = useState('')
 
-  // 主群聚合：按最近活跃倒序；含 latestMessage / memberCount / unreadCount
-  const { data: mainGroups = [] } = useQuery({
+  // 当前团队兜底：从未进入团队/项目页时取第一个团队
+  const { data: teams = [] } = useQuery({
+    queryKey: ['teams', 'mine'],
+    queryFn: teamApi.listMine,
+  })
+  const effectiveTeamId = currentTeamId ?? teams[0]?.id ?? ''
+
+  // 当前团队的项目 id 集合：主群聚合按团队过滤（聚合接口不返回 teamId）
+  const { data: teamProjects = [], isLoading: teamProjectsLoading } = useQuery({
+    queryKey: ['teams', effectiveTeamId, 'projects'],
+    queryFn: () => projectApi.listByTeam(effectiveTeamId),
+    enabled: !!effectiveTeamId,
+  })
+  const teamProjectIds = useMemo(() => new Set(teamProjects.map((p) => p.id)), [teamProjects])
+
+  // 主群聚合：按最近活跃倒序；含 latestMessage / memberCount / unreadCount / mentionedUnread
+  const { data: mainGroups = [], isLoading: mainGroupsLoading } = useQuery({
     queryKey: ['chat', 'main-groups'],
     queryFn: groupApi.listMainGroups,
   })
 
+  const loading = mainGroupsLoading || teamProjectsLoading
+
   const sessions = useMemo<MainGroupSession[]>(() => {
+    if (loading) return []
     return mainGroups
-      .filter((g) => g.type === 'PROJECT_MAIN')
+      .filter((g) => g.type === 'PROJECT_MAIN' && teamProjectIds.has(g.projectId))
       .map((g) => ({
         projectId: g.projectId,
         groupId: g.id,
@@ -47,7 +67,17 @@ export default function ChatWorkspacePage() {
         unreadCount: g.unreadCount,
         mentionedUnread: g.mentionedUnread,
       }))
-  }, [mainGroups])
+  }, [mainGroups, loading, teamProjectIds])
+
+  // 数据就绪后自动选中第一个主群：修复刚进入时空态闪烁；
+  // 切团队后旧选中失效（不在新 sessions 中）时自动切回第一个
+  useEffect(() => {
+    if (sessions.length === 0) return
+    setSelected((prev) => {
+      if (prev && sessions.some((s) => s.groupId === prev.groupId)) return prev
+      return sessions[0]
+    })
+  }, [sessions])
 
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase()
@@ -85,7 +115,11 @@ export default function ChatWorkspacePage() {
             项目主群
           </Text>
 
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+              <Spin size="small" />
+            </div>
+          ) : filtered.length === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无项目群聊" />
           ) : (
             <List
@@ -147,7 +181,20 @@ export default function ChatWorkspacePage() {
         </div>
       </Layout.Sider>
 
-      {selected ? (
+      {loading ? (
+        <Layout style={{ background: token.colorBgBase }}>
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Spin />
+          </div>
+        </Layout>
+      ) : selected ? (
         <ChatPanel key={selected.groupId} projectId={selected.projectId} groupId={selected.groupId} />
       ) : (
         <Layout style={{ background: token.colorBgBase }}>
@@ -159,7 +206,7 @@ export default function ChatWorkspacePage() {
               justifyContent: 'center',
             }}
           >
-            <Empty description="选择一个项目主群开始聊天" />
+            <Empty description="暂无项目群聊" />
           </div>
         </Layout>
       )}

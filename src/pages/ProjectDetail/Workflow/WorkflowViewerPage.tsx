@@ -69,6 +69,8 @@ function taskStatus(task: Task): WorkflowDisplayStatus {
     case 'PENDING': return 'QUEUED'
     case 'RUNNING': return 'RUNNING'
     case 'WAITING_DIFF_CONFIRMATION': return 'RUNNING'
+    case 'WAITING_PREFLIGHT': return 'RUNNING'
+    case 'DIFF_REJECTED': return 'FAILED'
     case 'DELIVERING': return 'RUNNING'
     case 'DELIVERY_FAILED': return 'FAILED'
     case 'SUCCEEDED': return 'COMPLETED'

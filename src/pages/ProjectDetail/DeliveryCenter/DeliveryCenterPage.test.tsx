@@ -89,7 +89,7 @@ describe('DeliveryCenterPage', () => {
     const codeCard = codeTitle?.closest('article')
     if (!codeCard) throw new Error('code card not rendered')
     fireEvent.click(within(codeCard).getByRole('button', { name: /查看 Diff/ }))
-    expect(await screen.findByText('Task Detail')).toBeInTheDocument()
+    expect(await screen.findByText('Diff Center')).toBeInTheDocument()
 
     firstRender.unmount()
     const diffRender = renderPage('/app/projects/project-delivery-center/diffs')
@@ -99,7 +99,7 @@ describe('DeliveryCenterPage', () => {
     const partialCard = partialTitle?.closest('article')
     if (!partialCard) throw new Error('partial code card not rendered')
     fireEvent.click(within(partialCard).getByRole('button', { name: /查看 Diff/ }))
-    expect(await screen.findByText('Task Detail')).toBeInTheDocument()
+    expect(await screen.findByText('Diff Center')).toBeInTheDocument()
     diffRender.unmount()
     const secondRender = renderPage('/app/projects/project-delivery-center/diffs')
     await screen.findByText('Draft memory')

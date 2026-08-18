@@ -42,6 +42,8 @@ export interface Group {
   latestActivityAt?: string
   latestMessage?: MessageSummary
   unreadCount?: number
+  /** 该群被 @ 我的未读消息数（后端计算，≥0）；前端据此显示「有人@我」提示 */
+  mentionedUnread?: number
   isPinned?: boolean
   isArchived?: boolean
 }
@@ -51,6 +53,8 @@ export interface GroupMember {
   displayName: string
   memberType: GroupMemberType
   avatarUrl?: string
+  /** 用户邮箱（后端补全后返回；用于成员管理弹窗展示，缺失时前端隐藏） */
+  email?: string
 }
 
 /** POST .../groups/{groupId}/read 响应（§三 标记已读，进群全读） */
@@ -86,27 +90,60 @@ export interface FileMessageContent {
   mimeType: string
 }
 
-/** QUOTE 引用消息内容 */
+/** QUOTE 引用消息内容：quotedText 为被引用消息的原始内容摘要，replyText 为回复者输入的正文 */
 export interface QuoteMessageContent {
   quotedMessageId: string
   quotedText: string
   quotedSenderName?: string
+  replyText?: string
 }
 
-/** DIFF 交付卡片内容 */
+/** DIFF 交付卡片内容（v2.0.3 §23.4 富结构：展示码/仓库/分支/文件列表/审核交付状态） */
 export interface DiffMessageContent {
   diffId: string
   title?: string
   additions?: number
   deletions?: number
+  /** v2.0.3 增量：后端补全后用于富卡片展示 */
+  taskId?: string
+  reviewBatchId?: string
+  /** 展示码，如 D-1024 */
+  displayCode?: string
+  repositoryName?: string
+  sourceBranch?: string
+  targetBranch?: string
+  /** 变更文件路径列表 */
+  files?: string[]
+  reviewStatus?: 'PENDING_CONFIRMATION' | 'ACCEPTED' | 'REJECTED'
+  deliveryStatus?: string
 }
 
-/** TASK_STATUS 任务状态卡片内容 */
+/** TASK_STATUS 执行计划步骤 */
+export interface TaskStatusPlanStep {
+  stepId: string
+  sequence: number
+  title: string
+  role?: string
+  status: 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'SKIPPED'
+  message?: string | null
+}
+
+/** TASK_STATUS 任务状态卡片内容（后端富结构：状态 + 阶段 + 交付模式 + 执行计划步骤） */
 export interface TaskStatusMessageContent {
   taskId: string
   status: string
+  /** 旧字段：节点/阶段名（兼容旧数据） */
   node?: string
   message?: string
+  /** 当前阶段（如 CODING / REVIEWING / DELIVERING） */
+  phase?: string
+  deliveryMode?: string
+  deliveryReason?: string
+  currentStepId?: string
+  plan?: {
+    summary?: string
+    steps?: TaskStatusPlanStep[]
+  }
 }
 
 /** SYSTEM 系统消息内容 */
@@ -126,6 +163,8 @@ export interface Message {
   sequence?: number
   createdAt: string
   replyToId?: string | null
+  /** @ 提及对象（后端 MessageResponse.mentions 回显；被 @ 用户据此展示「有人@我」） */
+  mentions?: Mention[]
 }
 
 export interface SendMessagePayload {
@@ -169,4 +208,6 @@ export interface CreateGroupPayload {
   description?: string
   repositoryIds?: string[]
   type?: 'REQUIREMENT'
+  /** 建群时选择的初始成员（项目成员 userId 列表）；不传 = 群内只有创建者 */
+  memberIds?: string[]
 }

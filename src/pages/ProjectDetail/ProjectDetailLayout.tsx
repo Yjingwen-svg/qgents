@@ -1,10 +1,10 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Modal, Form, Input, Badge } from 'antd'
+import { Badge, Form, Input, Modal, Select } from 'antd'
 import { SearchOutlined, PushpinOutlined } from '@ant-design/icons'
 import { PATHS, PROJECT_NAV } from '@/routes/paths'
-import { ApiError, groupApi, projectApi } from '@/api'
+import { ApiError, groupApi, projectApi, teamApi } from '@/api'
 import { useAppUiStore } from '@/store/appUiStore'
 import { latestMessageText } from '@/utils/messageSummary'
 import { useProjectTaskDomainEvents } from '@/realtime/useProjectTaskDomainEvents'
@@ -108,6 +108,23 @@ export default function ProjectDetailLayout() {
   })
   const mainGroup = groups.find((g) => g.type === 'PROJECT_MAIN') ?? groups[0]
 
+  // 建群选成员的候选池 = 项目成员；项目成员接口可能不返回 displayName，用团队成员接口补全（项目成员 ⊆ 团队成员）
+  const { data: projectMembers = [] } = useQuery({
+    queryKey: ['projects', projectId, 'members'],
+    queryFn: () => projectApi.listMembers(projectId),
+    enabled: !!projectId,
+  })
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ['teams', project?.teamId, 'members'],
+    queryFn: () => teamApi.listMembers(project?.teamId ?? ''),
+    enabled: !!project?.teamId,
+  })
+  const teamMemberNameById = new Map(teamMembers.map((tm) => [tm.userId, tm.displayName]))
+  const resolveProjectMemberName = (userId: string): string =>
+    projectMembers.find((m) => m.userId === userId)?.displayName ||
+    teamMemberNameById.get(userId) ||
+    userId
+
   // 需求群拆分：归档 / 活跃；搜索按标题过滤；活跃群置顶优先 + 最近活跃排序
   const requirementGroups = groups.filter((g) => g.type === 'REQUIREMENT')
   const activeRequirement = requirementGroups.filter((g) => !g.isArchived)
@@ -162,7 +179,26 @@ export default function ProjectDetailLayout() {
               {pinned && <PushpinOutlined className="pd-nav__branch-pin" />}
               <span className="pd-nav__branch-title">{g.title}</span>
               {isMain && <span className="pd-nav__branch-main-tag">总群</span>}
-              {g.unreadCount ? <Badge count={g.unreadCount} overflowCount={99} size="small" /> : null}
+              {/* 未读 @ 角标：该群有 @ 我的未读消息 */}
+              {typeof g.mentionedUnread === 'number' && g.mentionedUnread > 0 ? (
+                <span
+                  style={{
+                    padding: '0 7px',
+                    borderRadius: 999,
+                    background: '#f59e0b',
+                    color: '#fff',
+                    fontSize: 11,
+                    lineHeight: '16px',
+                    fontWeight: 600,
+                  }}
+                >
+                  @我
+                </span>
+              ) : null}
+              {/* 正在查看的群不显示未读红点（游标只在进群时推进，群内新消息红点由前端视觉隐藏） */}
+              {!onReqChat || groupId !== g.id ? (
+                g.unreadCount ? <Badge count={g.unreadCount} overflowCount={99} size="small" /> : null
+              ) : null}
             </span>
             {g.latestMessage ? (
               <span className="pd-nav__branch-summary">
@@ -317,6 +353,15 @@ export default function ProjectDetailLayout() {
               placeholder="简要说明这个需求群要讨论什么"
               autoSize={{ minRows: 2, maxRows: 4 }}
               maxLength={200}
+            />
+          </Form.Item>
+          <Form.Item name="memberIds" label="初始成员">
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="选择群成员（不选则群内只有创建者）"
+              optionFilterProp="label"
+              options={projectMembers.map((m) => ({ value: m.userId, label: resolveProjectMemberName(m.userId) }))}
             />
           </Form.Item>
         </Form>

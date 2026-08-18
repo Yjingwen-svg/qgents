@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -197,7 +197,7 @@ export function MemoryPage() {
 
 /** 列表卡片 */
 function MemoryCard({ memory, index, onClick }: { memory: Memory; index: number; onClick: () => void }) {
-  const meta = STATUS_META[memory.status]
+  const meta = STATUS_META[memory.status] ?? { color: 'default', label: memory.status }
   return (
     <Card className="memory-card" onClick={onClick}>
       <div className="memory-card__main">
@@ -251,7 +251,7 @@ function MemoryDetail({
   onArchive: () => Promise<void>
 }) {
   if (!memory) return <Drawer open={false} onClose={onClose} />
-  const meta = STATUS_META[memory.status]
+  const meta = STATUS_META[memory.status] ?? { color: 'default', label: memory.status }
 
   return (
     <Drawer
@@ -329,6 +329,24 @@ function CreateMemoryModal({
   const [form] = Form.useForm<CreateMemoryPayload>()
   const { message } = App.useApp()
 
+  // 弹窗打开/编辑目标变化时显式回填表单（绕开 Modal destroyOnClose 下 initialValues 时序问题，
+  // 确保编辑时标签等所有字段回显）
+  useEffect(() => {
+    if (!open) return
+    if (editTarget) {
+      form.setFieldsValue({
+        title: editTarget.title,
+        content: editTarget.content,
+        category: editTarget.category,
+        // 标签输入为逗号分隔字符串（提交时 splitTags 转回数组）
+        tags: (editTarget.tags ?? []).join(','),
+      } as unknown as Partial<CreateMemoryPayload>)
+    } else {
+      form.resetFields()
+      form.setFieldsValue({ category: 'ENGINEERING_DECISION' })
+    }
+  }, [open, editTarget, form])
+
   const save = useMutation({
     mutationFn: (payload: CreateMemoryPayload) =>
       editTarget
@@ -356,6 +374,8 @@ function CreateMemoryModal({
       cancelText="取消"
       confirmLoading={save.isPending}
       destroyOnClose
+      // 编辑目标变化时强制重建 Modal 内容，确保 initialValues（含标签回显）重新生效
+      key={editTarget?.id ?? 'create'}
     >
       <Form
         form={form}

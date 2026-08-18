@@ -216,6 +216,11 @@ export default function DeliveryCenterPage() {
     }
     switch (item.openTarget.kind) {
       case 'TASK_DIFF_REVIEW':
+        // CODE：直接跳转 Diff 查看页（代表性 diffId），不再经任务中心中转
+        if (item.resourceType === 'CODE' && item.diffId) {
+          navigate(PATHS.projectDiff(projectId, item.diffId))
+          break
+        }
         navigate(`${PATHS.projectTaskDetail(projectId, item.openTarget.taskId)}?diffReviewBatchId=${encodeURIComponent(item.openTarget.diffReviewBatchId)}`)
         break
     }

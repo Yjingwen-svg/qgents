@@ -32,6 +32,19 @@ export const groupApi = {
   listMembers(projectId: string, groupId: string) {
     return request<GroupMember[]>(`/projects/${projectId}/groups/${groupId}/members`)
   },
+  /** POST /projects/{projectId}/groups/{groupId}/members — 邀请项目成员入群（创建者或 Project Admin） */
+  addMember(projectId: string, groupId: string, userId: string) {
+    return request<GroupMember>(`/projects/${projectId}/groups/${groupId}/members`, {
+      method: 'POST',
+      body: { userId },
+    })
+  },
+  /** DELETE /projects/{projectId}/groups/{groupId}/members/{userId} — 移出群聊（创建者或 Project Admin；创建者本人不可移出） */
+  removeMember(projectId: string, groupId: string, userId: string) {
+    return request<void>(`/projects/${projectId}/groups/${groupId}/members/${userId}`, {
+      method: 'DELETE',
+    })
+  },
   /** POST /projects/{projectId}/groups/{groupId}/archive — 归档需求群（创建者或 Project Admin） */
   archive(projectId: string, groupId: string) {
     return request<void>(`/projects/${projectId}/groups/${groupId}/archive`, { method: 'POST' })

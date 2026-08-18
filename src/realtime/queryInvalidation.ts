@@ -54,6 +54,7 @@ export function queryKeysForProjectTaskEvent(
 
   switch (event.type) {
     case 'message.created':
+    case 'message.updated':
       if (!groupId || !messageId) return []
       addKey(keys, ['groups', projectId])
       addKey(keys, ['groups', projectId, groupId, 'messages'])

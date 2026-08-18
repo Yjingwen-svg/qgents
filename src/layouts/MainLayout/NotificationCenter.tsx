@@ -10,6 +10,7 @@ import {
   InboxOutlined,
   BranchesOutlined,
   UserAddOutlined,
+  MessageOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { notificationApi } from '@/api'
@@ -27,6 +28,7 @@ const KIND_META: Record<NotificationKind, { icon: ReactNode; color: string }> = 
   DELIVERABLE_PENDING: { icon: <InboxOutlined />, color: '#3b82f6' },
   MR_PENDING: { icon: <BranchesOutlined />, color: '#a855f7' },
   INVITED: { icon: <UserAddOutlined />, color: '#3b82f6' },
+  MESSAGE_MENTION: { icon: <MessageOutlined />, color: '#f59e0b' },
 }
 
 /** 后端可能下发未在枚举中的 kind，兜底展示，避免 meta 为 undefined 导致崩溃 */
@@ -41,6 +43,9 @@ export function notificationTargetPath(n: Notification): string | null {
   const projectId = n.projectId
   if (!projectId) return null
   switch (n.kind) {
+    case 'MESSAGE_MENTION':
+      // 群聊 @ 提及：跳转到来源需求群
+      return n.groupId ? PATHS.projectReqChat(projectId, n.groupId) : PATHS.projectTasks(projectId)
     case 'TASK_COMPLETED':
     case 'TASK_FAILED':
     case 'AGENT_INPUT_REQUIRED':

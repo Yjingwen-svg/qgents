@@ -198,36 +198,44 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     scrollToBottom()
   }, [groupId, scrollToBottom])
 
-  // 进群全读（§三）：后端按用户×群推进已读游标。
-  // 乐观清零当前群未读：红点立即消失，不等后端往返（成功/失败后 refetch 用后端真相校准）
-  const markGroupRead = useMutation({
-    mutationFn: () => groupApi.markRead(projectId, groupId),
-    onMutate: () => {
-      const clearCurrent = (groups: Group[] | undefined): Group[] | undefined =>
-        groups ? groups.map((g) => (g.id === groupId ? { ...g, unreadCount: 0 } : g)) : groups
-      queryClient.setQueriesData<Group[]>({ queryKey: ['groups', projectId] }, clearCurrent)
-      queryClient.setQueriesData<Group[]>({ queryKey: ['chat', 'main-groups'] }, clearCurrent)
-    },
-    onSuccess: (data) => {
+  // 进群全读（§三）：直接调后端推进已读游标。
+  // 不用 useMutation：StrictMode/切群重挂载下 react-query 的 MutationObserver 会偶发
+  // 「mutate() 被调用但 mutationFn 不执行」（setOptions 在 pending 时 reset，新 Mutation 拿不到
+  // mutationFn）→ read 请求不发。这里是纯副作用（乐观清零 + 推进游标），直接 fetch 最可靠。
+  const markGroupReadNow = useCallback(async (): Promise<void> => {
+    if (!projectId || !groupId) return
+    // 乐观清零当前群未读：红点立即消失，不等后端往返
+    const clearCurrent = (groups: Group[] | undefined): Group[] | undefined =>
+      groups ? groups.map((g) => (g.id === groupId ? { ...g, unreadCount: 0 } : g)) : groups
+    queryClient.setQueriesData<Group[]>({ queryKey: ['groups', projectId] }, clearCurrent)
+    queryClient.setQueriesData<Group[]>({ queryKey: ['chat', 'main-groups'] }, clearCurrent)
+    try {
+      const data = await groupApi.markRead(projectId, groupId)
       // 记录已读游标：后续新消息 seq > 游标 且 @ 我 的才触发「有人@我」提示
       setLastReadSeq(data?.lastReadSequenceNo ?? null)
-      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
-      void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
-    },
-    onError: () => {
-      // 失败也回拉校准（后端可能未推进游标，红点按真实未读恢复）
-      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
-      void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
-    },
-  })
-  const markGroupReadMutate = markGroupRead.mutate
+    } catch {
+      // 已读失败不打断：保持乐观清零（用户已进群阅读），后端游标由下次进群重试覆盖
+    }
+    void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+    void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+  }, [projectId, groupId, queryClient])
+
   // 进群全读一次（仅在切换群时）：推进后端已读游标，作为「@ 我」未读判定基准。
   // 不能依赖 messages.length——否则每条新消息都会全读，把 @ 未读游标推进到最新，
   // 「↑ 有人@了我」提示条与群列表 @ 角标（后端 mentionedUnread）将永远不出现。
   useEffect(() => {
-    if (groupId) markGroupReadMutate()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupId, markGroupReadMutate])
+    if (groupId) void markGroupReadNow()
+  }, [groupId, markGroupReadNow])
+
+  // 兜底：消息列表首次加载成功后补发一次 read（幂等，游标只前进）。
+  // 覆盖「进群 effect 因时序/挂载问题未触发」的情况——只要点进群、消息加载出来，read 必发。
+  const markReadForGroupRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!page || !groupId) return
+    if (markReadForGroupRef.current === groupId) return
+    markReadForGroupRef.current = groupId
+    void markGroupReadNow()
+  }, [page, groupId, markGroupReadNow])
 
   // 窗口从后台/最小化回到前台时重查当前群消息：浏览器会挂起后台标签页（WS 断开、消息丢失），
   // 而全局 refetchOnWindowFocus 为 false，回前台必须显式校准，否则群聊面板停留旧消息。

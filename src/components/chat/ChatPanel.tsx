@@ -218,10 +218,13 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     },
   })
   const markGroupReadMutate = markGroupRead.mutate
-  // 进入群聊 / 群内来新消息时持续标记已读（离开后群有新活动才重新亮红点）
+  // 进群全读一次（仅在切换群时）：推进后端已读游标，作为「@ 我」未读判定基准。
+  // 不能依赖 messages.length——否则每条新消息都会全读，把 @ 未读游标推进到最新，
+  // 「↑ 有人@了我」提示条与群列表 @ 角标（后端 mentionedUnread）将永远不出现。
   useEffect(() => {
     if (groupId) markGroupReadMutate()
-  }, [groupId, messages.length, markGroupReadMutate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupId, markGroupReadMutate])
 
   // 窗口从后台/最小化回到前台时重查当前群消息：浏览器会挂起后台标签页（WS 断开、消息丢失），
   // 而全局 refetchOnWindowFocus 为 false，回前台必须显式校准，否则群聊面板停留旧消息。

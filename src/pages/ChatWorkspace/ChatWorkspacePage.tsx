@@ -126,7 +126,8 @@ export default function ChatWorkspacePage() {
                                 @我
                               </span>
                             ) : null}
-                            <Badge count={s.unreadCount} overflowCount={99} size="small" />
+                            {/* 正在查看的群不显示未读红点（游标只在进群时推进，群内新消息红点由前端视觉隐藏） */}
+                            <Badge count={selected?.groupId === s.groupId ? 0 : s.unreadCount} overflowCount={99} size="small" />
                           </Space>
                         </Space>
                       </Space>

@@ -87,3 +87,23 @@ describe('groupApi.listMainGroups', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/chat/main-groups', expect.any(Object))
   })
 })
+
+describe('groupApi.listMessagesIncremental（可靠消息同步 §1）', () => {
+  it('requests messages after the given sequence in ascending order', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: [
+        { id: 'message-42', sequence: 42, type: 'TEXT', content: { text: '新消息' }, senderType: 'USER', createdAt: '2026-08-23T08:00:00Z' },
+      ],
+      page: { nextCursor: '42', hasMore: false },
+      requestId: 'request-1',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    const result = await groupApi.listMessagesIncremental('project-1', 'group-1', 40)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/project-1/groups/group-1/messages/incremental?afterSequence=40&limit=100',
+      expect.any(Object),
+    )
+    expect(result.data[0]).toMatchObject({ id: 'message-42', sequence: 42 })
+    expect(result.page.hasMore).toBe(false)
+  })
+})

@@ -67,6 +67,21 @@ export const groupApi = {
       `/projects/${projectId}/groups/${groupId}/messages?${params.toString()}`,
     )
   },
+
+  /**
+   * 消息增量拉取（可靠消息同步增量契约 §1）—— SSE/WS 断线恢复后按群内序号补齐缺失消息。
+   * afterSequence 必填：只返回 sequence > afterSequence 的消息，按 sequence 升序；
+   * hasMore=true 时用本页最后一条 sequence 作为下一次 afterSequence。
+   * 游标方向与历史分页接口的 cursor 不同，不能交叉使用。
+   */
+  listMessagesIncremental(projectId: string, groupId: string, afterSequence: number, limit = 100) {
+    const params = new URLSearchParams()
+    params.set('afterSequence', String(afterSequence))
+    params.set('limit', String(limit))
+    return requestPage<Message>(
+      `/projects/${projectId}/groups/${groupId}/messages/incremental?${params.toString()}`,
+    )
+  },
   /** 单条消息定位（通知「@ 提及」跳转用，§群聊@提及补充）：目标消息不在已加载分页时拉取 */
   getMessage(projectId: string, groupId: string, messageId: string) {
     return request<Message>(`/projects/${projectId}/groups/${groupId}/messages/${messageId}`)

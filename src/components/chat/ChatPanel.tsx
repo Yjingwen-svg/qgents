@@ -6,6 +6,8 @@ import {
   SendOutlined,
   ThunderboltOutlined,
   FileOutlined,
+  FilePdfOutlined,
+  CodeOutlined,
   MessageOutlined,
   BranchesOutlined,
   InboxOutlined,
@@ -16,6 +18,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
 import { ApiError, groupApi, projectApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
+import { resolvePreviewUrl } from '@/api/attachment'
+import { AttachmentPreviewModal } from '@/components/chat/AttachmentPreviewModal'
 import { getApiBaseUrl } from '@/api/client'
 import { useAuth } from '@/context/AuthContext'
 import { useAgents } from '@/hooks/agents'
@@ -62,6 +66,12 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const [settingsOpen, setSettingsOpen] = useState(false)
   // 回复引用：选中某条消息后，输入区显示引用条，发送时以 QUOTE 类型 + replyToId 提交
   const [replyTo, setReplyTo] = useState<Message | null>(null)
+  // 附件内联预览（增量契约 §4/§5）：点击 IMAGE/FILE 打开页内预览弹窗
+  const [previewTarget, setPreviewTarget] = useState<{
+    attachmentId: string
+    fileName?: string
+    embeddedPreviewUrl?: string
+  } | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   // 群聊 @ 提及：已读游标（markRead 返回）与「有人@我」提示条
   const [lastReadSeq, setLastReadSeq] = useState<number | null>(null)
@@ -255,20 +265,63 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     void markGroupReadNow()
   }, [page, groupId, markGroupReadNow])
 
-  // 窗口从后台/最小化回到前台时重查当前群消息：浏览器会挂起后台标签页（WS 断开、消息丢失），
+  /**
+   * 消息校准（可靠消息同步 §1/§2）：
+   * - 本地消息带 sequence → 用 max(sequence) 调 /messages/incremental 补齐缺失消息，合并进缓存
+   * - incremental 失败或本地无 sequence → 回退整页 invalidate 重拉
+   */
+  const reconcileMessages = useCallback(async (): Promise<void> => {
+    if (!projectId || !groupId) return
+    const cached = queryClient.getQueryData<Page<Message>>(['groups', projectId, groupId, 'messages'])
+    const sequences = (cached?.data ?? [])
+      .map((m) => m.sequence)
+      .filter((s): s is number => typeof s === 'number')
+    const maxSequence = sequences.length > 0 ? Math.max(...sequences) : null
+
+    if (maxSequence == null) {
+      // 本地没有 sequence 信息（旧数据/首次）→ 整页重拉
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId, groupId, 'messages'] })
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+      return
+    }
+
+    try {
+      // §1：增量拉取 sequence > maxSequence 的消息，按 id 去重合并
+      const incremental = await groupApi.listMessagesIncremental(projectId, groupId, maxSequence)
+      if (incremental.data.length === 0) return
+      queryClient.setQueryData<Page<Message>>(
+        ['groups', projectId, groupId, 'messages'],
+        (prev) => {
+          const base = prev ?? { data: [], page: { nextCursor: null, hasMore: false } }
+          const known = new Set(base.data.map((m) => m.id))
+          const merged = [...base.data, ...incremental.data.filter((m) => !known.has(m.id))]
+          return { ...base, data: merged }
+        },
+      )
+      // 群列表/主群的最新消息摘要也需校准
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+    } catch {
+      // 增量接口失败（如后端未实现）→ 回退整页重拉
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId, groupId, 'messages'] })
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+    }
+  }, [projectId, groupId, queryClient])
+
+  // 窗口从后台/最小化回到前台时校准当前群消息：浏览器会挂起后台标签页（WS 断开、消息丢失），
   // 而全局 refetchOnWindowFocus 为 false，回前台必须显式校准，否则群聊面板停留旧消息。
+  // 优先用可靠消息增量接口（§1）按 sequence 补齐；本地无 sequence（旧数据）才整页重拉。
   useEffect(() => {
     if (!projectId || !groupId) return
     const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        void queryClient.invalidateQueries({ queryKey: ['groups', projectId, groupId, 'messages'] })
-        void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
-        void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
-      }
+      if (document.visibilityState !== 'visible') return
+      void reconcileMessages()
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [projectId, groupId, queryClient])
+  }, [projectId, groupId, queryClient, reconcileMessages])
 
   // @ 提及面板：最后一个 @ 到行尾无空格时弹出；@ 后输入的字符作为候选过滤关键词（如 @张 → 只剩名字带「张」）
   const lastAt = draft.lastIndexOf('@')
@@ -501,25 +554,41 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   }
 
   /**
-   * 打开文件消息：content.url 是鉴权下载代理（§18.5，新标签页不带 Bearer 会 401），
-   * 因此先调 §18.3 download-url 拿预签名地址（900s 有效、无需 token）再打开。
+   * 打开文件消息：解析 attachmentId 后打开页内预览弹窗（增量契约 §4/§5）。
+   * 无法解析附件 ID 时提示（不再直接跳新标签；预览弹窗内负责 preview-url / download 降级）。
    */
   const openFile = useCallback(
-    async (target: Message) => {
+    (target: Message) => {
       const c = target.content as FileMessageContent
-      const attachmentId = extractAttachmentId(c.url)
+      // §6：content.attachmentId 为必填；兼容旧消息从 url 解析
+      const attachmentId = c.attachmentId || extractAttachmentId(c.url)
       if (!attachmentId) {
         message.error('无法解析附件 ID，请刷新后重试')
         return
       }
-      try {
-        const { downloadUrl } = await attachmentApi.getDownloadUrl(projectId, attachmentId)
-        window.open(downloadUrl, '_blank', 'noopener')
-      } catch (e) {
-        message.error(e instanceof Error ? e.message : '附件打开失败')
-      }
+      setPreviewTarget({
+        attachmentId,
+        fileName: c.name,
+        // §7：后端若已回填 previewUrl（相对路径带 token），零请求直接预览
+        embeddedPreviewUrl: c.previewUrl,
+      })
     },
-    [projectId, message],
+    [message],
+  )
+
+  /** 打开图片预览弹窗（增量契约 §4：点击图片页内放大） */
+  const openImagePreview = useCallback(
+    (target: Message) => {
+      const c = target.content as ImageMessageContent
+      const attachmentId = c.attachmentId || extractAttachmentId(c.url)
+      if (!attachmentId) return
+      setPreviewTarget({
+        attachmentId,
+        fileName: '图片预览',
+        embeddedPreviewUrl: c.previewUrl,
+      })
+    },
+    [],
   )
 
   // AI 自动沉淀 Memory（草稿）：后端自动检索当前群最近聊天并生成草稿，投给用户/Admin 审核确认
@@ -645,6 +714,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                       projectId={projectId}
                       onReply={setReplyTo}
                       onOpenFile={openFile}
+                      onOpenImage={openImagePreview}
                       onImageLoad={handleImageLoad}
                     />
                   </div>
@@ -860,6 +930,17 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           )}
         </Space>
       </Drawer>
+      {/* 附件内联预览（增量契约 §4/§5/§7）：图片放大 / PDF iframe / 文本代码高亮 / 不支持回退下载 */}
+      {previewTarget ? (
+        <AttachmentPreviewModal
+          open
+          projectId={projectId}
+          attachmentId={previewTarget.attachmentId}
+          fileName={previewTarget.fileName}
+          embeddedPreviewUrl={previewTarget.embeddedPreviewUrl}
+          onClose={() => setPreviewTarget(null)}
+        />
+      ) : null}
       </Layout>
     </ErrorBoundary>
   )
@@ -913,6 +994,27 @@ function extractAttachmentId(url: string | undefined | null): string | null {
   if (!url) return null
   const match = url.match(/\/attachments\/([^/?#]+)(?:\/content)?/)
   return match ? match[1] : null
+}
+
+/**
+ * 按 mimeType 粗判附件类型图标（增量契约 §2.1 枚举的展示层近似：
+ * 精确 previewType 由服务端判定，弹窗内调 preview-url 获得）。
+ */
+function fileTypeMetaFromMime(mimeType: string | undefined): { icon: React.ReactNode; label: string } {
+  const mime = (mimeType ?? '').toLowerCase()
+  if (mime === 'application/pdf') return { icon: <FilePdfOutlined style={{ color: '#ef4444' }} />, label: 'PDF·' }
+  if (mime.startsWith('image/')) return { icon: <FileOutlined style={{ color: '#8b5cf6' }} />, label: '图片·' }
+  if (
+    mime.startsWith('text/') ||
+    mime.includes('json') ||
+    mime.includes('xml') ||
+    mime.includes('javascript') ||
+    mime.includes('yaml') ||
+    mime.includes('shell')
+  ) {
+    return { icon: <CodeOutlined style={{ color: '#3b82f6' }} />, label: '代码·' }
+  }
+  return { icon: <FileOutlined style={{ color: '#64748b' }} />, label: '' }
 }
 
 /** 生成被引用消息的一行摘要（回复引用条展示用；DIFF/IMAGE/FILE 等无文本类型给占位文案） */
@@ -996,6 +1098,7 @@ function MessageBubble({
   projectId,
   onReply,
   onOpenFile,
+  onOpenImage,
   onImageLoad,
 }: {
   message: Message
@@ -1003,8 +1106,10 @@ function MessageBubble({
   projectId: string
   /** 点击「回复」时回调，用于设置回复引用（SYSTEM 消息不提供） */
   onReply?: (m: Message) => void
-  /** 打开文件消息（FILE 类型走 §18.3 预签名下载地址，避免鉴权 401） */
+  /** 打开文件消息（FILE 类型走页内预览/下载，见 AttachmentPreviewModal） */
   onOpenFile?: (m: Message) => void
+  /** 点击图片放大预览（增量契约 §4） */
+  onOpenImage?: (m: Message) => void
   /** 图片真正加载完成回调（透传给 AuthedImage，供 ChatPanel 保持贴底） */
   onImageLoad?: () => void
 }) {
@@ -1015,7 +1120,7 @@ function MessageBubble({
     return (
       <div style={{ textAlign: 'center' }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          {renderContent(message, projectId, onOpenFile, onImageLoad, onReply)}
+          {renderContent(message, projectId, onOpenFile, onOpenImage, onImageLoad, onReply)}
         </Text>
       </div>
     )
@@ -1121,7 +1226,7 @@ function MessageBubble({
           overflow: 'hidden',
         }}
       >
-        {renderContent(message, projectId, onOpenFile, onImageLoad, onReply)}
+        {renderContent(message, projectId, onOpenFile, onOpenImage, onImageLoad, onReply)}
       </div>
       {/* QUOTE 引用消息：被引用的原消息挂载在气泡下方（带竖线），类似微信「当前消息 + 引用原消息」 */}
       {message.type === 'QUOTE' ? (
@@ -1163,6 +1268,7 @@ function renderContent(
   message: Message,
   projectId: string,
   onOpenFile?: (m: Message) => void,
+  onOpenImage?: (m: Message) => void,
   onImageLoad?: () => void,
   onReply?: (m: Message) => void,
 ): React.ReactNode {
@@ -1173,9 +1279,12 @@ function renderContent(
     }
     case 'IMAGE': {
       const c = message.content as ImageMessageContent
-      return (
+      // 增量契约 §7：content.previewUrl 若由后端回填（带短期 token），直接用；
+      // 否则回退 AuthedImage 走 §18.5 content 代理（带 Bearer 拉取）
+      const previewUrl = typeof c.previewUrl === 'string' && c.previewUrl ? resolvePreviewUrl(c.previewUrl) : null
+      const image = (
         <AuthedImage
-          src={normalizeContentUrl(c.url)}
+          src={previewUrl ?? normalizeContentUrl(c.url)}
           width={c.width ?? 260}
           height={c.height}
           style={{ borderRadius: 10, display: 'block', maxWidth: '100%' }}
@@ -1183,9 +1292,32 @@ function renderContent(
           onLoad={onImageLoad}
         />
       )
+      // 增量契约 §4：点击图片页内放大预览（onOpenImage 由 ChatPanel 提供时）
+      if (!onOpenImage) return image
+      return (
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="点击放大图片"
+          style={{ cursor: 'zoom-in', display: 'inline-block' }}
+          onClick={() => onOpenImage(message)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              onOpenImage(message)
+            }
+          }}
+        >
+          {image}
+        </div>
+      )
     }
     case 'FILE': {
       const c = message.content as FileMessageContent
+      // §7：previewable=true 时提示可内联预览（点击走 previewUrl 打开）
+      const previewable = c.previewable === true || Boolean(c.previewUrl)
+      // 按 mimeType 粗判文件类型显示图标（§2.1；弹窗内会再按 previewType 精确处理）
+      const fileMeta = fileTypeMetaFromMime(c.mimeType)
       return (
         <a
           href="#"
@@ -1195,11 +1327,12 @@ function renderContent(
           }}
           style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'inherit', textDecoration: 'none', cursor: 'pointer' }}
         >
-          <FileOutlined style={{ fontSize: 24, color: '#3b82f6' }} />
+          <span style={{ fontSize: 24, display: 'inline-flex' }}>{fileMeta.icon}</span>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 600, wordBreak: 'break-all' }}>{c.name}</div>
             <Text type="secondary" style={{ fontSize: 12 }}>
               {formatFileSize(c.size)}
+              {previewable ? ` · ${fileMeta.label}点击预览` : ''}
             </Text>
           </div>
         </a>

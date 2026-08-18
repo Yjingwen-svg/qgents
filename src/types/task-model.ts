@@ -68,6 +68,8 @@ export interface TaskListItem {
   deliveryReason: string | null
   requirementGroup: TaskRequirementGroupSummary | null
   createdByUser: TaskUserSummary | null
+  /** Bound repository ids; used when a detail response omits repository summaries. */
+  repositoryIds?: string[]
   repositories: TaskRepositorySummary[]
   executionSummary: TaskExecutionSummary
   attention: TaskAttention | null
@@ -188,7 +190,8 @@ export interface TaskRunLog {
 export interface ExecutionContext {
   workspaceId: string
   sandboxStatus: SandboxStatus
-  repositoryId: string
+  /** null for runs that do not operate on a repository. */
+  repositoryId: string | null
   baseRef: string
   headRef: string
   startedAt: string | null

@@ -8,7 +8,6 @@ import {
   FileOutlined,
   MessageOutlined,
   BranchesOutlined,
-  CheckCircleOutlined,
   InboxOutlined,
   PaperClipOutlined,
   CloseOutlined,
@@ -455,6 +454,11 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     },
   })
 
+  // 任务运行状态卡置顶：TASK_STATUS 从消息流中抽出，固定在列表顶部；
+  // 后端单卡持续更新（message.updated → 重查消息列表），置顶卡随 content 实时刷新
+  const statusCards = messages.filter((m) => m.type === 'TASK_STATUS')
+  const listMessages = messages.filter((m) => m.type !== 'TASK_STATUS')
+
   return (
     <Layout style={{ height: '100%', background: token.colorBgBase }}>
       {/* 顶部：群标题 + 操作入口；多选模式下切换为「取消 | 已选择 N 条」 */}
@@ -521,7 +525,13 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           <Empty description="还没有消息，来说点什么吧" />
         ) : (
           <div ref={contentRef} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {messages.map((m) => {
+            {/* 置顶：任务运行状态卡（后端单卡持续更新，message.updated 实时刷新） */}
+            {statusCards.map((m) => (
+              <div key={m.id} id={`msg-${m.id}`}>
+                {renderContent(m, projectId)}
+              </div>
+            ))}
+            {listMessages.map((m) => {
               const isSelf = m.senderType === 'USER' && m.senderId === user?.id
               const flashing = mentionFlashId === m.id
               return (
@@ -905,7 +915,7 @@ function MessageBubble({
     return (
       <div style={{ textAlign: 'center' }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          {renderContent(message, projectId, onOpenFile, onImageLoad)}
+          {renderContent(message, projectId, onOpenFile, onImageLoad, onReply)}
         </Text>
       </div>
     )
@@ -1011,7 +1021,7 @@ function MessageBubble({
           overflow: 'hidden',
         }}
       >
-        {renderContent(message, projectId, onOpenFile, onImageLoad)}
+        {renderContent(message, projectId, onOpenFile, onImageLoad, onReply)}
       </div>
       {/* QUOTE 引用消息：被引用的原消息挂载在气泡下方（带竖线），类似微信「当前消息 + 引用原消息」 */}
       {message.type === 'QUOTE' ? (
@@ -1054,6 +1064,7 @@ function renderContent(
   projectId: string,
   onOpenFile?: (m: Message) => void,
   onImageLoad?: () => void,
+  onReply?: (m: Message) => void,
 ): React.ReactNode {
   switch (message.type) {
     case 'CODE': {
@@ -1101,25 +1112,44 @@ function renderContent(
     }
     case 'DIFF': {
       const c = message.content as DiffMessageContent
+      const rich = Boolean(c.displayCode || c.repositoryName || c.files)
+      const displayTitle = c.displayCode
+        ? `${c.displayCode}${c.repositoryName ? ` · ${c.repositoryName}` : ''}${c.sourceBranch ? ` / ${c.sourceBranch}` : ''}`
+        : (c.title ?? '代码交付')
       return (
-        <Link
-          to={PATHS.projectDiff(projectId, c.diffId)}
+        <div
           style={{
             display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            color: 'inherit',
-            textDecoration: 'none',
-            padding: '8px 10px',
-            border: '1px solid',
-            borderColor: 'rgba(59, 130, 246, 0.35)',
+            flexDirection: 'column',
+            gap: 6,
+            padding: '10px 12px',
+            border: '1px solid rgba(59, 130, 246, 0.35)',
             borderRadius: 8,
             background: 'rgba(59, 130, 246, 0.06)',
+            minWidth: 220,
           }}
         >
-          <BranchesOutlined style={{ fontSize: 18, color: '#3b82f6' }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{c.title ?? '代码交付'}</div>
+          {/* 头部：Diff 码 · 仓库 / 源分支 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <BranchesOutlined style={{ fontSize: 16, color: '#3b82f6' }} />
+            <Text strong style={{ fontSize: 14 }}>{displayTitle}</Text>
+          </div>
+          {/* 目标分支与变更统计 */}
+          {rich ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {c.repositoryName && c.targetBranch ? (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  -{c.repositoryName}/{c.targetBranch}
+                </Text>
+              ) : null}
+              {c.additions != null ? (
+                <Text style={{ fontSize: 12, color: '#16a34a' }}>+{c.additions}</Text>
+              ) : null}
+              {c.deletions != null ? (
+                <Text style={{ fontSize: 12, color: '#dc2626' }}>-{c.deletions}</Text>
+              ) : null}
+            </div>
+          ) : (
             <Text type="secondary" style={{ fontSize: 12 }}>
               {c.additions != null || c.deletions != null ? (
                 <>
@@ -1130,41 +1160,132 @@ function renderContent(
                 '点击查看 Diff'
               )}
             </Text>
+          )}
+          {/* 变更文件列表 */}
+          {c.files && c.files.length > 0 ? (
+            <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+              {c.files.map((file) => (
+                <div key={file} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {file}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {/* 操作：查看 Diff + 引用继续修改 */}
+          <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+            <Link to={PATHS.projectDiff(projectId, c.diffId)}>
+              <Button size="small" type="link" icon={<BranchesOutlined />}>查看 Diff</Button>
+            </Link>
+            {onReply ? (
+              <Button size="small" type="link" onClick={() => onReply(message)}>
+                引用继续修改
+              </Button>
+            ) : null}
           </div>
-        </Link>
+        </div>
       )
     }
     case 'TASK_STATUS': {
       const c = message.content as TaskStatusMessageContent
+      const steps = c.plan?.steps ?? []
+      const statusKey = c.status?.toUpperCase()
+      const diffReady =
+        statusKey === 'WAITING_DIFF_CONFIRMATION' ||
+        statusKey === 'DELIVERING' ||
+        statusKey === 'DELIVERY_FAILED' ||
+        statusKey === 'SUCCEEDED'
       return (
-        <Link
-          to={PATHS.projectTaskDetail(projectId, c.taskId)}
+        <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            color: 'inherit',
-            textDecoration: 'none',
-            padding: '8px 10px',
-            border: '1px solid',
-            borderColor: 'rgba(13, 155, 138, 0.35)',
+            padding: '10px 12px',
+            border: '1px solid rgba(13, 155, 138, 0.35)',
             borderRadius: 8,
             background: 'rgba(13, 155, 138, 0.06)',
           }}
         >
-          <CheckCircleOutlined style={{ fontSize: 18, color: '#0d9b8a' }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
+          {/* 头部：运行状态 + 当前阶段 */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <div style={{ fontWeight: 600, fontSize: 14 }}>
-              {c.node ? `${c.node} · ` : ''}任务状态更新
+              {c.phase ? `${c.phase} · ` : ''}任务运行状态
             </div>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {c.message ?? c.status}
-            </Text>
+            <Tag color={taskStatusColor(c.status)} style={{ margin: 0 }}>
+              {taskStatusLabel(c.status)}
+            </Tag>
           </div>
-          <Tag color={taskStatusColor(c.status)} style={{ margin: 0 }}>
-            {taskStatusLabel(c.status)}
-          </Tag>
-        </Link>
+          {c.message ? <Text style={{ display: 'block', marginTop: 2 }}>{c.message}</Text> : null}
+          {c.plan?.summary ? (
+            <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 2 }}>
+              {c.plan.summary}
+            </Text>
+          ) : null}
+          {c.deliveryMode ? (
+            <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+              {c.deliveryMode}
+              {c.deliveryReason ? ` · ${c.deliveryReason}` : ''}
+            </Text>
+          ) : null}
+
+          {/* 执行计划步骤 */}
+          {steps.length > 0 ? (
+            <div style={{ marginTop: 8 }}>
+              {steps.map((step) => (
+                <div key={step.stepId} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '3px 0' }}>
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background: stepStatusColor(step.status),
+                      marginTop: 6,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13 }}>
+                      <Text strong>{step.sequence}.</Text> {step.title}
+                      {step.role ? <Text type="secondary" style={{ fontSize: 11 }}> · {step.role}</Text> : null}
+                    </div>
+                    {step.message ? (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {step.message}
+                      </Text>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {/* Diff 栏：任务进入交付阶段后可查看 Diff */}
+          <div
+            style={{
+              marginTop: 8,
+              paddingTop: 8,
+              borderTop: '1px dashed rgba(13, 155, 138, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {diffReady ? '任务已产生代码变更' : '代码变更生成后在此查看'}
+            </Text>
+            {diffReady ? (
+              <Link to={`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(c.taskId)}`}>
+                <Button size="small" type="link" icon={<BranchesOutlined />}>
+                  查看 Diff
+                </Button>
+              </Link>
+            ) : (
+              <Link to={PATHS.projectTaskDetail(projectId, c.taskId)}>
+                <Button size="small" type="link">
+                  查看任务
+                </Button>
+              </Link>
+            )}
+          </div>
+        </div>
       )
     }
     default: {
@@ -1188,6 +1309,15 @@ function taskStatusColor(status: string): string {
   if (s === 'FAILED' || s === 'CANCELLED') return 'red'
   if (s === 'RUNNING' || s === 'IN_PROGRESS') return 'blue'
   return 'default'
+}
+
+/** 执行计划步骤状态 → 圆点颜色 */
+function stepStatusColor(status: string): string {
+  const s = status.toUpperCase()
+  if (s === 'SUCCEEDED') return '#16a34a'
+  if (s === 'RUNNING') return '#2563eb'
+  if (s === 'FAILED') return '#dc2626'
+  return '#cbd5e1'
 }
 
 /** 任务状态 → 卡片 tag 中文标签（§5.4：终态用「已完成/失败」而非英文枚举） */

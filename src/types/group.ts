@@ -98,20 +98,52 @@ export interface QuoteMessageContent {
   replyText?: string
 }
 
-/** DIFF 交付卡片内容 */
+/** DIFF 交付卡片内容（v2.0.3 §23.4 富结构：展示码/仓库/分支/文件列表/审核交付状态） */
 export interface DiffMessageContent {
   diffId: string
   title?: string
   additions?: number
   deletions?: number
+  /** v2.0.3 增量：后端补全后用于富卡片展示 */
+  taskId?: string
+  reviewBatchId?: string
+  /** 展示码，如 D-1024 */
+  displayCode?: string
+  repositoryName?: string
+  sourceBranch?: string
+  targetBranch?: string
+  /** 变更文件路径列表 */
+  files?: string[]
+  reviewStatus?: 'PENDING_CONFIRMATION' | 'ACCEPTED' | 'REJECTED'
+  deliveryStatus?: string
 }
 
-/** TASK_STATUS 任务状态卡片内容 */
+/** TASK_STATUS 执行计划步骤 */
+export interface TaskStatusPlanStep {
+  stepId: string
+  sequence: number
+  title: string
+  role?: string
+  status: 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'SKIPPED'
+  message?: string | null
+}
+
+/** TASK_STATUS 任务状态卡片内容（后端富结构：状态 + 阶段 + 交付模式 + 执行计划步骤） */
 export interface TaskStatusMessageContent {
   taskId: string
   status: string
+  /** 旧字段：节点/阶段名（兼容旧数据） */
   node?: string
   message?: string
+  /** 当前阶段（如 CODING / REVIEWING / DELIVERING） */
+  phase?: string
+  deliveryMode?: string
+  deliveryReason?: string
+  currentStepId?: string
+  plan?: {
+    summary?: string
+    steps?: TaskStatusPlanStep[]
+  }
 }
 
 /** SYSTEM 系统消息内容 */

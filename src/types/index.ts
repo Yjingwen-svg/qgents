@@ -4,12 +4,19 @@
  */
 
 export type {
+  RealtimeScope,
+  RealtimeFrame,
+  RealtimeHelloFrame,
+} from './event'
+export type {
   User,
   LoginPayload,
   RegisterPayload,
   AuthResponse,
   RefreshResponse,
   MeResponse,
+  AvatarCredential,
+  UpdateMePayload,
 } from './auth'
 export type {
   Team,
@@ -52,6 +59,7 @@ export type {
 export type {
   Group,
   GroupMember,
+  MarkReadResult,
   Message,
   MessageSummary,
   MessageContentType,

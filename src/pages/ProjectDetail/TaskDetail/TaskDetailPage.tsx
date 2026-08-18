@@ -22,7 +22,9 @@ export default function TaskDetailPage() {
   const diffsQuery = useDiffs(projectId, { taskId, limit: 100 })
   const cancelMutation = useCancelTask(projectId)
   const completedWithoutCode = useTaskCompletedWithoutCode(projectId, taskId)
-  const reviewEnabled = isDiffReviewTask(taskQuery.data?.status) && !completedWithoutCode
+  // SUCCEEDED 也查 DiffReview：有批次 → 展示交付结果（正常完成）；404 → 无代码变更空态（§5.2，跨会话稳定）
+  const reviewEnabled =
+    (isDiffReviewTask(taskQuery.data?.status) || taskQuery.data?.status === 'SUCCEEDED') && !completedWithoutCode
   const diffReviewQuery = useTaskDiffReview(projectId, taskId, reviewEnabled)
 
   // G1：交付中心等入口带 ?diffReviewBatchId 跳转时，定位到「任务产出与交付」卡片
@@ -123,7 +125,6 @@ function ExecutionFlowRow({ projectId, taskId, task, query, steps }: { projectId
     <section className={styles.executionFlowRow} id="execution-flow" data-testid="execution-flow-row">
       <RowHeading title="执行流程" meta={ordered.length > 0 ? `${ordered.length} 个步骤` : task.status === 'PLANNING' ? '规划中' : undefined} />
       {query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="TaskStep" error={query.error} /> : ordered.length === 0 ? <InlineState text={task.status === 'PLANNING' ? '规划 Agent 正在生成执行方案' : '暂无执行步骤'} /> : <div className={styles.flowScroller}><div className={styles.flowGrid}>{ordered.map((step) => <StepCard key={step.id} step={step} onRun={(runId) => navigate(PATHS.projectTaskRunDetail(projectId, taskId, runId))} />)}</div></div>}
-      {task.workspace && task.workspace.status !== 'READY' ? <Text type="danger" className={styles.workspaceNotice}>执行环境状态：{task.workspace.status}</Text> : null}
     </section>
   )
 }
@@ -184,16 +185,16 @@ function DiffCard({ projectId, taskId, task, query, completedWithoutCode }: { pr
   const navigate = useNavigate()
   const diffs = query.data?.data ?? []
   const repositories = new Map<string, { name: string; files: number; additions: number; deletions: number; ids: string[] }>()
-  for (const diff of diffs) { const repository = task.repositories.find((item) => item.repositoryId === diff.repositoryId); const summary = repositories.get(diff.repositoryId) ?? { name: repository?.name ?? diff.repositoryId, files: 0, additions: 0, deletions: 0, ids: [] }; summary.files += diff.changeStats.files; summary.additions += diff.changeStats.additions; summary.deletions += diff.changeStats.deletions; summary.ids.push(diff.id); repositories.set(diff.repositoryId, summary) }
+  for (const diff of diffs) { const repository = task.repositories.find((item) => item.repositoryId === diff.repositoryId); const summary = repositories.get(diff.repositoryId) ?? { name: repository?.name ?? task.title, files: 0, additions: 0, deletions: 0, ids: [] }; summary.files += diff.changeStats.files; summary.additions += diff.changeStats.additions; summary.deletions += diff.changeStats.deletions; summary.ids.push(diff.id); repositories.set(diff.repositoryId, summary) }
   const totals = [...repositories.values()].reduce((sum, repository) => ({ files: sum.files + repository.files, additions: sum.additions + repository.additions, deletions: sum.deletions + repository.deletions }), { files: 0, additions: 0, deletions: 0 })
   return <Card className={styles.outputCard} size="small" data-testid="diff-card"><div className={styles.cardHeading}><CodeOutlined />代码变更 <Text type="secondary">{diffs.length} 个 Diff / {repositories.size} 个仓库</Text></div>{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="Diff" error={query.error} /> : diffs.length === 0 ? <Text type="secondary" className={styles.compactEmpty}>{completedWithoutCode ? '任务已完成，无代码变更' : isDiffReviewTask(task.status) ? '当前阶段尚未生成 Diff' : '暂无代码变更'}</Text> : <><Text type="secondary">files {totals.files} · +{totals.additions} / -{totals.deletions}</Text><div className={styles.diffSummaryList}>{[...repositories.entries()].map(([repositoryId, summary]) => <div key={repositoryId} className={styles.diffSummaryRow}><Text ellipsis>{summary.name}</Text><Text type="secondary">{summary.files} files · +{summary.additions} / -{summary.deletions}</Text>{summary.ids.map((diffId) => <Button key={diffId} type="link" size="small" onClick={() => navigate(PATHS.projectDiff(projectId, diffId), { state: { from: PATHS.projectTaskDetail(projectId, taskId) } })}>查看完整 Diff</Button>)}</div>)}</div></>}</Card>
 }
 
 function DeliveryCard({ projectId, task, query, enabled, completedWithoutCode, onRefresh }: { projectId: string; task: Task; query: ReturnType<typeof useTaskDiffReview>; enabled: boolean; completedWithoutCode: boolean; onRefresh: () => void }) {
   if (completedWithoutCode) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><Text type="secondary" className={styles.compactEmpty}>任务已完成，无代码变更，因此未生成 Diff 或 MR</Text></Card>
-  if (!enabled) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><Text type="secondary" className={styles.compactEmpty}>当前任务尚未进入代码交付确认阶段</Text></Card>
+  if (!enabled) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><Text type="secondary" className={styles.compactEmpty}>{task.status === 'SUCCEEDED' ? '任务已完成' : '当前任务尚未进入代码交付确认阶段'}</Text></Card>
   if (query.isLoading) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><InlineState loading /></Card>
-  if (query.isError) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><SectionError resource="DiffReview" error={query.error} /></Card>
+  if (query.isError) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div>{task.status === 'SUCCEEDED' && errorCode(query.error) === 'DIFF_REVIEW_NOT_FOUND' ? <Text type="secondary" className={styles.compactEmpty}>任务已完成，无代码变更，因此未生成 Diff 或 MR</Text> : <SectionError resource="DiffReview" error={query.error} />}</Card>
   if (!query.data || query.data.taskId !== task.id) return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果</div><Text type="secondary" className={styles.compactEmpty}>最终 Diff 尚未生成</Text></Card>
   return <DiffReviewPanel projectId={projectId} task={task} batch={query.data} onRefresh={onRefresh} />
 }
@@ -220,7 +221,9 @@ function normalizeTaskForDisplay(task: Task): Task {
     ...task,
     requirement: typeof task.requirement === 'string' ? task.requirement : task.requirementSummary ?? '',
     acceptanceCriteria: Array.isArray(task.acceptanceCriteria) ? task.acceptanceCriteria : [],
-    repositories: Array.isArray(task.repositories) ? task.repositories : [],
+    repositories: Array.isArray(task.repositories) && task.repositories.length > 0
+      ? task.repositories
+      : Array.isArray(task.workspace?.repositories) ? task.workspace.repositories : [],
     executionSummary: task.executionSummary && typeof task.executionSummary === 'object'
       ? task.executionSummary
       : {

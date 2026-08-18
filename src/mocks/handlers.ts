@@ -11,7 +11,9 @@ import { createWorkBranchHandlers } from './workBranches'
 // Mock 数据
 // ══════════════════════════════════════════════
 
-const MOCK_USER = MOCK_CURRENT_USER
+const MOCK_USER: { id: string; email: string; displayName: string; avatarChar: string; avatarUrl?: string } = {
+  ...MOCK_CURRENT_USER,
+}
 
 // 项目设置（需求群规则）默认值，对齐 §22.2
 const DEFAULT_PROJECT_SETTINGS = {
@@ -896,6 +898,57 @@ export const handlers = [
     }),
   ),
 
+  // 修改昵称/头像（§4 PATCH /me）
+  http.patch('/api/me', async ({ request }) => {
+    const body = (await request.json()) as { displayName?: string; avatarUrl?: string }
+    if (typeof body.displayName === 'string' && body.displayName.trim()) {
+      MOCK_USER.displayName = body.displayName.trim()
+      MOCK_USER.avatarChar = MOCK_USER.displayName.slice(0, 1)
+    }
+    if (typeof body.avatarUrl === 'string' && body.avatarUrl.trim()) {
+      MOCK_USER.avatarUrl = body.avatarUrl.trim()
+    }
+    return HttpResponse.json({ data: null })
+  }),
+
+  // 签发头像直传凭证（§4；模拟 OSS，uploadUrl 指向本机路径供 MSW 拦截 PUT）
+  http.post('/api/me/avatar/credential', async ({ request }) => {
+    const body = (await request.json()) as { mediaType?: string; sizeBytes?: number }
+    const mediaType = body.mediaType ?? ''
+    if (!mediaType.startsWith('image/')) {
+      return HttpResponse.json({ error: { code: 'INVALID_MEDIA_TYPE', message: '仅支持图片格式' } }, { status: 400 })
+    }
+    if (typeof body.sizeBytes !== 'number' || body.sizeBytes <= 0 || body.sizeBytes > 5 * 1024 * 1024) {
+      return HttpResponse.json({ error: { code: 'AVATAR_SIZE_EXCEEDED', message: '头像大小需 ≤ 5MB' } }, { status: 400 })
+    }
+    const ext = mediaType.split('/')[1] ?? 'png'
+    const objectKey = `avatars/${MOCK_USER.id}/mock-${Date.now()}.${ext}`
+    return HttpResponse.json({
+      data: {
+        objectKey,
+        uploadUrl: `/api/mock-avatar-upload/${objectKey}`,
+        method: 'PUT',
+        expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        headers: {},
+      },
+    })
+  }),
+
+  // 直传落盘（MSW 拦截预签名 PUT，模拟 OSS 接收文件字节）
+  http.put('/api/mock-avatar-upload/:objectKey', () => HttpResponse.json(null, { status: 200 })),
+
+  // 确认头像上传，写入 users.avatar_url 并返回公共读 URL（§4）
+  http.post('/api/me/avatar/confirm', async ({ request }) => {
+    const body = (await request.json()) as { objectKey?: string }
+    const objectKey = body.objectKey ?? ''
+    if (!objectKey.startsWith(`avatars/${MOCK_USER.id}/`)) {
+      return HttpResponse.json({ error: { code: 'AVATAR_OBJECT_FORBIDDEN', message: '头像对象不属于当前用户' } }, { status: 403 })
+    }
+    const avatarUrl = `https://mock-cdn.example.com/${objectKey}`
+    MOCK_USER.avatarUrl = avatarUrl
+    return HttpResponse.json({ data: { avatarUrl } })
+  }),
+
   http.post('/api/auth/logout', () => HttpResponse.json({ data: null })),
 
   // ── Teams ──
@@ -1144,6 +1197,37 @@ export const handlers = [
       latestMessage: getLatestMessageSummary(g.id),
     }))
     return HttpResponse.json({ data: groups })
+  }),
+
+  // 主群聚合（§五）：一次返回全部可见项目主群，替代 teams→projects→groups 三层串联查询
+  http.get('/api/chat/main-groups', () => {
+    const groups = Object.entries(MOCK_GROUPS)
+      .flatMap(([projectId, list]) =>
+        list
+          .filter((g) => g.type === 'PROJECT_MAIN')
+          .map((g) => ({
+            ...g,
+            projectId,
+            memberCount: getGroupMembers(projectId, g.id).length,
+            latestMessage: getLatestMessageSummary(g.id),
+          })),
+      )
+      .sort((a, b) => (b.latestActivityAt ?? '').localeCompare(a.latestActivityAt ?? ''))
+    return HttpResponse.json({ data: groups })
+  }),
+
+  // 标记已读（§三 进群全读）：后端推进已读游标到群最新消息，未读数归零
+  http.post('/api/projects/:projectId/groups/:groupId/read', ({ params }) => {
+    const projectId = params.projectId as string
+    const groupId = params.groupId as string
+    const group = (MOCK_GROUPS[projectId] ?? []).find((g) => g.id === groupId)
+    if (!group) return HttpResponse.json({ error: { code: 'GROUP_NOT_FOUND', message: '群不存在' } }, { status: 404 })
+    const lastReadSequenceNo = (MOCK_MESSAGES[groupId] ?? []).reduce(
+      (max, m) => Math.max(max, m.sequence ?? 0),
+      0,
+    )
+    group.unreadCount = 0
+    return HttpResponse.json({ data: { groupId, lastReadSequenceNo, unreadCount: 0 } })
   }),
 
   http.post('/api/projects/:projectId/groups', async ({ params, request }) => {

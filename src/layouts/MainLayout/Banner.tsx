@@ -174,7 +174,9 @@ export function Banner() {
         >
           <Space size={8}>
             <Text className="qg-banner__user-name" style={{ color: LIGHT }}>{name}</Text>
-            <Avatar style={{ background: '#f97316' }}>{avatarChar}</Avatar>
+            <Avatar src={user?.avatarUrl ?? undefined} style={{ background: '#f97316' }}>
+              {avatarChar}
+            </Avatar>
           </Space>
         </Button>
       </Space>

@@ -66,10 +66,12 @@ export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
         </div>
         <div>
           <Text type="secondary">执行概览</Text>
-          <div className={styles.executionOverview}>
-            <Text className={styles.taskInfoEllipsis}>{valueOrNone(task.executionSummary.currentStageTitle ?? task.executionSummary.currentStage)}</Text>
-            <Progress percent={executionPercent(task.executionSummary)} size="small" showInfo />
-          </div>
+          <Tooltip title={<ExecutionSummaryTooltip summary={task.executionSummary} />}>
+            <div className={styles.executionOverview}>
+              <Text className={styles.taskInfoEllipsis}>{valueOrNone(task.executionSummary.currentStageTitle ?? task.executionSummary.currentStage)}</Text>
+              <Progress percent={executionPercent(task.executionSummary)} size="small" showInfo />
+            </div>
+          </Tooltip>
         </div>
       </div>
       <div className={`${styles.taskCardAttention} ${task.attention ? '' : styles.taskCardAttentionPlaceholder}`} title={task.attention ? `${task.attention.title}：${task.attention.summary}` : undefined}>
@@ -99,4 +101,8 @@ function repositorySummary(task: TaskListItem): string {
 function executionPercent(summary: TaskListItem['executionSummary']): number {
   if (summary.totalSteps <= 0) return 0
   return Math.min(100, Math.round((summary.succeededSteps / summary.totalSteps) * 100))
+}
+
+function ExecutionSummaryTooltip({ summary }: { summary: TaskListItem['executionSummary'] }) {
+  return <div>{valueOrNone(summary.currentStageTitle ?? summary.currentStage)}</div>
 }

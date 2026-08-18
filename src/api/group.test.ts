@@ -53,3 +53,37 @@ describe('groupApi.sendMessage', () => {
     )
   })
 })
+
+describe('groupApi.markRead', () => {
+  it('marks the group read through the backend endpoint', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: { groupId: 'group-1', lastReadSequenceNo: 42, unreadCount: 0 },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    await expect(groupApi.markRead('project-1', 'group-1')).resolves.toMatchObject({
+      groupId: 'group-1',
+      lastReadSequenceNo: 42,
+      unreadCount: 0,
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/project-1/groups/group-1/read',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+})
+
+describe('groupApi.listMainGroups', () => {
+  it('lists all visible project main groups through the aggregation endpoint', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: [
+        { id: 'group-main-1', projectId: 'project-1', type: 'PROJECT_MAIN', title: '项目主群', status: 'ACTIVE', unreadCount: 2 },
+        { id: 'group-main-2', projectId: 'project-2', type: 'PROJECT_MAIN', title: '项目主群', status: 'ACTIVE', unreadCount: 0 },
+      ],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    const groups = await groupApi.listMainGroups()
+    expect(groups).toHaveLength(2)
+    expect(groups[0]).toMatchObject({ projectId: 'project-1', unreadCount: 2 })
+    expect(fetchMock).toHaveBeenCalledWith('/api/chat/main-groups', expect.any(Object))
+  })
+})

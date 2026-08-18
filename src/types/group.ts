@@ -53,6 +53,13 @@ export interface GroupMember {
   avatarUrl?: string
 }
 
+/** POST .../groups/{groupId}/read 响应（§三 标记已读，进群全读） */
+export interface MarkReadResult {
+  groupId: string
+  lastReadSequenceNo: number
+  unreadCount: number
+}
+
 /** TEXT 消息内容 */
 export interface TextMessageContent {
   text: string

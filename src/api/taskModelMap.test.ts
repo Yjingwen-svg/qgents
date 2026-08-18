@@ -28,6 +28,54 @@ describe('task model Diff / MR mapping', () => {
     })
   })
 
+  it('maps backend hunk structure (header object + type/oldLineNo/newLineNo/content lines)', () => {
+    const file = mapDiffFile({
+      id: 'file-1',
+      sequence: 1,
+      path: 'src/a.ts',
+      changeType: 'MODIFIED',
+      additions: 2,
+      deletions: 1,
+      binary: false,
+      hunks: [
+        {
+          header: { oldStart: 10, newStart: 10, oldLines: 3, newLines: 4 },
+          lines: [
+            { type: 'CONTEXT', oldLineNo: 10, newLineNo: 10, content: 'const x = 1' },
+            { type: 'DELETE', oldLineNo: 11, newLineNo: null, content: 'const y = 2' },
+            { type: 'ADD', oldLineNo: null, newLineNo: 11, content: 'const z = 3' },
+            { type: 'ADD', oldLineNo: null, newLineNo: 12, content: 'const w = 4' },
+          ],
+        },
+      ],
+    })
+    expect(file.hunks).toHaveLength(1)
+    expect(file.hunks[0].header).toBe('@@ -10,3 +10,4 @@')
+    expect(file.hunks[0].lines).toEqual([
+      { kind: 'CONTEXT', oldLine: 10, newLine: 10, text: 'const x = 1' },
+      { kind: 'DEL', oldLine: 11, newLine: null, text: 'const y = 2' },
+      { kind: 'ADD', oldLine: null, newLine: 11, text: 'const z = 3' },
+      { kind: 'ADD', oldLine: null, newLine: 12, text: 'const w = 4' },
+    ])
+  })
+
+  it('still maps legacy frontend hunk shape (string header + kind/oldLine/newLine/text)', () => {
+    const file = mapDiffFile({
+      id: 'file-1',
+      sequence: 1,
+      path: 'src/a.ts',
+      changeType: 'MODIFIED',
+      additions: 1,
+      deletions: 1,
+      binary: false,
+      hunks: [
+        { id: 'hunk-a', header: '@@ -1,1 +1,1 @@', lines: [{ kind: 'ADD', oldLine: null, newLine: 1, text: 'x' }] },
+      ],
+    })
+    expect(file.hunks[0].header).toBe('@@ -1,1 +1,1 @@')
+    expect(file.hunks[0].lines[0]).toEqual({ kind: 'ADD', oldLine: null, newLine: 1, text: 'x' })
+  })
+
   it('maps DiffCommentResponse authorUserId without inventing authorName', () => {
     const comment = mapDiffComment({
       id: 'c1',

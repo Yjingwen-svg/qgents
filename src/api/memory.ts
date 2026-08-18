@@ -16,7 +16,7 @@ export const memoryApi = {
       body: payload,
     })
   },
-  /** 根据群聊消息生成 AI 草稿 */
+  /** 依据当前群的最近聊天自动生成 AI 草稿（后端自动检索，客户端不再勾选消息） */
   generateDraft(projectId: string, payload: GenerateMemoryDraftPayload) {
     return request<Memory>(`/projects/${projectId}/memories/drafts`, {
       method: 'POST',

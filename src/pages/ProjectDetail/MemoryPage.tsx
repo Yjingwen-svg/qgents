@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  App,
   Button,
   Card,
   Drawer,
@@ -21,7 +22,7 @@ import {
   UserOutlined,
   MessageOutlined,
 } from '@ant-design/icons'
-import { memoryApi } from '@/api'
+import { ApiError, groupApi, memoryApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
 import type { CreateMemoryPayload, Memory, MemoryStatus } from '@/types'
 import './MemoryPage.css'
@@ -56,10 +57,12 @@ const STATUS_META: Record<MemoryStatus, { color: string; label: string }> = {
 export function MemoryPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const queryClient = useQueryClient()
+  const { message } = App.useApp()
   const [filter, setFilter] = useState<FilterKey>('ALL')
   const [detailId, setDetailId] = useState<string | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
 
   const { data: memories = [], isLoading } = useQuery({
     queryKey: ['memories', projectId],
@@ -81,6 +84,15 @@ export function MemoryPage() {
   const archive = useMutation({
     mutationFn: (id: string) => memoryApi.archive(projectId, id),
     onSuccess: invalidate,
+    // 归档失败给出明确提示（如非 Admin 的 403 PROJECT_ADMIN_REQUIRED），避免无反馈；
+    // 只展示后端 message，不带 [错误码] 前缀
+    onError: (error) => {
+      const backendMessage =
+        error instanceof ApiError && error.body && typeof error.body === 'object' && 'error' in error.body
+          ? (error.body as { error?: { message?: string } }).error?.message
+          : undefined
+      message.error(backendMessage || (error instanceof Error ? error.message : '归档失败，请重试'))
+    },
   })
 
   if (isLoading) {
@@ -106,9 +118,14 @@ export function MemoryPage() {
           value={filter}
           onChange={(v) => setFilter(v as FilterKey)}
         />
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          新建 Memory
-        </Button>
+        <Space>
+          <Button icon={<MessageOutlined />} onClick={() => setAiOpen(true)}>
+            AI 沉淀
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            新建 Memory
+          </Button>
+        </Space>
       </div>
 
       {filtered.length === 0 ? (
@@ -141,10 +158,24 @@ export function MemoryPage() {
         }}
         onArchive={async () => {
           if (!detail) return
-          await archive.mutateAsync(detail.id)
+          try {
+            await archive.mutateAsync(detail.id)
+          } catch {
+            // mutation.onError 已给出错误提示，此处吞掉避免 unhandled rejection
+          }
         }}
       />
 
+      {/* AI 沉淀：选择项目内需求群，自动检索其最近聊天生成草稿 */}
+      <AiDraftModal
+        projectId={projectId}
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        onCreated={() => {
+          invalidate()
+          setAiOpen(false)
+        }}
+      />
       {/* 新建 / 编辑弹窗 */}
       <CreateMemoryModal
         projectId={projectId}
@@ -296,15 +327,22 @@ function CreateMemoryModal({
   onCreated: () => void
 }) {
   const [form] = Form.useForm<CreateMemoryPayload>()
+  const { message } = App.useApp()
 
   const save = useMutation({
     mutationFn: (payload: CreateMemoryPayload) =>
       editTarget
         ? memoryApi.patch(projectId, editTarget.id, payload)
         : memoryApi.create(projectId, payload),
-    onSuccess: () => {
+    onSuccess: (saved) => {
       form.resetFields()
       onCreated()
+      // Project Admin 自建免审批：直接 APPROVED 上架；普通成员创建为草稿
+      if (editTarget) {
+        message.success('Memory 已更新')
+      } else {
+        message.success(saved.status === 'APPROVED' ? 'Memory 已创建并发布为项目共享知识' : 'Memory 草稿已创建，提交审核后即可共享')
+      }
     },
   })
 
@@ -315,20 +353,21 @@ function CreateMemoryModal({
       onCancel={onClose}
       onOk={() => form.submit()}
       okText={editTarget ? '保存' : '创建'}
+      cancelText="取消"
       confirmLoading={save.isPending}
       destroyOnClose
     >
       <Form
         form={form}
         layout="vertical"
-        onFinish={(v) => save.mutate(v)}
+        onFinish={(v) => save.mutate({ ...v, tags: splitTags(v.tags) })}
         initialValues={
           editTarget
             ? {
                 title: editTarget.title,
                 content: editTarget.content,
                 category: editTarget.category,
-                tags: editTarget.tags,
+                tags: (editTarget.tags ?? []).join(','),
               }
             : { category: 'ENGINEERING_DECISION' }
         }
@@ -352,19 +391,93 @@ function CreateMemoryModal({
           />
         </Form.Item>
         <Form.Item name="tags" label="标签（逗号分隔）">
-          <Select
-            mode="tags"
-            placeholder="输入后回车，如 auth / security"
-            tokenSeparators={[',']}
-            open={false}
-          />
+          <Input placeholder="如 auth / security，用逗号分隔" />
         </Form.Item>
       </Form>
     </Modal>
   )
 }
 
+/** 标签输入（逗号分隔字符串或数组）→ string[] */
+function splitTags(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((tag): tag is string => typeof tag === 'string')
+  if (typeof value === 'string') return value.split(',').map((tag) => tag.trim()).filter(Boolean)
+  return []
+}
+
 function formatDate(iso: string): string {
   const d = new Date(iso)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** AI 沉淀弹窗：选择项目内需求群，后端自动检索其最近聊天生成草稿（投给用户/Admin 审核确认） */
+function AiDraftModal({
+  projectId,
+  open,
+  onClose,
+  onCreated,
+}: {
+  projectId: string
+  open: boolean
+  onClose: () => void
+  onCreated: () => void
+}) {
+  const { message } = App.useApp()
+  const [groupId, setGroupId] = useState<string | undefined>(undefined)
+
+  const { data: groups = [], isLoading: groupsLoading } = useQuery({
+    queryKey: ['groups', projectId],
+    queryFn: () => groupApi.listByProject(projectId),
+    enabled: open && !!projectId,
+  })
+
+  const generate = useMutation({
+    mutationFn: () => {
+      if (!groupId) throw new Error('请选择要沉淀的需求群')
+      const selected = groups.find((g) => g.id === groupId)
+      if (!selected?.latestMessage) throw new Error('该需求群暂无消息，无需沉淀')
+      return memoryApi.generateDraft(projectId, { groupId })
+    },
+    onSuccess: () => {
+      message.success('AI 已根据该群最近聊天生成 Memory 草稿，可在交付中心提交审核')
+      setGroupId(undefined)
+      onCreated()
+    },
+    onError: (error) => {
+      message.error(error instanceof Error ? error.message : 'Memory 生成失败，请重试')
+    },
+  })
+
+  return (
+    <Modal
+      title="AI 沉淀 Memory"
+      open={open}
+      onCancel={() => {
+        setGroupId(undefined)
+        onClose()
+      }}
+      onOk={() => generate.mutate()}
+      okText="生成草稿"
+      cancelText="取消"
+      confirmLoading={generate.isPending}
+      destroyOnClose
+    >
+      <div style={{ marginBottom: 12, color: '#94a3b8', fontSize: 13 }}>
+        AI 将自动检索所选需求群的最近聊天记录，甄别值得沉淀的内容并生成一份草稿，供你提交审核。
+        仅可选择有消息的需求群（空群不消耗 AI 生成）。
+      </div>
+      <Select<string>
+        placeholder={groupsLoading ? '加载需求群…' : '选择需求群'}
+        style={{ width: '100%' }}
+        value={groupId}
+        loading={groupsLoading}
+        onChange={setGroupId}
+        options={groups.map((g) => ({
+          value: g.id,
+          label: g.latestMessage ? (g.title || g.id) : `${g.title || g.id}（暂无消息）`,
+          disabled: !g.latestMessage,
+        }))}
+      />
+    </Modal>
+  )
 }

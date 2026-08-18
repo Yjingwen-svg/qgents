@@ -3,6 +3,7 @@ import { Layout } from 'antd'
 import { Banner } from './Banner'
 import { PersonalCenter } from './PersonalCenter'
 import { PATHS } from '@/routes/paths'
+import { useRealtimeEvents } from '@/realtime/useRealtimeEvents'
 
 const { Content } = Layout
 
@@ -14,6 +15,9 @@ export function MainLayout() {
   const location = useLocation()
   const isChat = location.pathname.startsWith(PATHS.CHAT)
   const isProject = location.pathname.startsWith('/app/projects/')
+
+  // 全局 WebSocket 实时通道（单连接用户级聚合；SSE 保留兼容）
+  useRealtimeEvents()
 
   return (
     <Layout className="qg-full-height" style={{ minHeight: '100%', background: 'var(--qg-navy)' }}>

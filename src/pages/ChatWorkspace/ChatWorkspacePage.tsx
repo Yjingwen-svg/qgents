@@ -1,100 +1,58 @@
 import { useMemo, useState } from 'react'
-import { Layout, Input, List, Avatar, Typography, Space, theme, Empty } from 'antd'
+import { Layout, Input, List, Avatar, Typography, Space, theme, Empty, Badge } from 'antd'
 import { SearchOutlined, TeamOutlined } from '@ant-design/icons'
-import { useQueries, useQuery } from '@tanstack/react-query'
-import { teamApi, projectApi, groupApi } from '@/api'
+import { useQuery } from '@tanstack/react-query'
+import { groupApi } from '@/api'
 import { ChatPanel } from '@/components/chat/ChatPanel'
-import { hasUnread, useUnreadStore } from '@/store/unreadStore'
 import { latestMessageText } from '@/utils/messageSummary'
 import type { Group } from '@/types'
 
 const { Text } = Typography
 
 interface MainGroupSession {
-  teamId: string
-  teamName: string
   projectId: string
-  projectName: string
   groupId: string
   groupTitle: string
   latestMessage?: Group['latestMessage']
   latestActivityAt?: string
+  unreadCount?: number
 }
 
 /**
  * 项目群聊工作台 —— 左边聚合「所有项目的主群」，右边内嵌聊天面板。
- * 数据：teamApi.listMine → 各 team 的 projectApi.listByTeam → 各 project 的 groupApi.listByProject（取 PROJECT_MAIN）。
+ * 数据：GET /chat/main-groups 主群聚合（§五），一次返回全部可见项目主群，
+ * 替代原来 teams → projects → groups 三层串联查询（消除 N+1）。
  */
 export default function ChatWorkspacePage() {
   const { token } = theme.useToken()
-  const readAt = useUnreadStore((state) => state.readAt)
   const [selected, setSelected] = useState<MainGroupSession | null>(null)
   const [keyword, setKeyword] = useState('')
 
-  const { data: teams = [] } = useQuery({
-    queryKey: ['teams', 'mine'],
-    queryFn: teamApi.listMine,
-  })
-
-  // 每个团队的项目列表
-  const projectQueries = useQueries({
-    queries: teams.map((t) => ({
-      queryKey: ['teams', t.id, 'projects'],
-      queryFn: () => projectApi.listByTeam(t.id),
-      enabled: !!t.id,
-    })),
-  })
-
-  // 扁平化所有项目
-  const projects = useMemo(
-    () => projectQueries.flatMap((q) => q.data ?? []),
-    [projectQueries],
-  )
-
-  // teamId → 团队名，用于左侧群聊项显示所属团队
-  const teamNameById = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const t of teams) map.set(t.id, t.name)
-    return map
-  }, [teams])
-
-  // 每个项目的主群
-  const groupQueries = useQueries({
-    queries: projects.map((p) => ({
-      queryKey: ['groups', p.id],
-      queryFn: () => groupApi.listByProject(p.id),
-      enabled: !!p.id,
-    })),
+  // 主群聚合：按最近活跃倒序；含 latestMessage / memberCount / unreadCount
+  const { data: mainGroups = [] } = useQuery({
+    queryKey: ['chat', 'main-groups'],
+    queryFn: groupApi.listMainGroups,
   })
 
   const sessions = useMemo<MainGroupSession[]>(() => {
-    return projects
-      .flatMap((p, i) => {
-        const groups = groupQueries[i]?.data ?? []
-        const main = groups.find((g) => g.type === 'PROJECT_MAIN') ?? groups[0]
-        if (!main) return []
-        return [
-          {
-            teamId: p.teamId,
-            teamName: teamNameById.get(p.teamId) ?? '',
-            projectId: p.id,
-            projectName: p.name,
-            groupId: main.id,
-            groupTitle: main.title,
-            latestMessage: main.latestMessage,
-            latestActivityAt: main.latestActivityAt,
-          },
-        ]
-      })
-      .sort((a, b) => (b.latestActivityAt ?? '').localeCompare(a.latestActivityAt ?? ''))
-  }, [projects, groupQueries, teamNameById])
+    return mainGroups
+      .filter((g) => g.type === 'PROJECT_MAIN')
+      .map((g) => ({
+        projectId: g.projectId,
+        groupId: g.id,
+        groupTitle: g.title,
+        latestMessage: g.latestMessage,
+        latestActivityAt: g.latestActivityAt,
+        unreadCount: g.unreadCount,
+      }))
+  }, [mainGroups])
 
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase()
     if (!q) return sessions
     return sessions.filter(
       (s) =>
-        s.projectName.toLowerCase().includes(q) ||
+        s.projectId.toLowerCase().includes(q) ||
         s.groupTitle.toLowerCase().includes(q),
     )
   }, [sessions, keyword])
@@ -148,25 +106,10 @@ export default function ChatWorkspacePage() {
                       <Space direction="vertical" size={0} style={{ width: '100%' }}>
                         <Space style={{ width: '100%', justifyContent: 'space-between' }}>
                           <Text strong ellipsis style={{ maxWidth: 150 }}>
-                            {s.projectName}
+                            {s.groupTitle}
                           </Text>
-                          {hasUnread(readAt, { id: s.groupId, latestActivityAt: s.latestActivityAt }) ? (
-                            <span
-                              style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: '50%',
-                                background: '#ef4444',
-                                flexShrink: 0,
-                              }}
-                            />
-                          ) : null}
+                          <Badge count={s.unreadCount} overflowCount={99} size="small" />
                         </Space>
-                        {s.teamName ? (
-                          <Text type="secondary" ellipsis style={{ fontSize: 11, lineHeight: '16px' }}>
-                            {s.teamName}
-                          </Text>
-                        ) : null}
                       </Space>
                     }
                     description={

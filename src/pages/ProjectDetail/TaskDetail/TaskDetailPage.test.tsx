@@ -144,6 +144,33 @@ describe('TaskDetailPage final information architecture', () => {
     expect(useTaskDiffReviewMock).toHaveBeenLastCalledWith(task.projectId, task.id, false)
   })
 
+  it('treats SUCCEEDED without a batch as completed-without-code via the 404 (no session flag needed)', () => {
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'SUCCEEDED' }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskDiffReviewMock.mockReturnValue({ data: undefined, error: new ApiError('Final Diff has not been generated', 404, { error: { code: 'DIFF_REVIEW_NOT_FOUND', message: 'Final Diff has not been generated' } }), isError: true, isLoading: false, refetch: vi.fn() })
+
+    renderPage()
+
+    expect(screen.getByText('任务已完成，无代码变更，因此未生成 Diff 或 MR')).toBeInTheDocument()
+    expect(screen.queryByText('DiffReview加载失败')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '确认交付' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '重试交付' })).not.toBeInTheDocument()
+    expect(useTaskDiffReviewMock).toHaveBeenLastCalledWith(task.projectId, task.id, true)
+  })
+
+  it('shows the delivery summary for a normally completed SUCCEEDED task with a batch', () => {
+    const batch: DiffReviewBatch = { id: 'batch-done', taskId: task.id, reviewStatus: 'ACCEPTED', confirmationSource: 'USER', deliveryStatus: 'DELIVERED', aggregateHash: 'hash', reviewReason: null, diffs: [], repositoryDeliveries: [] }
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'SUCCEEDED' }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskDiffReviewMock.mockReturnValue({ data: batch, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+
+    renderPage()
+
+    expect(screen.getByText('已由用户确认')).toBeInTheDocument()
+    expect(screen.getByText(/DELIVERED/)).toBeInTheDocument()
+    expect(screen.queryByText('任务已完成，无代码变更，因此未生成 Diff 或 MR')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '确认交付' })).not.toBeInTheDocument()
+    expect(useTaskDiffReviewMock).toHaveBeenLastCalledWith(task.projectId, task.id, true)
+  })
+
   it('renders MR_FIRST as automatic delivery without user Diff actions', () => {
     const batch: DiffReviewBatch = { id: 'batch-system', taskId: task.id, reviewStatus: 'ACCEPTED', confirmationSource: 'SYSTEM', deliveryStatus: 'DELIVERING', aggregateHash: 'hash', reviewReason: 'MR_FIRST 自动交付', diffs: [], repositoryDeliveries: [] }
     useTaskMock.mockReturnValue({ data: { ...task, status: 'DELIVERING', deliveryMode: 'MR_FIRST', deliveryReason: 'Planner 选择 MR_FIRST', capabilities: { ...task.capabilities, canConfirmDiffReview: true, canRejectDiffReview: true } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
@@ -177,6 +204,20 @@ describe('TaskDetailPage final information architecture', () => {
     renderPage()
     await user.click(screen.getByRole('button', { name: '取消任务' }))
     expect(refetch).toHaveBeenCalled()
+  })
+
+  it('uses workspace repository summaries and never exposes a raw repository id in the diff card', () => {
+    const rawRepositoryId = '01a00fee-02ca-7a1c-b3fd-5d2aecd5bc58'
+    const diff: DiffListItem = { id: 'diff-1', projectId: task.projectId, taskId: task.id, taskRunId: run.id, taskStepId: step.id, requirementGroupId: 'group-1', workspaceId: 'workspace-1', repositoryId: rawRepositoryId, baseCommit: 'base-1', sourceBranch: 'main', headCommit: 'head-1', status: 'PENDING_REVIEW', changeStats: { files: 1, additions: 8, deletions: 0 }, createdAt: run.createdAt }
+    useTaskMock.mockReturnValue({ data: { ...task, repositories: [], workspace: { id: 'workspace-1', status: 'PROVISIONING', repositories: task.repositories } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useDiffsMock.mockReturnValue({ data: page([diff]), error: null, isError: false, isLoading: false })
+
+    renderPage()
+
+    expect(screen.getByText('1 个')).toBeInTheDocument()
+    expect(within(screen.getByTestId('diff-card')).getByText(task.title)).toBeInTheDocument()
+    expect(screen.queryByText(rawRepositoryId)).not.toBeInTheDocument()
+    expect(screen.queryByText(/PROVISIONING/)).not.toBeInTheDocument()
   })
 
   it('keeps the detail page visible when the backend omits derived task fields', () => {

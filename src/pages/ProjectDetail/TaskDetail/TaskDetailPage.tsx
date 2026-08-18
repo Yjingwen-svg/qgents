@@ -147,12 +147,61 @@ function AttentionBanner({ task, steps, onLocate, onOpenRun }: { task: Task; ste
   return <section className={styles.attentionBanner} data-testid="task-attention-banner"><Alert type="warning" showIcon title={<span><Tag color="orange">{attention.kind}</Tag>{attention.diffReviewBatchId ? <Tag color="blue">批次 {attention.diffReviewBatchId}</Tag> : null}{attention.title}</span>} description={attention.summary} action={action} /></section>
 }
 
+function PlanningSkeletonCard({ index }: { index: number }) {
+  const delays = ['0ms', '150ms', '300ms']
+  const delay = delays[index % 3]
+  return (
+    <div
+      className={`${styles.planningStepCard} ${styles.planningCardFadeIn}`}
+      style={{ animationDelay: delay }}
+      data-testid="planning-step-card"
+    >
+      <div className={styles.planningBrainIcon}>
+        <ExperimentOutlined />
+      </div>
+      <div className={`${styles.skeletonLine} ${styles.skeletonHeadingLine}`} />
+      <div className={styles.planningMeta}>
+        <div className={`${styles.skeletonLine} ${styles.skeletonMetaLine}`} />
+        <div className={`${styles.skeletonLine} ${styles.skeletonMetaLine}`} style={{ width: '75%' }} />
+        <div className={`${styles.skeletonLine} ${styles.skeletonMetaLine}`} style={{ width: '85%' }} />
+      </div>
+      <div className={styles.planningFooter}>
+        <div className={`${styles.skeletonLine} ${styles.skeletonFooterLine}`} />
+      </div>
+    </div>
+  )
+}
+
 function ExecutionFlowRow({ task, query, steps, onOpenRun }: { task: Task; query: ReturnType<typeof useTaskSteps>; steps: TaskStep[]; onOpenRun: (taskRunId: string) => void }) {
   const ordered = steps.slice().sort((left, right) => left.sequenceNo - right.sequenceNo)
+  const isPlanning = task.status === 'PLANNING'
   return (
     <section className={styles.executionFlowRow} id="execution-flow" data-testid="execution-flow-row">
-      <RowHeading title="执行流程" meta={ordered.length > 0 ? `${ordered.length} 个步骤` : task.status === 'PLANNING' ? '规划中' : undefined} />
-      {query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="TaskStep" error={query.error} /> : ordered.length === 0 ? <div className={styles.flowEmptyState} data-testid="execution-flow-empty"><Text type="secondary">{task.status === 'PLANNING' ? '规划 Agent 正在生成执行方案' : '暂无执行步骤'}</Text></div> : <div className={styles.flowScroller}><div className={styles.flowGrid}>{ordered.map((step) => <StepCard key={step.id} step={step} onRun={onOpenRun} />)}</div></div>}
+      <RowHeading
+        title="执行流程"
+        meta={ordered.length > 0 ? `${ordered.length} 个步骤` : isPlanning ? '规划中' : undefined}
+      />
+      {query.isLoading ? (
+        <InlineState loading />
+      ) : query.isError ? (
+        <SectionError resource="TaskStep" error={query.error} />
+      ) : isPlanning ? (
+        <div className={styles.flowScroller}>
+          <div className={styles.flowPlanningState}>
+            {[0, 1, 2].map((i) => <PlanningSkeletonCard key={i} index={i} />)}
+          </div>
+        </div>
+      ) : ordered.length === 0 ? (
+        <div className={styles.flowEmptyState} data-testid="execution-flow-empty">
+          <Text type="secondary">暂无执行步骤</Text>
+        </div>
+      ) : (
+        <div className={styles.flowScroller}>
+          <div className={styles.flowGrid}>
+            {ordered.map((step) => <StepCard key={step.id} step={step} onRun={onOpenRun} />)}
+          </div>
+        </div>
+      )}
     </section>
   )
 }

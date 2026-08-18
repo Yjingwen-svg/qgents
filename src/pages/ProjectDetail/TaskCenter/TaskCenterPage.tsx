@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
-import { Alert, Button, ConfigProvider, Empty, Pagination, Result, Segmented, Space, Spin, theme, Typography, type ThemeConfig } from 'antd'
+import { Alert, Button, ConfigProvider, Empty, Pagination, Result, Segmented, Spin, theme, Typography, type ThemeConfig } from 'antd'
 import { AppstoreOutlined, UnorderedListOutlined } from '@ant-design/icons'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/api'
@@ -119,7 +119,7 @@ export default function TaskCenterPage() {
             {query.isFetching && !query.isLoading ? <Spin size="small" /> : null}
           </header>
           <TaskFilters status={status} groupId={groupId} repositoryId={repositoryId} createdBy={createdBy} search={search} groupOptions={groupOptions} repositoryOptions={repositoryOptions} createdByOptions={createdByOptions} onStatusChange={(value) => updateParam('status', value === 'all' ? undefined : value)} onGroupChange={(value) => updateParam('groupId', value)} onRepositoryChange={(value) => updateParam('repositoryId', value)} onCreatedByChange={(value) => updateParam('createdBy', value)} onSearchChange={(value) => updateParam('keyword', value.trim() || undefined)} onReset={resetFilters} />
-          <div className={styles.listHeading}><Space><Text strong>任务列表</Text><Text type="secondary">{tasks.length} 项</Text></Space><Segmented<TaskCenterView> aria-label="任务视图" value={view} onChange={(nextView) => updateParam('view', nextView)} options={[{ value: 'board', label: '看板', icon: <AppstoreOutlined /> }, { value: 'table', label: '表格', icon: <UnorderedListOutlined /> }]} /></div>
+          <div className={styles.listHeading}><Text strong>任务列表</Text><Text type="secondary">{tasks.length} 项</Text><Segmented<TaskCenterView> aria-label="任务视图" value={view} onChange={(nextView) => updateParam('view', nextView)} options={[{ value: 'board', label: '看板', icon: <AppstoreOutlined /> }, { value: 'table', label: '表格', icon: <UnorderedListOutlined /> }]} /></div>
           <TaskCenterContent query={query} tasks={visibleTasks} hasServerItems={hasServerItems} isUnfiltered={isUnfiltered} view={view} onViewDetails={viewTask} onRetry={() => void query.refetch()} />
           {!query.isLoading && tasks.length > 0 ? <nav className={styles.pagination} aria-label="任务列表分页"><Pagination current={currentPage} pageSize={visibleTaskCount} total={paginationTotal} showSizeChanger={false} showQuickJumper={{ goButton: '跳转' }} showLessItems disabled={query.isFetchingNextPage} onChange={(page) => void changePage(page)} /></nav> : null}
           {!query.isLoading && query.hasNextPage ? <div className={styles.loadMore}><Button onClick={() => void query.fetchNextPage()} loading={query.isFetchingNextPage}>加载更多</Button></div> : null}

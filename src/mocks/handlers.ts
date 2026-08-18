@@ -1324,6 +1324,9 @@ export const handlers = [
     const userId = params.userId as string
     const group = (MOCK_GROUPS[projectId] ?? []).find((g) => g.id === groupId)
     if (!group) return HttpResponse.json({ error: { code: 'GROUP_NOT_FOUND', message: '群不存在' } }, { status: 404 })
+    if (userId === MOCK_CURRENT_USER.id) {
+      return HttpResponse.json({ error: { code: 'GROUP_CANNOT_REMOVE_SELF', message: '不能移出自己' } }, { status: 422 })
+    }
     if (userId === group.createdBy) {
       return HttpResponse.json({ error: { code: 'GROUP_CREATOR_NOT_REMOVABLE', message: '群创建者不可被移出' } }, { status: 422 })
     }

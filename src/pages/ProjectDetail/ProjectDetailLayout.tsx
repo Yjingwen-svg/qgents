@@ -1,16 +1,14 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Badge, Button, Form, Input, Modal, Select } from 'antd'
+import { Badge, Form, Input, Modal, Select } from 'antd'
 import { SearchOutlined, PushpinOutlined } from '@ant-design/icons'
 import { PATHS, PROJECT_NAV } from '@/routes/paths'
-import { ApiError, groupApi, projectApi } from '@/api'
-import { useAuth } from '@/context/AuthContext'
+import { ApiError, groupApi, projectApi, teamApi } from '@/api'
 import { useAppUiStore } from '@/store/appUiStore'
 import { latestMessageText } from '@/utils/messageSummary'
 import { useProjectTaskDomainEvents } from '@/realtime/useProjectTaskDomainEvents'
 import { ProjectActivityPanel } from './ProjectActivityPanel'
-import { GroupMemberManagerModal } from './GroupMemberManagerModal'
 import type { CreateGroupPayload, Group } from '@/types'
 import './ProjectDetailLayout.scss'
 
@@ -33,14 +31,11 @@ export default function ProjectDetailLayout() {
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
   const setCurrentProject = useAppUiStore((state) => state.setCurrentProject)
   const openProjectDetailNav = useAppUiStore((state) => state.openProjectDetailNav)
-  const { user } = useAuth()
   useProjectTaskDomainEvents(projectId)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [groupSearch, setGroupSearch] = useState('')
   const [form] = Form.useForm<CreateGroupPayload>()
-  // 成员管理弹窗：当前正在管理的群（null = 关闭）
-  const [manageGroup, setManageGroup] = useState<Group | null>(null)
 
   // 左侧导航栏宽度（可拖拽调整）
   const [sidebarWidth, setSidebarWidth] = useState(264)
@@ -113,12 +108,22 @@ export default function ProjectDetailLayout() {
   })
   const mainGroup = groups.find((g) => g.type === 'PROJECT_MAIN') ?? groups[0]
 
-  // 建群选成员的候选池 = 项目成员
+  // 建群选成员的候选池 = 项目成员；项目成员接口可能不返回 displayName，用团队成员接口补全（项目成员 ⊆ 团队成员）
   const { data: projectMembers = [] } = useQuery({
     queryKey: ['projects', projectId, 'members'],
     queryFn: () => projectApi.listMembers(projectId),
     enabled: !!projectId,
   })
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ['teams', project?.teamId, 'members'],
+    queryFn: () => teamApi.listMembers(project?.teamId ?? ''),
+    enabled: !!project?.teamId,
+  })
+  const teamMemberNameById = new Map(teamMembers.map((tm) => [tm.userId, tm.displayName]))
+  const resolveProjectMemberName = (userId: string): string =>
+    projectMembers.find((m) => m.userId === userId)?.displayName ||
+    teamMemberNameById.get(userId) ||
+    userId
 
   // 需求群拆分：归档 / 活跃；搜索按标题过滤；活跃群置顶优先 + 最近活跃排序
   const requirementGroups = groups.filter((g) => g.type === 'REQUIREMENT')
@@ -160,7 +165,6 @@ export default function ProjectDetailLayout() {
   // 单个群列表项：置顶标记 + 标题 + 未读数 + 最新消息摘要
   function renderBranch(g: Group, pinned = false) {
     const isMain = g.type === 'PROJECT_MAIN'
-    const canManage = g.createdBy === user?.id || project?.role === 'PROJECT_ADMIN'
     return (
       <li key={g.id}>
         <NavLink
@@ -175,22 +179,8 @@ export default function ProjectDetailLayout() {
               {pinned && <PushpinOutlined className="pd-nav__branch-pin" />}
               <span className="pd-nav__branch-title">{g.title}</span>
               {isMain && <span className="pd-nav__branch-main-tag">总群</span>}
-              {g.unreadCount ? <Badge count={g.unreadCount} overflowCount={99} size="small" /> : null}
-              {!isMain && canManage && (
-                <Button
-                  type="text"
-                  size="small"
-                  className="pd-nav__branch-manage"
-                  onClick={(event) => {
-                    // 阻止触发 NavLink 跳转，仅打开成员管理弹窗
-                    event.preventDefault()
-                    event.stopPropagation()
-                    setManageGroup(g)
-                  }}
-                >
-                  管理成员
-                </Button>
-              )}
+              {/* 当前正在查看的群不显示红点（后端游标推进有延迟，避免 SSE 竞态导致红点反复横跳） */}
+              {g.id !== groupId && g.unreadCount ? <Badge count={g.unreadCount} overflowCount={99} size="small" /> : null}
             </span>
             {g.latestMessage ? (
               <span className="pd-nav__branch-summary">
@@ -353,18 +343,11 @@ export default function ProjectDetailLayout() {
               allowClear
               placeholder="选择群成员（不选则群内只有创建者）"
               optionFilterProp="label"
-              options={projectMembers.map((m) => ({ value: m.userId, label: m.displayName }))}
+              options={projectMembers.map((m) => ({ value: m.userId, label: resolveProjectMemberName(m.userId) }))}
             />
           </Form.Item>
         </Form>
       </Modal>
-
-      {/* 需求群成员管理弹窗（创建者或 Project Admin） */}
-      <GroupMemberManagerModal
-        projectId={projectId}
-        group={manageGroup}
-        onClose={() => setManageGroup(null)}
-      />
     </div>
   )
 }

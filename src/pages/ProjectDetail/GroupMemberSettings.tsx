@@ -1,28 +1,31 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App, Avatar, Button, Empty, List, Modal, Popconfirm, Select, Typography } from 'antd'
+import { App, Avatar, Button, Empty, List, Modal, Popconfirm, Select, Space, Typography } from 'antd'
 import { PlusOutlined, UserOutlined } from '@ant-design/icons'
-import { groupApi, projectApi } from '@/api'
+import { groupApi, projectApi, teamApi } from '@/api'
 import { formatApiError } from '@/utils/formatApiError'
+import { useAuth } from '@/context/AuthContext'
 import type { Group } from '@/types'
 
 const { Text } = Typography
 
 interface Props {
   projectId: string
-  /** 当前管理的群；null = 弹窗关闭 */
-  group: Pick<Group, 'id' | 'title'> | null
-  onClose: () => void
+  group: Group | null
 }
 
 /**
- * 需求群「成员管理」弹窗（创建者或 Project Admin 可见）。
- * 成员列表（昵称 + 邮箱）+ 邀请成员（从项目成员选未入群的）+ 移出群聊。
+ * 群聊设置栏内嵌的「成员」区（创建者或 Project Admin 可管理）：
+ * - 点开栏直接显示成员列表（头像 + 昵称 + 邮箱，自己带「（我）」标记）
+ * - 「成员管理」开关：开启后每个 USER 成员行追加「移出群聊」，「取消」退出管理态
+ * - 「邀请成员」：从项目成员中选择未入群的（真实后端项目成员接口可能缺 displayName，用团队成员接口补全）
  * 接口：GET/POST .../members、DELETE .../members/{userId}（后端补充文档见根目录接口补充）。
  */
-export function GroupMemberManagerModal({ projectId, group, onClose }: Props) {
+export function GroupMemberSettings({ projectId, group }: Props) {
   const { message } = App.useApp()
   const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const [manageMode, setManageMode] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteIds, setInviteIds] = useState<string[]>([])
 
@@ -33,12 +36,30 @@ export function GroupMemberManagerModal({ projectId, group, onClose }: Props) {
     queryFn: () => groupApi.listMembers(projectId, groupId),
     enabled: !!groupId,
   })
-  // 邀请候选 = 项目成员（未入群的）
+  // 邀请候选 = 项目成员（未入群的）；项目成员接口可能不返回 displayName，用团队成员接口补全
   const { data: projectMembers = [] } = useQuery({
     queryKey: ['projects', projectId, 'members'],
     queryFn: () => projectApi.listMembers(projectId),
     enabled: !!projectId,
   })
+  const { data: project } = useQuery({
+    queryKey: ['projects', projectId],
+    queryFn: () => projectApi.getById(projectId),
+    enabled: !!projectId,
+  })
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ['teams', project?.teamId, 'members'],
+    queryFn: () => teamApi.listMembers(project?.teamId ?? ''),
+    enabled: !!project?.teamId,
+  })
+  const teamMemberNameById = new Map(teamMembers.map((tm) => [tm.userId, tm.displayName]))
+  const resolveProjectMemberName = (userId: string): string =>
+    projectMembers.find((m) => m.userId === userId)?.displayName ||
+    teamMemberNameById.get(userId) ||
+    userId
+
+  const canManage =
+    group?.type === 'REQUIREMENT' && (group.createdBy === user?.id || project?.role === 'PROJECT_ADMIN')
 
   const invalidate = (): void => {
     void queryClient.invalidateQueries({ queryKey: ['groups', projectId, groupId, 'members'] })
@@ -68,23 +89,30 @@ export function GroupMemberManagerModal({ projectId, group, onClose }: Props) {
   }
 
   return (
-    <Modal
-      title="成员管理"
-      open={!!group}
-      onCancel={onClose}
-      footer={<Button onClick={onClose}>关闭</Button>}
-      width={480}
-    >
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <Button
-          type="primary"
-          size="small"
-          icon={<PlusOutlined />}
-          disabled={inviteCandidates.length === 0}
-          onClick={() => setInviteOpen(true)}
-        >
-          邀请成员
-        </Button>
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <Text strong>成员（{members.length}）</Text>
+        {canManage && (
+          <Space size={4}>
+            <Button
+              size="small"
+              icon={<PlusOutlined />}
+              disabled={inviteCandidates.length === 0}
+              onClick={() => setInviteOpen(true)}
+            >
+              邀请成员
+            </Button>
+            {manageMode ? (
+              <Button size="small" onClick={() => setManageMode(false)}>
+                取消
+              </Button>
+            ) : (
+              <Button size="small" onClick={() => setManageMode(true)}>
+                成员管理
+              </Button>
+            )}
+          </Space>
+        )}
       </div>
 
       <List
@@ -93,7 +121,7 @@ export function GroupMemberManagerModal({ projectId, group, onClose }: Props) {
         renderItem={(member) => (
           <List.Item
             actions={
-              member.memberType === 'USER'
+              manageMode && member.memberType === 'USER' && member.id !== user?.id
                 ? [
                     <Popconfirm
                       key="remove"
@@ -121,7 +149,12 @@ export function GroupMemberManagerModal({ projectId, group, onClose }: Props) {
                   {member.displayName.slice(0, 1)}
                 </Avatar>
               }
-              title={<Text strong>{member.displayName}</Text>}
+              title={
+                <Text strong>
+                  {member.displayName}
+                  {member.id === user?.id ? <Text type="secondary">（我）</Text> : null}
+                </Text>
+              }
               description={
                 member.email ? (
                   <Text type="secondary" style={{ fontSize: 12 }}>
@@ -160,9 +193,9 @@ export function GroupMemberManagerModal({ projectId, group, onClose }: Props) {
           value={inviteIds}
           onChange={setInviteIds}
           optionFilterProp="label"
-          options={inviteCandidates.map((m) => ({ value: m.userId, label: m.displayName }))}
+          options={inviteCandidates.map((m) => ({ value: m.userId, label: resolveProjectMemberName(m.userId) }))}
         />
       </Modal>
-    </Modal>
+    </>
   )
 }

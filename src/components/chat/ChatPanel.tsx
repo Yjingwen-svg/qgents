@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm } from 'antd'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Drawer, Divider } from 'antd'
 import { App, Upload } from 'antd'
 import {
   SendOutlined,
@@ -12,6 +12,7 @@ import {
   InboxOutlined,
   PaperClipOutlined,
   CloseOutlined,
+  SettingOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
@@ -19,6 +20,7 @@ import { ApiError, groupApi, projectApi, agentApi, attachmentApi, githubApi, upl
 import { getApiBaseUrl } from '@/api/client'
 import { useAuth } from '@/context/AuthContext'
 import { TaskTriggerModal } from '@/components/task-domain'
+import { GroupMemberSettings } from '@/pages/ProjectDetail/GroupMemberSettings'
 import { AuthedImage } from '@/components/AuthedImage'
 import { PATHS } from '@/routes/paths'
 import type {
@@ -53,6 +55,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const [mentions, setMentions] = useState<Mention[]>([])
   const [sendError, setSendError] = useState<string | null>(null)
   const [triggerOpen, setTriggerOpen] = useState(false)
+  // 群聊设置栏（收纳成员管理 / AI 沉淀 / 归档等除「发起任务」外的操作）
+  const [settingsOpen, setSettingsOpen] = useState(false)
   // 回复引用：选中某条消息后，输入区显示引用条，发送时以 QUOTE 类型 + replyToId 提交
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -233,12 +237,22 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [projectId, groupId, queryClient])
 
-  // 输入框以 @ 结尾时弹出成员面板
-  const mentionOpen = draft.endsWith('@')
+  // @ 提及面板：最后一个 @ 到行尾无空格时弹出；@ 后输入的字符作为候选过滤关键词（如 @张 → 只剩名字带「张」）
+  const lastAt = draft.lastIndexOf('@')
+  const mentionOpen = lastAt >= 0 && !draft.slice(lastAt).includes(' ')
+  const mentionQuery = lastAt >= 0 ? draft.slice(lastAt + 1).toLowerCase().trim() : ''
+  const filteredAgents = teamAgents.filter((a) => !mentionQuery || a.name.toLowerCase().includes(mentionQuery))
+  const filteredUsers = otherUserMembers.filter(
+    (m) => !mentionQuery || m.displayName.toLowerCase().includes(mentionQuery),
+  )
   const canOpenTaskTrigger = group?.type === 'REQUIREMENT' && group.status === 'ACTIVE' && !group.isArchived
 
   function pickMention(target: { id: string; displayName: string; type: MentionType }) {
-    setDraft((prev) => prev + `${target.displayName} `)
+    // 用「@显示名 + 空格」替换掉最后一个 @ 及其后的过滤字符，避免残留查询词
+    setDraft((prev) => {
+      const at = prev.lastIndexOf('@')
+      return at >= 0 ? `${prev.slice(0, at)}@${target.displayName} ` : `${prev}@${target.displayName} `
+    })
     setMentions((prev) => [...prev, { type: target.type, id: target.id }])
   }
 
@@ -436,34 +450,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             </div>
           </div>
           <Space size={8}>
-            {/* AI 沉淀 Memory —— 自动检索本群最近聊天生成草稿，投给用户/Admin 确认 */}
-            <Button
-              icon={<MessageOutlined />}
-              loading={createAiMemory.isPending}
-              onClick={() => createAiMemory.mutate()}
-            >
-              AI 沉淀
-            </Button>
-            {/* 归档需求群 —— 仅需求群 + 创建者可见 */}
-            {group?.type === 'REQUIREMENT' && group.createdBy === user?.id && !group.isArchived && (
-              <Popconfirm
-                title="归档需求群"
-                description="归档后该群将移入「已归档」，不可恢复。确定归档？"
-                okText="归档"
-                cancelText="取消"
-                onConfirm={() => archiveGroup.mutate()}
-              >
-                <Button
-                  danger
-                  ghost
-                  icon={<InboxOutlined />}
-                  loading={archiveGroup.isPending}
-                >
-                  归档需求群
-                </Button>
-              </Popconfirm>
-            )}
-            {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal */}
+            {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal；其余操作收进「群聊设置」栏 */}
             {canOpenTaskTrigger && <Button
               type="primary"
               ghost
@@ -472,6 +459,12 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             >
               发起任务
             </Button>}
+            <Button
+              icon={<SettingOutlined />}
+              onClick={() => setSettingsOpen(true)}
+            >
+              群聊设置
+            </Button>
           </Space>
         </>
       </div>
@@ -534,7 +527,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
 
         <div style={{ position: 'relative', padding: '12px 20px 16px', borderTop: `1px solid ${token.colorBorder}` }}>
           {/* @ 提及成员面板 */}
-          {mentionOpen && (teamAgents.length > 0 || otherUserMembers.length > 0) && (
+          {mentionOpen && (filteredAgents.length > 0 || filteredUsers.length > 0) && (
           <div
             style={{
               position: 'absolute',
@@ -553,17 +546,17 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             }}
           >
             {/* Agent 候选：仅活跃需求群可 @ Agent（项目总群不提供 @Agent，发起任务必须挂 REQUIREMENT 群） */}
-            {canOpenTaskTrigger && teamAgents.length > 0 && (
+            {canOpenTaskTrigger && filteredAgents.length > 0 && (
               <MentionGroup
                 label="Agent"
-                members={teamAgents.map((a) => ({ id: a.id, displayName: a.name, type: 'AGENT' as const }))}
+                members={filteredAgents.map((a) => ({ id: a.id, displayName: a.name, type: 'AGENT' as const }))}
                 onPick={pickMention}
               />
             )}
-            {otherUserMembers.length > 0 && (
+            {filteredUsers.length > 0 && (
               <MentionGroup
                 label="成员"
-                members={otherUserMembers.map((m) => ({ id: m.id, displayName: m.displayName, type: 'USER' as const }))}
+                members={filteredUsers.map((m) => ({ id: m.id, displayName: m.displayName, type: 'USER' as const }))}
                 onPick={pickMention}
               />
             )}
@@ -653,6 +646,50 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         initialInstruction=""
         onClose={() => setTriggerOpen(false)}
       />
+
+      {/* 群聊设置栏 —— 收纳除「发起任务」外的群操作（成员管理 / AI 沉淀 / 归档等） */}
+      <Drawer
+        title="群聊设置"
+        placement="right"
+        width={320}
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          {/* 成员区：直接内嵌显示成员；「成员管理」开关后每行追加「移出群聊」 */}
+          <GroupMemberSettings projectId={projectId} group={group ?? null} />
+          <Divider />
+          {/* AI 沉淀 Memory —— 自动检索本群最近聊天生成草稿，投给用户/Admin 确认 */}
+          <Button
+            block
+            icon={<MessageOutlined />}
+            loading={createAiMemory.isPending}
+            onClick={() => {
+              createAiMemory.mutate()
+              setSettingsOpen(false)
+            }}
+          >
+            AI 沉淀 Memory
+          </Button>
+          {/* 归档需求群 —— 仅需求群 + 创建者可见 */}
+          {group?.type === 'REQUIREMENT' && group.createdBy === user?.id && !group.isArchived && (
+            <Popconfirm
+              title="归档需求群"
+              description="归档后该群将移入「已归档」，不可恢复。确定归档？"
+              okText="归档"
+              cancelText="取消"
+              onConfirm={() => {
+                archiveGroup.mutate()
+                setSettingsOpen(false)
+              }}
+            >
+              <Button block danger icon={<InboxOutlined />} loading={archiveGroup.isPending}>
+                归档需求群
+              </Button>
+            </Popconfirm>
+          )}
+        </Space>
+      </Drawer>
     </Layout>
   )
 }

@@ -108,7 +108,10 @@ export default function ChatWorkspacePage() {
                           <Text strong ellipsis style={{ maxWidth: 150 }}>
                             {s.groupTitle}
                           </Text>
-                          <Badge count={s.unreadCount} overflowCount={99} size="small" />
+                          {/* 当前正在查看的群不显示红点（避免 SSE 竞态导致反复横跳） */}
+                          {selected?.groupId !== s.groupId && (
+                            <Badge count={s.unreadCount} overflowCount={99} size="small" />
+                          )}
                         </Space>
                       </Space>
                     }

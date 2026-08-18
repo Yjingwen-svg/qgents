@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Alert, Avatar, Button, Form, Input, Modal, Select, Spin, Tag, Typography } from 'antd'
+import { Alert, App, Avatar, Button, Form, Input, Modal, Select, Spin, Tag, Typography, Upload } from 'antd'
+import { CameraOutlined, UploadOutlined } from '@ant-design/icons'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { projectApi } from '@/api'
+import { agentApi, projectApi } from '@/api'
 import { useAuth } from '@/context/AuthContext'
 import { useAgent, useAgentRuntime, useAgents, useArchiveAgent, useCreateAgent, usePublishAgent, useUnpublishAgent, useUpdateAgent } from '@/hooks'
 import type { AgentDetail, AgentRole, AgentSummary, CreateAgentPayload } from '@/types'
@@ -10,7 +11,8 @@ import { canPerformAgentAction } from '@/utils/agentActions'
 import { AgentDetailPanel } from './AgentDetailPanel'
 import styles from './AgentTeamPage.module.scss'
 
-const roles: AgentRole[] = ['ORCHESTRATOR', 'PLANNER', 'DEVELOPER', 'TESTER', 'REVIEWER', 'GENERAL']
+// 自定义 Agent 可选角色：编排助手（ORCHESTRATOR）与规划 Agent（PLANNER）由系统提供，不接受自定义创建
+const roles: AgentRole[] = ['DEVELOPER', 'TESTER', 'REVIEWER', 'GENERAL']
 const emptyAgents: AgentSummary[] = []
 const { Title, Text } = Typography
 
@@ -27,8 +29,10 @@ export default function AgentTeamPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { message } = App.useApp()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<AgentDetail | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
   const [form] = Form.useForm<CreateAgentPayload>()
   const project = useQuery({ queryKey: ['qgents', 'projects', projectId], queryFn: () => projectApi.getById(projectId), enabled: Boolean(projectId) })
   const teamId = project.data?.teamId ?? ''
@@ -71,7 +75,25 @@ export default function AgentTeamPage() {
   const save = async (values: CreateAgentPayload) => {
     const saved = editing ? await update.mutateAsync({ agentId: editing.id, payload: values }) : await create.mutateAsync(values)
     setOpen(false)
+    message.success(editing ? 'Agent 已更新' : 'Agent 已创建')
     navigate(`?agentId=${encodeURIComponent(saved.id)}`)
+  }
+  /** Agent 头像：签发直传凭证 → 直传 OSS → 确认返回公共 URL，回填表单 */
+  async function handleAvatarUpload(file: File): Promise<boolean> {
+    if (!teamId || avatarUploading) return false
+    setAvatarUploading(true)
+    try {
+      const credential = await agentApi.avatarCredential(teamId, { mediaType: file.type, sizeBytes: file.size })
+      const putRes = await fetch(credential.uploadUrl, { method: 'PUT', body: await file.arrayBuffer() })
+      if (!putRes.ok) throw new Error(`头像上传失败（${putRes.status}）`)
+      const result = await agentApi.avatarConfirm(teamId, credential.objectKey)
+      form.setFieldsValue({ avatar: result.avatarUrl })
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '头像上传失败，请重试')
+    } finally {
+      setAvatarUploading(false)
+    }
+    return false
   }
   const beginEdit = () => {
     if (!current || !isCreator || !canPerformAgentAction(current, 'edit') || !detail.data) return
@@ -91,7 +113,26 @@ export default function AgentTeamPage() {
       </main>
       {current ? <AgentDetailPanel projectId={projectId} agent={current} detail={detail.data} onEdit={beginEdit} canEdit={isCreator && canPerformAgentAction(current, 'edit')} canPublish={isCreator && canPerformAgentAction(current, 'publish')} canUnpublish={isCreator && canPerformAgentAction(current, 'unpublish')} canArchive={isCreator && canPerformAgentAction(current, 'archive')} onPublish={() => publish.mutate({ agentId: current.id }, { onError: () => void detail.refetch() })} onUnpublish={() => unpublish.mutate({ agentId: current.id }, { onError: () => void detail.refetch() })} onArchive={() => archive.mutate({ agentId: current.id }, { onError: () => void detail.refetch() })} /> : <aside className={styles.detailPane}><div className={styles.empty}>{agents.length ? '请选择一个 Agent' : '暂无 Agent'}</div></aside>}
     </div>
-    <Modal open={open} title={editing ? '编辑 Agent' : '添加 Agent'} onCancel={() => setOpen(false)} onOk={() => form.submit()}><Form form={form} layout="vertical" onFinish={save}><Form.Item name="name" label="名称" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name="avatar" label="头像"><Input /></Form.Item><Form.Item name="role" label="角色" rules={[{ required: true }]}><Select options={roles.map((role) => ({ value: role }))} /></Form.Item><Form.Item name="description" label="用途描述" rules={[{ required: true, whitespace: true }]}><Input.TextArea rows={3} placeholder="说明该 Agent 适合处理什么任务" /></Form.Item><Form.Item name="prompt" label="Prompt" rules={[{ required: true }]}><Input.TextArea /></Form.Item></Form></Modal>
+    <Modal open={open} title={editing ? '编辑 Agent' : '添加 Agent'} onCancel={() => setOpen(false)} onOk={() => form.submit()} cancelText="取消" okText={editing ? '保存' : '创建'} confirmLoading={create.isPending || update.isPending}>
+      <Form form={form} layout="vertical" onFinish={save}>
+        <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}><Input placeholder="例如：接口开发 Agent" maxLength={255} /></Form.Item>
+        <Form.Item name="avatar" label="头像">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Form.Item name="avatar" noStyle>
+              <Avatar size={56} src={form.getFieldValue('avatar')} icon={<CameraOutlined />} style={{ flexShrink: 0 }} />
+            </Form.Item>
+            <Upload accept="image/*" showUploadList={false} beforeUpload={handleAvatarUpload}>
+              <Button icon={<UploadOutlined />} loading={avatarUploading}>上传图片</Button>
+            </Upload>
+          </div>
+        </Form.Item>
+        <Form.Item name="role" label="角色" rules={[{ required: true, message: '请选择角色' }]}>
+          <Select options={roles.map((role) => ({ value: role, label: role }))} placeholder="选择该 Agent 承担的工作角色" />
+        </Form.Item>
+        <Form.Item name="description" label="用途描述" rules={[{ required: true, whitespace: true }]}><Input.TextArea rows={3} placeholder="说明该 Agent 适合处理什么任务（将作为编排选用的决策依据）" /></Form.Item>
+        <Form.Item name="prompt" label="Prompt" rules={[{ required: true }]}><Input.TextArea /></Form.Item>
+      </Form>
+    </Modal>
   </div>
 }
 

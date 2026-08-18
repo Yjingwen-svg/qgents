@@ -22,6 +22,7 @@ import { TaskTriggerModal } from '@/components/task-domain'
 import { AuthedImage } from '@/components/AuthedImage'
 import { PATHS } from '@/routes/paths'
 import type {
+  Group,
   Message,
   Mention,
   MentionType,
@@ -191,10 +192,22 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     scrollToBottom()
   }, [groupId, scrollToBottom])
 
-  // 进群全读（§三）：后端按用户×群推进已读游标，成功后校准群列表 / 工作台聚合未读
+  // 进群全读（§三）：后端按用户×群推进已读游标。
+  // 乐观清零当前群未读：红点立即消失，不等后端往返（成功/失败后 refetch 用后端真相校准）
   const markGroupRead = useMutation({
     mutationFn: () => groupApi.markRead(projectId, groupId),
+    onMutate: () => {
+      const clearCurrent = (groups: Group[] | undefined): Group[] | undefined =>
+        groups ? groups.map((g) => (g.id === groupId ? { ...g, unreadCount: 0 } : g)) : groups
+      queryClient.setQueriesData<Group[]>({ queryKey: ['groups', projectId] }, clearCurrent)
+      queryClient.setQueriesData<Group[]>({ queryKey: ['chat', 'main-groups'] }, clearCurrent)
+    },
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+    },
+    onError: () => {
+      // 失败也回拉校准（后端可能未推进游标，红点按真实未读恢复）
       void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
     },

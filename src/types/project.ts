@@ -21,11 +21,16 @@ export interface Project {
   status?: 'ACTIVE' | 'ARCHIVED'
 }
 
+/**
+ * 显式项目成员（§24.2：GET /projects/{projectId}/members 仅返回 project_members 行，
+ * 字段为 { userId, role }，不为 canonical Team Owner 虚构行）。
+ * displayName/email 后端可能不返回，前端用团队成员列表补全（项目成员 ⊆ 团队成员）。
+ */
 export interface ProjectMember {
   userId: string
-  displayName: string
-  email: string
   role: ProjectRole
+  displayName?: string
+  email?: string
   avatarUrl?: string
 }
 

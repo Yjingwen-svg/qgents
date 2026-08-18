@@ -43,6 +43,21 @@
   font-weight: 800;
 }
 
+/* 团队头像图片：圆形裁切，覆盖渐变占位 */
+.team-detail__team-logo--img {
+  overflow: hidden;
+  background: transparent;
+  font-size: 0;
+  border-radius: 50%;
+}
+
+.team-detail__team-logo--img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
 .team-detail__team-card h2 {
   margin: 0 0 4px;
   font-size: clamp(15px, 0.4vw + 13px, 18px);
@@ -404,6 +419,20 @@
   background: var(--qg-blue);
   color: #ffffff;
   font-weight: 800;
+}
+
+/* 图片头像：覆盖文字占位的背景/字号，object-fit 裁成圆形 */
+.team-detail__member-avatar--img {
+  overflow: hidden;
+  background: transparent;
+  font-size: 0;
+}
+
+.team-detail__member-avatar--img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .team-detail__member-copy {

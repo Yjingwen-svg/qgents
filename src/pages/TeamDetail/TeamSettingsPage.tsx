@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
+  Avatar,
   Button,
   ConfigProvider,
   Form,
@@ -13,9 +14,10 @@ import {
   Tabs,
   Tag,
   Typography,
+  Upload,
   message,
 } from 'antd'
-import { GithubOutlined } from '@ant-design/icons'
+import { CameraOutlined, GithubOutlined, UploadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { teamApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
@@ -187,6 +189,8 @@ export default function TeamSettingsPage() {
 function BasicInfoTab({ team, teamId, isOwner }: { team: Team; teamId: string; isOwner: boolean }) {
   const [form] = Form.useForm<CreateTeamPayload>()
   const queryClient = useQueryClient()
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(team.avatarUrl)
 
   const updateTeam = useMutation({
     mutationFn: (payload: CreateTeamPayload) => teamApi.update(teamId, payload),
@@ -199,12 +203,32 @@ function BasicInfoTab({ team, teamId, isOwner }: { team: Team; teamId: string; i
 
   useEffect(() => {
     form.setFieldsValue({ name: team.name, description: team.description ?? '' })
+    setAvatarUrl(team.avatarUrl)
   }, [team, form])
+
+  /** §28.1 团队头像：签发凭证 → 直传 OSS → 确认 → PATCH 回写（仅 Owner） */
+  async function handleAvatarUpload(file: File): Promise<boolean> {
+    if (!isOwner || avatarUploading) return false
+    setAvatarUploading(true)
+    try {
+      const uploaded = await teamApi.uploadAvatar(teamId, file)
+      setAvatarUrl(uploaded)
+      await teamApi.update(teamId, { avatarUrl: uploaded })
+      message.success('团队头像已更新')
+      queryClient.invalidateQueries({ queryKey: ['teams', teamId] })
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '头像上传失败，请重试')
+    } finally {
+      setAvatarUploading(false)
+    }
+    return false
+  }
 
   function handleFinish(values: CreateTeamPayload) {
     updateTeam.mutate({
       name: values.name.trim(),
       description: values.description?.trim() || undefined,
+      avatarUrl: avatarUrl ?? undefined,
     })
   }
 
@@ -216,6 +240,19 @@ function BasicInfoTab({ team, teamId, isOwner }: { team: Team; teamId: string; i
       onFinish={handleFinish}
       style={{ maxWidth: 480, margin: '0 auto' }}
     >
+      <Form.Item label="团队头像">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Avatar size={56} src={avatarUrl} icon={<CameraOutlined />} style={{ flexShrink: 0 }} />
+          <Upload accept="image/*" showUploadList={false} beforeUpload={handleAvatarUpload}>
+            <Button icon={<UploadOutlined />} loading={avatarUploading}>
+              上传图片
+            </Button>
+          </Upload>
+        </div>
+        <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
+          支持 JPG / PNG，建议 200×200 方形图片；上传后自动保存
+        </Text>
+      </Form.Item>
       <Form.Item
         name="name"
         label="团队名称"

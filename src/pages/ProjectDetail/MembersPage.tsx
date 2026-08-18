@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Button,
@@ -9,23 +9,29 @@ import {
   Table,
   Tag,
   Typography,
-  message,
+  App,
 } from 'antd'
-import { PlusOutlined, UserOutlined } from '@ant-design/icons'
-import { projectApi, teamApi } from '@/api'
+import { PlusOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons'
+import { groupApi, projectApi, teamApi } from '@/api'
+import { ApiError } from '@/api'
 import { useAuth } from '@/context/AuthContext'
+import { PATHS } from '@/routes/paths'
+import { formatApiError } from '@/utils/formatApiError'
 import type { ProjectMember } from '@/types'
 import type { TableProps } from 'antd'
 
 const { Title, Text } = Typography
 
 /**
- * 项目成员页 —— 对齐接口文档 §5.2「项目与项目成员」。
+ * 项目成员页 —— 对齐接口文档 §5.2 / §24。
  * 列表展示项目成员与角色；Project Admin 可添加（从团队选）与移除成员；不能移除自己。
+ * §24.4：成员可「退出项目」（最后一名 Admin / canonical Team Owner 被后端拒绝）。
  */
 export function MembersPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const { user } = useAuth()
+  const { message } = App.useApp()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [addOpen, setAddOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -52,8 +58,15 @@ export function MembersPage() {
     enabled: !!project?.teamId,
   })
 
-  const 
-  invalidate = () =>
+  // 项目主群（§24.4 退出项目走主群 leave）
+  const { data: groups = [] } = useQuery({
+    queryKey: ['groups', projectId],
+    queryFn: () => groupApi.listByProject(projectId),
+    enabled: !!projectId,
+  })
+  const mainGroup = groups.find((g) => g.type === 'PROJECT_MAIN')
+
+  const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'members'] })
 
   const removeMutation = useMutation({
@@ -76,6 +89,46 @@ export function MembersPage() {
     },
     onError: (err) => message.error(err instanceof Error ? err.message : '添加失败'),
   })
+
+  // §24.4 退出项目：调主群 leave；最后一名 Admin / Team Owner 由后端 409 拒绝
+  const leaveMutation = useMutation({
+    mutationFn: () => {
+      if (!mainGroup) throw new Error('项目主群不存在，无法退出项目')
+      return groupApi.leaveProject(projectId, mainGroup.id)
+    },
+    onSuccess: () => {
+      message.success('已退出项目')
+      // 退出后失去项目资源访问权：清项目相关缓存并回团队页
+      void queryClient.invalidateQueries({ queryKey: ['teams', project?.teamId, 'projects'] })
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
+      if (project?.teamId) navigate(PATHS.teamDetail(project.teamId))
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409) {
+        const code = (err.body as { error?: { code?: string } } | null)?.error?.code
+        if (code === 'PROJECT_ADMIN_CANNOT_LEAVE') {
+          message.error('你是项目最后一名管理员，不能退出；请先转让管理员角色')
+        } else if (code === 'TEAM_OWNER_CANNOT_LEAVE_PROJECT') {
+          message.error('团队 Owner 保留跨项目权限，不能退出项目')
+        } else {
+          message.error(err.message || '退出项目失败，请稍后重试')
+        }
+      } else {
+        message.error(formatApiError(err))
+      }
+    },
+  })
+
+  function confirmLeave() {
+    Modal.confirm({
+      title: '退出项目',
+      content: `确定要退出项目「${project?.name ?? ''}」吗？退出后将失去该项目全部资源访问权。`,
+      okText: '退出',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => leaveMutation.mutate(),
+    })
+  }
 
   // 项目成员接口可能不返回 displayName，用团队成员信息补全（项目成员 ⊆ 团队成员）
   const teamMemberById = new Map(teamMembers.map((tm) => [tm.userId, tm]))
@@ -190,6 +243,14 @@ export function MembersPage() {
             添加成员
           </Button>
         )}
+        <Button
+          danger
+          icon={<LogoutOutlined />}
+          loading={leaveMutation.isPending}
+          onClick={confirmLeave}
+        >
+          退出项目
+        </Button>
       </div>
 
       <Table

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { PATHS } from '@/routes/paths'
 import { useAuth } from '@/context/AuthContext'
@@ -7,19 +7,35 @@ import { formatApiError } from '@/utils/formatApiError'
 import './CreateTeamPage.css'
 
 /**
- * 创建新团队 —— 对齐接口文档 v1.1.4 §5.1
+ * 创建新团队 —— 对齐接口文档 §5.1 / §28.3（团队头像）
  *
- * POST /teams 创建团队
- * 创建者自动成为 TEAM_OWNER
- * 邀请成员是后续操作（POST /teams/{teamId}/invitations），创建后跳团队详情再操作
+ * §28.3 头像流程：创建页选图预览 → POST /teams 创建（无 teamId 无法先传）→
+ * 用返回的 teamId 走 credential → OSS PUT → confirm 拿 avatarUrl →
+ * PATCH /teams/{teamId} 回写 → 跳转团队详情。
+ * 头像上传失败不阻断团队创建（提示后继续跳转）。
  */
 export default function CreateTeamPage() {
   const navigate = useNavigate()
   const { setHasTeam } = useAuth()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  /** 选图：本地预览（上传在创建成功后按 §28.3 执行） */
+  function pickAvatar(file: File | undefined) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setError('仅支持图片文件')
+      return
+    }
+    setError(null)
+    setAvatarFile(file)
+    setAvatarPreview(URL.createObjectURL(file))
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -27,13 +43,29 @@ export default function CreateTeamPage() {
     setError(null)
     setSubmitting(true)
 
+    let teamId = ''
     try {
       const team = await teamApi.create({
         name: name.trim(),
         description: description.trim() || undefined,
       })
+      teamId = team.id
       setHasTeam(true)
-      navigate(PATHS.teamDetail(team.id, true), { replace: true })
+
+      // §28.3：创建成功后再上传头像并回写；失败不阻断跳转
+      if (avatarFile) {
+        try {
+          const avatarUrl = await teamApi.uploadAvatar(teamId, avatarFile)
+          if (avatarUrl) await teamApi.update(teamId, { avatarUrl })
+        } catch (avatarError) {
+          // 头像失败不阻断：提示后继续跳转
+          setError(
+            `团队已创建，但头像上传失败：${avatarError instanceof Error ? avatarError.message : '请稍后到团队设置重试'}`,
+          )
+        }
+      }
+
+      navigate(PATHS.teamDetail(teamId, true), { replace: true })
     } catch (err) {
       setError(formatApiError(err))
     } finally {
@@ -53,13 +85,29 @@ export default function CreateTeamPage() {
       <h1 className="create-team__title">创建新团队</h1>
 
       <form className="create-team__card" onSubmit={handleSubmit}>
-        {/* 头像 —— 暂为占位，本期不实现上传 */}
+        {/* 团队头像（§28.3：选图本地预览，创建成功后上传并回写） */}
         <div className="create-team__avatar-row">
-          <button type="button" className="create-team__avatar-btn" disabled aria-label="上传头像（暂未开放）">
-            <CameraIcon />
-            <span>上传头像</span>
+          <button
+            type="button"
+            className="create-team__avatar-btn"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="上传团队头像"
+          >
+            {avatarPreview ? (
+              <img className="create-team__avatar-preview" src={avatarPreview} alt="团队头像预览" />
+            ) : (
+              <CameraIcon />
+            )}
+            <span>{avatarPreview ? '更换头像' : '上传头像'}</span>
           </button>
-          <p className="create-team__hint">支持 JPG / PNG，建议 200×200 方形图片（暂未开放）</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(event) => pickAvatar(event.target.files?.[0])}
+          />
+          <p className="create-team__hint">支持 JPG / PNG，建议 200×200 方形图片</p>
         </div>
 
         {/* —— 错误提示 —— */}
@@ -93,11 +141,7 @@ export default function CreateTeamPage() {
 
         <label className="create-team__field">
           <span className="create-team__label">团队成立时间</span>
-          <input
-            value="创建后自动生成"
-            disabled
-            readOnly
-          />
+          <input value="创建后自动生成" disabled readOnly />
         </label>
 
         {/* 邀请成员 —— 创建完成后在团队详情页操作，此处仅提示 */}

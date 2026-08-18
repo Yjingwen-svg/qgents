@@ -49,6 +49,15 @@ export const groupApi = {
   archive(projectId: string, groupId: string) {
     return request<void>(`/projects/${projectId}/groups/${groupId}/archive`, { method: 'POST' })
   },
+  /**
+   * POST /projects/{projectId}/groups/{groupId}/leave — 退出项目（§24.4）。
+   * 移除显式项目成员身份，失去项目全部资源访问权。
+   * 最后一名 Project Admin → 409 PROJECT_ADMIN_CANNOT_LEAVE；
+   * canonical Team Owner → 409 TEAM_OWNER_CANNOT_LEAVE_PROJECT（不删除任何成员关系）。
+   */
+  leaveProject(projectId: string, groupId: string) {
+    return request<void>(`/projects/${projectId}/groups/${groupId}/leave`, { method: 'POST' })
+  },
   /** 游标拉取消息 —— 返回 data + page 结构 */
   listMessages(projectId: string, groupId: string, cursor?: string, limit = 30) {
     const params = new URLSearchParams()

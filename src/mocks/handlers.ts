@@ -34,6 +34,7 @@ const MOCK_TEAMS = [
     createdAt: '2026-06-01T08:00:00Z',
     role: 'TEAM_OWNER' as const,
     memberCount: 5,
+    avatarUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=星河工作室',
   },
   {
     id: 'team-joined-001',
@@ -46,11 +47,11 @@ const MOCK_TEAMS = [
 ]
 
 const MOCK_TEAM_MEMBERS = [
-  { userId: 'user-001', displayName: '陈同学', email: 'demo@qgents.dev', role: 'TEAM_OWNER' as const },
-  { userId: 'user-002', displayName: '张工', email: 'zhang@example.com', role: 'TEAM_MEMBER' as const },
-  { userId: 'user-003', displayName: '李设计', email: 'li@example.com', role: 'TEAM_MEMBER' as const },
-  { userId: 'user-004', displayName: '王测试', email: 'wang@example.com', role: 'TEAM_MEMBER' as const },
-  { userId: 'user-005', displayName: '赵架构', email: 'zhao@example.com', role: 'TEAM_MEMBER' as const },
+  { userId: 'user-001', displayName: '陈同学', email: 'demo@qgents.dev', role: 'TEAM_OWNER' as const, avatarUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=陈同学' },
+  { userId: 'user-002', displayName: '张工', email: 'zhang@example.com', role: 'TEAM_MEMBER' as const, avatarUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=张工' },
+  { userId: 'user-003', displayName: '李设计', email: 'li@example.com', role: 'TEAM_MEMBER' as const, avatarUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=李设计' },
+  { userId: 'user-004', displayName: '王测试', email: 'wang@example.com', role: 'TEAM_MEMBER' as const, avatarUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=王测试' },
+  { userId: 'user-005', displayName: '赵架构', email: 'zhao@example.com', role: 'TEAM_MEMBER' as const, avatarUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=赵架构' },
 ]
 
 const MOCK_PROJECTS: Record<string, Array<{ id: string; teamId: string; name: string; description: string; createdAt: string; role: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'; repositoryCount: number; memberCount?: number; status?: 'ACTIVE' | 'ARCHIVED' }>> = {
@@ -1073,6 +1074,47 @@ export const handlers = [
     return HttpResponse.json({ data: { avatarUrl } })
   }),
 
+  // ── 团队头像（§28.1）：credential → PUT → confirm，与用户头像同构 ──
+  http.post('/api/teams/:teamId/avatar/credential', async ({ request }) => {
+    const team = MOCK_TEAMS.find((t) => t.id === request.url.split('/teams/')[1]?.split('/')[0])
+    if (!team) return HttpResponse.json({ error: { code: 'NOT_FOUND', message: '团队不存在' } }, { status: 404 })
+    const body = (await request.json()) as { mediaType?: string; sizeBytes?: number }
+    const mediaType = body.mediaType ?? ''
+    if (!mediaType.startsWith('image/')) {
+      return HttpResponse.json({ error: { code: 'INVALID_MEDIA_TYPE', message: '仅支持图片格式' } }, { status: 400 })
+    }
+    const ext = mediaType.split('/')[1] ?? 'png'
+    const objectKey = `teams/${team.id}/mock-${Date.now()}.${ext}`
+    return HttpResponse.json({
+      data: {
+        objectKey,
+        uploadUrl: `/api/mock-team-avatar-upload/${objectKey}`,
+        method: 'PUT',
+        expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        headers: {},
+      },
+    })
+  }),
+
+  // 直传落盘（模拟 OSS 接收团队头像字节）
+  http.put('/api/mock-team-avatar-upload/:objectKey', () => HttpResponse.json(null, { status: 200 })),
+
+  // 确认团队头像上传，写入 teams.avatar_url 并返回公共读 URL（§28.1）
+  http.post('/api/teams/:teamId/avatar/confirm', async ({ request }) => {
+    const teamId = request.url.split('/teams/')[1]?.split('/')[0]
+    const team = MOCK_TEAMS.find((t) => t.id === teamId)
+    if (!team) return HttpResponse.json({ error: { code: 'NOT_FOUND', message: '团队不存在' } }, { status: 404 })
+    const body = (await request.json()) as { objectKey?: string }
+    const objectKey = body.objectKey ?? ''
+    // §28.1：对象键前缀必须匹配 teams/{teamId}/，否则 403
+    if (!objectKey.startsWith(`teams/${teamId}/`)) {
+      return HttpResponse.json({ error: { code: 'AVATAR_OBJECT_KEY_FORBIDDEN', message: '头像对象前缀不匹配' } }, { status: 403 })
+    }
+    const avatarUrl = `https://mock-cdn.example.com/${objectKey}`
+    team.avatarUrl = avatarUrl
+    return HttpResponse.json({ data: { avatarUrl } })
+  }),
+
   http.post('/api/auth/logout', () => HttpResponse.json({ data: null })),
 
   // ── Teams ──
@@ -1103,9 +1145,14 @@ export const handlers = [
   ),
 
   http.patch('/api/teams/:teamId', async ({ params, request }) => {
-    const body = (await request.json()) as { name?: string; description?: string }
+    const body = (await request.json()) as { name?: string; description?: string; avatarUrl?: string }
     const team = MOCK_TEAMS.find((t) => t.id === params.teamId)
     if (!team) return HttpResponse.json({ error: { code: 'NOT_FOUND', message: '团队不存在' } }, { status: 404 })
+    // §28.2：avatarUrl 空串清空，null 保留原值
+    if (body.avatarUrl === '') {
+      delete body.avatarUrl
+      team.avatarUrl = undefined
+    }
     return HttpResponse.json({ data: { ...team, ...body } })
   }),
 
@@ -1288,9 +1335,23 @@ export const handlers = [
     return HttpResponse.json({ error: { code: 'NOT_FOUND', message: '项目不存在' } }, { status: 404 })
   }),
 
-  http.get('/api/projects/:projectId/members', ({ params }) =>
-    HttpResponse.json({ data: MOCK_PROJECT_MEMBERS[params.projectId as string] ?? [] }),
-  ),
+  // §24.2：项目成员分页响应（仅显式 project_members，不为 Team Owner 虚构行）
+  http.get('/api/projects/:projectId/members', ({ params, request }) => {
+    const projectId = params.projectId as string
+    const all = MOCK_PROJECT_MEMBERS[projectId] ?? []
+    const search = new URL(request.url).searchParams
+    const rawLimit = Number(search.get('limit') ?? '30')
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 30
+    const rawCursor = Number(search.get('cursor') ?? '0')
+    const start = Number.isInteger(rawCursor) && rawCursor >= 0 ? rawCursor : 0
+    const data = all.slice(start, start + limit)
+    const nextStart = start + data.length
+    return HttpResponse.json({
+      data,
+      page: { nextCursor: nextStart < all.length ? String(nextStart) : null, hasMore: nextStart < all.length },
+      requestId: 'mock-project-members',
+    })
+  }),
 
   http.post('/api/projects/:projectId/members', () => HttpResponse.json({ data: null }, { status: 201 })),
 
@@ -1404,6 +1465,37 @@ export const handlers = [
     }
     group.status = 'ARCHIVED'
     group.isArchived = true
+    return HttpResponse.json({ data: null })
+  }),
+
+  // §24.4 退出项目：移除显式项目成员身份；最后一名 Admin / Team Owner 拒绝
+  http.post('/api/projects/:projectId/groups/:groupId/leave', ({ params }) => {
+    const projectId = params.projectId as string
+    const members = MOCK_PROJECT_MEMBERS[projectId]
+    if (!members) {
+      return HttpResponse.json({ error: { code: 'NOT_FOUND', message: '项目不存在' } }, { status: 404 })
+    }
+    const current = members.find((m) => m.userId === MOCK_CURRENT_USER.id)
+    if (!current) {
+      return HttpResponse.json({ error: { code: 'NOT_FOUND', message: '当前用户不是项目成员' } }, { status: 404 })
+    }
+    // canonical Team Owner 保留跨项目兜底权限，不可退出（与 §24.4 一致）
+    if (MOCK_CURRENT_USER.id === 'user-001' && members.some((m) => m.userId === 'user-001' && m.role === 'PROJECT_ADMIN')) {
+      // mock 里 user-001 是创建者（Team Owner + 项目创建者）：按 Team Owner 语义拒绝
+      return HttpResponse.json(
+        { error: { code: 'TEAM_OWNER_CANNOT_LEAVE_PROJECT', message: '团队 Owner 保留跨项目权限，不能退出项目' } },
+        { status: 409 },
+      )
+    }
+    // 最后一名 Project Admin 不可退出
+    const admins = members.filter((m) => m.role === 'PROJECT_ADMIN')
+    if (current.role === 'PROJECT_ADMIN' && admins.length <= 1) {
+      return HttpResponse.json(
+        { error: { code: 'PROJECT_ADMIN_CANNOT_LEAVE', message: '最后一名管理员不能退出项目' } },
+        { status: 409 },
+      )
+    }
+    MOCK_PROJECT_MEMBERS[projectId] = members.filter((m) => m.userId !== MOCK_CURRENT_USER.id)
     return HttpResponse.json({ data: null })
   }),
 

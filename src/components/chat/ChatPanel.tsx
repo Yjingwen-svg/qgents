@@ -104,7 +104,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     enabled: !!teamId,
   })
   // 仅展示可被 @ 的 Agent（ACTIVE 状态）
-  const teamAgents = (agentsPage?.data ?? []).filter((a) => a.status === 'ACTIVE')
+  const teamAgents = (agentsPage?.data ?? []).filter((a) => a.status === 'ACTIVE'&&a.name==='编排助手')
 
   const {
     data: page,

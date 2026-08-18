@@ -1042,7 +1042,8 @@ function renderContent(
               {c.quotedSenderName}
             </Text>
           )}
-          <div style={{ fontSize: 13 }}>{c.quotedText}</div>
+          {/* 被引用的原消息：灰色小字，与回复正文区分 */}
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>{c.quotedText}</div>
           {c.replyText ? (
             <div style={{ fontSize: 13, marginTop: 4, color: 'inherit' }}>{c.replyText}</div>
           ) : null}

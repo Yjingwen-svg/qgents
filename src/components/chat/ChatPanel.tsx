@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Drawer, Divider } from 'antd'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Drawer, Divider, Avatar } from 'antd'
 import { App, Upload } from 'antd'
 import {
   SendOutlined,
@@ -18,6 +18,7 @@ import { formatApiError } from '@/utils/formatApiError'
 import { ApiError, groupApi, projectApi, agentApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
 import { getApiBaseUrl } from '@/api/client'
 import { useAuth } from '@/context/AuthContext'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { TaskTriggerModal } from '@/components/task-domain'
 import { GroupMemberSettings } from '@/pages/ProjectDetail/GroupMemberSettings'
 import { AuthedImage } from '@/components/AuthedImage'
@@ -136,6 +137,16 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     })
   }, [page])
+
+  // 发送者头像（微信式，边缘展示）：优先群成员 avatarUrl，自己用当前用户头像；SYSTEM 无头像
+  const memberAvatarById = new Map(
+    members.filter((mem) => mem.avatarUrl).map((mem) => [mem.id, mem.avatarUrl as string]),
+  )
+  function resolveSenderAvatar(m: Message): string | undefined {
+    if (m.senderType === 'SYSTEM') return undefined
+    if (m.senderType === 'USER' && m.senderId === user?.id) return user?.avatarUrl
+    return m.senderId ? memberAvatarById.get(m.senderId) : undefined
+  }
 
   // 无条件滚到底部：切群 / 首次加载 / 自己发送新消息时使用
   const scrollToBottom = useCallback(() => {
@@ -524,7 +535,9 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   // 后端单卡持续更新（message.updated → 重查消息列表），content 原地刷新
 
   return (
-    <Layout style={{ height: '100%', background: token.colorBgBase }}>
+    // 聊天区错误边界：渲染崩溃只挂聊天区，侧栏/动态面板不受影响；切群自动复位
+    <ErrorBoundary resetKey={groupId}>
+      <Layout style={{ height: '100%', background: token.colorBgBase }}>
       {/* 顶部：群标题 + 操作入口；多选模式下切换为「取消 | 已选择 N 条」 */}
       <div
         style={{
@@ -610,6 +623,16 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                     transition: 'background 0.4s ease',
                   }}
                 >
+                  {/* 他人消息：头像在左边缘；自己消息：头像在右边缘（微信式） */}
+                  {!isSelf && m.senderType !== 'SYSTEM' && (
+                    <Avatar
+                      size={32}
+                      src={resolveSenderAvatar(m)}
+                      style={{ flexShrink: 0, background: '#3b82f6', marginTop: 2 }}
+                    >
+                      {(m.senderName ?? '?').slice(0, 1)}
+                    </Avatar>
+                  )}
                   {/* 内层 div 限制最大宽度 78%（相对消息列宽），气泡在内部 fit-content 铺满可用宽度，
                       保证每行容纳更多字；左右对齐由外层 justifyContent 控制 */}
                   <div style={{ maxWidth: '78%', minWidth: 0 }}>
@@ -622,6 +645,15 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                       onImageLoad={handleImageLoad}
                     />
                   </div>
+                  {isSelf && (
+                    <Avatar
+                      size={32}
+                      src={user?.avatarUrl}
+                      style={{ flexShrink: 0, background: '#f97316', marginTop: 2 }}
+                    >
+                      {(user?.displayName ?? '我').slice(0, 1)}
+                    </Avatar>
+                  )}
                 </div>
               )
             })}
@@ -825,7 +857,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           )}
         </Space>
       </Drawer>
-    </Layout>
+      </Layout>
+    </ErrorBoundary>
   )
 }
 

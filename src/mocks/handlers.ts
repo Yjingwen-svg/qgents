@@ -351,14 +351,15 @@ interface MockProjectMember {
   displayName: string
   email: string
   role: 'PROJECT_ADMIN' | 'PROJECT_MEMBER'
+  avatarUrl?: string
 }
 
 // 项目成员（按项目隔离，作为群 USER 成员来源；同时供 GET /projects/:id/members 复用）
 const MOCK_PROJECT_MEMBERS: Record<string, MockProjectMember[]> = {
   'proj-001': [
-    { userId: 'user-001', displayName: '陈同学', email: 'demo@qgents.dev', role: 'PROJECT_ADMIN' },
-    { userId: 'user-002', displayName: '张工', email: 'zhang@example.com', role: 'PROJECT_MEMBER' },
-    { userId: 'user-003', displayName: '李设计', email: 'li@example.com', role: 'PROJECT_MEMBER' },
+    { userId: 'user-001', displayName: '陈同学', email: 'demo@qgents.dev', role: 'PROJECT_ADMIN', avatarUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=陈同学' },
+    { userId: 'user-002', displayName: '张工', email: 'zhang@example.com', role: 'PROJECT_MEMBER', avatarUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=张工' },
+    { userId: 'user-003', displayName: '李设计', email: 'li@example.com', role: 'PROJECT_MEMBER', avatarUrl: 'https://api.dicebear.com/9.x/initials/svg?seed=李设计' },
   ],
 }
 
@@ -398,7 +399,7 @@ function getGroupMembers(projectId: string, groupId: string): GroupMember[] {
   const users: GroupMember[] = (MOCK_GROUP_USER_MEMBERS[groupId] ?? [])
     .map((userId) => membersById.get(userId))
     .filter((m): m is MockProjectMember => Boolean(m))
-    .map((m): GroupMember => ({ id: m.userId, displayName: m.displayName, email: m.email, memberType: 'USER' }))
+    .map((m): GroupMember => ({ id: m.userId, displayName: m.displayName, email: m.email, avatarUrl: m.avatarUrl, memberType: 'USER' }))
   return [...users, ...(MOCK_GROUP_AGENTS[groupId] ?? [])]
 }
 

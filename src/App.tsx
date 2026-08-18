@@ -1,4 +1,5 @@
 import { AppRouter } from '@/routes'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 /**
  * Qgents Web 桌面端入口
@@ -6,7 +7,11 @@ import { AppRouter } from '@/routes'
  * 本仓库当前阶段：路由与页面框架，业务逻辑由各同学后续填充
  */
 function App() {
-  return <AppRouter />
+  return (
+    <ErrorBoundary>
+      <AppRouter />
+    </ErrorBoundary>
+  )
 }
 
 export default App

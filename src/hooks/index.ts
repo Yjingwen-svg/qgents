@@ -13,6 +13,15 @@ export {
   useUpdateTestset,
 } from './testset'
 export {
+  useApproveDryRunCq,
+  useBranchPolicy,
+  usePreflight,
+  useQualityGate,
+  useRejectDryRunCq,
+  useUpdateBranchPolicy,
+  useUpdateQualityGate,
+} from './qualityGate'
+export {
   useAgent,
   useAgentSkillBindings,
   useAgentAssignments,

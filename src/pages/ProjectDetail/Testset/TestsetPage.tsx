@@ -46,6 +46,7 @@ import {
   useTestsets,
   useUpdateTestset,
 } from '@/hooks/testset'
+import { useQualityGate } from '@/hooks/qualityGate'
 import type { ProjectBoundRepository } from '@/types/github'
 import type { DiffListItem } from '@/types/task-model'
 import type {
@@ -76,6 +77,10 @@ import {
 } from './testsetDisplay'
 import { pushRunHistory, readRunHistory, removeRunHistory } from './runHistory'
 import { isTestsetRunTab } from '../qualityGateNav'
+import { useAuth } from '@/context/AuthContext'
+import { isMergeRequestAuthor } from '../cqSeal'
+import { QualityGateConfigDrawer } from './QualityGateConfigDrawer'
+import { DryRunCqPanel } from './DryRunCqPanel'
 import styles from './TestsetPage.module.scss'
 
 const { Title, Text, Paragraph } = Typography
@@ -139,6 +144,7 @@ export function TestsetPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const { message, modal } = App.useApp()
+  const { user } = useAuth()
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Testset | null>(null)
   const [manageOpen, setManageOpen] = useState(false)
@@ -146,6 +152,7 @@ export function TestsetPage() {
   const [manageStatus, setManageStatus] = useState<TestsetStatus | undefined>()
   const [runOpen, setRunOpen] = useState(false)
   const [dryOpen, setDryOpen] = useState(false)
+  const [gateOpen, setGateOpen] = useState(false)
   const [history, setHistory] = useState<LocalRunHistoryItem[]>(() => readRunHistory(projectId))
 
   useEffect(() => {
@@ -203,6 +210,10 @@ export function TestsetPage() {
     enabled: Boolean(projectId),
   })
   const tasks = tasksQuery.data?.data ?? []
+
+  const dryRunTask = tasks.find((task) => task.id === dryRunQuery.data?.taskId)
+  const dryRunAuthorId = dryRunTask?.createdByUser?.id
+  const dryRunIsAuthor = isMergeRequestAuthor(user?.id, dryRunAuthorId)
 
   const createTestset = useCreateTestset(projectId)
   const updateTestset = useUpdateTestset(projectId)
@@ -405,6 +416,7 @@ export function TestsetPage() {
             <Text type="secondary">发起测试或 Dry-run；测试配方在「管理测试集」中维护</Text>
           </div>
           <Space>
+            <Button onClick={() => setGateOpen(true)}>分支策略与门禁</Button>
             <Button onClick={() => setManageOpen(true)}>管理测试集</Button>
             <Button onClick={() => setRunOpen(true)}>运行测试</Button>
             <Button type="primary" onClick={() => setDryOpen(true)}>
@@ -453,6 +465,13 @@ export function TestsetPage() {
               runTab={runTab}
               onRunTabChange={(key) => updateParams({ runTab: key === 'overview' ? undefined : key })}
             />
+            {dryRunQuery.data ? (
+              <DryRunCqPanel
+                projectId={projectId}
+                dryRun={dryRunQuery.data}
+                isAuthor={dryRunIsAuthor}
+              />
+            ) : null}
           </section>
 
           <aside className={styles.panel}>
@@ -522,7 +541,9 @@ export function TestsetPage() {
         />
         <DryRunModal
           open={dryOpen}
+          projectId={projectId}
           repositories={repositories}
+          testsets={testsets}
           tasks={tasks.map((task) => ({
             id: task.id,
             title: `${task.displayCode} ${task.title}`,
@@ -536,6 +557,14 @@ export function TestsetPage() {
           confirmLoading={createDryRun.isPending}
           onCancel={() => setDryOpen(false)}
           onSubmit={(values) => void handleDryRun(values)}
+        />
+        <QualityGateConfigDrawer
+          open={gateOpen}
+          onClose={() => setGateOpen(false)}
+          projectId={projectId}
+          isAdmin={Boolean(isAdmin)}
+          repositories={repositories}
+          testsets={testsets}
         />
       </div>
     </ConfigProvider>
@@ -630,8 +659,18 @@ function TestsetCard({
   const enabled = isTestsetEnabled(item)
   return (
     <Card
+      role="button"
+      tabIndex={onSelect ? 0 : undefined}
+      aria-pressed={selected}
       className={`${styles.testsetCard} ${selected ? styles.testsetCardSelected : ''}`}
       onClick={onSelect}
+      onKeyDown={(event) => {
+        if (!onSelect) return
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect()
+        }
+      }}
     >
       <div className={styles.cardHeading}>
         <div>
@@ -1558,7 +1597,9 @@ function sourceRefFromTask(
 /** 发起 Dry-run：仓库 + sourceRef + targetBranch；选任务时自动填 sourceRef */
 function DryRunModal({
   open,
+  projectId,
   repositories,
+  testsets,
   tasks,
   defaultRepositoryId,
   defaultTaskId,
@@ -1567,7 +1608,9 @@ function DryRunModal({
   onSubmit,
 }: {
   open: boolean
+  projectId: string
   repositories: ProjectBoundRepository[]
+  testsets: Testset[]
   tasks: DryRunTaskOption[]
   defaultRepositoryId?: string
   defaultTaskId?: string
@@ -1578,6 +1621,9 @@ function DryRunModal({
   const [form] = Form.useForm<DryRunFormValues>()
   const defaultRepo = repositories.find((repo) => repo.id === defaultRepositoryId) ?? repositories[0]
   const initialSourceRef = sourceRefFromTask(tasks, defaultTaskId, defaultRepo)
+  const watchedRepo = Form.useWatch('repositoryId', form)
+  const watchedBranch = Form.useWatch('targetBranch', form)
+  const gateQuery = useQualityGate(projectId, watchedRepo ?? '', watchedBranch ?? '')
 
   /** 换仓库或选任务时，用任务已登记的开发分支填 sourceRef；目标分支跟仓库默认分支 */
   function syncRefsFromTask(repositoryId: string | undefined, taskId: string | undefined): void {
@@ -1586,6 +1632,11 @@ function DryRunModal({
     if (sourceRef) form.setFieldValue('sourceRef', sourceRef)
     if (repo?.defaultBranch) form.setFieldValue('targetBranch', repo.defaultBranch)
   }
+
+  const requiredNames = (gateQuery.data?.requiredTestsetIds ?? [])
+    .map((id) => testsets.find((item) => item.id === id)?.name || id)
+    .filter(Boolean)
+    .join('、')
 
   return (
     <Modal title="新建 Dry-run" open={open} onCancel={onCancel} footer={null} destroyOnHidden>
@@ -1622,6 +1673,15 @@ function DryRunModal({
         <Form.Item name="targetBranch" label="目标分支" rules={[{ required: true }]}>
           <Input placeholder="main" />
         </Form.Item>
+        {requiredNames ? (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message={`目标分支 ${watchedBranch || ''} 已绑定强制 Testset：${requiredNames}`}
+            description="Dry Run 将执行该分支绑定的强制 Testset；前端展示仅供说明，实际选择以后端为准。"
+          />
+        ) : null}
         <Form.Item>
           <Space>
             <Button onClick={onCancel}>取消</Button>

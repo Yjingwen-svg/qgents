@@ -142,6 +142,22 @@ export type {
 } from './testset'
 export { isDryRunTestsSkipped, dryRunHasMergeConflict } from './testset'
 export type {
+  BranchPolicy,
+  BranchPolicyUpdateInput,
+  DryRunCqDecision,
+  DryRunCqInput,
+  DryRunCqResult,
+  Preflight,
+  PreflightBlocker,
+  PreflightBlockerCode,
+  PreflightCqPlusOne,
+  PreflightCqPlusOneStatus,
+  PreflightDryRun,
+  PreflightStatus,
+  QualityGateConfig,
+  QualityGateUpdateInput,
+} from './qualityGate'
+export type {
   Activity,
   ActivityType,
   ActivityTargetType,

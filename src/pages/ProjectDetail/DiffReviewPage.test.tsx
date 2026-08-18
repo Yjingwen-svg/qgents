@@ -20,6 +20,7 @@ const useTaskMock = vi.hoisted(() => vi.fn())
 const useDiffsMock = vi.hoisted(() => vi.fn())
 const useCreateMergeRequestMock = vi.hoisted(() => vi.fn())
 const useMergeRequestsMock = vi.hoisted(() => vi.fn())
+const usePreflightMock = vi.hoisted(() => vi.fn())
 const authState = vi.hoisted(() => ({
   user: { id: 'user-1', email: 'demo@qgents.dev', displayName: '陈同学' },
 }))
@@ -35,6 +36,10 @@ vi.mock('@/hooks/task-model', () => ({
   useTask: useTaskMock,
   useCreateMergeRequest: useCreateMergeRequestMock,
   useMergeRequests: useMergeRequestsMock,
+}))
+
+vi.mock('@/hooks/qualityGate', () => ({
+  usePreflight: usePreflightMock,
 }))
 
 vi.mock('@/context/AuthContext', () => ({
@@ -233,6 +238,23 @@ beforeEach(() => {
       repositories: [{ repositoryId: 'bound-demo-auth-service', defaultBranch: 'main', baseRef: 'main' }],
     },
     isLoading: false,
+  })
+  usePreflightMock.mockReturnValue({
+    data: {
+      taskId: 'task-1',
+      repositoryId: 'bound-demo-auth-service',
+      targetBranch: 'main',
+      sourceCommit: 'a1b2c3d',
+      targetCommit: 'bbbbbbbb',
+      status: 'PASSED',
+      blockers: [],
+      dryRun: { id: 'dryrun-1', status: 'PASSED', sourceCommit: 'a1b2c3d', targetCommit: 'bbbbbbbb' },
+      cqPlusOne: { status: 'APPROVED', reviewerUserId: 'user-2', reviewerName: '李同学', reason: 'ok', reviewedAt: null },
+    },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
   })
 })
 

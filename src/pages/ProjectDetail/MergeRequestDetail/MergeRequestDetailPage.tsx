@@ -63,7 +63,6 @@ const { Text } = Typography
 
 const FILE_PAGE_SIZE = 100
 
-const QUALITY_GATE_NAMES: MergeRequestCheckName[] = ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE']
 type QualityGateName = MergeRequestCheckName
 
 const GATE_LABEL: Record<QualityGateName, string> = {
@@ -72,6 +71,15 @@ const GATE_LABEL: Record<QualityGateName, string> = {
   DRY_RUN: 'Dry-run',
   CQ_PLUS_ONE: 'CQ+1',
 }
+
+/**
+ * MR 创建前由「预检」闭环完成的节点（Dry Run + CQ+1 + 强制 Testset）。
+ * 它们只读地反映 MR 前审计，不是 MR 创建后 qualityGate 的必过节点。
+ */
+const PRE_MR_GATE_NAMES: readonly QualityGateName[] = ['TESTSET', 'DRY_RUN', 'CQ_PLUS_ONE']
+
+/** 接口允许的检查名白名单，用于过滤未知项 */
+const KNOWN_GATE_NAMES: readonly string[] = ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE']
 
 type DetailView = 'gate' | 'changes' | 'comments'
 
@@ -342,7 +350,7 @@ export default function MergeRequestDetailPage() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message="质量门禁未全部通过前不显示合并。Testset、AI Review、Dry-run、CQ+1 均需 PASSED。"
+          message="质量门禁未全部通过前不显示合并。Testset / Dry-run / CQ+1 属 MR 前预检审计；MR 创建后的门禁只含接口返回的 MR 后检查。"
         />
       ) : null}
 
@@ -626,15 +634,15 @@ function pickRelatedDiff(items: DiffListItem[], mr: MergeRequestSummary): DiffLi
 function qualityGateNodes(
   checks: MergeRequestCheck[] | undefined,
   mr: MergeRequestSummary,
-): Array<{ name: QualityGateName; status: MergeRequestCheck['status']; check?: MergeRequestCheck }> {
-  const names = (mr.qualityGate?.requiredChecks ?? QUALITY_GATE_NAMES).filter(isQualityGateName)
-  const ordered = names.length > 0 ? names : [...QUALITY_GATE_NAMES]
-  return ordered.map((name) => {
+): Array<{ name: QualityGateName; status: MergeRequestCheck['status']; check?: MergeRequestCheck; preMr: boolean }> {
+  const names = (mr.qualityGate?.requiredChecks ?? []).filter(isQualityGateName)
+  return names.map((name) => {
     const item = checks?.find((check) => check.type === name)
     return {
       name,
       status: item?.status ?? 'PENDING',
       check: item,
+      preMr: PRE_MR_GATE_NAMES.includes(name),
     }
   })
 }
@@ -646,7 +654,7 @@ function GateNode({
 }: {
   projectId: string
   mr: MergeRequestSummary
-  node: { name: QualityGateName; status: MergeRequestCheck['status']; check?: MergeRequestCheck }
+  node: { name: QualityGateName; status: MergeRequestCheck['status']; check?: MergeRequestCheck; preMr: boolean }
 }) {
   const href = qualityGateNodeHref(projectId, node.name, mr, node.check)
   const reportHref =
@@ -655,7 +663,10 @@ function GateNode({
   const body = (
     <>
       <span className={`${styles.gateDot} ${gateDotClass(node.status)}`}>{gateIcon(node.status)}</span>
-      <strong className={styles.gateName}>{GATE_LABEL[node.name]}</strong>
+      <strong className={styles.gateName}>
+        {GATE_LABEL[node.name]}
+        {node.preMr ? <Text type="secondary"> · MR 前预检审计</Text> : null}
+      </strong>
       <p className={styles.gateSummary}>{gateStatusLabel(node.status)}</p>
     </>
   )
@@ -678,7 +689,7 @@ function GateNode({
 }
 
 function isQualityGateName(value: string): value is QualityGateName {
-  return (QUALITY_GATE_NAMES as readonly string[]).includes(value)
+  return (KNOWN_GATE_NAMES as readonly string[]).includes(value)
 }
 
 function isDetailView(value: string | null): value is DetailView {

@@ -43,9 +43,14 @@ import {
 import { findOpenMergeRequestForDiff, githubPullRequestUrl } from './mergeRequestDisplay'
 import { isEmptyBranchDiffId } from './emptyBranchDiff'
 import { diffFileStatusLabel, diffStatusLabel } from '@/types/diff'
+import { usePreflight } from '@/hooks/qualityGate'
+import { readApiErrorCode, readApiErrorDetails } from '@/api/qualityGate'
+import { PreflightPanel } from './PreflightPanel'
+import { preflightBlockerLabel, requiresRedoDryRun, requiresSourceRefresh } from './preflightDisplay'
 import type { ProjectRole } from '@/types/project'
 import type { TeamRole } from '@/types/team'
 import type { DiffComment, DiffDetail, DiffFile, DiffLine, DiffListItem, DiffStatus, MergeRequestSummary } from '@/types/task-model'
+import type { Preflight } from '@/types/qualityGate'
 import './DiffReviewPage.css'
 
 const { Text } = Typography
@@ -150,11 +155,25 @@ export default function DiffReviewPage() {
   const pending = review?.status === 'PENDING_REVIEW'
   const canReviewDiff = canAcceptOrRejectDiff(project?.role, teamQuery.data?.role)
   const boundRepo = reposQuery.data?.find((item) => item.id === review?.repositoryId)
+  const taskRepository = taskQuery.data?.repositories?.find(
+    (item) => item.repositoryId === review?.repositoryId,
+  )
+  const targetBranch = review
+    ? boundRepo?.defaultBranch || taskRepository?.defaultBranch || taskRepository?.baseRef || 'main'
+    : undefined
+  const preflightQuery = usePreflight(
+    projectId,
+    review?.taskId ?? '',
+    review?.repositoryId ?? '',
+    targetBranch ?? '',
+  )
+  const preflight = preflightQuery.data
   const createMrHint = review
     ? createMergeRequestHint(
         review.status,
         review.headCommit,
         Boolean(existingMr) && review.status === 'ACCEPTED',
+        preflight,
       )
     : '请先通过该 Diff'
   const githubMrUrl = existingMr
@@ -262,11 +281,7 @@ export default function DiffReviewPage() {
   }
 
   function handleCreateMr() {
-    if (!review || createMrHint) return
-    const repository = taskQuery.data?.repositories?.find(
-      (item) => item.repositoryId === review.repositoryId,
-    )
-    const targetBranch = boundRepo?.defaultBranch || repository?.defaultBranch || repository?.baseRef || 'main'
+    if (!review || createMrHint || !targetBranch) return
     const title = taskQuery.data?.title?.trim() || `Merge ${review.sourceBranch}`
     modal.confirm({
       title: '创建合并请求？',
@@ -284,7 +299,22 @@ export default function DiffReviewPage() {
             navigate(PATHS.projectCodeMr(projectId, mr.id))
           },
           (error: unknown) => {
-            message.error(formatApiError(error))
+            const code = readApiErrorCode(error)
+            if (code === 'MR_PREFLIGHT_NOT_PASSED') {
+              void preflightQuery.refetch()
+              const blockers = readApiErrorDetails(error)
+                .map((detail) => preflightBlockerLabel(detail.code, detail.message))
+                .join('；')
+              message.error(blockers ? `预检未通过：${blockers}` : 'MR 前预检未通过，请处理 blockers 后重试')
+            } else if (requiresSourceRefresh(code)) {
+              message.warning('源分支有新提交，请刷新 Task/Diff 后重新预检（不会自动重试创建 MR）')
+              void preflightQuery.refetch()
+            } else if (requiresRedoDryRun(code)) {
+              message.warning('预检上下文已变化，请重新发起 Dry Run 并重新 CQ+1')
+              void preflightQuery.refetch()
+            } else {
+              message.error(formatApiError(error))
+            }
           },
         ),
     })
@@ -507,6 +537,10 @@ export default function DiffReviewPage() {
             accepting={acceptDiff.isPending}
             rejecting={rejectDiff.isPending}
             creatingMr={createMr.isPending}
+            preflight={preflight}
+            preflightLoading={preflightQuery.isLoading}
+            preflightError={preflightQuery.error}
+            onRefreshPreflight={() => void preflightQuery.refetch()}
             onAccept={handleAccept}
             onReject={handleReject}
             onCreateMr={handleCreateMr}
@@ -530,6 +564,10 @@ function ReviewAside({
   accepting,
   rejecting,
   creatingMr,
+  preflight,
+  preflightLoading,
+  preflightError,
+  onRefreshPreflight,
   onAccept,
   onReject,
   onCreateMr,
@@ -546,6 +584,10 @@ function ReviewAside({
   accepting: boolean
   rejecting: boolean
   creatingMr: boolean
+  preflight: Preflight | undefined
+  preflightLoading: boolean
+  preflightError: Error | null
+  onRefreshPreflight: () => void
   onAccept: () => void
   onReject: () => void
   onCreateMr: () => void
@@ -573,6 +615,13 @@ function ReviewAside({
         <Link to={`${PATHS.projectCode(projectId)}?tab=mr`}>查看项目 MR 列表</Link>
         <Link to={PATHS.projectDiff(projectId, review.id)}>交付中心摘要</Link>
       </Space>
+      <h3 style={{ marginTop: 16 }}>MR 前预检</h3>
+      <PreflightPanel
+        preflight={preflight}
+        loading={preflightLoading}
+        error={preflightError}
+        onRefresh={onRefreshPreflight}
+      />
       <div className="diff-review__actions">
         <Button disabled>标记评论已解决</Button>
         {canReviewDiff && pending ? (
@@ -702,11 +751,18 @@ function createMergeRequestHint(
   status: DiffStatus,
   headCommit: string | null | undefined,
   alreadyCreated: boolean,
+  preflight: Preflight | undefined,
 ): string | undefined {
   if (alreadyCreated) return '该 Diff 已创建过 MR'
   if (status !== 'ACCEPTED') return '请先通过该 Diff'
   if (!headCommit) return '等待远端提交核验完成'
-  return undefined
+  if (preflight) {
+    if (preflight.status === 'PASSED') return undefined
+    if (preflight.status === 'STALE') return '预检已失效，请重新 Dry Run + CQ+1'
+    if (preflight.status === 'FAILED') return '预检未通过，请处理 blockers'
+    return '预检进行中，请等待完成'
+  }
+  return '等待 MR 前预检结果'
 }
 
 function CommentCard({

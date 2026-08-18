@@ -70,6 +70,26 @@ vi.mock('@/api/taskModel', () => ({
   },
 }))
 
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'user-001' } }),
+}))
+
+const useQualityGateMock = vi.hoisted(() => vi.fn())
+const useBranchPolicyMock = vi.hoisted(() => vi.fn())
+const useUpdateBranchPolicyMock = vi.hoisted(() => vi.fn())
+const useUpdateQualityGateMock = vi.hoisted(() => vi.fn())
+const useApproveDryRunCqMock = vi.hoisted(() => vi.fn())
+const useRejectDryRunCqMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/hooks/qualityGate', () => ({
+  useQualityGate: useQualityGateMock,
+  useBranchPolicy: useBranchPolicyMock,
+  useUpdateBranchPolicy: useUpdateBranchPolicyMock,
+  useUpdateQualityGate: useUpdateQualityGateMock,
+  useApproveDryRunCq: useApproveDryRunCqMock,
+  useRejectDryRunCq: useRejectDryRunCqMock,
+}))
+
 const testset: Testset = {
   id: 'testset-demo-project-login',
   projectId: 'demo-project',
@@ -144,6 +164,12 @@ beforeEach(() => {
   useDeleteTestsetMock.mockReturnValue(idleMutation())
   useCreateTestRunMock.mockReturnValue(idleMutation())
   useCreateDryRunMock.mockReturnValue(idleMutation())
+  useQualityGateMock.mockReturnValue({ data: undefined, isLoading: false, isError: false, error: null })
+  useBranchPolicyMock.mockReturnValue({ data: undefined, isLoading: false, isError: false, error: null })
+  useUpdateBranchPolicyMock.mockReturnValue(idleMutation())
+  useUpdateQualityGateMock.mockReturnValue(idleMutation())
+  useApproveDryRunCqMock.mockReturnValue(idleMutation())
+  useRejectDryRunCqMock.mockReturnValue(idleMutation())
   vi.mocked(tasksApi.list).mockResolvedValue({ data: [], page: { nextCursor: null, hasMore: false }, requestId: 'req' })
   vi.mocked(projectApi.getById).mockResolvedValue({
     id: 'demo-project',

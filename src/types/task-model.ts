@@ -3,6 +3,8 @@ export type TaskStatus =
   | 'PENDING'
   | 'RUNNING'
   | 'WAITING_DIFF_CONFIRMATION'
+  | 'WAITING_PREFLIGHT'
+  | 'DIFF_REJECTED'
   | 'DELIVERING'
   | 'DELIVERY_FAILED'
   | 'SUCCEEDED'

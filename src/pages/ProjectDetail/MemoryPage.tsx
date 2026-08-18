@@ -197,7 +197,7 @@ export function MemoryPage() {
 
 /** 列表卡片 */
 function MemoryCard({ memory, index, onClick }: { memory: Memory; index: number; onClick: () => void }) {
-  const meta = STATUS_META[memory.status]
+  const meta = STATUS_META[memory.status] ?? { color: 'default', label: memory.status }
   return (
     <Card className="memory-card" onClick={onClick}>
       <div className="memory-card__main">
@@ -251,7 +251,7 @@ function MemoryDetail({
   onArchive: () => Promise<void>
 }) {
   if (!memory) return <Drawer open={false} onClose={onClose} />
-  const meta = STATUS_META[memory.status]
+  const meta = STATUS_META[memory.status] ?? { color: 'default', label: memory.status }
 
   return (
     <Drawer

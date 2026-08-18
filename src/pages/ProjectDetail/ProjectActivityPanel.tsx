@@ -21,9 +21,10 @@ const RUNNING_STATUSES: TaskStatus[] = [
   'PENDING',
   'RUNNING',
   'WAITING_DIFF_CONFIRMATION',
+  'WAITING_PREFLIGHT',
   'DELIVERING',
 ]
-const FAILED_STATUSES: TaskStatus[] = ['FAILED', 'DELIVERY_FAILED', 'CANCELLED', 'CANCELLING']
+const FAILED_STATUSES: TaskStatus[] = ['FAILED', 'DELIVERY_FAILED', 'DIFF_REJECTED', 'CANCELLED', 'CANCELLING']
 
 const PROGRESS_META: Record<
   GroupProgressKey,
@@ -40,6 +41,8 @@ const TASK_STATUS_META: Record<TaskStatus, { label: string; color: string }> = {
   PENDING: { label: '待执行', color: 'default' },
   RUNNING: { label: '执行中', color: 'blue' },
   WAITING_DIFF_CONFIRMATION: { label: '待确认', color: 'orange' },
+  WAITING_PREFLIGHT: { label: '预检中', color: 'gold' },
+  DIFF_REJECTED: { label: 'Diff 已拒绝', color: 'red' },
   DELIVERING: { label: '交付中', color: 'blue' },
   DELIVERY_FAILED: { label: '交付失败', color: 'red' },
   SUCCEEDED: { label: '已完成', color: 'green' },
@@ -47,6 +50,9 @@ const TASK_STATUS_META: Record<TaskStatus, { label: string; color: string }> = {
   CANCELLING: { label: '取消中', color: 'default' },
   CANCELLED: { label: '已取消', color: 'default' },
 }
+
+/** 未知任务状态兜底：后端新增状态未同步时，不崩溃、原样展示 */
+const UNKNOWN_TASK_STATUS_META = { label: '未知', color: 'default' }
 
 /** 按群上关联任务的优先级，派生需求群进度 */
 function groupProgress(tasks: TaskListItem[], groupId: string): GroupProgressKey {
@@ -122,7 +128,7 @@ export function ProjectActivityPanel({ projectId }: { projectId: string }) {
         ) : (
           <ul className="pd-activity__list">
             {tasks.slice(0, 8).map((t) => {
-              const meta = TASK_STATUS_META[t.status]
+              const meta = TASK_STATUS_META[t.status] ?? UNKNOWN_TASK_STATUS_META
               const batchId = t.attention?.diffReviewBatchId
               return (
                 <li

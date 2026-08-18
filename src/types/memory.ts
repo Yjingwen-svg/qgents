@@ -54,8 +54,10 @@ export interface CreateMemoryPayload {
   tags: string[]
 }
 
-/** 根据群聊消息生成草稿请求体（POST /memories/drafts） */
+/** 依据最近群聊自动生成草稿请求体（POST /memories/drafts） */
 export interface GenerateMemoryDraftPayload {
-  sourceMessages: MemorySourceRef[]
+  /** 取最近聊天的需求群 ID（前端当前打开的群） */
+  groupId: string
+  /** 沉淀指令（可空） */
   instruction?: string
 }

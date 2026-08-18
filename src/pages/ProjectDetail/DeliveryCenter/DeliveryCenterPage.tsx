@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useInfiniteDeliveryItems, useDeliveryActionMutation, useDeliverySummary } from '@/hooks/delivery-center'
 import { useQuery } from '@tanstack/react-query'
-import { Alert, Button, Card, Empty, Form, Input, Result, Select, Skeleton, Tag, Typography, Modal } from 'antd'
+import { Alert, App, Button, Card, Empty, Form, Input, Result, Select, Skeleton, Tag, Typography, Modal } from 'antd'
 import {
   CheckCircleOutlined,
   CheckOutlined,
@@ -63,6 +63,16 @@ const TYPE_LABELS: Record<DeliveryResourceType, string> = { CODE: 'CODE', MEMORY
 const TYPE_COLORS: Record<DeliveryResourceType, string> = { CODE: '#0d9b8a', MEMORY: '#7c55d9', SKILL: '#e79216' }
 const PAGE_SIZE = 5
 
+/** 交付动作成功提示文案 */
+const ACTION_SUCCESS_TEXT: Record<DeliveryAction, string> = {
+  submitReview: '已提交审核，等待 Admin 批准',
+  approve: '已批准并共享',
+  reject: '已拒绝该交付',
+  archive: '已归档',
+  confirm: '已确认交付，正在执行仓库交付',
+  retryDelivery: '已重新发起交付',
+}
+
 function formatDate(value: string | null): string {
   if (!value) return '暂无'
   const date = new Date(value)
@@ -93,12 +103,14 @@ function errorText(error: unknown): string {
 export default function DeliveryCenterPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
+  const { message } = App.useApp()
   const [searchParams, setSearchParams] = useSearchParams()
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [rejectTarget, setRejectTarget] = useState<DeliveryItem | null>(null)
   const [rejectReason, setRejectReason] = useState('')
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({})
   const [activeItemId, setActiveItemId] = useState<string | null>(null)
+  const [detailTarget, setDetailTarget] = useState<DeliveryItem | null>(null)
 
   const filters = useMemo(() => ({
     groupId: searchParams.get('groupId') || undefined,
@@ -177,6 +189,8 @@ export default function DeliveryCenterPage() {
     try {
       await actionMutation.mutateAsync({ projectId, item, action, reason: reason?.trim() })
       setActiveItemId(null)
+      // 操作成功提示（申请交付等），避免用户误以为无响应后重复提交
+      message.success(ACTION_SUCCESS_TEXT[action] ?? '操作成功')
       if (rejectTarget?.id === item.id) {
         setRejectTarget(null)
         setRejectReason('')
@@ -195,15 +209,14 @@ export default function DeliveryCenterPage() {
 
   function openResource(item: DeliveryItem) {
     if (!item.capabilities.canOpenResource) return
+    // MEMORY/SKILL 在交付中心内直接弹详情窗，避免跳转后无高亮定位（最小改动）
+    if (item.openTarget.kind === 'MEMORY' || item.openTarget.kind === 'SKILL') {
+      setDetailTarget(item)
+      return
+    }
     switch (item.openTarget.kind) {
       case 'TASK_DIFF_REVIEW':
         navigate(`${PATHS.projectTaskDetail(projectId, item.openTarget.taskId)}?diffReviewBatchId=${encodeURIComponent(item.openTarget.diffReviewBatchId)}`)
-        break
-      case 'MEMORY':
-        navigate(`${PATHS.projectMemory(projectId)}?memoryId=${encodeURIComponent(item.openTarget.memoryId)}`)
-        break
-      case 'SKILL':
-        navigate(`${PATHS.projectSkills(projectId)}?skillId=${encodeURIComponent(item.openTarget.skillId)}`)
         break
     }
   }
@@ -308,6 +321,65 @@ export default function DeliveryCenterPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* MEMORY/SKILL 详情弹窗：交付中心内直接查看，避免跳转后无高亮定位 */}
+      <Modal
+        title={detailTarget ? detailTarget.title : ''}
+        open={Boolean(detailTarget)}
+        footer={null}
+        onCancel={() => setDetailTarget(null)}
+      >
+        {detailTarget ? <DeliveryDetailModal item={detailTarget} /> : null}
+      </Modal>
+    </div>
+  )
+}
+
+/** MEMORY/SKILL 分类中文映射 */
+const MEMORY_CATEGORY_LABELS: Record<string, string> = {
+  ENGINEERING_DECISION: '工程决策',
+  PROCESS: '流程约定',
+  GENERAL: '通用',
+}
+
+/** MEMORY/SKILL 交付详情弹窗内容（CODE 不经过此弹窗）；正文突出、属性收尾 */
+function DeliveryDetailModal({ item }: { item: DeliveryItem }) {
+  if (item.resourceType === 'CODE') return null
+  const isMemory = item.resourceType === 'MEMORY'
+  const sourceText = isMemory
+    ? (item.sources ?? []).length > 0
+      ? `来源消息 ${(item.sources ?? []).map((source) => display(source.messageId)).join('、')}`
+      : '无关联来源'
+    : item.source.taskId
+      ? `来源 Task ${display(item.source.taskDisplayCode)}`
+      : item.source.messageId
+        ? `来源消息 ${item.source.messageId}`
+        : '无关联来源'
+  return (
+    <div className={styles.detailModal}>
+      <div className={styles.detailModalRow}>
+        <Tag color={TYPE_COLORS[item.resourceType]}>{TYPE_LABELS[item.resourceType]}</Tag>
+        <Tag color={STATUS_COLORS[item.displayStatus]}>{STATUS_LABELS[item.displayStatus]}</Tag>
+      </div>
+      {/* 正文：主要信息，正常字号深色展示 */}
+      <div className={styles.detailModalBody}>{display(item.contentExcerpt)}</div>
+      {(item.tags ?? []).length > 0 ? <Tags tags={item.tags} /> : null}
+      {/* 属性：次要信息收尾展示 */}
+      <div className={styles.detailModalMeta}>
+        <div><span>分类</span><b>{isMemory ? MEMORY_CATEGORY_LABELS[item.category] ?? item.category : '—'}</b></div>
+        <div><span>可见性</span><b>{item.visibility}</b></div>
+        <div><span>资源状态</span><b>{item.resourceStatus}</b></div>
+        <div><span>来源</span><b>{sourceText}</b></div>
+        <div><span>创建人</span><b>{item.creator?.displayName ?? '未知'}</b></div>
+        <div><span>创建时间</span><b>{formatDate(item.createdAt)}</b></div>
+        <div><span>提交人</span><b>{item.submitter?.displayName ?? '暂无'}</b></div>
+        <div><span>提交时间</span><b>{formatDate(item.submittedAt)}</b></div>
+        <div><span>审核人</span><b>{item.reviewer?.displayName ?? '暂无'}</b></div>
+        <div><span>更新时间</span><b>{formatDate(item.updatedAt)}</b></div>
+      </div>
+      {item.reviewReason ? (
+        <div className={styles.reviewReason}><WarningOutlined /> {item.reviewReason}</div>
+      ) : null}
     </div>
   )
 }

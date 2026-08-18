@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  App,
   Button,
   Card,
   Drawer,
@@ -58,6 +59,7 @@ export function SkillPage() {
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState<FilterKey>('ALL')
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [editId, setEditId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
 
   const { data: skills = [], isLoading } = useQuery({
@@ -75,6 +77,8 @@ export function SkillPage() {
   }, [skills, filter])
 
   const detail = skills.find((s) => s.id === detailId) ?? null
+  // 编辑目标独立于详情抽屉：点「编辑」时保存 editId，避免关闭抽屉后 editTarget 丢失
+  const editTarget = skills.find((s) => s.id === editId) ?? null
 
   const archive = useMutation({
     mutationFn: (id: string) => skillApi.archive(projectId, id),
@@ -128,6 +132,7 @@ export function SkillPage() {
         skill={detail}
         onClose={() => setDetailId(null)}
         onEdit={() => {
+          setEditId(detail?.id ?? null)
           setDetailId(null)
           setCreateOpen(true)
         }}
@@ -141,11 +146,15 @@ export function SkillPage() {
       <CreateSkillModal
         projectId={projectId}
         open={createOpen}
-        editTarget={detail}
-        onClose={() => setCreateOpen(false)}
+        editTarget={editTarget}
+        onClose={() => {
+          setCreateOpen(false)
+          setEditId(null)
+        }}
         onCreated={() => {
           invalidate()
           setCreateOpen(false)
+          setEditId(null)
         }}
       />
     </div>
@@ -278,12 +287,37 @@ function CreateSkillModal({
   onCreated: () => void
 }) {
   const [form] = Form.useForm<CreateSkillPayload>()
+  const { message } = App.useApp()
+
+  // 弹窗打开/编辑目标变化时显式回填表单（绕开 Modal destroyOnClose 下 initialValues 时序问题，
+  // 确保编辑时标签等所有字段回显）
+  useEffect(() => {
+    if (!open) return
+    if (editTarget) {
+      form.setFieldsValue({
+        name: editTarget.name,
+        content: editTarget.content,
+        // 标签输入为逗号分隔字符串（提交时 splitTags 转回数组）
+        tags: (editTarget.tags ?? []).join(','),
+        visibility: editTarget.visibility,
+      } as unknown as Partial<CreateSkillPayload>)
+    } else {
+      form.resetFields()
+      form.setFieldsValue({ visibility: 'PRIVATE' })
+    }
+  }, [open, editTarget, form])
 
   const create = useMutation({
     mutationFn: (payload: CreateSkillPayload) => skillApi.create(projectId, payload),
-    onSuccess: () => {
+    onSuccess: (saved) => {
       form.resetFields()
       onCreated()
+      // PRIVATE 创建即生效；PROJECT_SHARED 的 Admin 自建免审、成员为草稿
+      if (saved.status === 'PUBLISHED') {
+        message.success(saved.visibility === 'PRIVATE' ? 'Skill 已创建（私有，仅自己可用）' : 'Skill 已创建并发布')
+      } else {
+        message.success('Skill 草稿已创建，提交审核后即可共享')
+      }
     },
   })
 
@@ -294,19 +328,22 @@ function CreateSkillModal({
       onCancel={onClose}
       onOk={() => form.submit()}
       okText={editTarget ? '保存' : '创建'}
+      cancelText="取消"
       confirmLoading={create.isPending}
       destroyOnClose
+      // 编辑目标变化时强制重建 Modal 内容，确保 initialValues（含标签回显）重新生效
+      key={editTarget?.id ?? 'create'}
     >
       <Form
         form={form}
         layout="vertical"
-        onFinish={(v) => create.mutate(v)}
+        onFinish={(v) => create.mutate({ ...v, tags: splitTags(v.tags) })}
         initialValues={
           editTarget
             ? {
                 name: editTarget.name,
                 content: editTarget.content,
-                tags: editTarget.tags,
+                tags: (editTarget.tags ?? []).join(','),
                 visibility: editTarget.visibility,
               }
             : { visibility: 'PRIVATE' }
@@ -330,16 +367,18 @@ function CreateSkillModal({
           />
         </Form.Item>
         <Form.Item name="tags" label="标签（逗号分隔）">
-          <Select
-            mode="tags"
-            placeholder="输入后回车，如 java / backend"
-            tokenSeparators={[',']}
-            open={false}
-          />
+          <Input placeholder="如 java / backend，用逗号分隔" />
         </Form.Item>
       </Form>
     </Modal>
   )
+}
+
+/** 标签输入（逗号分隔字符串或数组）→ string[] */
+function splitTags(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((tag): tag is string => typeof tag === 'string')
+  if (typeof value === 'string') return value.split(',').map((tag) => tag.trim()).filter(Boolean)
+  return []
 }
 
 function formatDate(iso: string): string {

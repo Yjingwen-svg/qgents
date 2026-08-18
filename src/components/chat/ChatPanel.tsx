@@ -60,6 +60,9 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   // 回复引用：选中某条消息后，输入区显示引用条，发送时以 QUOTE 类型 + replyToId 提交
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  // 群聊 @ 提及：已读游标（markRead 返回）与「有人@我」提示条
+  const [lastReadSeq, setLastReadSeq] = useState<number | null>(null)
+  const [mentionFlashId, setMentionFlashId] = useState<string | null>(null)
   // 消息列表内部真正承载消息的内容容器（ResizeObserver 监听其高度变化）
   const contentRef = useRef<HTMLDivElement>(null)
   // 用户是否「应该保持贴底」：发送消息/切群/首载时置 true；用户主动上滚查看历史时置 false。
@@ -206,7 +209,9 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       queryClient.setQueriesData<Group[]>({ queryKey: ['groups', projectId] }, clearCurrent)
       queryClient.setQueriesData<Group[]>({ queryKey: ['chat', 'main-groups'] }, clearCurrent)
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // 记录已读游标：后续新消息 seq > 游标 且 @ 我 的才触发「有人@我」提示
+      setLastReadSeq(data?.lastReadSequenceNo ?? null)
       void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
     },
@@ -217,10 +222,13 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     },
   })
   const markGroupReadMutate = markGroupRead.mutate
-  // 进入群聊 / 群内来新消息时持续标记已读（离开后群有新活动才重新亮红点）
+  // 进群全读一次（仅在切换群时）：推进后端已读游标，作为「@ 我」未读判定基准。
+  // 不能依赖 messages.length——否则每条新消息都会全读，把 @ 未读游标推进到最新，
+  // 「↑ 有人@了我」提示条与群列表 @ 角标（后端 mentionedUnread）将永远不出现。
   useEffect(() => {
     if (groupId) markGroupReadMutate()
-  }, [groupId, messages.length, markGroupReadMutate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupId, markGroupReadMutate])
 
   // 窗口从后台/最小化回到前台时重查当前群消息：浏览器会挂起后台标签页（WS 断开、消息丢失），
   // 而全局 refetchOnWindowFocus 为 false，回前台必须显式校准，否则群聊面板停留旧消息。
@@ -245,6 +253,27 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const filteredUsers = otherUserMembers.filter(
     (m) => !mentionQuery || m.displayName.toLowerCase().includes(mentionQuery),
   )
+
+  // 未读「@ 我」的最新消息：seq > 已读游标 且 mentions 含我 且非本人发送；
+  // lastReadSeq 为空（进群全读完成前）不提示，避免把历史 @ 消息当未读
+  const mentionMessage = useMemo(() => {
+    if (lastReadSeq == null || !currentUserId) return null
+    const mentioned = messages.filter(
+      (m) =>
+        m.senderId !== currentUserId &&
+        (m.sequence ?? 0) > lastReadSeq &&
+        (m.mentions ?? []).some((mention) => mention.type === 'USER' && mention.id === currentUserId),
+    )
+    return mentioned.length === 0 ? null : mentioned[mentioned.length - 1]
+  }, [messages, lastReadSeq, currentUserId])
+
+  /** 点击「有人@我」：滚动到该消息并临时高亮 */
+  function jumpToMention() {
+    if (!mentionMessage) return
+    setMentionFlashId(mentionMessage.id)
+    document.getElementById(`msg-${mentionMessage.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    window.setTimeout(() => setMentionFlashId(null), 2200)
+  }
   const canOpenTaskTrigger = group?.type === 'REQUIREMENT' && group.status === 'ACTIVE' && !group.isArchived
 
   function pickMention(target: { id: string; displayName: string; type: MentionType }) {
@@ -279,14 +308,15 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       shouldStickToBottomRef.current = true
       // 强制滚底：发送期间产生的滚动/布局事件可能把 stick 标志重算为 false，用 pending 标志兜底
       pendingScrollRef.current = true
-      // 回复引用：type=QUOTE，content 带被引用消息摘要，replyToId 指向原消息（对齐 §7 消息类型与请求体）
+      // 回复引用：type=QUOTE，quotedText 为被引用消息的原始内容摘要，replyText 为回复正文
       const result = await groupApi.sendMessage(projectId, groupId, {
         type: replyTo ? 'QUOTE' : 'TEXT',
         content: replyTo
           ? {
               quotedMessageId: replyTo.id,
-              quotedText: text,
+              quotedText: quotePreview(replyTo),
               quotedSenderName: replyTo.senderName ?? (replyTo.senderType === 'AGENT' ? 'Agent' : '成员'),
+              replyText: text,
             }
           : { text },
         mentions: effectiveMentions.length > 0 ? effectiveMentions : undefined,
@@ -493,15 +523,23 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           <div ref={contentRef} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {messages.map((m) => {
               const isSelf = m.senderType === 'USER' && m.senderId === user?.id
+              const flashing = mentionFlashId === m.id
               return (
                 <div
                   key={m.id}
+                  id={`msg-${m.id}`}
                   style={{
                     display: 'flex',
                     alignItems: 'flex-start',
                     gap: 8,
                     // 让气泡按左右对齐
                     justifyContent: isSelf ? 'flex-end' : 'flex-start',
+                    // 被 @ 跳转后的临时高亮
+                    background: flashing ? 'rgba(245, 158, 11, 0.18)' : undefined,
+                    borderRadius: 8,
+                    padding: flashing ? '3px 8px' : undefined,
+                    margin: flashing ? '-3px -8px' : undefined,
+                    transition: 'background 0.4s ease',
                   }}
                 >
                   {/* 内层 div 限制最大宽度 78%（相对消息列宽），气泡在内部 fit-content 铺满可用宽度，
@@ -519,6 +557,35 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                 </div>
               )
             })}
+            {/* 未读「@ 我」提示条：点击跳到被 @ 的那条消息 */}
+            {mentionMessage ? (
+              <div
+                onClick={jumpToMention}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    jumpToMention()
+                  }
+                }}
+                style={{
+                  position: 'sticky',
+                  bottom: 12,
+                  alignSelf: 'center',
+                  marginTop: 10,
+                  padding: '7px 16px',
+                  borderRadius: 999,
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                  color: '#b45309',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                ↑ 有人@了我
+              </div>
+            ) : null}
           </div>
         )}
       </Layout.Content>
@@ -946,6 +1013,37 @@ function MessageBubble({
       >
         {renderContent(message, projectId, onOpenFile, onImageLoad)}
       </div>
+      {/* QUOTE 引用消息：被引用的原消息挂载在气泡下方（带竖线），类似微信「当前消息 + 引用原消息」 */}
+      {message.type === 'QUOTE' ? (
+        <QuoteAttachment message={message} />
+      ) : null}
+    </div>
+  )
+}
+
+/** 引用消息的「原消息」挂载条：气泡下方、左侧灰色竖线、灰色小字 */
+function QuoteAttachment({ message }: { message: Message }) {
+  const content = message.content as QuoteMessageContent | null
+  if (!content?.quotedText) return null
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: 8,
+        marginTop: 4,
+        maxWidth: '100%',
+        minWidth: 0,
+      }}
+    >
+      <div style={{ width: 3, borderRadius: 2, background: '#94a3b8', flexShrink: 0 }} />
+      <div style={{ minWidth: 0 }}>
+        {content.quotedSenderName ? (
+          <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+            {content.quotedSenderName}
+          </Text>
+        ) : null}
+        <div style={{ fontSize: 12, color: '#94a3b8', overflowWrap: 'break-word' }}>{content.quotedText}</div>
+      </div>
     </div>
   )
 }
@@ -997,24 +1095,9 @@ function renderContent(
       )
     }
     case 'QUOTE': {
+      // 气泡内只显示回复正文；被引用的原消息由 MessageBubble 挂载在气泡下方（带竖线）
       const c = message.content as QuoteMessageContent
-      return (
-        <div
-          style={{
-            borderLeft: '3px solid #3b82f6',
-            paddingLeft: 10,
-            marginBottom: 6,
-            opacity: 0.85,
-          }}
-        >
-          {c.quotedSenderName && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {c.quotedSenderName}
-            </Text>
-          )}
-          <div style={{ fontSize: 13 }}>{c.quotedText}</div>
-        </div>
-      )
+      return c.replyText ?? ''
     }
     case 'DIFF': {
       const c = message.content as DiffMessageContent

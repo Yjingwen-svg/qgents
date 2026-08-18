@@ -179,8 +179,26 @@ export default function ProjectDetailLayout() {
               {pinned && <PushpinOutlined className="pd-nav__branch-pin" />}
               <span className="pd-nav__branch-title">{g.title}</span>
               {isMain && <span className="pd-nav__branch-main-tag">总群</span>}
-              {/* 当前正在查看的群不显示红点（后端游标推进有延迟，避免 SSE 竞态导致红点反复横跳） */}
-              {g.id !== groupId && g.unreadCount ? <Badge count={g.unreadCount} overflowCount={99} size="small" /> : null}
+              {/* 未读 @ 角标：该群有 @ 我的未读消息 */}
+              {typeof g.mentionedUnread === 'number' && g.mentionedUnread > 0 ? (
+                <span
+                  style={{
+                    padding: '0 7px',
+                    borderRadius: 999,
+                    background: '#f59e0b',
+                    color: '#fff',
+                    fontSize: 11,
+                    lineHeight: '16px',
+                    fontWeight: 600,
+                  }}
+                >
+                  @我
+                </span>
+              ) : null}
+              {/* 正在查看的群不显示未读红点（游标只在进群时推进，群内新消息红点由前端视觉隐藏） */}
+              {!onReqChat || groupId !== g.id ? (
+                g.unreadCount ? <Badge count={g.unreadCount} overflowCount={99} size="small" /> : null
+              ) : null}
             </span>
             {g.latestMessage ? (
               <span className="pd-nav__branch-summary">

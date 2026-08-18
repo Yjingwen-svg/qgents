@@ -111,7 +111,16 @@ export function GroupMemberManagerModal({ projectId, group, onClose }: Props) {
             }
           >
             <List.Item.Meta
-              avatar={<Avatar size={32} style={{ background: '#3b82f6' }} icon={<UserOutlined />} />}
+              avatar={
+                <Avatar
+                  size={32}
+                  src={member.avatarUrl}
+                  style={{ background: '#3b82f6' }}
+                  icon={<UserOutlined />}
+                >
+                  {member.displayName.slice(0, 1)}
+                </Avatar>
+              }
               title={<Text strong>{member.displayName}</Text>}
               description={
                 member.email ? (

@@ -5,7 +5,7 @@
  * 独立通知接口，本轮由前端 Mock 实现，数据字段对齐 SSE 事件类型。
  */
 
-/** 通知类别（对应分工安排列出的 5 类 + 团队邀请 + 未读数状态） */
+/** 通知类别（对应分工安排列出的 5 类 + 团队邀请 + 群聊 @ 提及 + 未读数状态） */
 export type NotificationKind =
   | 'TASK_COMPLETED' // 任务完成
   | 'TASK_FAILED' // 任务失败
@@ -13,6 +13,7 @@ export type NotificationKind =
   | 'DELIVERABLE_PENDING' // 交付物待验收
   | 'MR_PENDING' // MR 待处理
   | 'INVITED' // 团队邀请（后端实际下发类型，接口文档 §7.1 未列；resourceId 为邀请记录 id）
+  | 'MESSAGE_MENTION' // 群聊 @ 提及（groupId 为来源需求群，点击跳转该群）
 
 export interface Notification {
   id: string

@@ -291,14 +291,15 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       shouldStickToBottomRef.current = true
       // 强制滚底：发送期间产生的滚动/布局事件可能把 stick 标志重算为 false，用 pending 标志兜底
       pendingScrollRef.current = true
-      // 回复引用：type=QUOTE，content 带被引用消息摘要，replyToId 指向原消息（对齐 §7 消息类型与请求体）
+      // 回复引用：type=QUOTE，quotedText 为被引用消息的原始内容摘要，replyText 为回复正文
       const result = await groupApi.sendMessage(projectId, groupId, {
         type: replyTo ? 'QUOTE' : 'TEXT',
         content: replyTo
           ? {
               quotedMessageId: replyTo.id,
-              quotedText: text,
+              quotedText: quotePreview(replyTo),
               quotedSenderName: replyTo.senderName ?? (replyTo.senderType === 'AGENT' ? 'Agent' : '成员'),
+              replyText: text,
             }
           : { text },
         mentions: effectiveMentions.length > 0 ? effectiveMentions : undefined,
@@ -1039,6 +1040,9 @@ function renderContent(
             </Text>
           )}
           <div style={{ fontSize: 13 }}>{c.quotedText}</div>
+          {c.replyText ? (
+            <div style={{ fontSize: 13, marginTop: 4, color: 'inherit' }}>{c.replyText}</div>
+          ) : null}
         </div>
       )
     }

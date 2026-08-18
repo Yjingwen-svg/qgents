@@ -90,11 +90,12 @@ export interface FileMessageContent {
   mimeType: string
 }
 
-/** QUOTE 引用消息内容 */
+/** QUOTE 引用消息内容：quotedText 为被引用消息的原始内容摘要，replyText 为回复者输入的正文 */
 export interface QuoteMessageContent {
   quotedMessageId: string
   quotedText: string
   quotedSenderName?: string
+  replyText?: string
 }
 
 /** DIFF 交付卡片内容 */

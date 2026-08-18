@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Drawer, Divider } from 'antd'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Drawer, Divider, Avatar } from 'antd'
 import { App, Upload } from 'antd'
 import {
   SendOutlined,
@@ -8,7 +8,6 @@ import {
   FileOutlined,
   MessageOutlined,
   BranchesOutlined,
-  CheckCircleOutlined,
   InboxOutlined,
   PaperClipOutlined,
   CloseOutlined,
@@ -19,6 +18,7 @@ import { formatApiError } from '@/utils/formatApiError'
 import { ApiError, groupApi, projectApi, agentApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
 import { getApiBaseUrl } from '@/api/client'
 import { useAuth } from '@/context/AuthContext'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { TaskTriggerModal } from '@/components/task-domain'
 import { GroupMemberSettings } from '@/pages/ProjectDetail/GroupMemberSettings'
 import { AuthedImage } from '@/components/AuthedImage'
@@ -28,6 +28,7 @@ import type {
   Message,
   Mention,
   MentionType,
+  Page,
   TextMessageContent,
   CodeMessageContent,
   ImageMessageContent,
@@ -49,6 +50,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const location = useLocation()
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -63,6 +65,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   // 群聊 @ 提及：已读游标（markRead 返回）与「有人@我」提示条
   const [lastReadSeq, setLastReadSeq] = useState<number | null>(null)
   const [mentionFlashId, setMentionFlashId] = useState<string | null>(null)
+  // 已点击忽略的「有人@你」消息 id：点击跳转后按钮消失，新 @ 消息再来时重新出现
+  const [dismissedMentionId, setDismissedMentionId] = useState<string | null>(null)
   // 消息列表内部真正承载消息的内容容器（ResizeObserver 监听其高度变化）
   const contentRef = useRef<HTMLDivElement>(null)
   // 用户是否「应该保持贴底」：发送消息/切群/首载时置 true；用户主动上滚查看历史时置 false。
@@ -134,6 +138,16 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     })
   }, [page])
 
+  // 发送者头像（微信式，边缘展示）：优先群成员 avatarUrl，自己用当前用户头像；SYSTEM 无头像
+  const memberAvatarById = new Map(
+    members.filter((mem) => mem.avatarUrl).map((mem) => [mem.id, mem.avatarUrl as string]),
+  )
+  function resolveSenderAvatar(m: Message): string | undefined {
+    if (m.senderType === 'SYSTEM') return undefined
+    if (m.senderType === 'USER' && m.senderId === user?.id) return user?.avatarUrl
+    return m.senderId ? memberAvatarById.get(m.senderId) : undefined
+  }
+
   // 无条件滚到底部：切群 / 首次加载 / 自己发送新消息时使用
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
@@ -199,36 +213,47 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     scrollToBottom()
   }, [groupId, scrollToBottom])
 
-  // 进群全读（§三）：后端按用户×群推进已读游标。
-  // 乐观清零当前群未读：红点立即消失，不等后端往返（成功/失败后 refetch 用后端真相校准）
-  const markGroupRead = useMutation({
-    mutationFn: () => groupApi.markRead(projectId, groupId),
-    onMutate: () => {
-      const clearCurrent = (groups: Group[] | undefined): Group[] | undefined =>
-        groups ? groups.map((g) => (g.id === groupId ? { ...g, unreadCount: 0 } : g)) : groups
-      queryClient.setQueriesData<Group[]>({ queryKey: ['groups', projectId] }, clearCurrent)
-      queryClient.setQueriesData<Group[]>({ queryKey: ['chat', 'main-groups'] }, clearCurrent)
-    },
-    onSuccess: (data) => {
+  // 进群全读（§三）：直接调后端推进已读游标。
+  // 不用 useMutation：StrictMode/切群重挂载下 react-query 的 MutationObserver 会偶发
+  // 「mutate() 被调用但 mutationFn 不执行」（setOptions 在 pending 时 reset，新 Mutation 拿不到
+  // mutationFn）→ read 请求不发。这里是纯副作用（乐观清零 + 推进游标），直接 fetch 最可靠。
+  const markGroupReadNow = useCallback(async (): Promise<void> => {
+    if (!projectId || !groupId) return
+    // 乐观清零当前群未读：红点立即消失，不等后端往返
+    // 注意：必须用 setQueryData（精确匹配）——setQueriesData 是前缀模糊匹配，
+    // 会把 ['groups', projectId, groupId, 'messages'] 的分页信封对象也喂给 updater，
+    // groups.map 直接崩掉，导致 read 请求在发出前就被中断。
+    const clearCurrent = (groups: Group[] | undefined): Group[] | undefined =>
+      groups ? groups.map((g) => (g.id === groupId ? { ...g, unreadCount: 0 } : g)) : groups
+    queryClient.setQueryData<Group[]>(['groups', projectId], clearCurrent)
+    queryClient.setQueryData<Group[]>(['chat', 'main-groups'], clearCurrent)
+    try {
+      const data = await groupApi.markRead(projectId, groupId)
       // 记录已读游标：后续新消息 seq > 游标 且 @ 我 的才触发「有人@我」提示
       setLastReadSeq(data?.lastReadSequenceNo ?? null)
-      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
-      void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
-    },
-    onError: () => {
-      // 失败也回拉校准（后端可能未推进游标，红点按真实未读恢复）
-      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
-      void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
-    },
-  })
-  const markGroupReadMutate = markGroupRead.mutate
+    } catch {
+      // 已读失败不打断：保持乐观清零（用户已进群阅读），后端游标由下次进群重试覆盖
+    }
+    void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+    void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+  }, [projectId, groupId, queryClient])
+
   // 进群全读一次（仅在切换群时）：推进后端已读游标，作为「@ 我」未读判定基准。
   // 不能依赖 messages.length——否则每条新消息都会全读，把 @ 未读游标推进到最新，
   // 「↑ 有人@了我」提示条与群列表 @ 角标（后端 mentionedUnread）将永远不出现。
   useEffect(() => {
-    if (groupId) markGroupReadMutate()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupId, markGroupReadMutate])
+    if (groupId) void markGroupReadNow()
+  }, [groupId, markGroupReadNow])
+
+  // 兜底：消息列表首次加载成功后补发一次 read（幂等，游标只前进）。
+  // 覆盖「进群 effect 因时序/挂载问题未触发」的情况——只要点进群、消息加载出来，read 必发。
+  const markReadForGroupRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!page || !groupId) return
+    if (markReadForGroupRef.current === groupId) return
+    markReadForGroupRef.current = groupId
+    void markGroupReadNow()
+  }, [page, groupId, markGroupReadNow])
 
   // 窗口从后台/最小化回到前台时重查当前群消息：浏览器会挂起后台标签页（WS 断开、消息丢失），
   // 而全局 refetchOnWindowFocus 为 false，回前台必须显式校准，否则群聊面板停留旧消息。
@@ -254,27 +279,78 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     (m) => !mentionQuery || m.displayName.toLowerCase().includes(mentionQuery),
   )
 
-  // 未读「@ 我」的最新消息：seq > 已读游标 且 mentions 含我 且非本人发送；
+  // 未读「@ 我」消息列表（升序）：seq > 已读游标 且 mentions 含我 且非本人发送；
   // lastReadSeq 为空（进群全读完成前）不提示，避免把历史 @ 消息当未读
-  const mentionMessage = useMemo(() => {
-    if (lastReadSeq == null || !currentUserId) return null
-    const mentioned = messages.filter(
+  const mentionMessages = useMemo(() => {
+    if (lastReadSeq == null || !currentUserId) return []
+    return messages.filter(
       (m) =>
         m.senderId !== currentUserId &&
         (m.sequence ?? 0) > lastReadSeq &&
         (m.mentions ?? []).some((mention) => mention.type === 'USER' && mention.id === currentUserId),
     )
-    return mentioned.length === 0 ? null : mentioned[mentioned.length - 1]
   }, [messages, lastReadSeq, currentUserId])
+  // 提示条跳转目标 = 最新一条未读 @ 消息
+  const mentionMessage = mentionMessages.length === 0 ? null : mentionMessages[mentionMessages.length - 1]
 
-  /** 点击「有人@我」：滚动到该消息并临时高亮 */
-  function jumpToMention() {
-    if (!mentionMessage) return
-    setMentionFlashId(mentionMessage.id)
-    document.getElementById(`msg-${mentionMessage.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  /** 滚动到指定消息并临时高亮（复用「有人@你」点击效果） */
+  function flashMention(messageId: string): void {
+    setMentionFlashId(messageId)
+    setDismissedMentionId(messageId)
+    document.getElementById(`msg-${messageId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     window.setTimeout(() => setMentionFlashId(null), 2200)
   }
+
+  /** 点击「有人@你」：滚动到该消息并临时高亮；同时忽略该条，按钮消失（新 @ 消息再来时重新出现） */
+  function jumpToMention() {
+    if (!mentionMessage) return
+    flashMention(mentionMessage.id)
+  }
+  const showMentionBar = mentionMessage !== null && mentionMessage.id !== dismissedMentionId
   const canOpenTaskTrigger = group?.type === 'REQUIREMENT' && group.status === 'ACTIVE' && !group.isArchived
+
+  // 从「@ 提及」通知跳转过来：自动滚动到被 @ 的消息并高亮（模拟点击提示条）。
+  // 通知带 resourceId=messageId → 精确定位；缺 messageId（旧数据）→ 兜底跳到最上面（最早）一条被 @ 的消息。
+  // 精确目标不在已加载分页窗口时，拉单条（GET .../messages/{messageId}）合并进列表后再跳转。
+  // 跳转成功后才消费导航 state，避免重渲染重复触发。
+  const autoMentionJumpedRef = useRef(false)
+  const autoMentionFetchingRef = useRef(false)
+  useEffect(() => {
+    if (autoMentionJumpedRef.current || messages.length === 0 || !currentUserId) return
+    const mentionMessageId = (location.state as { mentionMessageId?: string } | null)?.mentionMessageId
+    const hasAutoJumpFlag =
+      typeof mentionMessageId === 'string' || (location.state as { autoJumpMention?: boolean } | null)?.autoJumpMention === true
+    if (!hasAutoJumpFlag) return
+    const target = mentionMessageId
+      ? messages.find((m) => m.id === mentionMessageId)
+      : messages.find(
+          (m) =>
+            m.senderId !== currentUserId &&
+            (m.mentions ?? []).some((mention) => mention.type === 'USER' && mention.id === currentUserId),
+        )
+    if (target) {
+      autoMentionJumpedRef.current = true
+      flashMention(target.id)
+      navigate(location.pathname, { replace: true, state: {} })
+      return
+    }
+    // 精确目标不在已加载窗口：拉单条并合并（只拉一次；失败保持现状，状态不消费）
+    if (typeof mentionMessageId === 'string' && !autoMentionFetchingRef.current) {
+      autoMentionFetchingRef.current = true
+      void groupApi
+        .getMessage(projectId, groupId, mentionMessageId)
+        .then((msg) => {
+          queryClient.setQueryData<Page<Message>>(['groups', projectId, groupId, 'messages'], (prev) => {
+            if (!prev || prev.data.some((m) => m.id === msg.id)) return prev
+            return { ...prev, data: [...prev.data, msg] }
+          })
+        })
+        .catch(() => {
+          // 单条拉取失败：静默，不阻塞聊天
+        })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, location.pathname, navigate, location.state, currentUserId])
 
   function pickMention(target: { id: string; displayName: string; type: MentionType }) {
     // 用「@显示名 + 空格」替换掉最后一个 @ 及其后的过滤字符，避免残留查询词
@@ -455,8 +531,13 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     },
   })
 
+  // TASK_STATUS 任务状态卡按消息流时间位置渲染（不置顶）；
+  // 后端单卡持续更新（message.updated → 重查消息列表），content 原地刷新
+
   return (
-    <Layout style={{ height: '100%', background: token.colorBgBase }}>
+    // 聊天区错误边界：渲染崩溃只挂聊天区，侧栏/动态面板不受影响；切群自动复位
+    <ErrorBoundary resetKey={groupId}>
+      <Layout style={{ height: '100%', background: token.colorBgBase }}>
       {/* 顶部：群标题 + 操作入口；多选模式下切换为「取消 | 已选择 N 条」 */}
       <div
         style={{
@@ -542,6 +623,16 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                     transition: 'background 0.4s ease',
                   }}
                 >
+                  {/* 他人消息：头像在左边缘；自己消息：头像在右边缘（微信式） */}
+                  {!isSelf && m.senderType !== 'SYSTEM' && (
+                    <Avatar
+                      size={32}
+                      src={resolveSenderAvatar(m)}
+                      style={{ flexShrink: 0, background: '#3b82f6', marginTop: 2 }}
+                    >
+                      {(m.senderName ?? '?').slice(0, 1)}
+                    </Avatar>
+                  )}
                   {/* 内层 div 限制最大宽度 78%（相对消息列宽），气泡在内部 fit-content 铺满可用宽度，
                       保证每行容纳更多字；左右对齐由外层 justifyContent 控制 */}
                   <div style={{ maxWidth: '78%', minWidth: 0 }}>
@@ -554,11 +645,20 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                       onImageLoad={handleImageLoad}
                     />
                   </div>
+                  {isSelf && (
+                    <Avatar
+                      size={32}
+                      src={user?.avatarUrl}
+                      style={{ flexShrink: 0, background: '#f97316', marginTop: 2 }}
+                    >
+                      {(user?.displayName ?? '我').slice(0, 1)}
+                    </Avatar>
+                  )}
                 </div>
               )
             })}
-            {/* 未读「@ 我」提示条：点击跳到被 @ 的那条消息 */}
-            {mentionMessage ? (
+            {/* 未读「@ 我」提示条：点击跳到被 @ 的那条消息，点击后按钮消失 */}
+            {showMentionBar ? (
               <div
                 onClick={jumpToMention}
                 role="button"
@@ -583,7 +683,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                   cursor: 'pointer',
                 }}
               >
-                ↑ 有人@了我
+                ↑ 有人@你
               </div>
             ) : null}
           </div>
@@ -757,7 +857,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           )}
         </Space>
       </Drawer>
-    </Layout>
+      </Layout>
+    </ErrorBoundary>
   )
 }
 
@@ -910,7 +1011,7 @@ function MessageBubble({
     return (
       <div style={{ textAlign: 'center' }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          {renderContent(message, projectId, onOpenFile, onImageLoad)}
+          {renderContent(message, projectId, onOpenFile, onImageLoad, onReply)}
         </Text>
       </div>
     )
@@ -1016,7 +1117,7 @@ function MessageBubble({
           overflow: 'hidden',
         }}
       >
-        {renderContent(message, projectId, onOpenFile, onImageLoad)}
+        {renderContent(message, projectId, onOpenFile, onImageLoad, onReply)}
       </div>
       {/* QUOTE 引用消息：被引用的原消息挂载在气泡下方（带竖线），类似微信「当前消息 + 引用原消息」 */}
       {message.type === 'QUOTE' ? (
@@ -1059,6 +1160,7 @@ function renderContent(
   projectId: string,
   onOpenFile?: (m: Message) => void,
   onImageLoad?: () => void,
+  onReply?: (m: Message) => void,
 ): React.ReactNode {
   switch (message.type) {
     case 'CODE': {
@@ -1106,25 +1208,44 @@ function renderContent(
     }
     case 'DIFF': {
       const c = message.content as DiffMessageContent
+      const rich = Boolean(c.displayCode || c.repositoryName || c.files)
+      const displayTitle = c.displayCode
+        ? `${c.displayCode}${c.repositoryName ? ` · ${c.repositoryName}` : ''}${c.sourceBranch ? ` / ${c.sourceBranch}` : ''}`
+        : (c.title ?? '代码交付')
       return (
-        <Link
-          to={PATHS.projectDiff(projectId, c.diffId)}
+        <div
           style={{
             display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            color: 'inherit',
-            textDecoration: 'none',
-            padding: '8px 10px',
-            border: '1px solid',
-            borderColor: 'rgba(59, 130, 246, 0.35)',
+            flexDirection: 'column',
+            gap: 6,
+            padding: '10px 12px',
+            border: '1px solid rgba(59, 130, 246, 0.35)',
             borderRadius: 8,
             background: 'rgba(59, 130, 246, 0.06)',
+            minWidth: 220,
           }}
         >
-          <BranchesOutlined style={{ fontSize: 18, color: '#3b82f6' }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{c.title ?? '代码交付'}</div>
+          {/* 头部：Diff 码 · 仓库 / 源分支 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <BranchesOutlined style={{ fontSize: 16, color: '#3b82f6' }} />
+            <Text strong style={{ fontSize: 14 }}>{displayTitle}</Text>
+          </div>
+          {/* 目标分支与变更统计 */}
+          {rich ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {c.repositoryName && c.targetBranch ? (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  -{c.repositoryName}/{c.targetBranch}
+                </Text>
+              ) : null}
+              {c.additions != null ? (
+                <Text style={{ fontSize: 12, color: '#16a34a' }}>+{c.additions}</Text>
+              ) : null}
+              {c.deletions != null ? (
+                <Text style={{ fontSize: 12, color: '#dc2626' }}>-{c.deletions}</Text>
+              ) : null}
+            </div>
+          ) : (
             <Text type="secondary" style={{ fontSize: 12 }}>
               {c.additions != null || c.deletions != null ? (
                 <>
@@ -1135,41 +1256,132 @@ function renderContent(
                 '点击查看 Diff'
               )}
             </Text>
+          )}
+          {/* 变更文件列表 */}
+          {c.files && c.files.length > 0 ? (
+            <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+              {c.files.map((file) => (
+                <div key={file} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {file}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {/* 操作：查看 Diff + 引用继续修改 */}
+          <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+            <Link to={PATHS.projectDiff(projectId, c.diffId)}>
+              <Button size="small" type="link" icon={<BranchesOutlined />}>查看 Diff</Button>
+            </Link>
+            {onReply ? (
+              <Button size="small" type="link" onClick={() => onReply(message)}>
+                引用继续修改
+              </Button>
+            ) : null}
           </div>
-        </Link>
+        </div>
       )
     }
     case 'TASK_STATUS': {
       const c = message.content as TaskStatusMessageContent
+      const steps = c.plan?.steps ?? []
+      const statusKey = c.status?.toUpperCase()
+      const diffReady =
+        statusKey === 'WAITING_DIFF_CONFIRMATION' ||
+        statusKey === 'DELIVERING' ||
+        statusKey === 'DELIVERY_FAILED' ||
+        statusKey === 'SUCCEEDED'
       return (
-        <Link
-          to={PATHS.projectTaskDetail(projectId, c.taskId)}
+        <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            color: 'inherit',
-            textDecoration: 'none',
-            padding: '8px 10px',
-            border: '1px solid',
-            borderColor: 'rgba(13, 155, 138, 0.35)',
+            padding: '10px 12px',
+            border: '1px solid rgba(13, 155, 138, 0.35)',
             borderRadius: 8,
             background: 'rgba(13, 155, 138, 0.06)',
           }}
         >
-          <CheckCircleOutlined style={{ fontSize: 18, color: '#0d9b8a' }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
+          {/* 头部：运行状态 + 当前阶段 */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <div style={{ fontWeight: 600, fontSize: 14 }}>
-              {c.node ? `${c.node} · ` : ''}任务状态更新
+              {c.phase ? `${c.phase} · ` : ''}任务运行状态
             </div>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {c.message ?? c.status}
-            </Text>
+            <Tag color={taskStatusColor(c.status)} style={{ margin: 0 }}>
+              {taskStatusLabel(c.status)}
+            </Tag>
           </div>
-          <Tag color={taskStatusColor(c.status)} style={{ margin: 0 }}>
-            {taskStatusLabel(c.status)}
-          </Tag>
-        </Link>
+          {c.message ? <Text style={{ display: 'block', marginTop: 2 }}>{c.message}</Text> : null}
+          {c.plan?.summary ? (
+            <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 2 }}>
+              {c.plan.summary}
+            </Text>
+          ) : null}
+          {c.deliveryMode ? (
+            <Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+              {c.deliveryMode}
+              {c.deliveryReason ? ` · ${c.deliveryReason}` : ''}
+            </Text>
+          ) : null}
+
+          {/* 执行计划步骤 */}
+          {steps.length > 0 ? (
+            <div style={{ marginTop: 8 }}>
+              {steps.map((step) => (
+                <div key={step.stepId} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '3px 0' }}>
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background: stepStatusColor(step.status),
+                      marginTop: 6,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13 }}>
+                      <Text strong>{step.sequence}.</Text> {step.title}
+                      {step.role ? <Text type="secondary" style={{ fontSize: 11 }}> · {step.role}</Text> : null}
+                    </div>
+                    {step.message ? (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {step.message}
+                      </Text>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {/* Diff 栏：任务进入交付阶段后可查看 Diff */}
+          <div
+            style={{
+              marginTop: 8,
+              paddingTop: 8,
+              borderTop: '1px dashed rgba(13, 155, 138, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {diffReady ? '任务已产生代码变更' : '代码变更生成后在此查看'}
+            </Text>
+            {diffReady ? (
+              <Link to={`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(c.taskId)}`}>
+                <Button size="small" type="link" icon={<BranchesOutlined />}>
+                  查看 Diff
+                </Button>
+              </Link>
+            ) : (
+              <Link to={PATHS.projectTaskDetail(projectId, c.taskId)}>
+                <Button size="small" type="link">
+                  查看任务
+                </Button>
+              </Link>
+            )}
+          </div>
+        </div>
       )
     }
     default: {
@@ -1193,6 +1405,15 @@ function taskStatusColor(status: string): string {
   if (s === 'FAILED' || s === 'CANCELLED') return 'red'
   if (s === 'RUNNING' || s === 'IN_PROGRESS') return 'blue'
   return 'default'
+}
+
+/** 执行计划步骤状态 → 圆点颜色 */
+function stepStatusColor(status: string): string {
+  const s = status.toUpperCase()
+  if (s === 'SUCCEEDED') return '#16a34a'
+  if (s === 'RUNNING') return '#2563eb'
+  if (s === 'FAILED') return '#dc2626'
+  return '#cbd5e1'
 }
 
 /** 任务状态 → 卡片 tag 中文标签（§5.4：终态用「已完成/失败」而非英文枚举） */

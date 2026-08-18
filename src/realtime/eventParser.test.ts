@@ -3,7 +3,7 @@ import { parseProjectTaskEvent, PROJECT_TASK_EVENT_TYPES } from './eventParser'
 
 describe('project SSE event parsing', () => {
   it.each(PROJECT_TASK_EVENT_TYPES)('parses the new event %s', (eventType) => {
-    const ids = eventType === 'message.created'
+    const ids = eventType === 'message.created' || eventType === 'message.updated'
     ? { groupId: 'group-1', messageId: 'message-1' }
     : eventType === 'group.created' || eventType === 'group.updated' || eventType === 'group.archived' || eventType === 'group.member.updated'
       ? { groupId: 'group-1' }

@@ -26,11 +26,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
+  gap: 12px;
 }
 
 .header {
   margin-bottom: 26px;
+}
+
+.listHeading {
+  margin-bottom: 16px;
 }
 
 .title {
@@ -47,18 +51,45 @@
 }
 
 .filters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px 16px;
+  display: flex;
+  flex-direction: column;
   margin-bottom: 24px;
   padding: 14px 0 2px;
-  margin-inline: 0;
 }
 
-.filters > :global(.ant-col) {
-  width: auto;
-  max-width: none;
-  padding-inline: 0;
+.filterRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}
+
+.filterCell {
+  flex: 1 1 160px;
+  min-width: 160px;
+  max-width: 280px;
+}
+
+.searchCell {
+  min-width: 0;
+}
+
+.searchRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.searchControl {
+  width: 280px;
+  height: 37px;
+}
+
+.resetButton {
+  flex: 0 0 auto;
+  align-self: flex-end;
+  height: 37px;
+  border-color: #dfe6ef;
+  color: #0d8d91;
 }
 
 .filterLabel {
@@ -67,50 +98,23 @@
   color: #6d7d95;
 }
 
-.filterControl,
-.statusControl {
+.filterControl {
   width: 100%;
 }
 
 .filters :global(.ant-select),
-.filters :global(.ant-input) {
-  height: 40px;
+.filters :global(.ant-input-affix-wrapper) {
+  height: 37px !important;
   box-sizing: border-box;
 }
 
-.searchControl {
-  width: 100%;
-  height: 40px;
-  border-color: #dfe6ef;
-}
-
 .filterControl :global(.ant-select-selector),
-.statusControl :global(.ant-select-selector) {
-  height: 40px;
-  min-height: 40px;
-  border-color: #dfe6ef;
-  background: #ffffff;
-}
-
-.filterControl :global(.ant-select-selection-item),
-.statusControl :global(.ant-select-selection-item) {
-  line-height: 38px;
-}
-
-.statusAndReset {
-  display: flex;
-  width: 100%;
-}
-
-.statusAndReset .statusControl {
-  flex: 1;
-  height: 40px;
-}
-
-.statusAndReset :global(.ant-btn) {
-  height: 40px;
-  border-color: #dfe6ef;
-  color: #0d8d91;
+.searchControl :global(.ant-input) {
+  height: 22px !important;
+  line-height: 22px !important;
+  border-color: #dfe6ef !important;
+  background: #ffffff !important;
+  width: 186px;
 }
 
 .listHeading {

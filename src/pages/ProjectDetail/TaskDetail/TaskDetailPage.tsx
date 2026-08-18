@@ -1,24 +1,24 @@
-import { Alert, Breadcrumb, Button, Card, Form, Input, Modal, Result, Spin, Tag, Tooltip, Typography } from 'antd'
-import { ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined, CodeOutlined, CopyOutlined, ExperimentOutlined, FileTextOutlined, LinkOutlined, TeamOutlined } from '@ant-design/icons'
+import { Alert, Breadcrumb, Button, Card, Form, Input, Result, Spin, Tag, Tooltip, Typography } from 'antd'
+import { ArrowLeftOutlined, ArrowRightOutlined, CodeOutlined, CopyOutlined, ExperimentOutlined, FileTextOutlined, TeamOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/api'
-import { useCancelTask, useConfirmTaskDiffReview, useDiffs, useRejectTaskDiffReview, useRetryTaskDiffReviewDelivery, useTask, useTaskArtifacts, useTaskDiffReview, useTaskSteps } from '@/hooks/task-model'
-import type { DiffReviewBatch, Task, TaskArtifact, TaskArtifactType, TaskStep } from '@/types/task-model'
+import { useCancelTask, useConfirmTaskDiffReview, useDiffs, useRejectTaskDiffReview, useRetryTaskDiffReviewDelivery, useTask, useTaskDiffReview, useTaskRuns, useTaskSteps } from '@/hooks/task-model'
+import type { DiffReviewBatch, Task, TaskRunSummary, TaskStep } from '@/types/task-model'
 import { PATHS } from '@/routes/paths'
 import { useTaskCompletedWithoutCode } from '@/store/taskNoCodeChangeStore'
 import { TaskModelStatusTag } from '../TaskCenter/TaskModelStatusTag'
+import { TaskRunInspectorPanel } from './TaskRunInspectorDrawer'
 import styles from './TaskDetailPage.module.scss'
 
 const { Text, Title } = Typography
-const ARTIFACT_TYPES: TaskArtifactType[] = ['PLAN', 'CODING', 'TESTING', 'REVIEWING']
 
 export default function TaskDetailPage() {
   const { projectId = '', taskId = '' } = useParams<{ projectId: string; taskId: string }>()
   const location = useLocation()
   const taskQuery = useTask(projectId, taskId)
   const stepsQuery = useTaskSteps(projectId, taskId, { limit: 100 })
-  const artifactsQuery = useTaskArtifacts(projectId, taskId)
+  const taskRunsQuery = useTaskRuns(projectId, taskId, { limit: 5 })
   const diffsQuery = useDiffs(projectId, { taskId, limit: 100 })
   const cancelMutation = useCancelTask(projectId)
   const completedWithoutCode = useTaskCompletedWithoutCode(projectId, taskId)
@@ -28,8 +28,13 @@ export default function TaskDetailPage() {
   const diffReviewQuery = useTaskDiffReview(projectId, taskId, reviewEnabled)
 
   // G1：交付中心等入口带 ?diffReviewBatchId 跳转时，定位到「任务产出与交付」卡片
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [hasClearedRunSelection, setHasClearedRunSelection] = useState(false)
   const paramBatchId = searchParams.get('diffReviewBatchId')
+  const selectedRunId = searchParams.get('runId')
+  useEffect(() => {
+    setHasClearedRunSelection(false)
+  }, [taskId])
   useEffect(() => {
     if (!paramBatchId) return
     const attentionBatchId = taskQuery.data?.attention?.diffReviewBatchId
@@ -47,6 +52,8 @@ export default function TaskDetailPage() {
   if (!task || task.projectId !== projectId || task.id !== taskId) return <DetailState description="任务不存在或不可见" />
   const currentTask = normalizeTaskForDisplay(task)
   const steps = stepsQuery.data?.data ?? []
+  const recentRuns = taskRunsQuery.data?.data ?? []
+  const inspectedRunId = hasClearedRunSelection ? null : selectedRunId ?? recentRuns[0]?.id ?? null
 
   function handleCancel() {
     if (!window.confirm('确认取消此任务？服务端将按安全检查点停止执行。')) return
@@ -58,17 +65,41 @@ export default function TaskDetailPage() {
     if (target && typeof target.scrollIntoView === 'function') target.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }
 
+  function openRun(taskRunId: string) {
+    setHasClearedRunSelection(false)
+    const next = new URLSearchParams(searchParams)
+    next.set('runId', taskRunId)
+    setSearchParams(next)
+  }
+
+  function clearRunSelection() {
+    setHasClearedRunSelection(true)
+    if (!selectedRunId) return
+    const next = new URLSearchParams(searchParams)
+    next.delete('runId')
+    setSearchParams(next)
+  }
+
   return (
     <div className={styles.page}>
       <div className={styles.topBar}><Breadcrumb items={[{ title: '任务中心' }, { title: '任务详情' }]} /></div>
-      <CompactTaskHeader task={currentTask} projectId={projectId} location={location} onCancel={handleCancel} cancelPending={cancelMutation.isPending} completedWithoutCode={completedWithoutCode} />
-      {cancelMutation.error ? <CancelError error={cancelMutation.error} onRefresh={() => void taskQuery.refetch()} /> : null}
-      {currentTask.attention ? <AttentionBanner projectId={projectId} task={currentTask} steps={steps} onLocate={locate} /> : null}
-      <main className={styles.content}>
-        <ExecutionFlowRow projectId={projectId} taskId={currentTask.id} task={currentTask} query={stepsQuery} steps={steps} />
-        <RequirementContextRow projectId={projectId} task={currentTask} />
-        <OutputDeliveryRow projectId={projectId} taskId={currentTask.id} task={currentTask} artifactsQuery={artifactsQuery} diffsQuery={diffsQuery} diffReviewQuery={diffReviewQuery} reviewEnabled={reviewEnabled} completedWithoutCode={completedWithoutCode} onRefresh={() => { void diffReviewQuery.refetch(); void taskQuery.refetch() }} />
-      </main>
+      <div className={styles.taskWorkspace}>
+        <div className={styles.taskWorkspaceMain}>
+          <CompactTaskHeader task={currentTask} projectId={projectId} location={location} onCancel={handleCancel} cancelPending={cancelMutation.isPending} completedWithoutCode={completedWithoutCode} />
+          {cancelMutation.error ? <CancelError error={cancelMutation.error} onRefresh={() => void taskQuery.refetch()} /> : null}
+          {currentTask.attention ? <AttentionBanner task={currentTask} steps={steps} onLocate={locate} onOpenRun={openRun} /> : null}
+          <main className={styles.content}>
+            <ExecutionFlowRow task={currentTask} query={stepsQuery} steps={steps} onOpenRun={openRun} />
+            <div className={styles.workbenchMain}>
+              <RecentExecutionPanel query={taskRunsQuery} onOpenRun={openRun} onClearSelection={clearRunSelection} selectedRunId={inspectedRunId} />
+              <DeliveryPanel projectId={projectId} taskId={currentTask.id} task={currentTask} diffsQuery={diffsQuery} diffReviewQuery={diffReviewQuery} reviewEnabled={reviewEnabled} completedWithoutCode={completedWithoutCode} onRefresh={() => { void diffReviewQuery.refetch(); void taskQuery.refetch() }} />
+            </div>
+          </main>
+        </div>
+        <aside className={styles.taskWorkspaceAside}>
+          <TaskRunInspectorPanel projectId={projectId} task={currentTask} taskId={currentTask.id} taskRunId={inspectedRunId} onRunChange={openRun} />
+        </aside>
+      </div>
     </div>
   )
 }
@@ -93,45 +124,100 @@ function CompactTaskHeader({ task, projectId, location, onCancel, cancelPending,
           <Title level={2} className={styles.taskTitle}>{display(task.title)}</Title>
           <Button type="text" size="small" className={styles.copyButton} icon={<CopyOutlined />} aria-label="复制任务 ID" title={`复制任务 ID：${task.id}`} onClick={() => void navigator.clipboard?.writeText(task.id)} />
         </div>
-        {task.status === 'PLANNING' ? <Text type="secondary">任务 ID：{task.id}</Text> : null}
       </div>
       <div className={styles.headerMeta}>
         <HeaderMeta label="需求群" value={task.requirementGroup?.name} />
         <HeaderMeta label="当前阶段" value={task.executionSummary.currentStageTitle ?? task.executionSummary.currentStage} />
-        <HeaderMeta label="创建者" value={task.createdByUser?.displayName} />
-        <HeaderMeta label="创建时间" value={formatDate(task.createdAt)} />
-        <HeaderMeta label="更新时间" value={formatDate(task.updatedAt)} />
-        <HeaderMeta label="仓库" value={`${task.repositories.length} 个`} />
+        <HeaderMeta label="仓库" value={`${task.repositories.length || task.repositoryIds?.length || 0} 个`} />
+        <HeaderMeta label="更新于" value={formatDate(task.updatedAt)} />
+        <RequirementMeta task={task} />
       </div>
+      <RequirementSourceLink projectId={projectId} requirementGroupId={task.requirementGroup?.id ?? null} />
     </header>
   )
 }
 
-function AttentionBanner({ projectId, task, steps, onLocate }: { projectId: string; task: Task; steps: TaskStep[]; onLocate: (id: string) => void }) {
-  const navigate = useNavigate()
+function AttentionBanner({ task, steps, onLocate, onOpenRun }: { task: Task; steps: TaskStep[]; onLocate: (id: string) => void; onOpenRun: (taskRunId: string) => void }) {
   const attention = task.attention!
   const attentionRunId = getAttentionRunId(attention)
   const latestRunId = steps.find((step) => step.latestRun)?.latestRun?.id ?? null
   const runId = attentionRunId ?? null
   const isOutput = attention.kind === 'DIFF_CONFIRMATION_REQUIRED' || attention.kind === 'DELIVERY_FAILED'
-  const action = runId ? <Button size="small" onClick={() => navigate(PATHS.projectTaskRunDetail(projectId, task.id, runId))}>查看关联运行</Button> : isOutput ? <Button size="small" onClick={() => onLocate('output-delivery')}>查看产出与交付</Button> : <Button size="small" onClick={() => onLocate('execution-flow')}>{latestRunId ? '查看执行流程' : '定位执行流程'}</Button>
+  const action = runId ? <Button size="small" onClick={() => onOpenRun(runId)}>查看关联运行</Button> : isOutput ? <Button size="small" onClick={() => onLocate('output-delivery')}>查看产出与交付</Button> : <Button size="small" onClick={() => onLocate('execution-flow')}>{latestRunId ? '查看执行流程' : '定位执行流程'}</Button>
   return <section className={styles.attentionBanner} data-testid="task-attention-banner"><Alert type="warning" showIcon title={<span><Tag color="orange">{attention.kind}</Tag>{attention.diffReviewBatchId ? <Tag color="blue">批次 {attention.diffReviewBatchId}</Tag> : null}{attention.title}</span>} description={attention.summary} action={action} /></section>
 }
 
-function ExecutionFlowRow({ projectId, taskId, task, query, steps }: { projectId: string; taskId: string; task: Task; query: ReturnType<typeof useTaskSteps>; steps: TaskStep[] }) {
-  const navigate = useNavigate()
+function PlanningSkeletonCard({ index }: { index: number }) {
+  const delays = ['0ms', '150ms', '300ms']
+  const delay = delays[index % 3]
+  return (
+    <div
+      className={`${styles.planningStepCard} ${styles.planningCardFadeIn}`}
+      style={{ animationDelay: delay }}
+      data-testid="planning-step-card"
+    >
+      <div className={styles.planningBrainIcon}>
+        <ExperimentOutlined />
+      </div>
+      <div className={`${styles.skeletonLine} ${styles.skeletonHeadingLine}`} />
+      <div className={styles.planningMeta}>
+        <div className={`${styles.skeletonLine} ${styles.skeletonMetaLine}`} />
+        <div className={`${styles.skeletonLine} ${styles.skeletonMetaLine}`} style={{ width: '75%' }} />
+        <div className={`${styles.skeletonLine} ${styles.skeletonMetaLine}`} style={{ width: '85%' }} />
+      </div>
+      <div className={styles.planningFooter}>
+        <div className={`${styles.skeletonLine} ${styles.skeletonFooterLine}`} />
+      </div>
+    </div>
+  )
+}
+
+function ExecutionFlowRow({ task, query, steps, onOpenRun }: { task: Task; query: ReturnType<typeof useTaskSteps>; steps: TaskStep[]; onOpenRun: (taskRunId: string) => void }) {
   const ordered = steps.slice().sort((left, right) => left.sequenceNo - right.sequenceNo)
+  const isPlanning = task.status === 'PLANNING'
   return (
     <section className={styles.executionFlowRow} id="execution-flow" data-testid="execution-flow-row">
-      <RowHeading title="执行流程" meta={ordered.length > 0 ? `${ordered.length} 个步骤` : task.status === 'PLANNING' ? '规划中' : undefined} />
-      {query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="TaskStep" error={query.error} /> : ordered.length === 0 ? <InlineState text={task.status === 'PLANNING' ? '规划 Agent 正在生成执行方案' : '暂无执行步骤'} /> : <div className={styles.flowScroller}><div className={styles.flowGrid}>{ordered.map((step) => <StepCard key={step.id} step={step} onRun={(runId) => navigate(PATHS.projectTaskRunDetail(projectId, taskId, runId))} />)}</div></div>}
+      <RowHeading
+        title="执行流程"
+        meta={ordered.length > 0 ? `${ordered.length} 个步骤` : isPlanning ? '规划中' : undefined}
+      />
+      {query.isLoading ? (
+        <InlineState loading />
+      ) : query.isError ? (
+        <SectionError resource="TaskStep" error={query.error} />
+      ) : isPlanning ? (
+        <div className={styles.flowScroller}>
+          <div className={styles.flowPlanningState}>
+            {[0, 1, 2].map((i) => <PlanningSkeletonCard key={i} index={i} />)}
+          </div>
+        </div>
+      ) : ordered.length === 0 ? (
+        <div className={styles.flowEmptyState} data-testid="execution-flow-empty">
+          <Text type="secondary">暂无执行步骤</Text>
+        </div>
+      ) : (
+        <div className={styles.flowScroller}>
+          <div className={styles.flowGrid}>
+            {ordered.map((step) => <StepCard key={step.id} step={step} onRun={onOpenRun} />)}
+          </div>
+        </div>
+      )}
     </section>
   )
 }
 
 function StepCard({ step, onRun }: { step: TaskStep; onRun: (runId: string) => void }) {
   const current = step.status === 'RUNNING'
-  return <article className={`${styles.stepCard} ${current ? styles.stepCardCurrent : ''}`}><div className={styles.stepHeading}><span className={styles.stepIcon}>{stepIcon(step.role)}</span><span className={styles.stepNumber}>{step.sequenceNo}.</span><Tooltip title={display(step.title)}><Text strong className={styles.stepTitle}>{display(step.title)}</Text></Tooltip><Tag color={stepStatusColor(step.status)}>{step.status}</Tag></div><div className={styles.stepDetails}><StepInfo label="Agent" value={display(step.agent?.name)} /><StepInfo label="仓库" value={display(step.repository?.name)} /><StepInfo label="验收" value={display(step.acceptanceNotes)} /><StepInfo label="运行" value={`${step.runCount} 次`} /></div><div className={styles.stepFooter}>{step.latestRun ? <Button type="link" size="small" onClick={() => onRun(step.latestRun!.id)}>查看最新运行</Button> : <Text type="secondary">尚未运行</Text>}{step.latestRun ? <ArrowRightOutlined /> : null}</div></article>
+  return <article className={`${styles.stepCard} ${current ? styles.stepCardCurrent : ''}`}><div className={styles.stepHeading}><span className={styles.stepIcon}>{stepIcon(step.role)}</span><span className={styles.stepNumber}>{step.sequenceNo}.</span><Tooltip title={display(step.title)}><Text strong className={styles.stepTitle}>{display(step.title)}</Text></Tooltip><Tag color={stepStatusColor(step.status)}>{step.status}</Tag></div><div className={styles.stepDetails}><StepInfo label="Agent" value={display(step.agent?.name)} /><StepInfo label="仓库" value={display(step.repository?.name)} /><StepInfo label="说明" value={display(step.acceptanceNotes)} /><StepInfo label="运行" value={`${step.runCount} 次`} /></div><div className={styles.stepFooter}>{step.latestRun ? <Button type="link" size="small" onClick={() => onRun(step.latestRun!.id)}>查看最新运行</Button> : <Text type="secondary">尚未运行</Text>}{step.latestRun ? <ArrowRightOutlined /> : null}</div></article>
+}
+
+function RecentExecutionPanel({ query, onOpenRun, onClearSelection, selectedRunId }: { query: ReturnType<typeof useTaskRuns>; onOpenRun: (taskRunId: string) => void; onClearSelection: () => void; selectedRunId: string | null }) {
+  const runs = [...(query.data?.data ?? [])].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+  return <section className={styles.recentExecutionPanel} data-testid="recent-execution-panel"><div className={styles.panelHeading}><Title level={3}>最近执行</Title></div>{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="执行记录" error={query.error} /> : runs.length === 0 ? <Text type="secondary" className={styles.compactEmpty}>尚无执行记录</Text> : <div className={styles.recentExecutionScroller} data-testid="recent-execution-blank" onClick={(event) => { if (event.target === event.currentTarget) onClearSelection() }}><div className={styles.recentExecutionGrid}>{runs.map((run) => <RecentRunItem key={run.id} run={run} selected={run.id === selectedRunId} onOpen={() => onOpenRun(run.id)} />)}</div></div>}</section>
+}
+
+function RecentRunItem({ run, selected, onOpen }: { run: TaskRunSummary; selected: boolean; onOpen: () => void }) {
+  return <button type="button" className={`${styles.recentRunItem} ${selected ? styles.recentRunItemSelected : ''}`} onClick={onOpen}><div><Text strong ellipsis>{run.taskStepTitle || roleLabel(run.role)}</Text><Tag color={runStatusColor(run.status)}>{run.status}</Tag></div><Text type="secondary" ellipsis>{run.statusSummary ?? formatDate(run.updatedAt)}</Text><Text type="secondary">产物 {run.artifactSummary.total} · Diff {run.artifactSummary.diffCount}</Text></button>
 }
 
 function StepInfo({ label, value }: { label: string; value: string }) {
@@ -146,6 +232,19 @@ function stepStatusColor(status: TaskStep['status']): 'default' | 'processing' |
   return 'default'
 }
 
+function runStatusColor(status: TaskRunSummary['status']): 'default' | 'processing' | 'success' | 'error' | 'warning' {
+  if (status === 'RUNNING') return 'processing'
+  if (status === 'SUCCEEDED') return 'success'
+  if (status === 'FAILED' || status === 'BLOCKED' || status === 'CANCELLED') return 'error'
+  if (status === 'WAITING_INPUT' || status === 'WAITING_APPROVAL') return 'warning'
+  return 'default'
+}
+
+function roleLabel(role: TaskStep['role'] | TaskRunSummary['role']): string {
+  const labels: Record<TaskStep['role'], string> = { ORCHESTRATOR: '编排器', PLANNER: '规划器', DEVELOPER: '开发者', TESTER: '测试器', REVIEWER: '审查者' }
+  return labels[role]
+}
+
 function stepIcon(role: TaskStep['role']) {
   if (role === 'PLANNER') return <FileTextOutlined />
   if (role === 'DEVELOPER') return <CodeOutlined />
@@ -153,41 +252,26 @@ function stepIcon(role: TaskStep['role']) {
   return <TeamOutlined />
 }
 
-function RequirementContextRow({ projectId, task }: { projectId: string; task: Task }) {
+function DeliveryPanel({ projectId, taskId, task, diffsQuery, diffReviewQuery, reviewEnabled, completedWithoutCode, onRefresh }: { projectId: string; taskId: string; task: Task; diffsQuery: ReturnType<typeof useDiffs>; diffReviewQuery: ReturnType<typeof useTaskDiffReview>; reviewEnabled: boolean; completedWithoutCode: boolean; onRefresh: () => void }) {
   const navigate = useNavigate()
-  const [requirementOpen, setRequirementOpen] = useState(false)
-  const [criteriaOpen, setCriteriaOpen] = useState(false)
-  const isLong = task.requirement.length > 260
-  const visibleCriteria = task.acceptanceCriteria.slice(0, 3)
-  return (
-    <section className={styles.requirementRow} data-testid="requirement-context-row">
-      <Card className={styles.contextCard} size="small"><div className={styles.cardHeading}><FileTextOutlined />需求描述</div><Typography.Paragraph ellipsis={!requirementOpen && isLong ? { rows: 4 } : false} className={styles.requirementSummary}>{display(task.requirement)}</Typography.Paragraph>{isLong ? <Button type="link" size="small" onClick={() => setRequirementOpen((value) => !value)}>{requirementOpen ? '收起需求' : '查看完整需求'}</Button> : null}</Card>
-      <Card className={styles.contextCard} size="small"><div className={styles.cardHeading}><CheckCircleOutlined />验收标准 <Text type="secondary">{task.acceptanceCriteria.filter((criterion) => criterion.status === 'SATISFIED').length}/{task.acceptanceCriteria.length}</Text></div>{visibleCriteria.length > 0 ? <div className={styles.criteriaPreview}>{visibleCriteria.map((criterion) => <div key={criterion.id}><Tag color={criterion.status === 'SATISFIED' ? 'green' : criterion.status === 'UNSATISFIED' ? 'red' : undefined}>{criterion.status}</Tag><Text ellipsis>{criterion.title}</Text></div>)}</div> : <Text type="secondary" className={styles.compactEmpty}>暂无验收标准</Text>}{task.acceptanceCriteria.length > 3 ? <Button type="link" size="small" onClick={() => setCriteriaOpen(true)}>查看其余 {task.acceptanceCriteria.length - 3} 条</Button> : null}</Card>
-      {task.sourceMessage ? <Card className={styles.contextCard} size="small"><div className={styles.cardHeading}><LinkOutlined />来源消息</div><Text type="secondary">{task.sourceMessage.sender.displayName} · {formatDate(task.sourceMessage.createdAt)}</Text><Text ellipsis className={styles.sourceExcerpt}>{task.sourceMessage.textExcerpt}</Text>{task.requirementGroup ? <Button type="link" size="small" onClick={() => navigate(PATHS.projectReqChat(projectId, task.requirementGroup!.id))}>查看原消息</Button> : null}</Card> : null}
-      <Modal title="完整需求" open={requirementOpen} footer={null} onCancel={() => setRequirementOpen(false)}>{task.requirement}</Modal>
-      <Modal title="全部验收标准" open={criteriaOpen} footer={null} onCancel={() => setCriteriaOpen(false)}><div className={styles.criteriaModal}>{task.acceptanceCriteria.map((criterion) => <div key={criterion.id}><Tag>{criterion.status}</Tag><Text>{criterion.title}</Text></div>)}</div></Modal>
-    </section>
-  )
+  return <section className={styles.deliveryPanel} id="output-delivery" data-testid="delivery-panel"><div className={styles.panelHeading}><Title level={3}>交付</Title><Button type="link" size="small" onClick={() => navigate(`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(taskId)}`)}>查看全部变更</Button></div><div className={styles.deliveryGrid}><CodeChangeCard projectId={projectId} taskId={taskId} task={task} query={diffsQuery} completedWithoutCode={completedWithoutCode} /><DeliveryCard projectId={projectId} task={task} query={diffReviewQuery} enabled={reviewEnabled} completedWithoutCode={completedWithoutCode} onRefresh={onRefresh} /></div></section>
 }
 
-function OutputDeliveryRow({ projectId, taskId, task, artifactsQuery, diffsQuery, diffReviewQuery, reviewEnabled, completedWithoutCode, onRefresh }: { projectId: string; taskId: string; task: Task; artifactsQuery: ReturnType<typeof useTaskArtifacts>; diffsQuery: ReturnType<typeof useDiffs>; diffReviewQuery: ReturnType<typeof useTaskDiffReview>; reviewEnabled: boolean; completedWithoutCode: boolean; onRefresh: () => void }) {
-  return <section className={styles.outputRow} id="output-delivery" data-testid="output-delivery-row"><RowHeading title="任务产出与交付" /><div className={styles.outputGrid}><ArtifactsCard projectId={projectId} taskId={taskId} query={artifactsQuery} /><DiffCard projectId={projectId} taskId={taskId} task={task} query={diffsQuery} completedWithoutCode={completedWithoutCode} /><DeliveryCard projectId={projectId} task={task} query={diffReviewQuery} enabled={reviewEnabled} completedWithoutCode={completedWithoutCode} onRefresh={onRefresh} /></div></section>
-}
-
-function ArtifactsCard({ projectId, taskId, query }: { projectId: string; taskId: string; query: ReturnType<typeof useTaskArtifacts> }) {
-  const navigate = useNavigate()
-  const artifacts = [...(query.data ?? [])].sort((left, right) => right.sequenceNo - left.sequenceNo)
-  const latestByType = ARTIFACT_TYPES.map((type) => ({ type, artifact: artifacts.find((artifact) => artifact.artifactType === type) })).filter((item): item is { type: TaskArtifactType; artifact: TaskArtifact } => Boolean(item.artifact))
-  return <Card className={styles.outputCard} size="small" data-testid="artifacts-card"><div className={styles.cardHeading}>执行产物 <Text type="secondary">{artifacts.length} 个</Text></div>{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="执行产物" error={query.error} /> : latestByType.length === 0 ? <Text type="secondary" className={styles.compactEmpty}>暂无执行产物</Text> : <div className={styles.artifactSummaryGrid}>{latestByType.map(({ type, artifact }) => <div className={styles.artifactSummary} key={type}><div><Tag>{type}</Tag><Text strong>{artifact.title}</Text></div><Text type="secondary" ellipsis>{display(artifact.description)}</Text><div><Tag color={artifact.status === 'SUCCEEDED' ? 'green' : artifact.status === 'FAILED' ? 'red' : undefined}>{artifact.status ?? 'PENDING'}</Tag>{artifact.taskRunId ? <Button type="link" size="small" onClick={() => navigate(PATHS.projectTaskRunDetail(projectId, taskId, artifact.taskRunId!))}>查看运行</Button> : null}</div></div>)}</div>}</Card>
-}
-
-function DiffCard({ projectId, taskId, task, query, completedWithoutCode }: { projectId: string; taskId: string; task: Task; query: ReturnType<typeof useDiffs>; completedWithoutCode: boolean }) {
+function CodeChangeCard({ projectId, taskId, task, query, completedWithoutCode }: { projectId: string; taskId: string; task: Task; query: ReturnType<typeof useDiffs>; completedWithoutCode: boolean }) {
   const navigate = useNavigate()
   const diffs = query.data?.data ?? []
-  const repositories = new Map<string, { name: string; files: number; additions: number; deletions: number; ids: string[] }>()
-  for (const diff of diffs) { const repository = task.repositories.find((item) => item.repositoryId === diff.repositoryId); const summary = repositories.get(diff.repositoryId) ?? { name: repository?.name ?? task.title, files: 0, additions: 0, deletions: 0, ids: [] }; summary.files += diff.changeStats.files; summary.additions += diff.changeStats.additions; summary.deletions += diff.changeStats.deletions; summary.ids.push(diff.id); repositories.set(diff.repositoryId, summary) }
+  const repositories = new Map<string, { name: string; files: number; additions: number; deletions: number; diffIds: string[] }>()
+  for (const diff of diffs) {
+    const repository = task.repositories.find((item) => item.repositoryId === diff.repositoryId)
+    const summary = repositories.get(diff.repositoryId) ?? { name: repository?.name ?? '未命名仓库', files: 0, additions: 0, deletions: 0, diffIds: [] }
+    summary.files += diff.changeStats.files
+    summary.additions += diff.changeStats.additions
+    summary.deletions += diff.changeStats.deletions
+    summary.diffIds.push(diff.id)
+    repositories.set(diff.repositoryId, summary)
+  }
   const totals = [...repositories.values()].reduce((sum, repository) => ({ files: sum.files + repository.files, additions: sum.additions + repository.additions, deletions: sum.deletions + repository.deletions }), { files: 0, additions: 0, deletions: 0 })
-  return <Card className={styles.outputCard} size="small" data-testid="diff-card"><div className={styles.cardHeading}><CodeOutlined />代码变更 <Text type="secondary">{diffs.length} 个 Diff / {repositories.size} 个仓库</Text></div>{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="Diff" error={query.error} /> : diffs.length === 0 ? <Text type="secondary" className={styles.compactEmpty}>{completedWithoutCode ? '任务已完成，无代码变更' : isDiffReviewTask(task.status) ? '当前阶段尚未生成 Diff' : '暂无代码变更'}</Text> : <><Text type="secondary">files {totals.files} · +{totals.additions} / -{totals.deletions}</Text><div className={styles.diffSummaryList}>{[...repositories.entries()].map(([repositoryId, summary]) => <div key={repositoryId} className={styles.diffSummaryRow}><Text ellipsis>{summary.name}</Text><Text type="secondary">{summary.files} files · +{summary.additions} / -{summary.deletions}</Text>{summary.ids.map((diffId) => <Button key={diffId} type="link" size="small" onClick={() => navigate(PATHS.projectDiff(projectId, diffId), { state: { from: PATHS.projectTaskDetail(projectId, taskId) } })}>查看完整 Diff</Button>)}</div>)}</div></>}</Card>
+  return <Card className={styles.codeChangeCard} size="small" data-testid="code-change-card"><div className={styles.cardHeading}><span><CodeOutlined />代码变更</span><Text type="secondary">{diffs.length} 个 Diff / {repositories.size} 个仓库</Text></div>{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="代码变更" error={query.error} /> : diffs.length === 0 ? <Text type="secondary" className={styles.compactEmpty}>{completedWithoutCode ? '任务已完成，未产生代码变更' : '尚未产生代码变更'}</Text> : <><Text type="secondary">files {totals.files} · +{totals.additions} / -{totals.deletions}</Text><div className={styles.diffSummaryList}>{[...repositories.entries()].map(([repositoryId, summary]) => <div key={repositoryId} className={styles.diffSummaryRow}><Text ellipsis>{summary.name}</Text><Text type="secondary">{summary.files} files · +{summary.additions} / -{summary.deletions}</Text>{summary.diffIds.map((diffId) => <Button key={diffId} type="link" size="small" onClick={() => navigate(PATHS.projectDiff(projectId, diffId), { state: { from: PATHS.projectTaskDetail(projectId, taskId) } })}>查看完整 Diff</Button>)}</div>)}</div></>}</Card>
 }
 
 function DeliveryCard({ projectId, task, query, enabled, completedWithoutCode, onRefresh }: { projectId: string; task: Task; query: ReturnType<typeof useTaskDiffReview>; enabled: boolean; completedWithoutCode: boolean; onRefresh: () => void }) {
@@ -253,12 +337,19 @@ function normalizeTaskForDisplay(task: Task): Task {
 
 function RowHeading({ title, meta }: { title: string; meta?: string }) { return <div className={styles.rowHeading}><Title level={4}>{title}</Title>{meta ? <Text type="secondary">{meta}</Text> : null}</div> }
 function HeaderMeta({ label, value }: { label: string; value: string | null | undefined }) { return <div className={styles.headerMetaItem}><Text type="secondary">{label}</Text><Text ellipsis strong>{display(value)}</Text></div> }
+function RequirementMeta({ task }: { task: Task }) {
+  return <div className={styles.headerMetaItem}>
+    <Text type="secondary">需求说明</Text>
+    <Tooltip title={display(task.requirement)}><Text ellipsis strong>{display(task.requirement)}</Text></Tooltip>
+  </div>
+}
+function RequirementSourceLink({ projectId, requirementGroupId }: { projectId: string; requirementGroupId: string | null }) { const navigate = useNavigate(); return requirementGroupId ? <div className={styles.requirementSourceLink}><Button type="link" size="small" onClick={() => navigate(PATHS.projectReqChat(projectId, requirementGroupId))}>查看完整需求</Button></div> : null }
 function InlineState({ loading = false, text }: { loading?: boolean; text?: string }) { return <div className={styles.inlineState}>{loading ? <Spin size="small" /> : null}<Text type="secondary">{text ?? '正在加载'}</Text></div> }
 function SectionError({ resource, error }: { resource: string; error: Error | null }) { const status = error instanceof ApiError ? error.status : undefined; return <Alert type="error" showIcon title={status === 403 ? `暂无权限查看${resource}` : `${resource}加载失败`} /> }
 function CancelError({ error, onRefresh }: { error: Error; onRefresh: () => void }) { const status = error instanceof ApiError ? error.status : undefined; return <Alert className={styles.executionAlert} type="error" showIcon title={status === 409 ? '任务状态已变化，请刷新详情' : '取消任务失败'} action={status === 409 ? <Button type="link" onClick={onRefresh}>刷新</Button> : undefined} /> }
 function DetailState({ description, loading = false }: { description: string; loading?: boolean }) { return <div className={styles.page}><div className={styles.panelState}>{loading ? <Spin /> : <Result status="404" title={description} />}</div></div> }
 function DetailError({ error, resource }: { error: Error | null; resource: string }) { const status = error instanceof ApiError ? error.status : undefined; return <div className={styles.page}><Result status={status === 403 ? '403' : status === 404 ? '404' : 'error'} title={status === 403 ? `暂无权限查看${resource}` : status === 404 ? `${resource}不存在或不可见` : `${resource}加载失败`} /></div> }
-function isDiffReviewTask(status: Task['status'] | undefined): boolean { return status === 'WAITING_DIFF_CONFIRMATION' || status === 'DELIVERING' || status === 'DELIVERY_FAILED' || status === 'SUCCEEDED' }
+function isDiffReviewTask(status: Task['status'] | undefined): boolean { return status === 'WAITING_DIFF_CONFIRMATION' || status === 'WAITING_PREFLIGHT' || status === 'DIFF_REJECTED' || status === 'DELIVERING' || status === 'DELIVERY_FAILED' || status === 'SUCCEEDED' }
 function getAttentionRunId(attention: Task['attention']): string | null { return attention?.taskRunId ?? null }
 function errorCode(error: Error | null): string | undefined { if (!(error instanceof ApiError) || !error.body || typeof error.body !== 'object' || !('error' in error.body)) return undefined; const bodyError = (error.body as { error?: { code?: unknown } }).error; return typeof bodyError?.code === 'string' ? bodyError.code : undefined }
 function diffReviewError(error: Error): string { const code = errorCode(error); if (code === 'DIFF_REVIEW_FORBIDDEN') return '暂无 Diff 验收权限'; if (code === 'DIFF_REVIEW_NOT_FOUND') return '最终 Diff 尚未生成'; if (code === 'DIFF_REVIEW_NOT_DECIDABLE') return 'Diff 状态已变化，请刷新后重试'; if (code === 'DIFF_DELIVERY_NOT_RETRYABLE') return '当前交付状态不可重试'; return 'Diff 操作失败' }

@@ -241,8 +241,8 @@ export default function DeliveryCenterPage() {
       <div className={styles.contentLayout}>
         <section className={styles.mainColumn}>
           <div className={styles.filterBar} aria-label="交付筛选">
-            <FilterField label="搜索交付">
-              <Input aria-label="搜索交付" allowClear value={filters.keyword} placeholder="标题、摘要或来源" onChange={(event) => updateFilter('keyword', event.target.value.trim() || undefined)} />
+            <FilterField label="搜索">
+              <Input aria-label="搜索" allowClear value={filters.keyword} placeholder="标题、摘要或来源" onChange={(event) => updateFilter('keyword', event.target.value.trim() || undefined)} />
             </FilterField>
             <FilterField label="需求群">
               <Select

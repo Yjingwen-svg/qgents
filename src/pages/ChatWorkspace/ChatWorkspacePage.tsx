@@ -150,14 +150,15 @@ export default function ChatWorkspacePage() {
                                 style={{
                                   padding: '0 7px',
                                   borderRadius: 999,
-                                  background: '#f59e0b',
-                                  color: '#fff',
+                                  background: 'rgba(239, 68, 68, 0.16)',
+                                  color: '#f87171',
                                   fontSize: 11,
                                   lineHeight: '16px',
                                   fontWeight: 600,
+                                  whiteSpace: 'nowrap',
                                 }}
                               >
-                                @我
+                                有人@你
                               </span>
                             ) : null}
                             {/* 正在查看的群不显示未读红点（游标只在进群时推进，群内新消息红点由前端视觉隐藏） */}

@@ -2,6 +2,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { Layout } from 'antd'
 import { Banner } from './Banner'
 import { PersonalCenter } from './PersonalCenter'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { PATHS } from '@/routes/paths'
 import { useRealtimeEvents } from '@/realtime/useRealtimeEvents'
 
@@ -31,7 +32,10 @@ export function MainLayout() {
           padding: isChat || isProject ? 0 : 24,
         }}
       >
-        <Outlet />
+        {/* 页面级错误边界：切路由自动复位，Banner/导航不受影响 */}
+        <ErrorBoundary resetKey={location.pathname}>
+          <Outlet />
+        </ErrorBoundary>
       </Content>
       <PersonalCenter />
     </Layout>

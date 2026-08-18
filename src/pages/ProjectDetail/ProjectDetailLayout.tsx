@@ -179,20 +179,21 @@ export default function ProjectDetailLayout() {
               {pinned && <PushpinOutlined className="pd-nav__branch-pin" />}
               <span className="pd-nav__branch-title">{g.title}</span>
               {isMain && <span className="pd-nav__branch-main-tag">总群</span>}
-              {/* 未读 @ 角标：该群有 @ 我的未读消息 */}
+              {/* 未读 @ 角标：该群有 @ 我的未读消息（后端 mentionedUnread > 0 时显示） */}
               {typeof g.mentionedUnread === 'number' && g.mentionedUnread > 0 ? (
                 <span
                   style={{
                     padding: '0 7px',
                     borderRadius: 999,
-                    background: '#f59e0b',
-                    color: '#fff',
+                    background: 'rgba(239, 68, 68, 0.16)',
+                    color: '#f87171',
                     fontSize: 11,
                     lineHeight: '16px',
                     fontWeight: 600,
+                    whiteSpace: 'nowrap',
                   }}
                 >
-                  @我
+                  有人@你
                 </span>
               ) : null}
               {/* 正在查看的群不显示未读红点（游标只在进群时推进，群内新消息红点由前端视觉隐藏） */}

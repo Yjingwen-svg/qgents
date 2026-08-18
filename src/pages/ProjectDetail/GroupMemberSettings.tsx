@@ -70,8 +70,8 @@ export function GroupMemberSettings({ projectId, group }: Props) {
 
   const addMember = useMutation({
     mutationFn: (userId: string) => groupApi.addMember(projectId, groupId, userId),
+    // 错误不在 mutation 层 toast：confirmInvite 串行邀请时统一汇总汇报
     onSuccess: invalidate,
-    onError: (error) => message.error(formatApiError(error)),
   })
   const removeMember = useMutation({
     mutationFn: (userId: string) => groupApi.removeMember(projectId, groupId, userId),
@@ -82,10 +82,31 @@ export function GroupMemberSettings({ projectId, group }: Props) {
   const memberUserIds = new Set(members.filter((m) => m.memberType === 'USER').map((m) => m.id))
   const inviteCandidates = projectMembers.filter((m) => !memberUserIds.has(m.userId))
 
-  function confirmInvite(): void {
-    for (const userId of inviteIds) addMember.mutate(userId)
+  const [inviting, setInviting] = useState(false)
+
+  /** 串行逐人邀请：避免并发写同一群成员导致后端 500；失败逐个汇总，不静默 */
+  async function confirmInvite(): Promise<void> {
+    const ids = [...inviteIds]
+    if (ids.length === 0) return
+    setInviting(true)
+    let okCount = 0
+    const failed: string[] = []
+    for (const userId of ids) {
+      try {
+        await addMember.mutateAsync(userId)
+        okCount += 1
+      } catch {
+        failed.push(resolveProjectMemberName(userId))
+      }
+    }
+    setInviting(false)
     setInviteIds([])
     setInviteOpen(false)
+    if (failed.length === 0) {
+      message.success(`已邀请 ${okCount} 位成员`)
+    } else {
+      message.warning(`已邀请 ${okCount} 位；${failed.join('、')} 邀请失败，请稍后重试`)
+    }
   }
 
   return (
@@ -182,7 +203,7 @@ export function GroupMemberSettings({ projectId, group }: Props) {
         onOk={confirmInvite}
         okText="邀请"
         cancelText="取消"
-        confirmLoading={addMember.isPending}
+        confirmLoading={inviting}
         width={420}
         destroyOnHidden
       >

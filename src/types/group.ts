@@ -42,6 +42,8 @@ export interface Group {
   latestActivityAt?: string
   latestMessage?: MessageSummary
   unreadCount?: number
+  /** 该群被 @ 我的未读消息数（后端计算，≥0）；前端据此显示「有人@我」提示 */
+  mentionedUnread?: number
   isPinned?: boolean
   isArchived?: boolean
 }
@@ -51,6 +53,8 @@ export interface GroupMember {
   displayName: string
   memberType: GroupMemberType
   avatarUrl?: string
+  /** 用户邮箱（后端补全后返回；用于成员管理弹窗展示，缺失时前端隐藏） */
+  email?: string
 }
 
 /** POST .../groups/{groupId}/read 响应（§三 标记已读，进群全读） */
@@ -86,11 +90,12 @@ export interface FileMessageContent {
   mimeType: string
 }
 
-/** QUOTE 引用消息内容 */
+/** QUOTE 引用消息内容：quotedText 为被引用消息的原始内容摘要，replyText 为回复者输入的正文 */
 export interface QuoteMessageContent {
   quotedMessageId: string
   quotedText: string
   quotedSenderName?: string
+  replyText?: string
 }
 
 /** DIFF 交付卡片内容 */
@@ -126,6 +131,8 @@ export interface Message {
   sequence?: number
   createdAt: string
   replyToId?: string | null
+  /** @ 提及对象（后端 MessageResponse.mentions 回显；被 @ 用户据此展示「有人@我」） */
+  mentions?: Mention[]
 }
 
 export interface SendMessagePayload {
@@ -169,4 +176,6 @@ export interface CreateGroupPayload {
   description?: string
   repositoryIds?: string[]
   type?: 'REQUIREMENT'
+  /** 建群时选择的初始成员（项目成员 userId 列表）；不传 = 群内只有创建者 */
+  memberIds?: string[]
 }

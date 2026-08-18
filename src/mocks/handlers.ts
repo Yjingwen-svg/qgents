@@ -340,11 +340,25 @@ const MOCK_GROUP_AGENTS: Record<string, GroupMember[]> = {
   ],
 }
 
-// 群成员 = 项目成员（USER）+ 该群参与的 Agent；memberCount 与此函数保持一致
+// 每个群的 USER 成员（groupId → 项目成员 userId[]）：
+// 存量群默认 = 全部项目成员（保持旧行为）；新建群 = [创建者, ...建群时选择的 memberIds]
+const MOCK_GROUP_USER_MEMBERS: Record<string, string[]> = {}
+function seedGroupUserMembers(projectId: string, groupId: string): void {
+  if (MOCK_GROUP_USER_MEMBERS[groupId]) return
+  MOCK_GROUP_USER_MEMBERS[groupId] = (MOCK_PROJECT_MEMBERS[projectId] ?? []).map((m) => m.userId)
+}
+for (const [projectId, groups] of Object.entries(MOCK_GROUPS)) {
+  for (const group of groups) seedGroupUserMembers(projectId, group.id)
+}
+
+// 群成员 = 该群 USER 成员（含 email）+ 该群参与的 Agent；memberCount 与此函数保持一致
 function getGroupMembers(projectId: string, groupId: string): GroupMember[] {
-  const users: GroupMember[] = (MOCK_PROJECT_MEMBERS[projectId] ?? []).map(
-    (m): GroupMember => ({ id: m.userId, displayName: m.displayName, memberType: 'USER' }),
-  )
+  seedGroupUserMembers(projectId, groupId)
+  const membersById = new Map((MOCK_PROJECT_MEMBERS[projectId] ?? []).map((m) => [m.userId, m]))
+  const users: GroupMember[] = (MOCK_GROUP_USER_MEMBERS[groupId] ?? [])
+    .map((userId) => membersById.get(userId))
+    .filter((m): m is MockProjectMember => Boolean(m))
+    .map((m): GroupMember => ({ id: m.userId, displayName: m.displayName, email: m.email, memberType: 'USER' }))
   return [...users, ...(MOCK_GROUP_AGENTS[groupId] ?? [])]
 }
 
@@ -1232,7 +1246,7 @@ export const handlers = [
 
   http.post('/api/projects/:projectId/groups', async ({ params, request }) => {
     const projectId = params.projectId as string
-    const body = (await request.json()) as { title?: string; description?: string; type?: string }
+    const body = (await request.json()) as { title?: string; description?: string; type?: string; memberIds?: string[] }
     // 只接受 REQUIREMENT（省略 type 也按 REQUIREMENT 处理），PROJECT_MAIN 返回 422
     if (body.type === 'PROJECT_MAIN') {
       return HttpResponse.json(
@@ -1249,8 +1263,8 @@ export const handlers = [
       description: body.description || '',
       status: 'ACTIVE',
       createdBy: MOCK_CURRENT_USER.id,
-      // 新需求群默认只有项目成员，无 Agent 参与
-      memberCount: getGroupMembers(projectId, groupId).length,
+      // 新需求群：创建者自动入群 + 建群时选择的成员；Agent 参与由后续编排决定
+      memberCount: 0,
       latestActivityAt: new Date().toISOString(),
       unreadCount: 0,
       isPinned: false,
@@ -1258,6 +1272,12 @@ export const handlers = [
     }
     const list = MOCK_GROUPS[projectId] ?? (MOCK_GROUPS[projectId] = [])
     list.push(group)
+    const validIds = new Set((MOCK_PROJECT_MEMBERS[projectId] ?? []).map((m) => m.userId))
+    const selected = (body.memberIds ?? []).filter(
+      (userId): userId is string => typeof userId === 'string' && validIds.has(userId) && userId !== MOCK_CURRENT_USER.id,
+    )
+    MOCK_GROUP_USER_MEMBERS[groupId] = [MOCK_CURRENT_USER.id, ...new Set(selected)]
+    group.memberCount = getGroupMembers(projectId, groupId).length
     return HttpResponse.json({ data: group }, { status: 201 })
   }),
 
@@ -1275,10 +1295,49 @@ export const handlers = [
   }),
 
   http.get('/api/projects/:projectId/groups/:groupId/members', ({ params }) => {
-    // 群成员 = 项目成员 + 群内 Agent，群内成员平等、无角色区分
+    // 群成员 = 该群 USER 成员（含 email）+ 群内 Agent，群内成员平等、无角色区分
     return HttpResponse.json({
       data: getGroupMembers(params.projectId as string, params.groupId as string),
     })
+  }),
+
+  // 邀请项目成员入群（创建者或 Project Admin 管理成员；Agent 成员不受此接口影响）
+  http.post('/api/projects/:projectId/groups/:groupId/members', async ({ params, request }) => {
+    const projectId = params.projectId as string
+    const groupId = params.groupId as string
+    const group = (MOCK_GROUPS[projectId] ?? []).find((g) => g.id === groupId)
+    if (!group) return HttpResponse.json({ error: { code: 'GROUP_NOT_FOUND', message: '群不存在' } }, { status: 404 })
+    const body = (await request.json()) as { userId?: string }
+    const member = (MOCK_PROJECT_MEMBERS[projectId] ?? []).find((m) => m.userId === body.userId)
+    if (!member) return HttpResponse.json({ error: { code: 'PROJECT_MEMBER_NOT_FOUND', message: '该用户不是项目成员' } }, { status: 404 })
+    const membership = MOCK_GROUP_USER_MEMBERS[groupId] ?? (MOCK_GROUP_USER_MEMBERS[groupId] = [])
+    if (!membership.includes(member.userId)) membership.push(member.userId)
+    group.memberCount = getGroupMembers(projectId, groupId).length
+    return HttpResponse.json({
+      data: { id: member.userId, displayName: member.displayName, email: member.email, memberType: 'USER' },
+    })
+  }),
+
+  // 移出群聊（创建者或 Project Admin；创建者本人不可移出）
+  http.delete('/api/projects/:projectId/groups/:groupId/members/:userId', ({ params }) => {
+    const projectId = params.projectId as string
+    const groupId = params.groupId as string
+    const userId = params.userId as string
+    const group = (MOCK_GROUPS[projectId] ?? []).find((g) => g.id === groupId)
+    if (!group) return HttpResponse.json({ error: { code: 'GROUP_NOT_FOUND', message: '群不存在' } }, { status: 404 })
+    if (userId === MOCK_CURRENT_USER.id) {
+      return HttpResponse.json({ error: { code: 'GROUP_CANNOT_REMOVE_SELF', message: '不能移出自己' } }, { status: 422 })
+    }
+    if (userId === group.createdBy) {
+      return HttpResponse.json({ error: { code: 'GROUP_CREATOR_NOT_REMOVABLE', message: '群创建者不可被移出' } }, { status: 422 })
+    }
+    const membership = MOCK_GROUP_USER_MEMBERS[groupId]
+    if (!membership || !membership.includes(userId)) {
+      return HttpResponse.json({ error: { code: 'GROUP_MEMBER_NOT_FOUND', message: '该用户不在群内' } }, { status: 404 })
+    }
+    MOCK_GROUP_USER_MEMBERS[groupId] = membership.filter((id) => id !== userId)
+    group.memberCount = getGroupMembers(projectId, groupId).length
+    return HttpResponse.json({ data: null })
   }),
 
   http.get('/api/projects/:projectId/groups/:groupId/messages', ({ params }) => {

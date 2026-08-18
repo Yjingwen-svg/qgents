@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm } from 'antd'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Drawer, Divider } from 'antd'
 import { App, Upload } from 'antd'
 import {
   SendOutlined,
@@ -12,6 +12,7 @@ import {
   InboxOutlined,
   PaperClipOutlined,
   CloseOutlined,
+  SettingOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
@@ -19,9 +20,11 @@ import { ApiError, groupApi, projectApi, agentApi, attachmentApi, githubApi, upl
 import { getApiBaseUrl } from '@/api/client'
 import { useAuth } from '@/context/AuthContext'
 import { TaskTriggerModal } from '@/components/task-domain'
+import { GroupMemberSettings } from '@/pages/ProjectDetail/GroupMemberSettings'
 import { AuthedImage } from '@/components/AuthedImage'
 import { PATHS } from '@/routes/paths'
 import type {
+  Group,
   Message,
   Mention,
   MentionType,
@@ -52,9 +55,14 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const [mentions, setMentions] = useState<Mention[]>([])
   const [sendError, setSendError] = useState<string | null>(null)
   const [triggerOpen, setTriggerOpen] = useState(false)
+  // 群聊设置栏（收纳成员管理 / AI 沉淀 / 归档等除「发起任务」外的操作）
+  const [settingsOpen, setSettingsOpen] = useState(false)
   // 回复引用：选中某条消息后，输入区显示引用条，发送时以 QUOTE 类型 + replyToId 提交
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  // 群聊 @ 提及：已读游标（markRead 返回）与「有人@我」提示条
+  const [lastReadSeq, setLastReadSeq] = useState<number | null>(null)
+  const [mentionFlashId, setMentionFlashId] = useState<string | null>(null)
   // 消息列表内部真正承载消息的内容容器（ResizeObserver 监听其高度变化）
   const contentRef = useRef<HTMLDivElement>(null)
   // 用户是否「应该保持贴底」：发送消息/切群/首载时置 true；用户主动上滚查看历史时置 false。
@@ -104,7 +112,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     enabled: !!teamId,
   })
   // 仅展示可被 @ 的 Agent（ACTIVE 状态）
-  const teamAgents = (agentsPage?.data ?? []).filter((a) => a.status === 'ACTIVE')
+  const teamAgents = (agentsPage?.data ?? []).filter((a) => a.status === 'ACTIVE'&&a.name==='编排助手')
 
   const {
     data: page,
@@ -191,19 +199,36 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     scrollToBottom()
   }, [groupId, scrollToBottom])
 
-  // 进群全读（§三）：后端按用户×群推进已读游标，成功后校准群列表 / 工作台聚合未读
+  // 进群全读（§三）：后端按用户×群推进已读游标。
+  // 乐观清零当前群未读：红点立即消失，不等后端往返（成功/失败后 refetch 用后端真相校准）
   const markGroupRead = useMutation({
     mutationFn: () => groupApi.markRead(projectId, groupId),
-    onSuccess: () => {
+    onMutate: () => {
+      const clearCurrent = (groups: Group[] | undefined): Group[] | undefined =>
+        groups ? groups.map((g) => (g.id === groupId ? { ...g, unreadCount: 0 } : g)) : groups
+      queryClient.setQueriesData<Group[]>({ queryKey: ['groups', projectId] }, clearCurrent)
+      queryClient.setQueriesData<Group[]>({ queryKey: ['chat', 'main-groups'] }, clearCurrent)
+    },
+    onSuccess: (data) => {
+      // 记录已读游标：后续新消息 seq > 游标 且 @ 我 的才触发「有人@我」提示
+      setLastReadSeq(data?.lastReadSequenceNo ?? null)
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+    },
+    onError: () => {
+      // 失败也回拉校准（后端可能未推进游标，红点按真实未读恢复）
       void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
     },
   })
   const markGroupReadMutate = markGroupRead.mutate
-  // 进入群聊 / 群内来新消息时持续标记已读（离开后群有新活动才重新亮红点）
+  // 进群全读一次（仅在切换群时）：推进后端已读游标，作为「@ 我」未读判定基准。
+  // 不能依赖 messages.length——否则每条新消息都会全读，把 @ 未读游标推进到最新，
+  // 「↑ 有人@了我」提示条与群列表 @ 角标（后端 mentionedUnread）将永远不出现。
   useEffect(() => {
     if (groupId) markGroupReadMutate()
-  }, [groupId, messages.length, markGroupReadMutate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupId, markGroupReadMutate])
 
   // 窗口从后台/最小化回到前台时重查当前群消息：浏览器会挂起后台标签页（WS 断开、消息丢失），
   // 而全局 refetchOnWindowFocus 为 false，回前台必须显式校准，否则群聊面板停留旧消息。
@@ -220,12 +245,43 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [projectId, groupId, queryClient])
 
-  // 输入框以 @ 结尾时弹出成员面板
-  const mentionOpen = draft.endsWith('@')
+  // @ 提及面板：最后一个 @ 到行尾无空格时弹出；@ 后输入的字符作为候选过滤关键词（如 @张 → 只剩名字带「张」）
+  const lastAt = draft.lastIndexOf('@')
+  const mentionOpen = lastAt >= 0 && !draft.slice(lastAt).includes(' ')
+  const mentionQuery = lastAt >= 0 ? draft.slice(lastAt + 1).toLowerCase().trim() : ''
+  const filteredAgents = teamAgents.filter((a) => !mentionQuery || a.name.toLowerCase().includes(mentionQuery))
+  const filteredUsers = otherUserMembers.filter(
+    (m) => !mentionQuery || m.displayName.toLowerCase().includes(mentionQuery),
+  )
+
+  // 未读「@ 我」的最新消息：seq > 已读游标 且 mentions 含我 且非本人发送；
+  // lastReadSeq 为空（进群全读完成前）不提示，避免把历史 @ 消息当未读
+  const mentionMessage = useMemo(() => {
+    if (lastReadSeq == null || !currentUserId) return null
+    const mentioned = messages.filter(
+      (m) =>
+        m.senderId !== currentUserId &&
+        (m.sequence ?? 0) > lastReadSeq &&
+        (m.mentions ?? []).some((mention) => mention.type === 'USER' && mention.id === currentUserId),
+    )
+    return mentioned.length === 0 ? null : mentioned[mentioned.length - 1]
+  }, [messages, lastReadSeq, currentUserId])
+
+  /** 点击「有人@我」：滚动到该消息并临时高亮 */
+  function jumpToMention() {
+    if (!mentionMessage) return
+    setMentionFlashId(mentionMessage.id)
+    document.getElementById(`msg-${mentionMessage.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    window.setTimeout(() => setMentionFlashId(null), 2200)
+  }
   const canOpenTaskTrigger = group?.type === 'REQUIREMENT' && group.status === 'ACTIVE' && !group.isArchived
 
   function pickMention(target: { id: string; displayName: string; type: MentionType }) {
-    setDraft((prev) => prev + `${target.displayName} `)
+    // 用「@显示名 + 空格」替换掉最后一个 @ 及其后的过滤字符，避免残留查询词
+    setDraft((prev) => {
+      const at = prev.lastIndexOf('@')
+      return at >= 0 ? `${prev.slice(0, at)}@${target.displayName} ` : `${prev}@${target.displayName} `
+    })
     setMentions((prev) => [...prev, { type: target.type, id: target.id }])
   }
 
@@ -252,14 +308,15 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       shouldStickToBottomRef.current = true
       // 强制滚底：发送期间产生的滚动/布局事件可能把 stick 标志重算为 false，用 pending 标志兜底
       pendingScrollRef.current = true
-      // 回复引用：type=QUOTE，content 带被引用消息摘要，replyToId 指向原消息（对齐 §7 消息类型与请求体）
+      // 回复引用：type=QUOTE，quotedText 为被引用消息的原始内容摘要，replyText 为回复正文
       const result = await groupApi.sendMessage(projectId, groupId, {
         type: replyTo ? 'QUOTE' : 'TEXT',
         content: replyTo
           ? {
               quotedMessageId: replyTo.id,
-              quotedText: text,
+              quotedText: quotePreview(replyTo),
               quotedSenderName: replyTo.senderName ?? (replyTo.senderType === 'AGENT' ? 'Agent' : '成员'),
+              replyText: text,
             }
           : { text },
         mentions: effectiveMentions.length > 0 ? effectiveMentions : undefined,
@@ -423,34 +480,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             </div>
           </div>
           <Space size={8}>
-            {/* AI 沉淀 Memory —— 自动检索本群最近聊天生成草稿，投给用户/Admin 确认 */}
-            <Button
-              icon={<MessageOutlined />}
-              loading={createAiMemory.isPending}
-              onClick={() => createAiMemory.mutate()}
-            >
-              AI 沉淀
-            </Button>
-            {/* 归档需求群 —— 仅需求群 + 创建者可见 */}
-            {group?.type === 'REQUIREMENT' && group.createdBy === user?.id && !group.isArchived && (
-              <Popconfirm
-                title="归档需求群"
-                description="归档后该群将移入「已归档」，不可恢复。确定归档？"
-                okText="归档"
-                cancelText="取消"
-                onConfirm={() => archiveGroup.mutate()}
-              >
-                <Button
-                  danger
-                  ghost
-                  icon={<InboxOutlined />}
-                  loading={archiveGroup.isPending}
-                >
-                  归档需求群
-                </Button>
-              </Popconfirm>
-            )}
-            {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal */}
+            {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal；其余操作收进「群聊设置」栏 */}
             {canOpenTaskTrigger && <Button
               type="primary"
               ghost
@@ -459,6 +489,12 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             >
               发起任务
             </Button>}
+            <Button
+              icon={<SettingOutlined />}
+              onClick={() => setSettingsOpen(true)}
+            >
+              群聊设置
+            </Button>
           </Space>
         </>
       </div>
@@ -487,15 +523,23 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           <div ref={contentRef} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {messages.map((m) => {
               const isSelf = m.senderType === 'USER' && m.senderId === user?.id
+              const flashing = mentionFlashId === m.id
               return (
                 <div
                   key={m.id}
+                  id={`msg-${m.id}`}
                   style={{
                     display: 'flex',
                     alignItems: 'flex-start',
                     gap: 8,
                     // 让气泡按左右对齐
                     justifyContent: isSelf ? 'flex-end' : 'flex-start',
+                    // 被 @ 跳转后的临时高亮
+                    background: flashing ? 'rgba(245, 158, 11, 0.18)' : undefined,
+                    borderRadius: 8,
+                    padding: flashing ? '3px 8px' : undefined,
+                    margin: flashing ? '-3px -8px' : undefined,
+                    transition: 'background 0.4s ease',
                   }}
                 >
                   {/* 内层 div 限制最大宽度 78%（相对消息列宽），气泡在内部 fit-content 铺满可用宽度，
@@ -513,6 +557,35 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                 </div>
               )
             })}
+            {/* 未读「@ 我」提示条：点击跳到被 @ 的那条消息 */}
+            {mentionMessage ? (
+              <div
+                onClick={jumpToMention}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    jumpToMention()
+                  }
+                }}
+                style={{
+                  position: 'sticky',
+                  bottom: 12,
+                  alignSelf: 'center',
+                  marginTop: 10,
+                  padding: '7px 16px',
+                  borderRadius: 999,
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                  color: '#b45309',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                ↑ 有人@了我
+              </div>
+            ) : null}
           </div>
         )}
       </Layout.Content>
@@ -521,7 +594,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
 
         <div style={{ position: 'relative', padding: '12px 20px 16px', borderTop: `1px solid ${token.colorBorder}` }}>
           {/* @ 提及成员面板 */}
-          {mentionOpen && (teamAgents.length > 0 || otherUserMembers.length > 0) && (
+          {mentionOpen && (filteredAgents.length > 0 || filteredUsers.length > 0) && (
           <div
             style={{
               position: 'absolute',
@@ -540,17 +613,17 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             }}
           >
             {/* Agent 候选：仅活跃需求群可 @ Agent（项目总群不提供 @Agent，发起任务必须挂 REQUIREMENT 群） */}
-            {canOpenTaskTrigger && teamAgents.length > 0 && (
+            {canOpenTaskTrigger && filteredAgents.length > 0 && (
               <MentionGroup
                 label="Agent"
-                members={teamAgents.map((a) => ({ id: a.id, displayName: a.name, type: 'AGENT' as const }))}
+                members={filteredAgents.map((a) => ({ id: a.id, displayName: a.name, type: 'AGENT' as const }))}
                 onPick={pickMention}
               />
             )}
-            {otherUserMembers.length > 0 && (
+            {filteredUsers.length > 0 && (
               <MentionGroup
                 label="成员"
-                members={otherUserMembers.map((m) => ({ id: m.id, displayName: m.displayName, type: 'USER' as const }))}
+                members={filteredUsers.map((m) => ({ id: m.id, displayName: m.displayName, type: 'USER' as const }))}
                 onPick={pickMention}
               />
             )}
@@ -640,6 +713,50 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         initialInstruction=""
         onClose={() => setTriggerOpen(false)}
       />
+
+      {/* 群聊设置栏 —— 收纳除「发起任务」外的群操作（成员管理 / AI 沉淀 / 归档等） */}
+      <Drawer
+        title="群聊设置"
+        placement="right"
+        width={320}
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          {/* 成员区：直接内嵌显示成员；「成员管理」开关后每行追加「移出群聊」 */}
+          <GroupMemberSettings projectId={projectId} group={group ?? null} />
+          <Divider />
+          {/* AI 沉淀 Memory —— 自动检索本群最近聊天生成草稿，投给用户/Admin 确认 */}
+          <Button
+            block
+            icon={<MessageOutlined />}
+            loading={createAiMemory.isPending}
+            onClick={() => {
+              createAiMemory.mutate()
+              setSettingsOpen(false)
+            }}
+          >
+            AI 沉淀 Memory
+          </Button>
+          {/* 归档需求群 —— 仅需求群 + 创建者可见 */}
+          {group?.type === 'REQUIREMENT' && group.createdBy === user?.id && !group.isArchived && (
+            <Popconfirm
+              title="归档需求群"
+              description="归档后该群将移入「已归档」，不可恢复。确定归档？"
+              okText="归档"
+              cancelText="取消"
+              onConfirm={() => {
+                archiveGroup.mutate()
+                setSettingsOpen(false)
+              }}
+            >
+              <Button block danger icon={<InboxOutlined />} loading={archiveGroup.isPending}>
+                归档需求群
+              </Button>
+            </Popconfirm>
+          )}
+        </Space>
+      </Drawer>
     </Layout>
   )
 }
@@ -896,6 +1013,37 @@ function MessageBubble({
       >
         {renderContent(message, projectId, onOpenFile, onImageLoad)}
       </div>
+      {/* QUOTE 引用消息：被引用的原消息挂载在气泡下方（带竖线），类似微信「当前消息 + 引用原消息」 */}
+      {message.type === 'QUOTE' ? (
+        <QuoteAttachment message={message} />
+      ) : null}
+    </div>
+  )
+}
+
+/** 引用消息的「原消息」挂载条：气泡下方、左侧灰色竖线、灰色小字 */
+function QuoteAttachment({ message }: { message: Message }) {
+  const content = message.content as QuoteMessageContent | null
+  if (!content?.quotedText) return null
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: 8,
+        marginTop: 4,
+        maxWidth: '100%',
+        minWidth: 0,
+      }}
+    >
+      <div style={{ width: 3, borderRadius: 2, background: '#94a3b8', flexShrink: 0 }} />
+      <div style={{ minWidth: 0 }}>
+        {content.quotedSenderName ? (
+          <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+            {content.quotedSenderName}
+          </Text>
+        ) : null}
+        <div style={{ fontSize: 12, color: '#94a3b8', overflowWrap: 'break-word' }}>{content.quotedText}</div>
+      </div>
     </div>
   )
 }
@@ -947,24 +1095,9 @@ function renderContent(
       )
     }
     case 'QUOTE': {
+      // 气泡内只显示回复正文；被引用的原消息由 MessageBubble 挂载在气泡下方（带竖线）
       const c = message.content as QuoteMessageContent
-      return (
-        <div
-          style={{
-            borderLeft: '3px solid #3b82f6',
-            paddingLeft: 10,
-            marginBottom: 6,
-            opacity: 0.85,
-          }}
-        >
-          {c.quotedSenderName && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {c.quotedSenderName}
-            </Text>
-          )}
-          <div style={{ fontSize: 13 }}>{c.quotedText}</div>
-        </div>
-      )
+      return c.replyText ?? ''
     }
     case 'DIFF': {
       const c = message.content as DiffMessageContent

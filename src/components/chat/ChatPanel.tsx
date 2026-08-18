@@ -976,6 +976,37 @@ function MessageBubble({
       >
         {renderContent(message, projectId, onOpenFile, onImageLoad)}
       </div>
+      {/* QUOTE 引用消息：被引用的原消息挂载在气泡下方（带竖线），类似微信「当前消息 + 引用原消息」 */}
+      {message.type === 'QUOTE' ? (
+        <QuoteAttachment message={message} />
+      ) : null}
+    </div>
+  )
+}
+
+/** 引用消息的「原消息」挂载条：气泡下方、左侧灰色竖线、灰色小字 */
+function QuoteAttachment({ message }: { message: Message }) {
+  const content = message.content as QuoteMessageContent | null
+  if (!content?.quotedText) return null
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: 8,
+        marginTop: 4,
+        maxWidth: '100%',
+        minWidth: 0,
+      }}
+    >
+      <div style={{ width: 3, borderRadius: 2, background: '#94a3b8', flexShrink: 0 }} />
+      <div style={{ minWidth: 0 }}>
+        {content.quotedSenderName ? (
+          <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+            {content.quotedSenderName}
+          </Text>
+        ) : null}
+        <div style={{ fontSize: 12, color: '#94a3b8', overflowWrap: 'break-word' }}>{content.quotedText}</div>
+      </div>
     </div>
   )
 }
@@ -1027,28 +1058,9 @@ function renderContent(
       )
     }
     case 'QUOTE': {
+      // 气泡内只显示回复正文；被引用的原消息由 MessageBubble 挂载在气泡下方（带竖线）
       const c = message.content as QuoteMessageContent
-      return (
-        <div
-          style={{
-            borderLeft: '3px solid #3b82f6',
-            paddingLeft: 10,
-            marginBottom: 6,
-            opacity: 0.85,
-          }}
-        >
-          {c.quotedSenderName && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {c.quotedSenderName}
-            </Text>
-          )}
-          {/* 被引用的原消息：灰色小字，与回复正文区分 */}
-          <div style={{ fontSize: 12, color: '#94a3b8' }}>{c.quotedText}</div>
-          {c.replyText ? (
-            <div style={{ fontSize: 13, marginTop: 4, color: 'inherit' }}>{c.replyText}</div>
-          ) : null}
-        </div>
-      )
+      return c.replyText ?? ''
     }
     case 'DIFF': {
       const c = message.content as DiffMessageContent

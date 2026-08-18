@@ -6,6 +6,9 @@ export const PATHS = {
   /** 登录 / 注册 */
   LOGIN: '/login',
 
+  /** 忘记密码（输入邮箱获取验证码 → 设置新密码） */
+  FORGOT_PASSWORD: '/forgot-password',
+
   /**
    * 登录后若尚未加入任何团队 → 欢迎页（创建 / 加入）
    * 对应原型：欢迎来到 Qgents

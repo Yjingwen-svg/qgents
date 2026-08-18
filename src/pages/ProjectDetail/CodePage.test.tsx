@@ -1,26 +1,40 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { App } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { githubApi } from '@/api/github'
+import { githubApi } from '@/api'
 import type { MergeRequestSummary } from '@/types/task-model'
+import type { WorkBranch } from '@/types/github'
 import { CodePage } from './CodePage'
 
-const useDiffsMock = vi.hoisted(() => vi.fn())
 const useMergeRequestsMock = vi.hoisted(() => vi.fn())
+const useWorkBranchesMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/task-model', () => ({
-  useDiffs: useDiffsMock,
   useMergeRequests: useMergeRequestsMock,
 }))
 
-vi.mock('@/api/github', () => ({
-  githubApi: {
-    listProjectRepositories: vi.fn(),
-  },
+vi.mock('@/hooks/workBranch', () => ({
+  useWorkBranches: useWorkBranchesMock,
 }))
+
+vi.mock('@/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api')>()
+  return {
+    ...actual,
+    githubApi: {
+      ...actual.githubApi,
+      listProjectRepositories: vi.fn(),
+    },
+    groupApi: {
+      listByProject: vi.fn().mockResolvedValue([
+        { id: 'group-login', projectId: 'demo-project', type: 'REQUIREMENT', title: '登录功能' },
+      ]),
+    },
+  }
+})
 
 const mergeRequests: MergeRequestSummary[] = [
   {
@@ -36,6 +50,37 @@ const mergeRequests: MergeRequestSummary[] = [
     headCommit: 'abc1234',
     webUrl: 'https://github.com/mock/demo/pull/42',
     qualityGate: { status: 'PENDING', requiredChecks: ['TESTSET'] },
+  },
+]
+
+const workBranches: WorkBranch[] = [
+  {
+    projectRepositoryId: 'bound-demo-auth-service',
+    name: 'feat/login-api',
+    workspaceId: 'ws-1',
+    lastKnownHead: 'abc1234',
+    latestTask: { id: 'task-1', displayCode: 'T-1024', title: '登录接口开发', updatedAt: '2026-08-17T12:00:00Z' },
+    requirementGroups: [{ id: 'group-login', title: '登录功能' }],
+    latestDiff: {
+      id: 'diff-login',
+      taskId: 'task-1',
+      status: 'PENDING_REVIEW',
+      changeStats: { additions: 12, deletions: 3 },
+      createdAt: '2026-08-17T12:05:00Z',
+    },
+    openMergeRequest: null,
+    lastVerification: { kind: 'TEST_RUN', status: 'PASSED', commitSha: 'abc1234', completedAt: '2026-08-17T12:10:00Z' },
+  },
+  {
+    projectRepositoryId: 'bound-demo-auth-service',
+    name: 'feat/payment-hook',
+    workspaceId: 'ws-2',
+    lastKnownHead: 'c4d5e6f',
+    latestTask: null,
+    requirementGroups: [],
+    latestDiff: null,
+    openMergeRequest: null,
+    lastVerification: null,
   },
 ]
 
@@ -55,7 +100,7 @@ function renderPage(path = '/app/projects/demo-project/code') {
 }
 
 beforeEach(() => {
-  vi.mocked(githubApi.listProjectRepositories).mockResolvedValue([
+  ;(githubApi.listProjectRepositories as ReturnType<typeof vi.fn>).mockResolvedValue([
     {
       id: 'bound-demo-auth-service',
       repositoryId: 'repo-2',
@@ -70,7 +115,14 @@ beforeEach(() => {
       boundAt: '2026-08-15T00:00:00Z',
     },
   ])
-  useDiffsMock.mockReturnValue({ data: { data: [] }, isLoading: false })
+  useWorkBranchesMock.mockReturnValue({
+    data: { data: workBranches, page: { nextCursor: null, hasMore: false }, requestId: 'r1' },
+    isLoading: false,
+    isPending: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  })
   useMergeRequestsMock.mockReturnValue({
     data: { data: mergeRequests, page: { nextCursor: null, hasMore: false }, requestId: 'r1' },
     isLoading: false,
@@ -81,9 +133,11 @@ beforeEach(() => {
 })
 
 describe('CodePage', () => {
-  it('shows the branch workspace by default', async () => {
+  it('shows the branch workspace by default with real work-branch rows', async () => {
     renderPage()
     expect(await screen.findByText('需求过滤')).toBeInTheDocument()
+    expect(await screen.findByText('feat/login-api')).toBeInTheDocument()
+    expect(screen.getByText('T-1024')).toBeInTheDocument()
     expect(screen.queryByText('实现邮箱登录')).not.toBeInTheDocument()
   })
 
@@ -107,45 +161,37 @@ describe('CodePage', () => {
     expect(await screen.findByText('实现邮箱登录')).toBeInTheDocument()
   })
 
-  it('keeps zero-diff stats clickable into an empty review shell', async () => {
+  it('filters branches by the real requirement group dropdown', async () => {
+    const user = userEvent.setup()
     renderPage()
-    const zeroDiffs = await screen.findAllByTitle('该分支暂无变更，打开空 Diff')
-    expect(zeroDiffs.length).toBeGreaterThan(0)
-    expect(zeroDiffs[0]).toHaveAttribute(
+    await screen.findByText('需求过滤')
+
+    // 选需求群 → useWorkBranches 携带 requirementGroupId
+    await user.click(screen.getByRole('combobox'))
+    await user.click(await screen.findByTitle('登录功能'))
+    await waitFor(() => {
+      expect(useWorkBranchesMock).toHaveBeenLastCalledWith(
+        'demo-project',
+        expect.objectContaining({ requirementGroupId: 'group-login' }),
+      )
+    })
+  })
+
+  it('links the branch Diff column to the latest Diff snapshot', async () => {
+    renderPage()
+    const diffLink = await screen.findByTitle('查看该分支 Diff')
+    expect(diffLink).toHaveTextContent('+12')
+    expect(diffLink).toHaveTextContent('-3')
+    expect(diffLink).toHaveAttribute(
       'href',
-      expect.stringMatching(/\/app\/projects\/demo-project\/code\/diff\/empty-branch/),
+      expect.stringMatching(/\/app\/projects\/demo-project\/code\/diff\/diff-login/),
     )
   })
 
-  it('syncs Diff changeStats onto the branch Diff column', async () => {
-    useDiffsMock.mockReturnValue({
-      data: {
-        data: [
-          {
-            id: 'diff-login',
-            projectId: 'demo-project',
-            taskId: 'task-1',
-            taskRunId: 'run-1',
-            taskStepId: 'step-1',
-            requirementGroupId: 'login',
-            workspaceId: 'ws-1',
-            repositoryId: 'bound-demo-auth-service',
-            baseCommit: 'base',
-            sourceBranch: 'feat/login-api',
-            headCommit: null,
-            status: 'PENDING_REVIEW',
-            changeStats: { files: 2, additions: 12, deletions: 3 },
-            createdAt: '2026-08-12T10:00:00Z',
-          },
-        ],
-        page: { nextCursor: null, hasMore: false },
-        requestId: 'r-diffs',
-      },
-      isLoading: false,
-    })
+  it('keeps null-Diff branches showing an empty state instead of demo data', async () => {
     renderPage()
-    expect(await screen.findByTitle('查看该分支 Diff')).toBeInTheDocument()
-    expect(screen.getByTitle('查看该分支 Diff')).toHaveTextContent('+12')
-    expect(screen.getByTitle('查看该分支 Diff')).toHaveTextContent('-3')
+    // feat/payment-hook 无 latestDiff 且 +/- 为 0 → 可进入空 Diff 页
+    expect(await screen.findByText('feat/payment-hook')).toBeInTheDocument()
+    expect(screen.getByTitle('该分支暂无变更，打开空 Diff')).toBeInTheDocument()
   })
 })

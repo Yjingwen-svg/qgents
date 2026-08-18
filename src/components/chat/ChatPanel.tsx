@@ -15,9 +15,10 @@ import {
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
-import { ApiError, groupApi, projectApi, agentApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
+import { ApiError, groupApi, projectApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
 import { getApiBaseUrl } from '@/api/client'
 import { useAuth } from '@/context/AuthContext'
+import { useAgents } from '@/hooks/agents'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { TaskTriggerModal } from '@/components/task-domain'
 import { GroupMemberSettings } from '@/pages/ProjectDetail/GroupMemberSettings'
@@ -110,11 +111,10 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     enabled: !!projectId,
   })
   const teamId = project?.teamId
-  const { data: agentsPage } = useQuery({
-    queryKey: ['teams', teamId, 'agents'],
-    queryFn: () => agentApi.list(teamId ?? ''),
-    enabled: !!teamId,
-  })
+  // @ Agent 候选：走 useAgents hook（queryKeys.agents.list 前缀），
+  // 与 AgentTeamPage 的 create/publish/archive mutation invalidate 的 queryKeys.agents.all 对齐，
+  // 避免内联 key 分裂导致 @ 候选列表永不刷新
+  const { data: agentsPage } = useAgents(projectId, teamId)
   // 仅展示可被 @ 的 Agent（ACTIVE 状态）
   const teamAgents = (agentsPage?.data ?? []).filter((a) => a.status === 'ACTIVE'&&a.name==='编排助手')
 
@@ -384,7 +384,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       shouldStickToBottomRef.current = true
       // 强制滚底：发送期间产生的滚动/布局事件可能把 stick 标志重算为 false，用 pending 标志兜底
       pendingScrollRef.current = true
-      // 回复引用：type=QUOTE，quotedText 为被引用消息的原始内容摘要，replyText 为回复正文
+      // 回复引用：type=QUOTE，quotedText 为被引用消息的原始内容摘要，replyText 为回复正文。
+      // §7 冻结：replyText 放顶层；content 内保留一份以兼容旧后端/旧数据读取
       const result = await groupApi.sendMessage(projectId, groupId, {
         type: replyTo ? 'QUOTE' : 'TEXT',
         content: replyTo
@@ -395,6 +396,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
               replyText: text,
             }
           : { text },
+        replyText: replyTo ? text : undefined,
         mentions: effectiveMentions.length > 0 ? effectiveMentions : undefined,
         replyToId: replyTo ? replyTo.id : null,
         clientMessageId: `cmsg_${Date.now()}`,
@@ -930,7 +932,8 @@ function quotePreview(message: Message): string {
       // 引用一条「引用消息」时，被引用内容应为该消息实际回复的正文（replyText），
       // 而不是其引用的上层内容——避免嵌套引用叠加成 [引用][引用]…
       const quoted = content as QuoteMessageContent | null
-      const text = quoted?.replyText ?? quoted?.quotedText ?? ''
+      // §7 冻结：replyText 回显在顶层；content.replyText 兼容旧数据
+      const text = message.replyText ?? quoted?.replyText ?? quoted?.quotedText ?? ''
       return text || '[引用]'
     }
     default: {
@@ -1202,9 +1205,10 @@ function renderContent(
       )
     }
     case 'QUOTE': {
-      // 气泡内只显示回复正文；被引用的原消息由 MessageBubble 挂载在气泡下方（带竖线）
-      const c = message.content as QuoteMessageContent
-      return c.replyText ?? ''
+      // 气泡内只显示回复正文；被引用的原消息由 MessageBubble 挂载在气泡下方（带竖线）。
+      // §7 冻结：replyText 回显在顶层；content.replyText 兼容旧数据
+      const c = message.content as QuoteMessageContent | null
+      return message.replyText ?? c?.replyText ?? ''
     }
     case 'DIFF': {
       const c = message.content as DiffMessageContent

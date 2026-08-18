@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons'
 import { githubApi, groupApi, projectApi, tasksApi } from '@/api'
 import { PATHS } from '@/routes/paths'
-import { queryKeys } from '@/query'
+import { queryKeys, taskModelQueryKeys } from '@/query'
 import type { TaskStatus } from '@/types/task-model'
 import './OverviewPage.css'
 
@@ -59,8 +59,10 @@ export function OverviewPage() {
   })
 
   const { data: taskPage } = useQuery({
-    queryKey: ['tasks', projectId, 'list'],
-    queryFn: () => tasksApi.list(projectId),
+    // 必须用 taskModelQueryKeys 前缀（['qgents','projects',projectId,'tasks',...]），
+    // SSE 事件失效与任务 mutation 都 invalidate 该前缀；孤儿 key 会导致「进行中任务」计数永不刷新
+    queryKey: taskModelQueryKeys.tasks.list(projectId, { limit: 100 }),
+    queryFn: () => tasksApi.list(projectId, { limit: 100 }),
     enabled: !!projectId,
   })
   const runningTasks = (taskPage?.data ?? []).filter((t) =>

@@ -163,6 +163,8 @@ export interface Message {
   sequence?: number
   createdAt: string
   replyToId?: string | null
+  /** QUOTE 消息的回复正文（§7 冻结：顶层字段；发送与回显同构）。嵌套引用取 replyText ?? quotedText */
+  replyText?: string
   /** @ 提及对象（后端 MessageResponse.mentions 回显；被 @ 用户据此展示「有人@我」） */
   mentions?: Mention[]
 }
@@ -173,6 +175,8 @@ export interface SendMessagePayload {
   mentions?: Mention[]
   replyToId?: string | null
   clientMessageId: string
+  /** QUOTE 消息的回复正文（§7 冻结：顶层字段，与 content 内旧字段并存提交） */
+  replyText?: string
 }
 
 /** @ 提及 —— 对象数组，type 区分 USER / AGENT（接口文档 v1.9.3 §7） */

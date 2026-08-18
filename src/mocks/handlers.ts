@@ -23,6 +23,9 @@ const DEFAULT_PROJECT_SETTINGS = {
 }
 const MOCK_PROJECT_SETTINGS: Record<string, typeof DEFAULT_PROJECT_SETTINGS> = {}
 
+/** 注册验证码（§11）：email → 一次性 6 位码；mock 演示固定 483920，真实环境由邮件送达 */
+const registerCodeByEmail = new Map<string, string>()
+
 const MOCK_TEAMS = [
   {
     id: 'team-owned-001',
@@ -261,6 +264,7 @@ const MOCK_MESSAGES: Record<string, Message[]> = {
         quotedText: '密码要用 RSA 加密后传输，别发明文。',
         quotedSenderName: '张工',
       },
+      replyText: '收到，我会在注册/登录链路统一走 RSA 加密。',
       senderType: 'AGENT',
       senderId: 'agent-developer',
       senderName: 'Developer',
@@ -918,11 +922,41 @@ export const handlers = [
     })
   }),
 
-  http.post('/api/auth/register', async ({ request }) => {
-    const body = (await request.json()) as { email?: string; displayName?: string }
+  // ── 注册邮箱验证码（§11：先发验证码、再带码注册）──
+  http.post('/api/auth/register/verification-codes', async ({ request }) => {
+    const body = (await request.json()) as { email?: string }
     if (!body.email?.includes('@')) {
       return HttpResponse.json({ error: { code: 'INVALID_INPUT', message: '邮箱格式不正确' } }, { status: 400 })
     }
+    // 演示固定码，方便 mock 模式下直接注册；真实环境码由邮件送达
+    registerCodeByEmail.set(body.email, '483920')
+    return HttpResponse.json(
+      { data: { message: '验证码已发送到邮箱，10 分钟内有效' }, requestId: 'mock-register-code' },
+      { status: 202 },
+    )
+  }),
+
+  http.post('/api/auth/register', async ({ request }) => {
+    const body = (await request.json()) as { email?: string; displayName?: string; verificationCode?: string }
+    if (!body.email?.includes('@')) {
+      return HttpResponse.json({ error: { code: 'INVALID_INPUT', message: '邮箱格式不正确' } }, { status: 400 })
+    }
+    // §11.2：verificationCode 必填、长度固定 6 位数字
+    const code = body.verificationCode?.trim() ?? ''
+    if (!/^\d{6}$/.test(code)) {
+      return HttpResponse.json(
+        { error: { code: 'INVALID_VERIFICATION_CODE', message: '验证码无效或已过期' } },
+        { status: 422 },
+      )
+    }
+    if (registerCodeByEmail.get(body.email) !== code) {
+      return HttpResponse.json(
+        { error: { code: 'INVALID_VERIFICATION_CODE', message: '验证码无效或已过期' } },
+        { status: 422 },
+      )
+    }
+    // 验证码一次性：校验通过后消费掉，重试需重新获取
+    registerCodeByEmail.delete(body.email)
     return HttpResponse.json({
       data: {
         accessToken: 'mock-access-token-' + Date.now(),
@@ -950,6 +984,30 @@ export const handlers = [
         refreshTokenExpiresIn: 2592000,
       },
     })
+  }),
+
+  // ── 忘记密码（§4：发起找回密码邮件 / 用重置令牌设置新密码）──
+  http.post('/api/auth/password-reset-requests', async ({ request }) => {
+    const body = (await request.json()) as { email?: string }
+    if (!body.email?.includes('@')) {
+      return HttpResponse.json(
+        { error: { code: 'INVALID_INPUT', message: '邮箱格式不正确' } },
+        { status: 400 },
+      )
+    }
+    // 模拟邮件已发送（演示环境无真实邮件网关；重置令牌即「验证码」）
+    return HttpResponse.json({ data: { sent: true, expiresIn: 1800 } })
+  }),
+
+  http.post('/api/auth/password-resets', async ({ request }) => {
+    const body = (await request.json()) as { email?: string; token?: string; newPassword?: string }
+    if (!body.email?.includes('@') || !body.token?.trim() || !body.newPassword) {
+      return HttpResponse.json(
+        { error: { code: 'INVALID_RESET_TOKEN', message: '验证码无效或已过期' } },
+        { status: 400 },
+      )
+    }
+    return HttpResponse.json({ data: { reset: true } })
   }),
 
   http.get('/api/me', () =>
@@ -1422,6 +1480,7 @@ export const handlers = [
       senderId?: string
       clientMessageId?: string
       replyToId?: string | null
+      replyText?: string
       mentions?: Array<{ type?: string; id?: string }>
     }
     const projectId = params.projectId as string
@@ -1446,6 +1505,8 @@ export const handlers = [
       sequence: list.length + 1,
       createdAt: new Date().toISOString(),
       replyToId: body.replyToId ?? null,
+      // §7 冻结：QUOTE 的回复正文回显在顶层（发送与 GET 同构）
+      replyText: body.replyText ?? undefined,
     }
     list.push(message)
     const taskRecord = mentionedAgents[0]

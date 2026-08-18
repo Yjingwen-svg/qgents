@@ -56,6 +56,9 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   // 回复引用：选中某条消息后，输入区显示引用条，发送时以 QUOTE 类型 + replyToId 提交
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  // 群聊 @ 提及：已读游标（markRead 返回）与「有人@我」提示条
+  const [lastReadSeq, setLastReadSeq] = useState<number | null>(null)
+  const [mentionFlashId, setMentionFlashId] = useState<string | null>(null)
   // 消息列表内部真正承载消息的内容容器（ResizeObserver 监听其高度变化）
   const contentRef = useRef<HTMLDivElement>(null)
   // 用户是否「应该保持贴底」：发送消息/切群/首载时置 true；用户主动上滚查看历史时置 false。
@@ -202,7 +205,9 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       queryClient.setQueriesData<Group[]>({ queryKey: ['groups', projectId] }, clearCurrent)
       queryClient.setQueriesData<Group[]>({ queryKey: ['chat', 'main-groups'] }, clearCurrent)
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // 记录已读游标：后续新消息 seq > 游标 且 @ 我 的才触发「有人@我」提示
+      setLastReadSeq(data?.lastReadSequenceNo ?? null)
       void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
       void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
     },
@@ -235,6 +240,27 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
 
   // 输入框以 @ 结尾时弹出成员面板
   const mentionOpen = draft.endsWith('@')
+
+  // 未读「@ 我」的最新消息：seq > 已读游标 且 mentions 含我 且非本人发送；
+  // lastReadSeq 为空（进群全读完成前）不提示，避免把历史 @ 消息当未读
+  const mentionMessage = useMemo(() => {
+    if (lastReadSeq == null || !currentUserId) return null
+    const mentioned = messages.filter(
+      (m) =>
+        m.senderId !== currentUserId &&
+        (m.sequence ?? 0) > lastReadSeq &&
+        (m.mentions ?? []).some((mention) => mention.type === 'USER' && mention.id === currentUserId),
+    )
+    return mentioned.length === 0 ? null : mentioned[mentioned.length - 1]
+  }, [messages, lastReadSeq, currentUserId])
+
+  /** 点击「有人@我」：滚动到该消息并临时高亮 */
+  function jumpToMention() {
+    if (!mentionMessage) return
+    setMentionFlashId(mentionMessage.id)
+    document.getElementById(`msg-${mentionMessage.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    window.setTimeout(() => setMentionFlashId(null), 2200)
+  }
   const canOpenTaskTrigger = group?.type === 'REQUIREMENT' && group.status === 'ACTIVE' && !group.isArchived
 
   function pickMention(target: { id: string; displayName: string; type: MentionType }) {
@@ -500,15 +526,23 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           <div ref={contentRef} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {messages.map((m) => {
               const isSelf = m.senderType === 'USER' && m.senderId === user?.id
+              const flashing = mentionFlashId === m.id
               return (
                 <div
                   key={m.id}
+                  id={`msg-${m.id}`}
                   style={{
                     display: 'flex',
                     alignItems: 'flex-start',
                     gap: 8,
                     // 让气泡按左右对齐
                     justifyContent: isSelf ? 'flex-end' : 'flex-start',
+                    // 被 @ 跳转后的临时高亮
+                    background: flashing ? 'rgba(245, 158, 11, 0.18)' : undefined,
+                    borderRadius: 8,
+                    padding: flashing ? '3px 8px' : undefined,
+                    margin: flashing ? '-3px -8px' : undefined,
+                    transition: 'background 0.4s ease',
                   }}
                 >
                   {/* 内层 div 限制最大宽度 78%（相对消息列宽），气泡在内部 fit-content 铺满可用宽度，
@@ -526,6 +560,35 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                 </div>
               )
             })}
+            {/* 未读「@ 我」提示条：点击跳到被 @ 的那条消息 */}
+            {mentionMessage ? (
+              <div
+                onClick={jumpToMention}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    jumpToMention()
+                  }
+                }}
+                style={{
+                  position: 'sticky',
+                  bottom: 12,
+                  alignSelf: 'center',
+                  marginTop: 10,
+                  padding: '7px 16px',
+                  borderRadius: 999,
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                  color: '#b45309',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                ↑ 有人@了我
+              </div>
+            ) : null}
           </div>
         )}
       </Layout.Content>

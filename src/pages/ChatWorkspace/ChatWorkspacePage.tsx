@@ -16,6 +16,7 @@ interface MainGroupSession {
   latestMessage?: Group['latestMessage']
   latestActivityAt?: string
   unreadCount?: number
+  mentionedUnread?: number
 }
 
 /**
@@ -44,6 +45,7 @@ export default function ChatWorkspacePage() {
         latestMessage: g.latestMessage,
         latestActivityAt: g.latestActivityAt,
         unreadCount: g.unreadCount,
+        mentionedUnread: g.mentionedUnread,
       }))
   }, [mainGroups])
 
@@ -108,7 +110,24 @@ export default function ChatWorkspacePage() {
                           <Text strong ellipsis style={{ maxWidth: 150 }}>
                             {s.groupTitle}
                           </Text>
-                          <Badge count={s.unreadCount} overflowCount={99} size="small" />
+                          <Space size={4}>
+                            {typeof s.mentionedUnread === 'number' && s.mentionedUnread > 0 ? (
+                              <span
+                                style={{
+                                  padding: '0 7px',
+                                  borderRadius: 999,
+                                  background: '#f59e0b',
+                                  color: '#fff',
+                                  fontSize: 11,
+                                  lineHeight: '16px',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                @我
+                              </span>
+                            ) : null}
+                            <Badge count={s.unreadCount} overflowCount={99} size="small" />
+                          </Space>
                         </Space>
                       </Space>
                     }

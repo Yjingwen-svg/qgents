@@ -42,6 +42,8 @@ export interface Group {
   latestActivityAt?: string
   latestMessage?: MessageSummary
   unreadCount?: number
+  /** 该群被 @ 我的未读消息数（后端计算，≥0）；前端据此显示「有人@我」提示 */
+  mentionedUnread?: number
   isPinned?: boolean
   isArchived?: boolean
 }
@@ -128,6 +130,8 @@ export interface Message {
   sequence?: number
   createdAt: string
   replyToId?: string | null
+  /** @ 提及对象（后端 MessageResponse.mentions 回显；被 @ 用户据此展示「有人@我」） */
+  mentions?: Mention[]
 }
 
 export interface SendMessagePayload {

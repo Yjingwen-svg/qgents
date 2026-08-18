@@ -825,8 +825,13 @@ function quotePreview(message: Message): string {
       return `[Diff] ${typeof content?.title === 'string' ? content.title : '代码变更'}`
     case 'TASK_STATUS':
       return `[任务状态] ${typeof content?.message === 'string' ? content.message : (typeof content?.status === 'string' ? content.status : '')}`
-    case 'QUOTE':
-      return `[引用] ${typeof content?.quotedText === 'string' ? content.quotedText : ''}`
+    case 'QUOTE': {
+      // 引用一条「引用消息」时，被引用内容应为该消息实际回复的正文（replyText），
+      // 而不是其引用的上层内容——避免嵌套引用叠加成 [引用][引用]…
+      const quoted = content as QuoteMessageContent | null
+      const text = quoted?.replyText ?? quoted?.quotedText ?? ''
+      return text || '[引用]'
+    }
     default: {
       const text = typeof content?.text === 'string' ? content.text : ''
       return text || '[消息]'

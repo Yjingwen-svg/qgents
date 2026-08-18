@@ -107,12 +107,15 @@ describe('TaskDetailPage workbench', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('uses planning wording when the planner has not created task steps yet', () => {
+  it('uses skeleton cards while the planner is generating task steps', () => {
     useTaskMock.mockReturnValue({ data: { ...task, status: 'PLANNING', executionSummary: { ...task.executionSummary, totalSteps: 0, runningSteps: 0, currentStage: null, currentStageTitle: '规划中' } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
     useTaskStepsMock.mockReturnValue({ data: page<TaskStep>([]), error: null, isError: false, isLoading: false })
     renderPage()
-    expect(screen.getByText('规划 Agent 正在生成执行方案')).toBeInTheDocument()
+    expect(screen.queryByText('规划 Agent 正在生成执行方案')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('execution-flow-empty')).not.toBeInTheDocument()
     expect(screen.queryByTestId('current-execution-card')).not.toBeInTheDocument()
+    // Three skeleton step cards are rendered
+    expect(screen.getAllByTestId('planning-step-card').length).toBe(3)
   })
 
   it('selects an embedded single-run inspector and preserves the run id in the URL', async () => {

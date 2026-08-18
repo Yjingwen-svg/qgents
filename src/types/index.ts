@@ -119,15 +119,20 @@ export type {
   UpdateTestsetPayload,
   TestRun,
   TestRunStatus,
+  TestRunResultItem,
+  TestRunExecutionSummary,
   TestCaseSummary,
   CreateTestRunPayload,
   DryRunReport,
+  DryRunReportBody,
+  DryRunTestsPayload,
   DryRunStatus,
   DryRunConflict,
   CreateDryRunPayload,
   LocalRunHistoryItem,
   LocalRunKind,
 } from './testset'
+export { isDryRunTestsSkipped, dryRunHasMergeConflict } from './testset'
 export type {
   Activity,
   ActivityType,

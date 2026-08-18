@@ -56,9 +56,12 @@ import type {
   LocalRunHistoryItem,
   TestCaseDetail,
   TestRunArtifactRef,
+  TestRunExecutionSummary,
+  TestRunResultItem,
   Testset,
   TestsetStatus,
 } from '@/types/testset'
+import { dryRunHasMergeConflict, isDryRunTestsSkipped } from '@/types/testset'
 import {
   caseStatusColor,
   caseStatusLabel,
@@ -819,6 +822,20 @@ function CurrentRunPanel({
       )
     : null
 
+  const dryConflict = dryRun ? dryRunHasMergeConflict(dryRun) : false
+  const dryStatusForTag = dryConflict ? 'CONFLICT' : dryRun?.status
+  const executionSummary: TestRunExecutionSummary | null = testRun?.executionSummary ?? null
+  const dryTests = dryRun?.report?.tests ?? null
+  const dryExecutionSummary =
+    dryTests && !isDryRunTestsSkipped(dryTests) ? dryTests : null
+  const resultRows: TestRunResultItem[] =
+    dryExecutionSummary?.results ?? executionSummary?.results ?? []
+  const resolvedCommit =
+    dryRun?.report?.targetCommit ??
+    dryExecutionSummary?.resolvedHeadCommit ??
+    executionSummary?.resolvedHeadCommit ??
+    null
+
   const tabItems = [
     {
       key: 'overview',
@@ -842,10 +859,31 @@ function CurrentRunPanel({
             {dryRun ? (
               <>
                 <Descriptions.Item label="状态">
-                  <Tag color={runStatusColor(dryRun.status)}>{dryRunStatusLabel(dryRun.status)}</Tag>
+                  <Tag color={runStatusColor(dryStatusForTag ?? dryRun.status)}>
+                    {dryConflict
+                      ? '冲突'
+                      : dryRunStatusLabel(dryRun.status)}
+                  </Tag>
                 </Descriptions.Item>
-                <Descriptions.Item label="源分支">{dryRun.sourceRef || '—'}</Descriptions.Item>
+                <Descriptions.Item label="源">{dryRun.sourceRef || '—'}</Descriptions.Item>
                 <Descriptions.Item label="目标分支">{dryRun.targetBranch || '—'}</Descriptions.Item>
+                <Descriptions.Item label="目标提交">
+                  {dryRun.report?.targetCommit ? (
+                    <Text code>{dryRun.report.targetCommit.slice(0, 12)}</Text>
+                  ) : (
+                    '—'
+                  )}
+                </Descriptions.Item>
+                <Descriptions.Item label="可合并">
+                  {dryRun.report?.mergeable == null
+                    ? '—'
+                    : dryRun.report.mergeable
+                      ? '是'
+                      : '否（冲突）'}
+                </Descriptions.Item>
+                <Descriptions.Item label="报告失败码">
+                  {dryRun.report?.failureCode || '—'}
+                </Descriptions.Item>
               </>
             ) : testRun ? (
               <>
@@ -854,9 +892,50 @@ function CurrentRunPanel({
                 </Descriptions.Item>
                 <Descriptions.Item label="ref">{testRun.ref || '—'}</Descriptions.Item>
                 <Descriptions.Item label="Task">{testRun.taskId || '—'}</Descriptions.Item>
+                <Descriptions.Item label="执行提交" span={2}>
+                  {resolvedCommit ? <Text code>{resolvedCommit.slice(0, 12)}</Text> : '—'}
+                </Descriptions.Item>
               </>
             ) : null}
           </Descriptions>
+
+          {dryConflict ? (
+            <Alert
+              type="warning"
+              showIcon
+              className={styles.alert}
+              message="合并冲突（不是测试失败）"
+              description="源提交合入目标分支时无法自动合并。冲突未解决前不会执行门禁 Testset；请勿将状态理解为用例未通过。"
+            />
+          ) : null}
+
+          {dryTests && isDryRunTestsSkipped(dryTests) ? (
+            <Alert
+              type="info"
+              showIcon
+              className={styles.alert}
+              message={
+                dryTests.status === 'NOT_REQUIRED'
+                  ? '本目标分支未配置必选 Testset'
+                  : '因合并冲突跳过测试'
+              }
+              description={
+                dryTests.status === 'NOT_REQUIRED'
+                  ? 'NOT_REQUIRED 仅表示该目标分支没有必选 Testset，不等于整个项目无需质量门禁。'
+                  : 'tests.status=SKIPPED 且 reason=MERGE_CONFLICT：测试未执行，不得视为通过。'
+              }
+            />
+          ) : null}
+
+          {resultRows.length > 0 ? (
+            <TestsetResultsTable results={resultRows} testsets={testsets} />
+          ) : !dryConflict && !(dryTests && isDryRunTestsSkipped(dryTests)) ? (
+            <Text type="secondary">
+              暂无按 Testset 的执行摘要（summary.results）。排队/运行中时可能仍为空；本轮也不提供
+              caseSummary 用例计数。
+            </Text>
+          ) : null}
+
           {summary ? (
             <div className={styles.metrics}>
               <div className={styles.metric}>
@@ -878,9 +957,7 @@ function CurrentRunPanel({
                 <span className={styles.metricValue}>{summary.total}</span>
               </div>
             </div>
-          ) : (
-            <Text type="secondary">本轮不提供用例摘要（caseSummary），不是联调 Bug。</Text>
-          )}
+          ) : null}
         </>
       ),
     },
@@ -910,7 +987,6 @@ function CurrentRunPanel({
       children: (
         <RunReportPanel
           kind={dryRun ? 'dry-run' : 'test-run'}
-          summary={dryRun?.summary || testRun?.summary || ''}
           reportUrl={dryRun?.reportUrl ?? testRun?.reportUrl ?? null}
           pdfUrl={dryRun?.pdfUrl ?? testRun?.pdfUrl ?? null}
           artifacts={testRun?.artifacts ?? []}
@@ -960,7 +1036,7 @@ function DryRunConflictsPanel({
       </Text>
       {reviewTo ? <Link to={reviewTo}>打开关联 Diff</Link> : <Text type="secondary">暂无匹配的 Diff 评审</Text>}
       {dryRun.conflicts.length === 0 ? (
-        <Empty description="本轮不提供冲突明细。空表不是联调 Bug。" />
+        <Empty description="暂无冲突明细。若状态为冲突但此处为空，请看结果总览的 mergeable / tests 说明。" />
       ) : (
         <Table
           size="small"
@@ -1049,28 +1125,78 @@ function CaseDetailsPanel({
   )
 }
 
+function TestsetResultsTable({
+  results,
+  testsets,
+}: {
+  results: TestRunResultItem[]
+  testsets: Testset[]
+}) {
+  return (
+    <Table
+      size="small"
+      pagination={false}
+      rowKey={(row) => `${row.testsetId}-${row.status}-${row.exitCode ?? 'x'}`}
+      dataSource={results}
+      style={{ marginTop: 12 }}
+      columns={[
+        {
+          title: 'Testset',
+          dataIndex: 'testsetId',
+          render: (id: string) => testsets.find((item) => item.id === id)?.name || id,
+        },
+        {
+          title: '状态',
+          dataIndex: 'status',
+          width: 100,
+          render: (status: TestRunResultItem['status']) => (
+            <Tag color={runStatusColor(status)}>{testRunStatusLabel(status)}</Tag>
+          ),
+        },
+        {
+          title: 'exitCode',
+          dataIndex: 'exitCode',
+          width: 96,
+          render: (value: number | null) => (value == null ? '—' : value),
+        },
+        {
+          title: 'failureCode',
+          dataIndex: 'failureCode',
+          width: 180,
+          ellipsis: true,
+          render: (value: string | null) => value || '—',
+        },
+        {
+          title: '耗时',
+          dataIndex: 'durationMs',
+          width: 100,
+          render: (value: number | null) => formatDurationMs(value),
+        },
+      ]}
+    />
+  )
+}
+
 function RunReportPanel({
   kind,
-  summary,
   reportUrl,
   pdfUrl,
   artifacts,
 }: {
   kind: 'test-run' | 'dry-run'
-  summary: string
   reportUrl: string | null
   pdfUrl: string | null
   artifacts: TestRunArtifactRef[]
 }) {
-  const hasAnything = Boolean(summary || reportUrl || pdfUrl || artifacts.length > 0)
+  const hasAnything = Boolean(reportUrl || pdfUrl || artifacts.length > 0)
   if (!hasAnything) {
     return (
       <Empty
         description={
           <span>
             {kind === 'test-run'
-              ? '本轮不提供测试报告（reportUrl / pdfUrl）。报告 Tab 保持空态，不要把缺失当 Bug。'
-              : '本轮不提供 Dry-run 报告产物 URL。报告 Tab 保持空态，不要把缺失当 Bug。'}
+              ? '本轮不提供测试报告产物（reportUrl / pdfUrl）。执行摘要见「结果总览」。'
+              : '本轮不提供 Dry-run 报告产物 URL。冲突与门禁 Testset 摘要见「结果总览」。'}
           </span>
         }
       />
@@ -1079,7 +1205,6 @@ function RunReportPanel({
 
   return (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
-      {summary ? <Paragraph className={styles.sideText}>{summary}</Paragraph> : null}
       <Space wrap>
         {reportUrl ? (
           <Button href={reportUrl} target="_blank" rel="noreferrer">
@@ -1180,11 +1305,14 @@ function RunHistoryPanel({
 }) {
   return (
     <div className={styles.historyPanel}>
-      <Text strong>历史运行记录</Text>
+      <Text strong>本设备最近运行</Text>
+      <Text type="secondary" className={styles.historyHint}>
+        仅保存在本浏览器，不是跨设备权威历史。
+      </Text>
       {history.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="本页发起的运行记在浏览器 localStorage。本轮没有 GET /test-runs、GET /dry-runs 历史列表。"
+          description="本页发起的运行记在本设备。服务端历史列表本轮不做。"
         />
       ) : (
         <div className={styles.historyList}>

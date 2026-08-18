@@ -153,13 +153,11 @@ function InputRequestCard({ projectId, taskRunId, request, onRefresh }: { projec
 }
 
 function ExecutionContextCard({ query }: { query: ReturnType<typeof useTaskRunExecutionContext> }) {
-  const context = query.data
-  const abnormal = context?.sandboxStatus === 'FAILED' || context?.sandboxStatus === 'EXPIRED'
   if (query.isLoading) return <section className={styles.sideCard} data-testid="execution-context-card"><SectionHeading title="执行环境" /><InlineState loading /></section>
   if (query.isError) return <section className={styles.sideCard} data-testid="execution-context-card"><SectionHeading title="执行环境" /><SectionError resource="Execution Context" error={query.error} /></section>
   const context = query.data
   if (!context) return <section className={styles.sideCard} data-testid="execution-context-card"><SectionHeading title="执行环境" /><InlineState text="暂无执行环境摘要" /></section>
-  const abnormal = context.sandboxStatus !== 'READY'
+  const abnormal = context.sandboxStatus === 'FAILED' || context.sandboxStatus === 'EXPIRED'
   return <section className={`${styles.sideCard} ${abnormal ? styles.sideCardWarning : ''}`} data-testid="execution-context-card"><SectionHeading title="执行环境" /><div className={styles.contextGrid}><MetaItem label="Workspace" value={context.workspaceId} /><MetaItem label="Sandbox" value={context.sandboxStatus} /><MetaItem label="Repository" value={context.repositoryId} /><MetaItem label="Ref" value={`${context.baseRef} → ${context.headRef}`} /><MetaItem label="开始" value={formatDate(context.startedAt)} /><MetaItem label="到期" value={formatDate(context.expiresAt)} /></div></section>
 }
 

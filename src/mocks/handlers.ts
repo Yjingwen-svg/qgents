@@ -4,12 +4,8 @@ import type { Group, GroupMember, Message } from '@/types/group'
 import type { Activity, Memory, Notification, MyTeamInvitation } from '@/types'
 import { MOCK_CURRENT_USER } from './currentUser'
 import { deliveryCenterHandlers } from './delivery-center/handlers'
-<<<<<<< HEAD
-import { createTaskFromMessageIntent } from './task-model/handlers'
-import { createWorkBranchHandlers } from './workBranches'
-=======
 import { createTaskFromMessageIntent, findTaskByTriggerMessageId } from './task-model/handlers'
->>>>>>> 8a384ccc9061a8e80e2e14cc5db723212c3da356
+import { createWorkBranchHandlers } from './workBranches'
 
 // ══════════════════════════════════════════════
 // Mock 数据

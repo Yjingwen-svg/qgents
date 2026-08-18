@@ -92,6 +92,27 @@ const otherTestset: Testset = {
   scopeTags: ['pay'],
 }
 
+const emptyTestRun = {
+  id: 'testrun-1',
+  projectId: 'demo-project',
+  repositoryId: 'bound-demo-auth-service',
+  testsetIds: ['testset-demo-project-login'],
+  taskId: null,
+  ref: 'feat/login-api',
+  status: 'PASSED' as const,
+  executionSummary: null,
+  createdBy: 'user-001',
+  createdAt: '2026-08-15T02:00:00Z',
+  caseSummary: null,
+  cases: [] as const,
+  artifacts: [] as const,
+  reportUrl: null,
+  pdfUrl: null,
+  startedAt: null,
+  finishedAt: null,
+  sandboxId: null,
+}
+
 function idleMutation() {
   return { mutateAsync: vi.fn(), isPending: false, error: null }
 }
@@ -234,8 +255,7 @@ describe('TestsetPage', () => {
     expect(screen.getByText('当前运行')).toBeInTheDocument()
     expect(screen.queryByText('test-run')).not.toBeInTheDocument()
     expect(screen.queryByText('dry-run')).not.toBeInTheDocument()
-    expect(screen.queryByText('执行说明')).not.toBeInTheDocument()
-    expect(screen.getByText('历史运行记录')).toBeInTheDocument()
+    expect(screen.getByText('本设备最近运行')).toBeInTheDocument()
     expect(screen.getByText('权限')).toBeInTheDocument()
   })
 
@@ -279,26 +299,7 @@ describe('TestsetPage', () => {
       refetch: vi.fn(),
     })
     useTestRunMock.mockReturnValue({
-      data: {
-        id: 'testrun-1',
-        projectId: 'demo-project',
-        repositoryId: 'bound-demo-auth-service',
-        testsetIds: ['testset-demo-project-login'],
-        taskId: null,
-        ref: 'feat/login-api',
-        status: 'PASSED',
-        summary: '',
-        createdBy: 'user-001',
-        createdAt: '2026-08-15T02:00:00Z',
-        caseSummary: null,
-        cases: [],
-        artifacts: [],
-        reportUrl: null,
-        pdfUrl: null,
-        startedAt: null,
-        finishedAt: null,
-        sandboxId: null,
-      },
+      data: emptyTestRun,
       isLoading: false,
     })
     renderPage('/app/projects/demo-project/testset?testRunId=testrun-1')
@@ -313,57 +314,46 @@ describe('TestsetPage', () => {
     expect(screen.queryByRole('tab', { name: '冲突结果' })).not.toBeInTheDocument()
   })
 
-  it('opens the report tab when the URL asks for runTab=report', async () => {
+  it('renders execution summary results on the overview tab', async () => {
     useTestRunMock.mockReturnValue({
       data: {
-        id: 'testrun-1',
-        projectId: 'demo-project',
-        repositoryId: 'bound-demo-auth-service',
-        testsetIds: ['testset-demo-project-login'],
-        taskId: null,
-        ref: 'feat/login-api',
-        status: 'PASSED',
-        summary: '',
-        createdBy: 'user-001',
-        createdAt: '2026-08-15T02:00:00Z',
-        caseSummary: null,
-        cases: [],
-        artifacts: [],
-        reportUrl: null,
-        pdfUrl: null,
-        startedAt: null,
-        finishedAt: null,
-        sandboxId: null,
+        ...emptyTestRun,
+        status: 'FAILED',
+        executionSummary: {
+          status: 'FAILED',
+          resolvedHeadCommit: 'fc3a50234ba70b5121dc328decebe97dec915a83',
+          results: [
+            {
+              testsetId: 'testset-demo-project-login',
+              status: 'FAILED',
+              exitCode: 254,
+              durationMs: 279,
+              failureCode: 'UNEXPECTED_EXIT_CODE',
+            },
+          ],
+        },
       },
+      isLoading: false,
+    })
+    renderPage('/app/projects/demo-project/testset?testRunId=testrun-1')
+    expect(await screen.findByText('UNEXPECTED_EXIT_CODE')).toBeInTheDocument()
+    expect(screen.getByText('254')).toBeInTheDocument()
+    expect(screen.getByText('fc3a50234ba7')).toBeInTheDocument()
+  })
+
+  it('opens the report tab when the URL asks for runTab=report', async () => {
+    useTestRunMock.mockReturnValue({
+      data: emptyTestRun,
       isLoading: false,
     })
     renderPage('/app/projects/demo-project/testset?testRunId=testrun-1&runTab=report')
     expect(await screen.findByRole('tab', { name: '测试报告', selected: true })).toBeInTheDocument()
-    expect(screen.getByText(/本轮不提供测试报告/)).toBeInTheDocument()
+    expect(screen.getByText(/本轮不提供测试报告产物/)).toBeInTheDocument()
   })
 
-  it('shows case detail rows on the 用例详情 tab', async () => {
+  it('shows case detail empty state on the 用例详情 tab', async () => {
     useTestRunMock.mockReturnValue({
-      data: {
-        id: 'testrun-1',
-        projectId: 'demo-project',
-        repositoryId: 'bound-demo-auth-service',
-        testsetIds: ['testset-demo-project-login'],
-        taskId: null,
-        ref: 'feat/login-api',
-        status: 'PASSED',
-        summary: '',
-        createdBy: 'user-001',
-        createdAt: '2026-08-15T02:00:00Z',
-        caseSummary: null,
-        cases: [],
-        artifacts: [],
-        reportUrl: null,
-        pdfUrl: null,
-        startedAt: null,
-        finishedAt: null,
-        sandboxId: null,
-      },
+      data: emptyTestRun,
       isLoading: false,
     })
     const user = userEvent.setup()
@@ -374,7 +364,7 @@ describe('TestsetPage', () => {
     expect(screen.queryByRole('tab', { name: '冲突结果' })).not.toBeInTheDocument()
   })
 
-  it('keeps 冲突结果 only on dry-run and links matching Diff files', async () => {
+  it('shows merge conflict as conflict, not test failure', async () => {
     vi.mocked(diffsApi.list).mockResolvedValue({
       data: [
         {
@@ -405,11 +395,17 @@ describe('TestsetPage', () => {
         sourceRef: 'feat/login-api',
         targetBranch: 'main',
         taskId: null,
-        status: 'CONFLICT',
-        conflicts: [],
+        status: 'FAILED',
+        report: {
+          targetCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          mergeable: false,
+          conflicts: [{ path: 'src/Auth.ts', message: '双方都修改了 login' }],
+          tests: { status: 'SKIPPED', results: [], reason: 'MERGE_CONFLICT' },
+          failureCode: null,
+        },
+        conflicts: [{ path: 'src/Auth.ts', message: '双方都修改了 login' }],
         caseSummary: null,
         cases: [],
-        summary: '',
         reportUrl: null,
         pdfUrl: null,
         startedAt: null,
@@ -424,9 +420,10 @@ describe('TestsetPage', () => {
     const user = userEvent.setup()
     renderPage('/app/projects/demo-project/testset?dryRunId=dryrun-1')
     expect(await screen.findByText('dry-run')).toBeInTheDocument()
+    expect(screen.getByText('冲突')).toBeInTheDocument()
+    expect(screen.getByText(/不是测试失败/)).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '冲突结果' })).toBeInTheDocument()
     await user.click(screen.getByRole('tab', { name: '冲突结果' }))
-    expect(await screen.findByText(/本轮不提供冲突明细/)).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: '打开交付中心' })).not.toBeInTheDocument()
+    expect(await screen.findByText('src/Auth.ts')).toBeInTheDocument()
   })
 })

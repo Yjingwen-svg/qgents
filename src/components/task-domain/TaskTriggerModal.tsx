@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Form, Input, message, Modal, Select } from 'antd'
+import { Alert, Form, Input, message, Modal, Select, Spin } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ApiError } from '@/api'
+import { ApiError, groupApi } from '@/api'
 import { githubApi } from '@/api/github'
 import { useCreateTask } from '@/hooks/task-model'
 import { queryKeys } from '@/query/queryKeys'
@@ -43,6 +43,12 @@ export function TaskTriggerModal({ open, projectId, groupId, initialInstruction,
     queryFn: () => githubApi.listProjectRepositories(projectId),
     enabled: Boolean(projectId && open),
   })
+  // 复用 ChatPanel 的缓存键，避免重复请求；展示需求群时优先用 title（需求群名称），仅在加载或查不到时回落为 groupId。
+  const groupsQuery = useQuery({
+    queryKey: ['groups', projectId],
+    queryFn: () => groupApi.listByProject(projectId),
+    enabled: Boolean(projectId && open),
+  })
   const { reset: resetMutation } = mutation
   const [isSubmitting, setIsSubmitting] = useState(false)
   const submitLockRef = useRef(false)
@@ -52,6 +58,10 @@ export function TaskTriggerModal({ open, projectId, groupId, initialInstruction,
     value: repository.id,
     label: repository.fullName || repository.repositoryId || '暂无',
   }))
+  // 需求群名称：已加载且命中时显示 title，否则保持只读回退为 groupId，保证抽屉中始终可见。
+  const requirementGroupName =
+    groupsQuery.data?.find((item) => item.id === groupId)?.title?.trim() || groupId
+  const requirementGroupLoading = groupsQuery.isLoading
 
   function handleRepositoryChange(repositoryIds: string[]): void {
     const repository = repositories.find((item) => item.id === repositoryIds[0])
@@ -115,7 +125,9 @@ export function TaskTriggerModal({ open, projectId, groupId, initialInstruction,
         disabled={pending || repositoryUnavailable}
       >
         <Form.Item label="需求群">
-          <Input value={groupId} readOnly />
+          <Spin size="small" spinning={requirementGroupLoading}>
+            <Input value={requirementGroupName} readOnly />
+          </Spin>
         </Form.Item>
         <Form.Item label="任务标题" name="title" rules={[{ required: true, whitespace: true, message: '请输入任务标题' }]}>
           <Input placeholder="请输入任务标题" />

@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Alert, Avatar, Button, Empty, Spin, Tag, Typography } from 'antd'
+import { Alert, Avatar, Button, Empty, Spin, Tag, Tooltip, Typography } from 'antd'
+import { CloudUploadOutlined, EditOutlined, InboxOutlined, RollbackOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
-import { useAgentAssignments, useAgentRuntime, useAgentSkillBindings, useAgentTaskRuns } from '@/hooks'
+import { useAgentAssignments, useAgentRuntime, useAgentTaskRuns } from '@/hooks'
 import type { AgentAssignmentSummary, AgentDetail, AgentDetailTab, AgentRuntimeSummary, AgentSummary, AgentTaskRunSummary } from '@/types'
 import { PATHS } from '@/routes/paths'
 import styles from './AgentDetailPanel.module.scss'
@@ -12,7 +13,6 @@ const tabs: Array<{ key: AgentDetailTab; label: string }> = [
   { key: 'overview', label: '概览' },
   { key: 'assignments', label: '分配详情' },
   { key: 'config', label: '配置' },
-  { key: 'capabilities', label: '项目资源' },
   { key: 'runs', label: '运行记录' },
 ]
 
@@ -38,7 +38,6 @@ export function AgentDetailPanel({ projectId, agent, detail, onEdit, canEdit, on
   const assignmentsWorkflows = useAgentAssignments(projectId, current.id, { type: 'WORKFLOW' }, activeTab === 'assignments')
   const runs = useAgentTaskRuns(projectId, current.id, undefined, activeTab === 'overview' || activeTab === 'runs')
   const runtimeQuery = useAgentRuntime(projectId, current.id, activeTab === 'overview')
-  const skills = useAgentSkillBindings(projectId, current.id, activeTab === 'capabilities')
   const task = runs.data?.data.find((item) => ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED', 'CANCELLING'].includes(item.status))
 
   return <aside className={styles.panel}>
@@ -47,7 +46,7 @@ export function AgentDetailPanel({ projectId, agent, detail, onEdit, canEdit, on
         <Avatar className={styles.avatar} src={current.avatar ?? undefined}>{current.name.slice(0, 2)}</Avatar>
         <div className={styles.identityText}><Title level={4} className={styles.name}>{current.name}</Title><Text type="secondary">{current.role}</Text></div>
       </div>
-      <div className={styles.actions}>{canEdit ? <Button size="small" onClick={onEdit}>编辑</Button> : null}{canPublish ? <Button size="small" onClick={onPublish}>发布为 TEAM</Button> : null}{canUnpublish ? <Button size="small" onClick={onUnpublish}>取消发布</Button> : null}{canArchive ? <Button size="small" danger onClick={onArchive}>归档</Button> : null}</div>
+      <div className={styles.actions}>{canEdit ? <Tooltip title="编辑"><Button size="small" type="text" icon={<EditOutlined />} aria-label="编辑" onClick={onEdit} /></Tooltip> : null}{canPublish ? <Tooltip title="发布为 TEAM"><Button size="small" type="text" icon={<CloudUploadOutlined />} aria-label="发布为 TEAM" onClick={onPublish} /></Tooltip> : null}{canUnpublish ? <Tooltip title="取消发布"><Button size="small" type="text" icon={<RollbackOutlined />} aria-label="取消发布" onClick={onUnpublish} /></Tooltip> : null}{canArchive ? <Tooltip title="归档"><Button size="small" type="text" danger icon={<InboxOutlined />} aria-label="归档" onClick={onArchive} /></Tooltip> : null}</div>
     </header>
     <nav className={styles.tabs} aria-label="Agent 详情 Tab">
       {tabs.map((tab) => <button type="button" key={tab.key} className={`${styles.tab} ${activeTab === tab.key ? styles.tabActive : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button>)}
@@ -56,7 +55,6 @@ export function AgentDetailPanel({ projectId, agent, detail, onEdit, canEdit, on
       {activeTab === 'overview' ? <Overview agent={current} runtime={runtimeQuery} task={task} /> : null}
       {activeTab === 'assignments' ? <Assignments groups={assignmentsGroups} workflows={assignmentsWorkflows} /> : null}
       {activeTab === 'config' ? <Config agent={current} /> : null}
-      {activeTab === 'capabilities' ? <ProjectResources skills={skills} /> : null}
       {activeTab === 'runs' ? <Runs projectId={projectId} query={runs} navigate={navigate} /> : null}
     </div>
   </aside>
@@ -95,10 +93,6 @@ function AssignmentItem({ item }: { item: AgentAssignmentSummary }) { return <li
 
 function Config({ agent }: { agent: AgentDetail | AgentSummary }) {
   return <section className={styles.card}><Title level={5}>现有配置</Title><dl className={styles.definition}><dt>可见性</dt><dd>{agent.visibility}</dd><dt>生命周期</dt><dd>{agent.status}</dd><dt>Prompt</dt><dd>{'prompt' in agent && agent.prompt ? agent.prompt : '未提供或无权限查看'}</dd></dl><Text type="secondary">当前保留自定义 Agent 入口与原有配置内容，本轮不新增保存字段。</Text></section>
-}
-
-function ProjectResources({ skills }: { skills: ReturnType<typeof useAgentSkillBindings> }) {
-  return <div><section className={styles.card}><Title level={5}>已绑定 Skill</Title>{skills.isLoading ? <Spin size="small" /> : skills.isError ? <Alert type="error" showIcon message="Skill 数据加载失败" /> : skills.data?.skills.length ? <div className={styles.tags}>{skills.data.skills.map((skill) => <Tag key={skill.id}>{skill.name}</Tag>)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无已绑定 Skill" />}</section><Text type="secondary">Skill 绑定按项目隔离；Memory 访问范围由运行时摘要返回。</Text></div>
 }
 
 function Runs({ projectId, query, navigate }: { projectId: string; query: ReturnType<typeof useAgentTaskRuns>; navigate: ReturnType<typeof useNavigate> }) {

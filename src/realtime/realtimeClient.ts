@@ -108,6 +108,9 @@ export class RealtimeClient {
     void queryClient.invalidateQueries({ queryKey: ['notifications'] })
     void queryClient.invalidateQueries({ queryKey: ['teams', 'mine'] })
     void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('qgents:realtime-reconnected'))
+    }
     for (const listener of this.reconnectListeners) listener()
   }
 

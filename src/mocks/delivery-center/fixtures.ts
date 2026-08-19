@@ -1,4 +1,5 @@
 import type {
+  AgentDeliveryItem,
   CodeDeliveryItem,
   DeliveryActor,
   DeliveryCapabilities,
@@ -152,6 +153,37 @@ function skillItem(overrides: Partial<SkillDeliveryItem> & Pick<SkillDeliveryIte
   }
 }
 
+/** §30.3 AGENT 交付项：canSubmitReview 恒 false；capabilities 由 teamRole 决定 */
+function agentItem(overrides: Partial<AgentDeliveryItem> & Pick<AgentDeliveryItem, 'id' | 'resourceId' | 'title' | 'displayStatus' | 'agentVisibility'>): AgentDeliveryItem {
+  return {
+    id: overrides.id,
+    projectId: overrides.projectId ?? 'project-delivery-center',
+    resourceType: 'AGENT',
+    resourceId: overrides.resourceId,
+    openTarget: overrides.openTarget ?? { kind: 'AGENT', agentId: overrides.resourceId },
+    title: overrides.title,
+    summary: null,
+    version: null,
+    displayStatus: overrides.displayStatus,
+    resourceStatus: 'ACTIVE',
+    requirementGroup: overrides.requirementGroup ?? null,
+    source: overrides.source ?? sourceWithoutTask,
+    creator: member,
+    submitter: overrides.submitter ?? member,
+    reviewer: overrides.reviewer ?? null,
+    reviewReason: overrides.reviewReason ?? null,
+    createdAt: '2026-08-14T08:00:00Z',
+    submittedAt: overrides.submittedAt ?? '2026-08-14T08:30:00Z',
+    reviewedAt: overrides.reviewedAt ?? null,
+    updatedAt: '2026-08-14T09:00:00Z',
+    capabilities: overrides.capabilities ?? capabilities(overrides.agentVisibility === 'PENDING', false, false, overrides.agentVisibility === 'TEAM'),
+    role: overrides.role ?? 'DEVELOPER',
+    descriptionExcerpt: overrides.descriptionExcerpt ?? '负责后端接口与数据层实现。',
+    isDefault: false,
+    agentVisibility: overrides.agentVisibility,
+  }
+}
+
 export const deliveryCenterFixtures: Record<string, DeliveryItem[]> = {
   'project-delivery-center': [
     memoryItem({ id: 'delivery-memory-draft', resourceId: 'memory-draft-001', title: 'Draft memory', displayStatus: 'DRAFT', resourceStatus: 'DRAFT', visibility: 'PROJECT_SHARED' }),
@@ -163,6 +195,9 @@ export const deliveryCenterFixtures: Record<string, DeliveryItem[]> = {
     codeItem({ id: 'delivery-code-partial', resourceId: 'diff-review-partial', title: 'Code delivery partially failed', displayStatus: 'FAILED', resourceStatus: 'PARTIALLY_DELIVERED', reviewStatus: 'ACCEPTED', deliveryStatus: 'PARTIALLY_DELIVERED', capabilities: capabilities(false, false, true), repositories: [{ repositoryId: 'repo-main', name: 'qgents-web', branch: 'feat/delivery-center' }, { repositoryId: 'repo-docs', name: 'qgents-docs', branch: 'feat/delivery-center' }], repositoryDeliveries: [{ repositoryId: 'repo-main', repositoryName: 'qgents-web', deliveryStatus: 'MR_CREATED', failureCode: null, failureReason: null, mergeRequest: { id: 'mr-001', number: 18, title: 'Delivery Center change', status: 'OPEN', webUrl: 'https://github.com/example/qgents-web/pull/18' }, updatedAt: '2026-08-14T08:00:00Z' }, { repositoryId: 'repo-docs', repositoryName: 'qgents-docs', deliveryStatus: 'FAILED', failureCode: 'PUSH_REJECTED', failureReason: 'Remote branch changed', mergeRequest: null, updatedAt: '2026-08-14T08:00:00Z' }] }),
     codeItem({ id: 'delivery-code-delivered', resourceId: 'diff-review-delivered', title: 'Delivered code', displayStatus: 'DELIVERED', resourceStatus: 'DELIVERED', reviewStatus: 'ACCEPTED', deliveryStatus: 'DELIVERED', capabilities: capabilities(false, false) }),
     codeItem({ id: 'delivery-code-archived', resourceId: 'diff-review-archived', title: 'Archived code', displayStatus: 'ARCHIVED', resourceStatus: 'ARCHIVED', reviewStatus: 'REJECTED', deliveryStatus: 'FAILED', capabilities: capabilities(false, false), reviewer, reviewedAt: '2026-08-12T11:00:00Z', reviewReason: 'Archived after review' }),
+    // §30.3 AGENT 交付样例：PENDING 等审核 / TEAM 已发布 / ARCHIVED 已归档
+    agentItem({ id: 'delivery-agent-pending', resourceId: 'agent-pending-frontend', title: 'Frontend Developer Agent', displayStatus: 'PENDING_REVIEW', agentVisibility: 'PENDING' }),
+    agentItem({ id: 'delivery-agent-team', resourceId: 'agent-team-tester', title: 'Tester Agent', displayStatus: 'ACCEPTED', agentVisibility: 'TEAM', capabilities: capabilities(false, false, false, true) }),
   ],
   'project-no-approval': [
     memoryItem({ id: 'delivery-member-pending', projectId: 'project-no-approval', resourceId: 'memory-member-pending', title: 'Member pending memory', displayStatus: 'PENDING_REVIEW', resourceStatus: 'PENDING_REVIEW', visibility: 'PROJECT_SHARED', capabilities: capabilities(false, false) }),

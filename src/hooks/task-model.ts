@@ -138,6 +138,20 @@ export function useTaskRunLogs(projectId: string, taskRunId: string, filters: Pa
   })
 }
 
+export function useInfiniteTaskRunLogs(
+  projectId: string,
+  taskRunId: string,
+  filters: Omit<PageFilters, 'cursor'> = {},
+): UseInfiniteQueryResult<InfiniteData<Page<TaskRunLog>, string | undefined>, Error> {
+  return useInfiniteQuery({
+    queryKey: taskModelQueryKeys.taskRuns.logs(projectId, taskRunId, filters),
+    queryFn: ({ pageParam }) => taskRunsApi.logs(projectId, taskRunId, { ...filters, cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.page.hasMore ? lastPage.page.nextCursor ?? undefined : undefined,
+    enabled: Boolean(projectId && taskRunId),
+  })
+}
+
 export function useTaskRunExecutionContext(projectId: string, taskRunId: string): UseQueryResult<ExecutionContext> {
   return useQuery({
     queryKey: taskModelQueryKeys.taskRuns.executionContext(projectId, taskRunId),
@@ -226,7 +240,7 @@ export function useCancelTask(projectId: string): UseMutationResult<Task, Error,
       queryClient.setQueryData(taskModelQueryKeys.tasks.detail(projectId, task.id), task)
       void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.all(projectId) })
       void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.detail(projectId, task.id) })
-      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.all(projectId, task.id) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.list(projectId, task.id) })
     },
   })
 }
@@ -248,7 +262,8 @@ export function useRetryTaskRunModel(projectId: string): UseMutationResult<TaskR
     onSuccess: (taskRun, originalTaskRunId) => {
       queryClient.setQueryData(taskModelQueryKeys.taskRuns.detail(projectId, taskRun.id), taskRun)
       void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.detail(projectId, originalTaskRunId) })
-      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.all(projectId, taskRun.taskId) })
+      // 刷新运行列表，使新 retry run 显示在「最近执行」中
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.list(projectId, taskRun.taskId) })
       void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.detail(projectId, taskRun.taskId) })
     },
   })
@@ -259,7 +274,7 @@ export function useCancelTaskRunModel(projectId: string): UseMutationResult<Task
     mutationFn: (taskRunId) => taskRunsApi.cancel(projectId, taskRunId),
     onSuccess: (taskRun) => {
       queryClient.setQueryData(taskModelQueryKeys.taskRuns.detail(projectId, taskRun.id), taskRun)
-      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.all(projectId, taskRun.taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.list(projectId, taskRun.taskId) })
     },
   })
 }

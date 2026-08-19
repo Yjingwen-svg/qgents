@@ -108,8 +108,7 @@ export default function AgentTeamPage() {
     {invalid ? <Alert type="warning" showIcon message="Agent 不存在或当前不可见" /> : null}
     <div className={styles.layout}>
       <main className={styles.listPane} aria-label="Agent 列表">
-        {agents.length === 0 ? <div className={styles.empty}>暂无 Agent</div> : <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Agent</th><th>类型/角色</th><th>实时状态</th><th>并发上限</th><th>需求群分配</th><th>Workflow 分配</th><th>Skill 访问</th><th>Memory 访问</th></tr></thead><tbody>{agents.map((agent) => <AgentRuntimeRow key={agent.id} projectId={projectId} agent={agent} selected={agent.id === selected?.id} onSelect={() => navigate(`?agentId=${encodeURIComponent(agent.id)}`)} />)}</tbody></table></div>}
-        <div className={styles.explanation}>Skill/Memory 共享资源的编辑权限由团队角色控制：TEAM_OWNER 可编辑，TEAM_MEMBER 仅使用。</div>
+        {agents.length === 0 ? <div className={styles.empty}>暂无 Agent</div> : <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Agent</th><th>类型/角色</th><th>实时状态</th><th>并发上限</th><th>需求群分配</th></tr></thead><tbody>{agents.map((agent) => <AgentRuntimeRow key={agent.id} projectId={projectId} agent={agent} selected={agent.id === selected?.id} onSelect={() => navigate(`?agentId=${encodeURIComponent(agent.id)}`)} />)}</tbody></table></div>}
       </main>
       {current ? <AgentDetailPanel projectId={projectId} agent={current} detail={detail.data} onEdit={beginEdit} canEdit={isCreator && canPerformAgentAction(current, 'edit')} canPublish={isCreator && canPerformAgentAction(current, 'publish')} canUnpublish={isCreator && canPerformAgentAction(current, 'unpublish')} canArchive={isCreator && canPerformAgentAction(current, 'archive')} onPublish={() => publish.mutate({ agentId: current.id }, { onError: () => void detail.refetch() })} onUnpublish={() => unpublish.mutate({ agentId: current.id }, { onError: () => void detail.refetch() })} onArchive={() => archive.mutate({ agentId: current.id }, { onError: () => void detail.refetch() })} /> : <aside className={styles.detailPane}><div className={styles.empty}>{agents.length ? '请选择一个 Agent' : '暂无 Agent'}</div></aside>}
     </div>
@@ -145,8 +144,5 @@ function AgentRuntimeRow({ projectId, agent, selected, onSelect }: { projectId: 
     <td data-label="实时状态"><Tag className={`${styles.tag} ${data?.status === 'RUNNING' ? styles.statusRunning : styles.statusIdle}`}>{data?.status ?? '—'}</Tag></td>
     <td data-label="并发上限"><span className={styles.stat}>{data ? `${data.activeRunCount}/${data.concurrencyLimit ?? '暂无'}` : '—'}</span></td>
     <td data-label="需求群分配"><span className={styles.stat}>{data ? `${data.assignmentUsage.requirementGroups.assignedCount}/${data.assignmentUsage.requirementGroups.assignableCount}` : '—'}</span></td>
-    <td data-label="Workflow 分配"><span className={styles.stat}>{data ? `${data.assignmentUsage.workflows.assignedCount}/${data.assignmentUsage.workflows.assignableCount}` : '—'}</span></td>
-    <td data-label="Skill 访问"><span className={styles.muted}>{data?.skillAccessScope ?? '—'}</span></td>
-    <td data-label="Memory 访问"><span className={styles.muted}>{data?.memoryAccessScope ?? '—'}</span></td>
   </tr>
 }

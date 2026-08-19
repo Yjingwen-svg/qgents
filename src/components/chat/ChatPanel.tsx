@@ -76,6 +76,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     embeddedPreviewUrl?: string
   } | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const incrementalSyncRef = useRef<() => void>(() => {})
   // 群聊 @ 提及：已读游标（markRead 返回）与「有人@我」提示条
   const [lastReadSeq, setLastReadSeq] = useState<number | null>(null)
   const [mentionFlashId, setMentionFlashId] = useState<string | null>(null)
@@ -159,6 +160,73 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       if (as !== bs) return as - bs
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     })
+  }, [page])
+
+  // 可靠增量同步：SSE/WS 只作为提示，实际消息通过 afterSequence REST 拉取并按 ID 合并。
+  useEffect(() => {
+    if (!projectId || !groupId) return
+    let stopped = false
+    let syncing = false
+    let pending = false
+    const key = ['groups', projectId, groupId, 'messages'] as const
+
+    const currentSequence = (): number => {
+      const rows = queryClient.getQueryData<{ data?: Message[] }>(key)?.data ?? []
+      return rows.reduce((max, item) => Math.max(max, item.sequence ?? 0), 0)
+    }
+    const sync = async (): Promise<void> => {
+      if (stopped) return
+      if (syncing) {
+        pending = true
+        return
+      }
+      syncing = true
+      try {
+        let afterSequence = currentSequence()
+        const received: Message[] = []
+        while (!stopped) {
+          const result = await groupApi.listMessagesAfter(projectId, groupId, afterSequence)
+          received.push(...result.data)
+          if (!result.page.hasMore || !result.page.nextCursor) break
+          const nextSequence = Number(result.page.nextCursor)
+          if (!Number.isSafeInteger(nextSequence) || nextSequence <= afterSequence) break
+          afterSequence = nextSequence
+        }
+        if (stopped || received.length === 0) return
+        queryClient.setQueryData(key, (old: { data?: Message[]; page?: unknown } | undefined) => {
+          const merged = new Map<string, Message>((old?.data ?? []).map((item) => [item.id, item]))
+          for (const item of received) merged.set(item.id, item)
+          return { data: [...merged.values()].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0)), page: old?.page }
+        })
+      } catch {
+        // REST 是可靠来源；短暂网络失败交由下一次 SSE/WS 信号或重连再次补偿。
+      } finally {
+        syncing = false
+        if (pending && !stopped) {
+          pending = false
+          void sync()
+        }
+      }
+    }
+    incrementalSyncRef.current = () => { void sync() }
+    const onMessageEvent = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string; groupId?: string }>).detail
+      if (detail?.projectId === projectId && detail.groupId === groupId) void sync()
+    }
+    const onReconnect = () => void sync()
+    window.addEventListener('qgents:message-event', onMessageEvent)
+    window.addEventListener('qgents:realtime-reconnected', onReconnect)
+    return () => {
+      stopped = true
+      incrementalSyncRef.current = () => {}
+      window.removeEventListener('qgents:message-event', onMessageEvent)
+      window.removeEventListener('qgents:realtime-reconnected', onReconnect)
+    }
+  }, [groupId, projectId, queryClient])
+
+  // 首屏列表完成后补一次，覆盖「事件先到、查询尚未写入缓存」的竞态。
+  useEffect(() => {
+    if (page) incrementalSyncRef.current()
   }, [page])
 
   // 发送者头像（微信式，边缘展示）：优先群成员 avatarUrl，自己用当前用户头像；SYSTEM 无头像

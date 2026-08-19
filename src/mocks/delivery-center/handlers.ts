@@ -60,7 +60,7 @@ function pageItems(items: DeliveryItem[], searchParams: URLSearchParams): { data
 }
 
 function summarize(items: DeliveryItem[]) {
-  const countsByType = { CODE: 0, MEMORY: 0, SKILL: 0 }
+  const countsByType = { CODE: 0, MEMORY: 0, SKILL: 0, AGENT: 0 }
   const countsByStatus: Record<DeliveryDisplayStatus, number> = {
     DRAFT: 0,
     PENDING_REVIEW: 0,

@@ -1,5 +1,5 @@
 import { Button, Input, Select, Typography } from 'antd'
-import { ReloadOutlined, CloseCircleFilled } from '@ant-design/icons'
+import { ReloadOutlined } from '@ant-design/icons'
 import type { TaskCenterStatusFilter } from './taskCenterConfig'
 import { TASK_CENTER_STATUS_OPTIONS } from './taskCenterConfig'
 import styles from './TaskCenterPage.module.scss'
@@ -11,7 +11,7 @@ interface TaskFiltersProps {
   groupId?: string
   repositoryId?: string
   createdBy?: string
-  search?: string
+  search: string
   groupOptions: Array<{ label: string; value: string }>
   repositoryOptions: Array<{ label: string; value: string }>
   createdByOptions: Array<{ label: string; value: string }>
@@ -19,7 +19,8 @@ interface TaskFiltersProps {
   onGroupChange: (value: string | undefined) => void
   onRepositoryChange: (value: string | undefined) => void
   onCreatedByChange: (value: string | undefined) => void
-  onSearchChange: (value: string) => void
+  onSearchDraftChange: (value: string) => void
+  onSearchCommit: (value: string) => void
   onReset: () => void
 }
 
@@ -36,7 +37,8 @@ export function TaskFilters({
   onGroupChange,
   onRepositoryChange,
   onCreatedByChange,
-  onSearchChange,
+  onSearchDraftChange,
+  onSearchCommit,
   onReset,
 }: TaskFiltersProps) {
   return (
@@ -60,23 +62,7 @@ export function TaskFilters({
         </div>
         <div className={styles.filterCell}>
           <Text type="secondary" className={styles.filterLabel}>搜索任务</Text>
-          <Input
-            aria-label="搜索任务"
-            allowClear={false}
-            value={search}
-            placeholder="编号、标题或需求说明"
-            onChange={(event) => onSearchChange(event.target.value)}
-            className={styles.searchControl}
-            suffix={
-              search ? (
-                <CloseCircleFilled
-                  style={{ color: '#bfbfbf', cursor: 'pointer', fontSize: 12 }}
-                  onClick={() => onSearchChange('')}
-                  aria-label="清除搜索"
-                />
-              ) : null
-            }
-          />
+          <SearchInput value={search} onDraftChange={onSearchDraftChange} onCommit={onSearchCommit} />
         </div>
         <Button
           aria-label="重置筛选"
@@ -92,3 +78,37 @@ export function TaskFilters({
 }
 
 export { type TaskCenterStatusFilter }
+
+interface SearchInputProps {
+  value: string
+  onDraftChange: (next: string) => void
+  onCommit: (next: string) => void
+}
+
+/**
+ * 搜索框分两层：
+ * - `onDraftChange`：每次按键同步草稿到父组件（仅本地缓存，不触发 URL / 查询）；
+ * - `onCommit`：仅在用户主动提交（回车 / 失焦 / 点击清除）时回调，驱动 URL 与查询。
+ * 这样可以避免每次按键都触发查询与列表抖动。
+ */
+function SearchInput({ value, onDraftChange, onCommit }: SearchInputProps) {
+  function commit(next: string) {
+    const trimmed = next.trim()
+    if (trimmed === value) return
+    onCommit(trimmed)
+  }
+
+  return (
+    <Input
+      aria-label="搜索任务"
+      allowClear
+      value={value}
+      placeholder="编号、标题或需求说明（回车搜索）"
+      onChange={(event) => onDraftChange(event.target.value)}
+      onPressEnter={(event) => commit(event.currentTarget.value)}
+      onBlur={(event) => commit(event.currentTarget.value)}
+      onClear={() => commit('')}
+      className={styles.searchControl}
+    />
+  )
+}

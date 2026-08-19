@@ -82,19 +82,25 @@ export function queryKeysForProjectTaskEvent(
       if (!taskId || !taskStepId) return []
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.taskSteps.all(projectId, taskId))
-      addKey(keys, taskModelQueryKeys.taskRuns.all(projectId, taskId))
+      addKey(keys, taskModelQueryKeys.taskRuns.list(projectId, taskId))
       break
+    case 'task-run.created':
     case 'task-run.updated':
       if (!taskId || !taskRunId) return []
       addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
-      addKey(keys, taskModelQueryKeys.taskRuns.all(projectId, taskId))
+      addKey(keys, taskModelQueryKeys.taskRuns.list(projectId, taskId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
       addAgentQueries()
       break
-    case 'task-run.step.progress':
-      if (!taskRunId || !stringId(payload, 'stepId')) return []
+    case 'task-run.step.progress': {
+      // 兼容两种 ID 命名（与 eventParser 一致），taskRunId 决定 logs 缓存归属。
+      const stepRefId = stringId(payload, 'taskStepId') ?? stringId(payload, 'stepId')
+      if (!taskRunId || !stepRefId) return []
       addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
+      // 进度事件携带 worker stdout/stderr 增量，必须让 logs 分页缓存失效以便重新拉取。
+      addKey(keys, taskModelQueryKeys.taskRuns.logs(projectId, taskRunId))
       break
+    }
     case 'input-required':
     case 'approval-required':
       if (!taskId || !taskRunId || !stringId(payload, 'inputRequestId')) return []
@@ -111,7 +117,7 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, deliveryCenterKeys.all(projectId))
       if (taskRunId) {
         addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
-        addKey(keys, taskModelQueryKeys.taskRuns.all(projectId, taskId))
+        addKey(keys, taskModelQueryKeys.taskRuns.list(projectId, taskId))
       }
       // §6.2：diff.created 影响工作分支的 latestDiff
       addKey(keys, queryKeys.workBranches.all(projectId))
@@ -228,6 +234,15 @@ export function queryKeysForProjectTaskEvent(
 }
 
 export function invalidateProjectTaskEvent(projectId: string, event: ProjectTaskEvent): void {
+  if (event.type === 'message.created' || event.type === 'message.updated') {
+    const groupId = typeof event.payload.groupId === 'string' ? event.payload.groupId : null
+    const sequence = typeof event.payload.sequence === 'number' ? event.payload.sequence : null
+    if (groupId && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('qgents:message-event', {
+        detail: { projectId, groupId, sequence },
+      }))
+    }
+  }
   for (const queryKey of queryKeysForProjectTaskEvent(projectId, event)) {
     void queryClient.invalidateQueries({ queryKey })
   }

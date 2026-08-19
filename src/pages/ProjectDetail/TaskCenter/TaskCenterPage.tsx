@@ -15,7 +15,7 @@ import styles from './TaskCenterPage.module.scss'
 const { Title, Text } = Typography
 const PAGE_SIZE = 20
 const DEFAULT_VISIBLE_TASKS = 8
-const TASK_CARD_WIDTH = 285
+const TASK_CARD_TARGET_WIDTH = 285
 const MIN_TASK_CARD_GAP = 16
 const SEARCH_PARAMS = new Set(['status', 'groupId', 'createdBy', 'repositoryId', 'view', 'keyword'])
 
@@ -173,8 +173,8 @@ function useTaskBoardLayout(mainRef: RefObject<HTMLElement | null>) {
         setLayout({ visibleTaskCount: 2, cardGap: MIN_TASK_CARD_GAP })
         return
       }
-      const columns = Math.max(1, Math.floor((contentWidth + MIN_TASK_CARD_GAP) / (TASK_CARD_WIDTH + MIN_TASK_CARD_GAP)))
-      const cardGap = columns > 1 ? Math.max(MIN_TASK_CARD_GAP, (contentWidth - columns * TASK_CARD_WIDTH) / (columns - 1)) : MIN_TASK_CARD_GAP
+      const columns = Math.max(1, Math.floor((contentWidth + MIN_TASK_CARD_GAP) / (TASK_CARD_TARGET_WIDTH + MIN_TASK_CARD_GAP)))
+      const cardGap = columns > 1 ? MIN_TASK_CARD_GAP : MIN_TASK_CARD_GAP
       setLayout({ visibleTaskCount: columns * 2, cardGap })
     }
     update()

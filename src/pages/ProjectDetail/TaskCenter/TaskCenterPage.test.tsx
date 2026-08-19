@@ -17,7 +17,7 @@ import TaskCenterPage from './TaskCenterPage'
 const task: TaskListItem = {
   id: 'task-1', displayCode: 'T-1', projectId: 'project-test', title: '新任务', requirementSummary: '实现功能', status: 'RUNNING', deliveryMode: 'DIFF_FIRST', deliveryReason: null,
   requirementGroup: { id: 'group-1', name: '登录', status: 'ACTIVE' }, createdByUser: { id: 'creator-1', displayName: 'Creator', avatarUrl: null }, repositories: [],
-  executionSummary: { totalSteps: 0, pendingSteps: 0, runningSteps: 1, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: null, currentStageTitle: null, requiresUserAction: false }, attention: null,
+  executionSummary: { totalSteps: 0, pendingSteps: 0, runningSteps: 1, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: null, currentStageTitle: null, requiresUserAction: false }, attention: null, statusReason: null,
   createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z',
 }
 

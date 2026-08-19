@@ -415,7 +415,14 @@ function DeliveryItemCard({
         <small>{TYPE_LABELS[item.resourceType]}</small>
       </div>
       <div className={styles.itemBody}>
-        <div className={styles.itemTitleRow}><div><strong>{item.title}</strong>{item.version ? <Tag className={styles.versionTag}>{item.version}</Tag> : null}</div><Tag color={STATUS_COLORS[item.displayStatus]}>{STATUS_LABELS[item.displayStatus]}</Tag></div>
+        <div className={styles.itemTitleRow}>
+          <div>
+            <strong>{item.title}</strong>
+            {item.source.taskDisplayCode ? <span className={styles.taskCodeTag}>({display(item.source.taskDisplayCode)})</span> : null}
+            {item.version ? <Tag className={styles.versionTag}>{item.version}</Tag> : null}
+          </div>
+          <Tag color={STATUS_COLORS[item.displayStatus]}>{STATUS_LABELS[item.displayStatus]}</Tag>
+        </div>
         <div className={styles.itemSummary}>{item.resourceType === 'CODE' ? <CodeDetails item={item} /> : item.resourceType === 'MEMORY' ? <MemoryDetails item={item} /> : <SkillDetails item={item} />}</div>
         <div className={styles.itemFooter}><span><UserOutlined /> {item.creator?.displayName ?? '未知'}</span><span>创建于 {formatDate(item.createdAt)}</span>{item.submittedAt ? <span>提交于 {formatDate(item.submittedAt)}</span> : null}{item.reviewer ? <span>审核者 {item.reviewer.displayName}</span> : null}</div>
         {item.reviewReason ? <div className={styles.reviewReason}><WarningOutlined /> {item.reviewReason}</div> : null}
@@ -429,7 +436,7 @@ function DeliveryItemCard({
 }
 
 function CodeDetails({ item }: { item: CodeDeliveryItem }) {
-  return <><div className={styles.detailLine}><span><CloudUploadOutlined /> {item.repositories.map((repository) => `${repository.name} / ${display(repository.branch)}`).join('、') || '暂无仓库'}</span><span>来源 Task {display(item.source.taskDisplayCode)} / {display(item.source.taskTitle)}</span></div><div className={styles.detailLine}><span>Diff {item.filesChanged} 文件 · <b className={styles.additions}>+{item.additions}</b> <b className={styles.deletions}>-{item.deletions}</b></span><span>Review {item.reviewStatus} · Delivery {item.deliveryStatus}</span></div>{item.repositoryDeliveries.length > 1 ? <div className={styles.repositoryStrip}>{item.repositoryDeliveries.map((delivery) => <span key={delivery.repositoryId}>{delivery.repositoryName}: {delivery.deliveryStatus}</span>)}</div> : null}{item.mergeRequest ? <div className={styles.mrLine}>MR #{item.mergeRequest.number} · {item.mergeRequest.title}</div> : null}</>
+  return <><div className={styles.detailLine}><span><CloudUploadOutlined /> {item.repositories.map((repository) => `${repository.name} / ${display(repository.branch)}`).join('、') || '暂无仓库'}</span><span>来源 {display(item.requirementGroup?.name)}</span></div><div className={styles.detailLine}><span>Diff {item.filesChanged} 文件 · <b className={styles.additions}>+{item.additions}</b> <b className={styles.deletions}>-{item.deletions}</b></span><span>Review {item.reviewStatus} · Delivery {item.deliveryStatus}</span></div>{item.repositoryDeliveries.length > 1 ? <div className={styles.repositoryStrip}>{item.repositoryDeliveries.map((delivery) => <span key={delivery.repositoryId}>{delivery.repositoryName}: {delivery.deliveryStatus}</span>)}</div> : null}{item.mergeRequest ? <div className={styles.mrLine}>MR #{item.mergeRequest.number} · {item.mergeRequest.title}</div> : null}</>
 }
 
 function MemoryDetails({ item }: { item: MemoryDeliveryItem }) {
@@ -483,7 +490,7 @@ function DeliveryOverview({ summaryQuery, total, groupId }: { summaryQuery: Retu
       <div className={styles.chartRow}><div className={styles.donut} style={{ background: `conic-gradient(#45bb73 0deg ${acceptedDeg}deg, #a875df ${acceptedDeg}deg ${pendingDeg}deg, #f1a62d ${pendingDeg}deg ${processingDeg}deg, #7b879a ${processingDeg}deg 360deg)` }}><div><strong>{total}</strong><span>总交付物</span></div></div><div className={styles.chartLegend}><Legend color="#45bb73" label="已接受 / 已共享" value={accepted} /><Legend color="#a875df" label="待审核" value={pending} /><Legend color="#f1a62d" label="处理中" value={processing} /><Legend color="#e05252" label="失败" value={failed} /><Legend color="#7b879a" label="草稿 / 归档" value={draft + archived} /></div></div>
     </Card>
     <Card className={styles.overviewCard} title={<span>仓库交付状态 <Text type="secondary">{repositorySummaries.length} 个仓库</Text></span>}>
-      {repositorySummaries.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无仓库交付" /> : <div className={styles.repositoryList}>{repositorySummaries.map((repository) => <div className={styles.repositoryRow} key={repository.repositoryId}><div><strong>{repository.repositoryName}</strong><span>{repository.accepted}/{repository.total} 已交付</span></div><div><Tag color={repository.failed > 0 ? 'red' : repository.pending > 0 ? 'orange' : 'green'}>{repository.deliveryStatus ?? '暂无'}</Tag>{repository.mergeRequest ? <small>MR #{repository.mergeRequest.number}</small> : null}</div></div>)}</div>}
+      {repositorySummaries.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无仓库交付" /> : <div className={styles.repositoryList}>{repositorySummaries.map((repository) => <div className={styles.repositoryRow} key={repository.repositoryId}><div><strong>{repository.repositoryName}</strong><span>{repository.accepted}/{repository.total} 已交付</span></div><div>{repository.deliveryStatus && repository.deliveryStatus !== 'NOT_STARTED' ? <Tag color={repository.failed > 0 ? 'red' : repository.pending > 0 ? 'orange' : 'green'}>{repository.deliveryStatus}</Tag> : null}{repository.mergeRequest ? <small>MR #{repository.mergeRequest.number}</small> : null}</div></div>)}</div>}
     </Card>
     <Card className={styles.overviewCard} title={<span>待我处理 <Text type="secondary">{summaryQuery.data.pendingForCurrentUser}</Text></span>}>
       <div className={styles.projectInfo}><SettingOutlined /><span>{summaryQuery.data.pendingForCurrentUser > 0 ? '当前筛选数据集中有待处理交付。' : '当前没有待处理交付。'}</span></div>

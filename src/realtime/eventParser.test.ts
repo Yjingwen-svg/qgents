@@ -93,8 +93,30 @@ describe('project SSE event parsing', () => {
     })).toBeNull()
   })
 
-  it('does not silently accept taskStepId for the progress event schema', () => {
-    expect(parseProjectTaskEvent({ id: 'evt-conflict', event: 'task-run.step.progress', data: JSON.stringify({ projectId: 'project-1', taskId: 'task-1', taskRunId: 'run-1', taskStepId: 'step-1' }) })).toBeNull()
+  it('accepts the legacy stepId field name on task-run.step.progress', () => {
+    const event = parseProjectTaskEvent({
+      id: 'evt-legacy',
+      event: 'task-run.step.progress',
+      data: JSON.stringify({ projectId: 'project-1', taskId: 'task-1', taskRunId: 'run-1', stepId: 'step-1' }),
+    })
+    expect(event?.type).toBe('task-run.step.progress')
+  })
+
+  it('accepts the documented taskStepId field name on task-run.step.progress', () => {
+    const event = parseProjectTaskEvent({
+      id: 'evt-doc',
+      event: 'task-run.step.progress',
+      data: JSON.stringify({ projectId: 'project-1', taskId: 'task-1', taskRunId: 'run-1', taskStepId: 'step-1' }),
+    })
+    expect(event?.type).toBe('task-run.step.progress')
+  })
+
+  it('rejects task-run.step.progress payloads missing both stepId and taskStepId', () => {
+    expect(parseProjectTaskEvent({
+      id: 'evt-missing',
+      event: 'task-run.step.progress',
+      data: JSON.stringify({ projectId: 'project-1', taskId: 'task-1', taskRunId: 'run-1' }),
+    })).toBeNull()
   })
 
   it('requires a supported delivery mode for delivery.started', () => {

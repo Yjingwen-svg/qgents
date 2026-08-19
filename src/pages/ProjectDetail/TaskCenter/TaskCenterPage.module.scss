@@ -16,7 +16,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding: 28px 32px 48px;
+  padding: clamp(18px, 0.6vw + 14px, 28px) clamp(16px, 0.6vw + 14px, 32px) clamp(28px, 1vw + 20px, 48px);
   container-type: inline-size;
   scrollbar-width: auto;
 }
@@ -30,7 +30,7 @@
 }
 
 .header {
-  margin-bottom: 26px;
+  margin-bottom: clamp(16px, 0.8vw + 10px, 26px);
 }
 
 .listHeading {
@@ -40,33 +40,33 @@
 .title {
   margin: 0;
   color: #12213d;
-  font-size: 27px;
+  font-size: clamp(18px, 0.7vw + 12px, 27px);
   font-weight: 700;
   line-height: 1.3;
 }
 
 .title :global(.ant-typography-secondary) {
-  font-size: 18px;
+  font-size: clamp(14px, 0.5vw + 10px, 18px);
   font-weight: 500;
 }
 
 .filters {
   display: flex;
   flex-direction: column;
-  margin-bottom: 24px;
-  padding: 14px 0 2px;
+  margin-bottom: clamp(14px, 0.7vw + 8px, 24px);
+  padding: clamp(8px, 0.5vw + 4px, 14px) 0 clamp(0px, 0.3vw - 1px, 2px);
 }
 
 .filterRow {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 16px;
+  gap: clamp(8px, 0.3vw + 6px, 12px) clamp(10px, 0.4vw + 8px, 16px);
 }
 
 .filterCell {
-  flex: 1 1 160px;
-  min-width: 160px;
-  max-width: 280px;
+  flex: 1 1 clamp(108px, 8vw + 36px, 160px);
+  min-width: clamp(108px, 8vw + 36px, 160px);
+  max-width: clamp(160px, 14vw + 52px, 280px);
 }
 
 .searchCell {
@@ -80,22 +80,23 @@
 }
 
 .searchControl {
-  width: 280px;
-  height: 37px;
+  width: clamp(140px, 8vw + 60px, 280px);
+  height: clamp(28px, 0.6vw + 22px, 37px);
 }
 
 .resetButton {
   flex: 0 0 auto;
   align-self: flex-end;
-  height: 37px;
+  height: clamp(28px, 0.6vw + 22px, 37px);
   border-color: #dfe6ef;
   color: #0d8d91;
 }
 
 .filterLabel {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: clamp(4px, 0.2vw + 3px, 8px);
   color: #6d7d95;
+  font-size: clamp(11px, 0.1vw + 10px, 12px);
 }
 
 .filterControl {
@@ -104,35 +105,42 @@
 
 .filters :global(.ant-select),
 .filters :global(.ant-input-affix-wrapper) {
-  height: 37px !important;
+  height: clamp(28px, 0.6vw + 22px, 37px) !important;
   box-sizing: border-box;
 }
 
 .filterControl :global(.ant-select-selector),
 .searchControl :global(.ant-input) {
-  height: 22px !important;
-  line-height: 22px !important;
+  height: clamp(16px, 0.3vw + 12px, 22px) !important;
+  line-height: clamp(16px, 0.3vw + 12px, 22px) !important;
   border-color: #dfe6ef !important;
   background: #ffffff !important;
-  width: 186px;
+  width: clamp(120px, 3vw + 84px, 186px);
 }
 
 .listHeading {
-  margin-bottom: 16px;
+  margin-bottom: clamp(10px, 0.5vw + 6px, 16px);
+}
+
+.listHeading :global(h3),
+.listHeading :global(.ant-typography h3) {
+  margin: 0;
+  font-size: clamp(16px, 0.5vw + 11px, 20px);
+  font-weight: 700;
 }
 
 .board {
   display: flex;
   flex-wrap: wrap;
   gap: var(--task-card-gap, 16px);
-  min-height: 420px;
+  min-height: clamp(260px, 18vw + 120px, 420px);
   align-items: stretch;
   justify-content: flex-start;
 }
 
 .taskCard {
   min-height: 0;
-  width: 285px;
+  width: clamp(220px, 12vw + 60px, 285px);
   height: 100%;
   border-color: #e4eaf2;
   border-radius: 8px;
@@ -143,9 +151,9 @@
 
 .taskCard :global(.ant-card-body) {
   display: flex;
-  min-height: 312px;
+  min-height: clamp(232px, 18vw + 36px, 312px);
   flex-direction: column;
-  padding: 18px;
+  padding: clamp(12px, 0.4vw + 8px, 18px);
 }
 
 .taskCard:hover {
@@ -175,7 +183,7 @@
   margin: 0;
   padding: 0;
   color: #52627b;
-  font-size: 12px;
+  font-size: clamp(11px, 0.2vw + 9px, 12px);
   font-weight: 600;
   letter-spacing: 0.04em;
 }
@@ -191,7 +199,7 @@
 .taskCardTitleLine h5 {
   min-width: 0;
   margin: 0;
-  font-size: 18px;
+  font-size: clamp(14px, 0.5vw + 10px, 18px);
   font-weight: 700;
   line-height: 1.35;
 }
@@ -199,7 +207,7 @@
 .taskCount {
   flex: 0 0 auto;
   color: #52627b;
-  font-size: 12px;
+  font-size: clamp(11px, 0.1vw + 10px, 12px);
 }
 
 .taskCardHeading h5 {
@@ -210,11 +218,11 @@
 }
 
 .taskCardTags {
-  margin-top: 12px;
+  margin-top: clamp(8px, 0.4vw + 4px, 12px);
 }
 
 .groupTag {
-  padding: 3px 8px;
+  padding: clamp(2px, 0.1vw + 2px, 3px) clamp(6px, 0.2vw + 4px, 8px);
   border-radius: 6px;
   color: #078c91;
   background: #e7f7f6;
@@ -229,24 +237,25 @@
 }
 
 .taskCardCopy {
-  min-height: 40px;
-  margin: 14px 0 16px;
+  min-height: clamp(30px, 0.6vw + 22px, 40px);
+  margin: clamp(8px, 0.4vw + 4px, 14px) 0 clamp(10px, 0.4vw + 6px, 16px);
   color: #6d7d95;
+  font-size: clamp(12px, 0.1vw + 11px, 13px);
 }
 
 .taskCardInfoGrid {
   display: grid;
-  grid-template-rows: 90px 56px;
-  gap: 10px;
+  grid-template-rows: clamp(58px, 5vw + 30px, 90px) clamp(38px, 3vw + 22px, 56px);
+  gap: clamp(6px, 0.3vw + 4px, 10px);
   grid-template-columns: minmax(0, 1fr);
 }
 
 .taskCardInfoGrid > div,
 .taskCardActions {
   display: grid;
-  gap: 4px;
+  gap: clamp(2px, 0.1vw + 2px, 4px);
   color: #243855;
-  font-size: 12px;
+  font-size: clamp(11px, 0.1vw + 10px, 12px);
 }
 
 .taskCardInfoGrid > div {
@@ -255,33 +264,33 @@
 }
 
 .taskCardInfoGrid > div > :global(.ant-typography-secondary) {
-  margin-bottom: 5px;
+  margin-bottom: clamp(3px, 0.1vw + 2px, 5px);
 }
 
 .executionOverview {
   display: grid;
-  gap: 4px;
+  gap: clamp(2px, 0.1vw + 2px, 4px);
 }
 
 .repositoryLocationValue {
   display: grid;
   gap: 3px;
-  height: 23.5px;
+  height: clamp(20px, 0.2vw + 16px, 23.5px);
   margin-top: -2px;
   min-width: 0;
 }
 
 .repositoryName {
   width: fit-content;
-  height: 22px;
+  height: clamp(18px, 0.3vw + 14px, 22px);
   margin: 0;
-  padding: 0 8px;
+  padding: 0 clamp(6px, 0.2vw + 4px, 8px);
   border-color: #cfe2f6;
   border-radius: 5px;
   color: #1269c7;
   background: #f1f8ff;
   font-weight: 600;
-  line-height: 20px;
+  line-height: clamp(16px, 0.2vw + 14px, 20px);
 }
 
 .repositoryBranch,
@@ -297,11 +306,11 @@
 
 .repositoryMore {
   color: #52627b;
-  font-size: 11px;
+  font-size: clamp(10px, 0.1vw + 9px, 11px);
 }
 
 .taskCardDivider {
-  margin: 16px 0 12px;
+  margin: clamp(10px, 0.4vw + 6px, 16px) 0 clamp(8px, 0.3vw + 6px, 12px);
 }
 
 .taskCardStats {
@@ -312,22 +321,22 @@
 
 .statusCount {
   display: grid;
-  gap: 4px;
+  gap: clamp(2px, 0.1vw + 2px, 4px);
   min-width: 0;
-  padding: 6px 2px;
+  padding: clamp(4px, 0.2vw + 2px, 6px) clamp(1px, 0.1vw + 1px, 2px);
   text-align: center;
   color: #52627b;
-  font-size: 11px;
+  font-size: clamp(10px, 0.1vw + 9px, 11px);
 }
 
 .statusCount strong {
   color: #12213d;
-  font-size: 14px;
+  font-size: clamp(12px, 0.2vw + 11px, 14px);
 }
 
 .statusCountIcon {
   color: #0d9b9b;
-  font-size: 13px;
+  font-size: clamp(11px, 0.1vw + 10px, 13px);
 }
 
 .taskCardMeta > span:first-child,
@@ -336,9 +345,9 @@
 }
 
 .taskCardDetails :global(.ant-col) > span:first-child {
-  margin-bottom: 4px;
+  margin-bottom: clamp(2px, 0.1vw + 2px, 4px);
   color: #6d7d95;
-  font-size: 12px;
+  font-size: clamp(11px, 0.1vw + 10px, 12px);
 }
 
 .taskCardDetails :global(.ant-col) > span:last-child {
@@ -346,23 +355,23 @@
 }
 
 .taskCardNotice {
-  margin-top: 16px;
-  padding: 8px 10px;
+  margin-top: clamp(10px, 0.4vw + 6px, 16px);
+  padding: clamp(6px, 0.2vw + 4px, 8px) clamp(8px, 0.2vw + 6px, 10px);
   border-radius: 6px;
-  font-size: 12px;
+  font-size: clamp(11px, 0.1vw + 10px, 12px);
 }
 
 .taskCardAttention {
   display: -webkit-box;
-  margin-top: 12px;
-  height: 64px;
+  margin-top: clamp(8px, 0.3vw + 6px, 12px);
+  height: clamp(44px, 4vw + 20px, 64px);
   box-sizing: border-box;
   overflow: hidden;
-  padding: 8px 10px;
+  padding: clamp(6px, 0.2vw + 4px, 8px) clamp(8px, 0.2vw + 6px, 10px);
   border-radius: 6px;
   color: #8a5a00;
   background: #fff8e6;
-  font-size: 12px;
+  font-size: clamp(11px, 0.1vw + 10px, 12px);
   line-height: 1.5;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -377,7 +386,7 @@
   align-items: flex-start;
   justify-content: flex-start;
   margin-top: auto;
-  padding-top: 12px;
+  padding-top: clamp(8px, 0.3vw + 6px, 12px);
 }
 
 .taskCardDates {
@@ -385,9 +394,9 @@
   align-items: flex-start;
   justify-content: flex-start;
   flex-direction: column;
-  gap: 8px;
+  gap: clamp(5px, 0.2vw + 4px, 8px);
   margin-top: auto;
-  padding-top: 12px;
+  padding-top: clamp(8px, 0.3vw + 6px, 12px);
 }
 
 .cardDetailsButton {
@@ -434,21 +443,21 @@
 
 .state {
   display: grid;
-  min-height: 420px;
+  min-height: clamp(260px, 18vw + 120px, 420px);
   place-items: center;
 }
 
 .result {
-  min-height: 420px;
-  padding: 72px 0;
+  min-height: clamp(260px, 18vw + 120px, 420px);
+  padding: clamp(36px, 3vw + 20px, 72px) 0;
 }
 
 .empty {
-  padding: 72px 0;
+  padding: clamp(36px, 3vw + 20px, 72px) 0;
 }
 
 .pageError {
-  margin-bottom: 16px;
+  margin-bottom: clamp(10px, 0.4vw + 6px, 16px);
 }
 
 .loadMore {
@@ -458,9 +467,34 @@
 .pagination {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: clamp(8px, 0.3vw + 6px, 12px);
   justify-content: center;
-  margin-top: 24px;
+  margin-top: clamp(14px, 0.6vw + 10px, 24px);
+}
+
+@container (max-width: 1280px) {
+  .taskCard :global(.ant-card-body) {
+    min-height: clamp(200px, 16vw + 24px, 268px);
+    padding: clamp(10px, 0.4vw + 6px, 14px);
+  }
+
+  .taskCardTitleLine h5 {
+    font-size: clamp(13px, 0.4vw + 10px, 16px);
+  }
+
+  .taskCardInfoGrid {
+    grid-template-rows: auto auto;
+    gap: clamp(5px, 0.2vw + 4px, 8px);
+  }
+
+  .taskCardAttention {
+    height: auto;
+    min-height: clamp(36px, 3vw + 14px, 48px);
+  }
+
+  .taskCardStats {
+    gap: clamp(1px, 0.1vw + 1px, 2px);
+  }
 }
 
 @container (max-width: 620px) {
@@ -469,9 +503,9 @@
   }
 }
 
-@media (max-width: 1080px) {
-  .main {
-    padding-inline: 22px;
+@media (max-width: 1440px) {
+  .header {
+    margin-bottom: clamp(14px, 0.6vw + 8px, 20px);
   }
 }
 
@@ -484,15 +518,10 @@
 
   .main {
     overflow: visible;
-    padding-inline: 20px;
   }
 }
 
 @media (max-width: 680px) {
-  .main {
-    padding: 20px 16px 36px;
-  }
-
   .header {
     align-items: flex-start;
     flex-direction: column;

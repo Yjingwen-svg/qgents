@@ -9,6 +9,7 @@ export const PROJECT_TASK_EVENT_TYPES = [
   'group.member.updated',
   'task.updated',
   'task-step.updated',
+  'task-run.created',
   'task-run.updated',
   'task-run.step.progress',
   'input-required',
@@ -72,8 +73,9 @@ function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPay
     'group.member.updated': ['groupId'],
     'task.updated': ['taskId'],
     'task-step.updated': ['taskId', 'taskStepId'],
+    'task-run.created': ['taskId', 'taskStepId', 'taskRunId'],
     'task-run.updated': ['taskId', 'taskStepId', 'taskRunId'],
-    'task-run.step.progress': ['taskId', 'stepId', 'taskRunId'],
+    'task-run.step.progress': ['taskId', 'taskRunId'],
     'input-required': ['taskId', 'taskStepId', 'taskRunId', 'inputRequestId'],
     'approval-required': ['taskId', 'taskStepId', 'taskRunId', 'inputRequestId'],
     'diff.created': ['taskId', 'diffId'],
@@ -100,6 +102,15 @@ function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPay
     'skill.archived': ['resourceId', 'updatedAt'],
     'test-run.updated': ['testRunId'],
     'dry-run.updated': ['dryRunId'],
+  }
+  if (type === 'task-run.step.progress') {
+    // 兼容两种 ID 命名：文档主口径使用 taskStepId，但旧实现/示例偶发仍以 stepId 推送。
+    const taskIdOk = typeof payload.taskId === 'string' && payload.taskId.length > 0
+    const taskRunIdOk = typeof payload.taskRunId === 'string' && payload.taskRunId.length > 0
+    if (!taskIdOk || !taskRunIdOk) return false
+    const hasTaskStepId = typeof payload.taskStepId === 'string' && payload.taskStepId.length > 0
+    const hasLegacyStepId = typeof payload.stepId === 'string' && payload.stepId.length > 0
+    return hasTaskStepId || hasLegacyStepId
   }
   const stringsValid = required[type].every((key) => typeof payload[key] === 'string' && (payload[key] as string).length > 0)
   if (!stringsValid) return false

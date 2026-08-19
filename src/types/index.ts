@@ -168,6 +168,7 @@ export type {
   TaskDiffReviewSummary,
   TaskSourceMessage,
   TaskStatus,
+  TaskStatusReason,
   TaskStep,
   TaskStepCreateInput,
   ReplaceTaskStepAgentInput,

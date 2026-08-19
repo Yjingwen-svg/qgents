@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Alert, Avatar, Button, Empty, Spin, Tag, Typography } from 'antd'
+import { Alert, Avatar, Button, Empty, Spin, Tag, Tooltip, Typography } from 'antd'
+import { CloudUploadOutlined, EditOutlined, InboxOutlined, RollbackOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useAgentAssignments, useAgentRuntime, useAgentSkillBindings, useAgentTaskRuns } from '@/hooks'
 import type { AgentAssignmentSummary, AgentDetail, AgentDetailTab, AgentRuntimeSummary, AgentSummary, AgentTaskRunSummary } from '@/types'
@@ -47,7 +48,7 @@ export function AgentDetailPanel({ projectId, agent, detail, onEdit, canEdit, on
         <Avatar className={styles.avatar} src={current.avatar ?? undefined}>{current.name.slice(0, 2)}</Avatar>
         <div className={styles.identityText}><Title level={4} className={styles.name}>{current.name}</Title><Text type="secondary">{current.role}</Text></div>
       </div>
-      <div className={styles.actions}>{canEdit ? <Button size="small" onClick={onEdit}>编辑</Button> : null}{canPublish ? <Button size="small" onClick={onPublish}>发布为 TEAM</Button> : null}{canUnpublish ? <Button size="small" onClick={onUnpublish}>取消发布</Button> : null}{canArchive ? <Button size="small" danger onClick={onArchive}>归档</Button> : null}</div>
+      <div className={styles.actions}>{canEdit ? <Tooltip title="编辑"><Button size="small" type="text" icon={<EditOutlined />} aria-label="编辑" onClick={onEdit} /></Tooltip> : null}{canPublish ? <Tooltip title="发布为 TEAM"><Button size="small" type="text" icon={<CloudUploadOutlined />} aria-label="发布为 TEAM" onClick={onPublish} /></Tooltip> : null}{canUnpublish ? <Tooltip title="取消发布"><Button size="small" type="text" icon={<RollbackOutlined />} aria-label="取消发布" onClick={onUnpublish} /></Tooltip> : null}{canArchive ? <Tooltip title="归档"><Button size="small" type="text" danger icon={<InboxOutlined />} aria-label="归档" onClick={onArchive} /></Tooltip> : null}</div>
     </header>
     <nav className={styles.tabs} aria-label="Agent 详情 Tab">
       {tabs.map((tab) => <button type="button" key={tab.key} className={`${styles.tab} ${activeTab === tab.key ? styles.tabActive : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button>)}

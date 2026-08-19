@@ -75,6 +75,8 @@ export interface TaskListItem {
   repositories: TaskRepositorySummary[]
   executionSummary: TaskExecutionSummary
   attention: TaskAttention | null
+  /** Task 级别的状态原因。仅在任务尚未创建 TaskRun（启动失败等）时出现。 */
+  statusReason: TaskStatusReason | null
   createdAt: string
   updatedAt: string
 }
@@ -187,6 +189,20 @@ export interface TaskRunLog {
   node: string
   content: string
   timestamp: string
+  /** 日志类型：EXECUTION=Agent/Worker执行日志；SYSTEM=TaskRun生命周期日志；TERMINAL=终态摘要（不展示为普通日志） */
+  entryType: 'EXECUTION' | 'SYSTEM' | 'TERMINAL'
+}
+
+/**
+ * Task 级别的状态原因，仅在任务尚未创建 TaskRun（启动失败等）时出现。
+ * 与 TaskRunStatusReason（运行级原因）不同。
+ */
+export interface TaskStatusReason {
+  code: string
+  title: string
+  summary: string
+  retryable: boolean
+  occurredAt: string
 }
 
 export interface ExecutionContext {

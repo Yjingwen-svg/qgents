@@ -167,6 +167,38 @@ export interface WorkBranchListFilters {
 }
 
 /**
+ * 远程分支 —— 接口文档 §6 + 分支管理前后端执行计划
+ * GET /projects/{projectId}/repositories/{projectRepositoryId}/branches
+ *
+ * 与 WorkBranch 不同：
+ * - RemoteBranch 来自 GitHub 真实远程分支
+ * - WorkBranch 来自 Qgents Task/Workspace 工作分支视图
+ * - main/develop 可以是 RemoteBranch 但不是 WorkBranch
+ */
+export interface RemoteBranch {
+  name: string
+  headCommit: string
+  isProjectDefault: boolean
+  isGithubDefault: boolean
+  canCreateTaskFrom: boolean
+  canDelete: boolean
+}
+
+/** 创建远程分支请求 */
+export interface CreateRemoteBranchPayload {
+  name: string
+  fromRef: string
+}
+
+/** 远程分支列表筛选参数 */
+export interface RemoteBranchListFilters {
+  keyword?: string
+  cursor?: string
+  limit?: number
+  includeSha?: boolean
+}
+
+/**
  * POST /projects/{projectId}/repositories 请求体
  * 已冻结见 docs：只传本地 UUID；defaultBranch 省略，后端以授权仓元数据为准。
  */

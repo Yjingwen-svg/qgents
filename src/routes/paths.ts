@@ -93,6 +93,9 @@ export const PATHS = {
   projectCodeMr: (projectId: string, mergeRequestId: string) =>
     `/app/projects/${projectId}/code/mr/${encodeURIComponent(mergeRequestId)}`,
   projectTestset: (projectId: string) => `/app/projects/${projectId}/testset`,
+  projectTestsetsManage: (projectId: string) => `/app/projects/${projectId}/testset/manage`,
+  projectQualityGate: (projectId: string) => `/app/projects/${projectId}/quality-gate`,
+  projectCqReview: (projectId: string) => `/app/projects/${projectId}/cq-review`,
   projectMembers: (projectId: string) => `/app/projects/${projectId}/members`,
   projectSettings: (projectId: string) => `/app/projects/${projectId}/settings`,
 

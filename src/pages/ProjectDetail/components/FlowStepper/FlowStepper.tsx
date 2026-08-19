@@ -8,7 +8,7 @@ import {
 import { PATHS } from '@/routes/paths'
 import styles from './FlowStepper.module.scss'
 
-export type FlowStep = 'gate' | 'cq' | 'create_mr'
+export type FlowStep = 'gate' | 'cq' | 'createMr'
 
 export interface FlowStepStatus {
   gate: 'pending' | 'passed' | 'failed'

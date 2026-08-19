@@ -140,3 +140,27 @@ export function useCreateDryRun(projectId: string): UseMutationResult<DryRunRepo
     },
   })
 }
+
+/** 查询项目 Test Run 列表 */
+export function useTestRuns(
+  projectId: string,
+  filters: { status?: string; limit?: number } = {},
+): UseQueryResult<TestRun[]> {
+  return useQuery({
+    queryKey: queryKeys.testRuns.all(projectId),
+    queryFn: () => testsetApi.listTestRuns(projectId, filters),
+    enabled: Boolean(projectId),
+  })
+}
+
+/** 查询项目 Dry Run 列表 */
+export function useDryRuns(
+  projectId: string,
+  filters: { status?: string; limit?: number } = {},
+): UseQueryResult<DryRunReport[]> {
+  return useQuery({
+    queryKey: queryKeys.dryRuns.all(projectId),
+    queryFn: () => testsetApi.listDryRuns(projectId, filters),
+    enabled: Boolean(projectId),
+  })
+}

@@ -284,6 +284,10 @@
   margin-bottom: 16px;
 }
 
+.mrListArea {
+  margin-top: 16px;
+}
+
 /* Detail panel (gate / CQ expand) */
 .detailPanel {
   background: #fff;
@@ -411,4 +415,110 @@
   .metaGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* New layout styles */
+.tabs {
+  margin-top: 8px;
+}
+
+.gateTab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gateContent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+}
+
+@media (max-width: 1100px) {
+  .gateContent {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.mainColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sideColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.currentRunCard,
+.gateDetailCard,
+.sideCard {
+  border-radius: 10px;
+}
+
+.cardHeader {
+  margin-bottom: 12px;
+}
+
+.cardTitle {
+  margin: 0 !important;
+  font-size: 16px !important;
+}
+
+.sideTitle {
+  margin: 0 0 4px !important;
+}
+
+.sideHint {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.currentRunList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.currentRunItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f7f9fc;
+  border-radius: 8px;
+}
+
+.currentRunEmpty {
+  padding: 16px 0;
+}
+
+.recentRunItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.recentRunStatus {
+  margin-left: auto;
+}
+
+.permissionInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.adminTag {
+  width: fit-content;
+}
+
+.mrTab {
+  padding-top: 8px;
 }

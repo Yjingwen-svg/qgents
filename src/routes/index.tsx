@@ -66,6 +66,18 @@ const MergeRequestDetailPage = lazy(
   () =>
     import("@/pages/ProjectDetail/MergeRequestDetail/MergeRequestDetailPage"),
 );
+const CqReviewPage = lazy(
+  () =>
+    import("@/pages/ProjectDetail/Testset/CqReviewPage"),
+);
+const QualityGateReviewPage = lazy(
+  () =>
+    import("@/pages/ProjectDetail/Testset/QualityGateReviewPage"),
+);
+const TestsetManagePage = lazy(
+  () =>
+    import("@/pages/ProjectDetail/Testset/TestsetManagePage"),
+);
 const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 const ForbiddenPage = lazy(() => import("@/pages/ForbiddenPage"));
 const TaskDetailPage = lazy(
@@ -190,6 +202,9 @@ export function AppRouter() {
                   />
                   <Route path="code" element={<CodePage />} />
                   <Route path="testset" element={<TestsetPage />} />
+                  <Route path="testset/manage" element={<TestsetManagePage />} />
+                  <Route path="quality-gate" element={<QualityGateReviewPage />} />
+                  <Route path="cq-review" element={<CqReviewPage />} />
                   <Route path="members" element={<MembersPage />} />
                   <Route path="settings" element={<SettingsPage />} />
                 </Route>

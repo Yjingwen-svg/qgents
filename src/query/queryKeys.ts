@@ -38,6 +38,26 @@ export const queryKeys = {
       filters: { repositoryId?: string; requirementGroupId?: string; cursor?: string; limit?: number } = {},
     ) => ['qgents', 'projects', projectId, 'work-branches', 'list', filters] as const,
   },
+  /** 远程分支（GET /projects/{projectId}/repositories/{repoId}/branches，分支管理计划 §B） */
+  remoteBranches: {
+    all: (projectId: string, repositoryId: string) =>
+      ['qgents', 'projects', projectId, 'repositories', repositoryId, 'remote-branches'] as const,
+    list: (
+      projectId: string,
+      repositoryId: string,
+      filters: { keyword?: string; cursor?: string; limit?: number } = {},
+    ) =>
+      [
+        'qgents',
+        'projects',
+        projectId,
+        'repositories',
+        repositoryId,
+        'remote-branches',
+        'list',
+        filters,
+      ] as const,
+  },
   testsets: {
     all: (projectId: string) => ['qgents', 'projects', projectId, 'testsets'] as const,
     list: (projectId: string, filters: { repositoryId?: string; status?: string } = {}) =>

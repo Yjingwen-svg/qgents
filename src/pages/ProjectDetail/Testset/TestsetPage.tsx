@@ -1,12 +1,17 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { ConfigProvider, Result, Spin, Typography } from 'antd'
-import { useMergeRequests, useMergeRequestChecks } from '@/hooks/task-model'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { ConfigProvider, Empty, Button, Tabs, Typography, Spin } from 'antd'
+import { useQuery } from '@tanstack/react-query'
+import { githubApi, projectApi } from '@/api'
+import { useMergeRequests, useMergeRequestChecks } from '@/hooks'
 import { PATHS } from '@/routes/paths'
+import { queryKeys } from '@/query'
 import { FlowStepper } from '../components/FlowStepper/FlowStepper'
+import { MergeRequestTab } from '../MergeRequestTab'
+import { QualityGateConfigDrawer } from './QualityGateConfigDrawer'
 import styles from './TestsetPage.module.scss'
 
-const { Title } = Typography
+const { Title, Text } = Typography
 
 const pageTheme = {
   algorithm: undefined,
@@ -20,19 +25,37 @@ const pageTheme = {
   },
 }
 
-/** 当前展开的详情面板 */
-type ExpandedPanel = 'gate' | 'cq' | null
+type TabKey = 'gate' | 'mr'
 
 /**
- * MR 与质量门禁页（Testset Page 重构版）。
- * 仅展示三节点流程图：质量门禁 → CQ+1 → 创建 MR
- * - 点击「质量门禁」展开门禁节点详情
- * - 点击「CQ+1」展开 CQ 审查记录
- * - 「创建 MR」按钮仅在门禁通过 + CQ 盖章后亮起
+ * MR 与质量门禁页。
+ * 包含两个标签页：
+ * - 质量门禁：流程图
+ * - MR：MR 列表
  */
 export function TestsetPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
-  const [expanded, setExpanded] = useState<ExpandedPanel>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
+
+  const [configOpen, setConfigOpen] = useState(false)
+
+  const activeTab: TabKey = searchParams.get('tab') === 'mr' ? 'mr' : 'gate'
+
+  function switchTab(key: string) {
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', key)
+    setSearchParams(next, { replace: true })
+  }
+
+  // 项目信息（获取角色等）
+  const projectQuery = useQuery({
+    queryKey: queryKeys.projects(projectId),
+    queryFn: () => projectApi.getById(projectId),
+    enabled: Boolean(projectId),
+  })
+
+  const isAdmin = projectQuery.data?.role === 'PROJECT_ADMIN'
 
   const mrsQuery = useMergeRequests(projectId)
   const mrList = mrsQuery.data?.data ?? []
@@ -60,11 +83,29 @@ export function TestsetPage() {
         ? 'rejected'
         : 'pending'
 
+  const reposQuery = useQuery({
+    queryKey: queryKeys.projectRepositories(projectId),
+    queryFn: () => githubApi.listProjectRepositories(projectId),
+    enabled: Boolean(projectId),
+  })
+
   function handleCreateMr() {
     window.location.href = `${PATHS.projectDiffs(projectId)}?tab=mr`
   }
 
-  if (mrsQuery.isLoading) {
+  function handleClickCq() {
+    const mrParam = primaryMr ? `?mr=${encodeURIComponent(primaryMr.id)}` : ''
+    navigate(`${PATHS.projectCqReview(projectId)}${mrParam}`)
+  }
+
+  function handleClickGate() {
+    const mrParam = primaryMr ? `?mr=${encodeURIComponent(primaryMr.id)}` : ''
+    navigate(`${PATHS.projectQualityGate(projectId)}${mrParam}`)
+  }
+
+  const isLoading = mrsQuery.isLoading || reposQuery.isLoading || projectQuery.isLoading
+
+  if (isLoading) {
     return (
       <ConfigProvider theme={pageTheme}>
         <div className={styles.page}>
@@ -76,22 +117,54 @@ export function TestsetPage() {
     )
   }
 
-  if (mrsQuery.isError) {
+  if (mrsQuery.isError || reposQuery.isError) {
     return (
       <ConfigProvider theme={pageTheme}>
         <div className={styles.page}>
-          <Result
-            status="error"
-            title="加载失败"
-            subTitle={mrsQuery.error?.message ?? '未知错误'}
-            extra={
-              <button onClick={() => void mrsQuery.refetch()}>重新加载</button>
-            }
-          />
+          <div className={styles.state}>
+            <Empty
+              description={mrsQuery.error?.message ?? '加载失败'}
+            >
+              <Button onClick={() => void mrsQuery.refetch()}>重新加载</Button>
+            </Empty>
+          </div>
         </div>
       </ConfigProvider>
     )
   }
+
+  const tabItems = [
+    {
+      key: 'gate',
+      label: '质量门禁',
+      children: (
+        <div className={styles.gateTab}>
+          <div className={styles.flowArea}>
+            <FlowStepper
+              projectId={projectId}
+              status={{
+                gate: gateStatus,
+                cq: cqStatus,
+                createMr: gateStatus === 'passed' && cqStatus === 'approved',
+              }}
+              onClickGate={handleClickGate}
+              onClickCq={handleClickCq}
+              onClickCreateMr={handleCreateMr}
+            />
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'mr',
+      label: 'MR',
+      children: (
+        <div className={styles.mrTab}>
+          <MergeRequestTab projectId={projectId} repositories={reposQuery.data ?? []} />
+        </div>
+      ),
+    },
+  ]
 
   return (
     <ConfigProvider theme={pageTheme}>
@@ -99,137 +172,30 @@ export function TestsetPage() {
         <header className={styles.header}>
           <div>
             <Title level={2} className={styles.title}>
-              MR 与质量门禁
+              质量门禁和 MR
             </Title>
+            <Text type="secondary">
+              发起测试或 Dry-run；测试配方在「管理测试集」中维护
+            </Text>
           </div>
         </header>
 
-        <div className={styles.flowArea}>
-          <FlowStepper
-            projectId={projectId}
-            status={{
-              gate: gateStatus,
-              cq: cqStatus,
-              createMr: gateStatus === 'passed' && cqStatus === 'approved',
-            }}
-            onClickGate={() => setExpanded(expanded === 'gate' ? null : 'gate')}
-            onClickCq={() => setExpanded(expanded === 'cq' ? null : 'cq')}
-            onClickCreateMr={handleCreateMr}
-          />
-        </div>
+        <Tabs
+          activeKey={activeTab}
+          onChange={switchTab}
+          items={tabItems}
+          className={styles.tabs}
+        />
 
-        {expanded === 'gate' && primaryMr ? (
-          <GateDetail
-            mrLabel={`MR #${primaryMr.number}`}
-            checks={checks}
-            loading={checksQuery.isLoading}
-            onClose={() => setExpanded(null)}
-          />
-        ) : null}
-
-        {expanded === 'cq' && primaryMr ? (
-          <CqDetail
-            mrLabel={`MR #${primaryMr.number}`}
-            cqCheck={cqCheck}
-            onClose={() => setExpanded(null)}
-          />
-        ) : null}
+        <QualityGateConfigDrawer
+          open={configOpen}
+          onClose={() => setConfigOpen(false)}
+          projectId={projectId}
+          isAdmin={isAdmin}
+          repositories={reposQuery.data ?? []}
+          testsets={[]}
+        />
       </div>
     </ConfigProvider>
-  )
-}
-
-function GateDetail({
-  mrLabel,
-  checks,
-  loading,
-  onClose,
-}: {
-  mrLabel: string
-  checks: ReturnType<typeof useMergeRequestChecks>['data']
-  loading: boolean
-  onClose: () => void
-}) {
-  return (
-    <div className={styles.detailPanel}>
-      <div className={styles.detailHeader}>
-        <span>{mrLabel} · 质量门禁节点</span>
-        <button className={styles.closeBtn} onClick={onClose}>
-          ✕
-        </button>
-      </div>
-      {loading ? (
-        <div className={styles.detailState}><Spin /></div>
-      ) : checks && checks.length > 0 ? (
-        <div className={styles.gateNodes}>
-          {checks.map((check) => (
-            <div key={check.type} className={styles.gateNode}>
-              <span className={`${styles.dot} ${styles[`dot_${check.status.toLowerCase()}`]}`} />
-              <span className={styles.gateNodeName}>{check.type}</span>
-              <span className={styles.gateNodeStatus}>
-                {check.status === 'PASSED' ? '通过' : check.status === 'FAILED' ? '未通过' : '待检查'}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className={styles.detailState}>暂无门禁检查记录</div>
-      )}
-    </div>
-  )
-}
-
-function CqDetail({
-  mrLabel,
-  cqCheck,
-  onClose,
-}: {
-  mrLabel: string
-  cqCheck: ReturnType<typeof useMergeRequestChecks>['data'][number] | undefined
-  onClose: () => void
-}) {
-  return (
-    <div className={styles.detailPanel}>
-      <div className={styles.detailHeader}>
-        <span>{mrLabel} · CQ+1 审查</span>
-        <button className={styles.closeBtn} onClick={onClose}>
-          ✕
-        </button>
-      </div>
-      <div className={styles.cqContent}>
-        {cqCheck?.status === 'PASSED' ? (
-          <div className={styles.cqApproved}>
-            <span className={`${styles.dot} ${styles.dot_passed}`}>✓</span>
-            <div>
-              <strong>已盖章</strong>
-              {cqCheck.reviewedByName ? (
-                <p className={styles.cqMeta}>by {cqCheck.reviewedByName}</p>
-              ) : null}
-              {cqCheck.reviewReason ? (
-                <p className={styles.cqReason}>{cqCheck.reviewReason}</p>
-              ) : null}
-            </div>
-          </div>
-        ) : cqCheck?.status === 'FAILED' ? (
-          <div className={styles.cqRejected}>
-            <span className={`${styles.dot} ${styles.dot_failed}`}>✗</span>
-            <div>
-              <strong>已拒绝</strong>
-              {cqCheck.reviewReason ? (
-                <p className={styles.cqReason}>{cqCheck.reviewReason}</p>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <div className={styles.cqPending}>
-            <span className={`${styles.dot} ${styles.dot_pending}`}>◐</span>
-            <div>
-              <strong>待盖章</strong>
-              <p className={styles.cqMeta}>CQ+1 审查尚未进行</p>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
   )
 }

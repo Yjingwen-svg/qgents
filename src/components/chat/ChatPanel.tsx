@@ -22,6 +22,7 @@ import { formatApiError } from '@/utils/formatApiError'
 import { ApiError, groupApi, projectApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
 import { resolvePreviewUrl } from '@/api/attachment'
 import { AttachmentPreviewModal } from '@/components/chat/AttachmentPreviewModal'
+import { ChatDiffCard } from '@/components/chat/ChatDiffCard'
 import { getApiBaseUrl } from '@/api/client'
 import { useAuth } from '@/context/AuthContext'
 import { useAgents } from '@/hooks/agents'
@@ -42,7 +43,6 @@ import type {
   ImageMessageContent,
   FileMessageContent,
   QuoteMessageContent,
-  DiffMessageContent,
   TaskStatusMessageContent,
 } from '@/types'
 
@@ -1537,79 +1537,9 @@ function renderContent(
       return message.replyText ?? c?.replyText ?? ''
     }
     case 'DIFF': {
-      const c = message.content as DiffMessageContent
-      const rich = Boolean(c.displayCode || c.repositoryName || c.files)
-      const displayTitle = c.displayCode
-        ? `${c.displayCode}${c.repositoryName ? ` · ${c.repositoryName}` : ''}${c.sourceBranch ? ` / ${c.sourceBranch}` : ''}`
-        : (c.title ?? '代码交付')
-      return (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-            padding: '10px 12px',
-            border: '1px solid rgba(59, 130, 246, 0.35)',
-            borderRadius: 8,
-            background: 'rgba(59, 130, 246, 0.06)',
-            minWidth: 220,
-          }}
-        >
-          {/* 头部：Diff 码 · 仓库 / 源分支 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <BranchesOutlined style={{ fontSize: 16, color: '#3b82f6' }} />
-            <Text strong style={{ fontSize: 14 }}>{displayTitle}</Text>
-          </div>
-          {/* 目标分支与变更统计 */}
-          {rich ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {c.repositoryName && c.targetBranch ? (
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  -{c.repositoryName}/{c.targetBranch}
-                </Text>
-              ) : null}
-              {c.additions != null ? (
-                <Text style={{ fontSize: 12, color: '#16a34a' }}>+{c.additions}</Text>
-              ) : null}
-              {c.deletions != null ? (
-                <Text style={{ fontSize: 12, color: '#dc2626' }}>-{c.deletions}</Text>
-              ) : null}
-            </div>
-          ) : (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {c.additions != null || c.deletions != null ? (
-                <>
-                  <span style={{ color: '#16a34a' }}>+{c.additions ?? 0}</span>{' '}
-                  <span style={{ color: '#dc2626' }}>-{c.deletions ?? 0}</span>
-                </>
-              ) : (
-                '点击查看 Diff'
-              )}
-            </Text>
-          )}
-          {/* 变更文件列表 */}
-          {c.files && c.files.length > 0 ? (
-            <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
-              {c.files.map((file) => (
-                <div key={file} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {file}
-                </div>
-              ))}
-            </div>
-          ) : null}
-          {/* 操作：查看 Diff + 引用继续修改 */}
-          <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
-            <Link to={PATHS.projectDiff(projectId, c.diffId)}>
-              <Button size="small" type="link" icon={<BranchesOutlined />}>查看 Diff</Button>
-            </Link>
-            {onReply ? (
-              <Button size="small" type="link" onClick={() => onReply(message)}>
-                引用继续修改
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      )
+      // 群聊内 Diff 卡片：固定高度可展开的「文件树 + 行级 diff 视图」；
+      // 「查看 Diff」跳转代码提交 diff 详情 /app/projects/:projectId/code/diff/:diffId
+      return <ChatDiffCard message={message} projectId={projectId} onReply={onReply} />
     }
     case 'TASK_STATUS': {
       const c = message.content as TaskStatusMessageContent

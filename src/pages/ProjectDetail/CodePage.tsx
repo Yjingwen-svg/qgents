@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Typography,
   Card,
@@ -23,7 +23,7 @@ import {
   GithubOutlined,
   MoreOutlined,
 } from '@ant-design/icons'
-import { githubApi, groupApi } from '@/api'
+import { githubApi, groupApi, projectApi } from '@/api'
 import { useWorkBranches } from '@/hooks/workBranch'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
@@ -31,6 +31,7 @@ import { formatApiError } from '@/utils/formatApiError'
 import type { ProjectBoundRepository, WorkBranch } from '@/types/github'
 import { toEmptyBranchDiffId } from './emptyBranchDiff'
 import { MergeRequestTab } from './MergeRequestTab'
+import RemoteBranchSection from './RemoteBranchSection'
 
 const { Title, Paragraph, Text } = Typography
 /**
@@ -47,6 +48,7 @@ const { Title, Paragraph, Text } = Typography
 export function CodePage() {
   const { token } = theme.useToken()
   const { message } = App.useApp()
+  const queryClient = useQueryClient()
   const { projectId = 'demo-project' } = useParams<{ projectId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = searchParams.get('tab') ?? 'branches'
@@ -56,6 +58,14 @@ export function CodePage() {
     repo: ProjectBoundRepository
     branch: WorkBranch
   } | null>(null)
+
+  // 项目信息（含当前用户角色）
+  const { data: project } = useQuery({
+    queryKey: ['projects', projectId],
+    queryFn: () => projectApi.getById(projectId),
+    enabled: Boolean(projectId),
+  })
+  const isProjectAdmin = project?.role === 'PROJECT_ADMIN'
 
   // 项目绑定仓库列表
   const reposQuery = useQuery({
@@ -98,6 +108,13 @@ export function CodePage() {
     } catch {
       message.error('复制失败，请手动复制')
     }
+  }
+
+  async function handleSetDefaultBranch(repoId: string, branchName: string) {
+    await githubApi.updateProjectRepository(projectId, repoId, { defaultBranch: branchName })
+    // 刷新仓库列表
+    void queryClient.invalidateQueries({ queryKey: queryKeys.projectRepositories(projectId) })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.remoteBranches.all(projectId, repoId) })
   }
 
   function setTab(next: string) {
@@ -185,6 +202,8 @@ export function CodePage() {
                   repo={repo}
                   branches={branches}
                   tokenColorBorder={token.colorBorder}
+                  isProjectAdmin={isProjectAdmin}
+                  onSetDefaultBranch={handleSetDefaultBranch}
                   onOpenDrawer={(branch) => setDrawer({ repo, branch })}
                 />
               ))}
@@ -226,12 +245,16 @@ function RepoBranchCard({
   repo,
   branches,
   tokenColorBorder,
+  isProjectAdmin,
+  onSetDefaultBranch,
   onOpenDrawer,
 }: {
   projectId: string
   repo: ProjectBoundRepository
   branches: WorkBranch[]
   tokenColorBorder: string
+  isProjectAdmin: boolean
+  onSetDefaultBranch: (repoId: string, branchName: string) => Promise<void>
   onOpenDrawer: (branch: WorkBranch) => void
 }) {
   const titleName = repo.displayName || repo.fullName.split('/').pop() || repo.fullName
@@ -326,9 +349,14 @@ function RepoBranchCard({
         </Space>
       }
       extra={
-        <a href={repo.githubUrl} target="_blank" rel="noopener noreferrer">
-          {repo.fullName}
-        </a>
+        <Space>
+          {repo.defaultBranch ? (
+            <Tag color="blue">默认: {repo.defaultBranch}</Tag>
+          ) : null}
+          <a href={repo.githubUrl} target="_blank" rel="noopener noreferrer">
+            {repo.fullName}
+          </a>
+        </Space>
       }
     >
       <Table
@@ -339,6 +367,16 @@ function RepoBranchCard({
         dataSource={branches}
         scroll={{ x: 860 }}
       />
+
+      {/* 远程分支管理区 */}
+      <div style={{ marginTop: 12 }}>
+        <RemoteBranchSection
+          projectId={projectId}
+          repo={repo}
+          isProjectAdmin={isProjectAdmin}
+          onSetDefaultBranch={onSetDefaultBranch}
+        />
+      </div>
     </Card>
   )
 }

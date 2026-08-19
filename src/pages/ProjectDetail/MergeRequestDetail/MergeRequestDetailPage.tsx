@@ -367,7 +367,10 @@ export default function MergeRequestDetailPage() {
           cq: cqStatus === 'PASSED' ? 'approved' : cqStatus === 'FAILED' ? 'rejected' : 'pending',
           createMr: gatePassed && cqStatus === 'PASSED',
         }}
-        onClickGate={() => { window.location.href = PATHS.projectTestset(projectId) }}
+        onClickGate={() => {
+          const mrParam = `?mr=${encodeURIComponent(mr.id)}`
+          window.location.href = `${PATHS.projectQualityGate(projectId)}${mrParam}`
+        }}
         onClickCq={scrollToCq}
         onClickCreateMr={handleCreateMr}
       />

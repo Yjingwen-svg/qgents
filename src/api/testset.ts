@@ -231,9 +231,9 @@ export function mapTestRunExecutionSummary(raw: unknown): TestRunExecutionSummar
   const resultsRaw = raw.results
   const results = Array.isArray(resultsRaw)
     ? resultsRaw.flatMap((item) => {
-        const mapped = mapTestRunResultItem(item)
-        return mapped ? [mapped] : []
-      })
+      const mapped = mapTestRunResultItem(item)
+      return mapped ? [mapped] : []
+    })
     : []
   return {
     status: mapTestRunStatus(raw.status),
@@ -439,6 +439,16 @@ export const testsetApi = {
     }).then((res) => mapTestRun(res.data))
   },
 
+  /** GET /projects/{projectId}/test-runs —— 列表 */
+  listTestRuns(projectId: string, filters: { status?: string; limit?: number } = {}) {
+    const query: Record<string, string> = {}
+    if (filters.status) query.status = filters.status
+    if (filters.limit) query.limit = String(filters.limit)
+    return request<ApiEnvelope<unknown[]>>(withQuery(`/projects/${projectId}/test-runs`, query), {
+      unwrapData: false,
+    }).then((res) => asList(res.data).map(mapTestRun))
+  },
+
   /**
    * POST /projects/{projectId}/dry-runs
    * 针对源分支和目标分支发起合并前试运行。
@@ -456,5 +466,15 @@ export const testsetApi = {
     return request<ApiEnvelope<unknown>>(`/projects/${projectId}/dry-runs/${dryRunId}/report`, {
       unwrapData: false,
     }).then((res) => mapDryRunReport(res.data))
+  },
+
+  /** GET /projects/{projectId}/dry-runs —— 列表 */
+  listDryRuns(projectId: string, filters: { status?: string; limit?: number } = {}) {
+    const query: Record<string, string> = {}
+    if (filters.status) query.status = filters.status
+    if (filters.limit) query.limit = String(filters.limit)
+    return request<ApiEnvelope<unknown[]>>(withQuery(`/projects/${projectId}/dry-runs`, query), {
+      unwrapData: false,
+    }).then((res) => asList(res.data).map(mapDryRunReport))
   },
 }

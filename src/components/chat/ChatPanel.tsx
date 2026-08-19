@@ -256,6 +256,28 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     if (groupId) void markGroupReadNow()
   }, [groupId, markGroupReadNow])
 
+  // 离开群 / 组件卸载时：补一次「离开即已读」，把游标推进到该群最新消息。
+  // 否则「进群后新消息累积的 unreadCount」会在离开群后于侧栏冒红点
+  // （侧栏红点渲染只看 unreadCount，不看当前是否在看该群——见 ProjectDetailLayout）。
+  // 注意：只调接口 + 更新 queryClient 缓存，不做 setState（卸载时 setState 会告警）。
+  useEffect(() => {
+    const projectIdAtMount = projectId
+    const groupIdAtMount = groupId
+    return () => {
+      if (!projectIdAtMount || !groupIdAtMount) return
+      // 乐观清零该群 unreadCount，避免离开后侧栏红点残留
+      const clearLeft = (groups: Group[] | undefined): Group[] | undefined =>
+        groups
+          ? groups.map((g) => (g.id === groupIdAtMount ? { ...g, unreadCount: 0 } : g))
+          : groups
+      queryClient.setQueryData<Group[]>(['groups', projectIdAtMount], clearLeft)
+      queryClient.setQueryData<Group[]>(['chat', 'main-groups'], clearLeft)
+      void groupApi.markRead(projectIdAtMount, groupIdAtMount).catch(() => {
+        // 离开时已读失败：下次进群 markRead 会覆盖，不阻塞
+      })
+    }
+  }, [projectId, groupId, queryClient])
+
   // 兜底：消息列表首次加载成功后补发一次 read（幂等，游标只前进）。
   // 覆盖「进群 effect 因时序/挂载问题未触发」的情况——只要点进群、消息加载出来，read 必发。
   const markReadForGroupRef = useRef<string | null>(null)
@@ -799,14 +821,14 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             {canOpenTaskTrigger && filteredAgents.length > 0 && (
               <MentionGroup
                 label="Agent"
-                members={filteredAgents.map((a) => ({ id: a.id, displayName: a.name, type: 'AGENT' as const }))}
+                members={filteredAgents.map((a) => ({ id: a.id, displayName: a.name, type: 'AGENT' as const, avatarUrl: a.avatar }))}
                 onPick={pickMention}
               />
             )}
             {filteredUsers.length > 0 && (
               <MentionGroup
                 label="成员"
-                members={filteredUsers.map((m) => ({ id: m.id, displayName: m.displayName, type: 'USER' as const }))}
+                members={filteredUsers.map((m) => ({ id: m.id, displayName: m.displayName, type: 'USER' as const, avatarUrl: m.avatarUrl }))}
                 onPick={pickMention}
               />
             )}
@@ -1063,7 +1085,7 @@ function MentionGroup({
   onPick,
 }: {
   label: string
-  members: Array<{ id: string; displayName: string; type: MentionType }>
+  members: Array<{ id: string; displayName: string; type: MentionType; avatarUrl?: string | null }>
   onPick: (m: { id: string; displayName: string; type: MentionType }) => void
 }) {
   const { token } = theme.useToken()
@@ -1091,10 +1113,32 @@ function MentionGroup({
             ;(e.currentTarget as HTMLDivElement).style.background = 'transparent'
           }}
         >
-          <Text style={{ fontSize: 13 }}>
-            {m.type === 'AGENT' ? '🤖 ' : ''}
-            {m.displayName}
-          </Text>
+          {m.avatarUrl ? (
+            <img
+              src={m.avatarUrl}
+              alt=""
+              style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+            />
+          ) : (
+            <span
+              aria-hidden
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: '50%',
+                background: m.type === 'AGENT' ? '#3b82f6' : '#8b5cf6',
+                color: '#fff',
+                fontSize: 12,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              {m.type === 'AGENT' ? '🤖' : (m.displayName.slice(0, 1) || '?')}
+            </span>
+          )}
+          <Text style={{ fontSize: 13 }}>{m.displayName}</Text>
         </div>
       ))}
     </div>

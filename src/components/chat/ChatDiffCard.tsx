@@ -261,8 +261,8 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
             </div>
           </div>
 
-          {/* 右栏：行级 diff 视图 */}
-          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', background: '#fff' }}>
+          {/* 右栏：行级 diff 视图（整体横向滚动：内容按最长代码行撑宽，一个总滚动条） */}
+          <div style={{ flex: 1, minWidth: 0, overflow: 'auto', background: '#fff' }}>
             {current ? (
               <>
                 <div
@@ -297,24 +297,26 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
                 ) : current.binary || current.hunks.length === 0 ? (
                   <Empty style={{ margin: 40 }} description="无行级 Diff（二进制文件或暂无 hunks）" />
                 ) : (
-                  current.hunks.map((hunk) => (
-                    <div key={hunk.id}>
-                      <div
-                        style={{
-                          padding: '6px 12px',
-                          background: '#f4f7fb',
-                          color: '#5b6b82',
-                          fontFamily: 'ui-monospace, Consolas, monospace',
-                          fontSize: 12,
-                        }}
-                      >
-                        {hunk.header}
+                  <div style={{ width: 'max-content', minWidth: '100%' }}>
+                    {current.hunks.map((hunk) => (
+                      <div key={hunk.id}>
+                        <div
+                          style={{
+                            padding: '6px 12px',
+                            background: '#f4f7fb',
+                            color: '#5b6b82',
+                            fontFamily: 'ui-monospace, Consolas, monospace',
+                            fontSize: 12,
+                          }}
+                        >
+                          {hunk.header}
+                        </div>
+                        {hunk.lines.map((line, lineIndex) => (
+                          <DiffLineRow key={`${hunk.id}-${lineIndex}`} line={line} />
+                        ))}
                       </div>
-                      {hunk.lines.map((line, lineIndex) => (
-                        <DiffLineRow key={`${hunk.id}-${lineIndex}`} line={line} />
-                      ))}
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </>
             ) : (
@@ -327,38 +329,28 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
   )
 }
 
-/** 行级 diff：行号 + 符号 + 内容（ADD 绿底 / DEL 红底） */
+/** 行级 diff：行号 + 符号 + 内容（ADD 绿底 / DEL 红底）。
+ *  代码列不换行不截断，由右侧内容区的总横向滚动条统一滚动（行号列固定不跟着滚）。 */
 function DiffLineRow({ line }: { line: DiffLine }) {
   const sign = line.kind === 'ADD' ? '+' : line.kind === 'DEL' ? '-' : ''
   return (
     <div
       style={{
-        display: 'grid',
-        gridTemplateColumns: '44px 44px 22px minmax(0, 1fr)',
+        display: 'flex',
         fontFamily: 'ui-monospace, Consolas, monospace',
         fontSize: 12,
         lineHeight: 1.55,
         background: line.kind === 'ADD' ? '#e7f8ee' : line.kind === 'DEL' ? '#fdecec' : undefined,
       }}
     >
-      <span style={{ color: '#94a3b8', textAlign: 'right', padding: '0 6px', userSelect: 'none' }}>
+      <span style={{ width: 44, flexShrink: 0, color: '#94a3b8', textAlign: 'right', padding: '0 6px', userSelect: 'none' }}>
         {line.oldLine ?? ''}
       </span>
-      <span style={{ color: '#94a3b8', textAlign: 'right', padding: '0 6px', userSelect: 'none' }}>
+      <span style={{ width: 44, flexShrink: 0, color: '#94a3b8', textAlign: 'right', padding: '0 6px', userSelect: 'none' }}>
         {line.newLine ?? ''}
       </span>
-      <span style={{ textAlign: 'center', fontWeight: 700 }}>{sign}</span>
-      {/* 代码列：超长行在行内横向滚动（white-space: pre 不换行不截断） */}
-      <span
-        style={{
-          padding: '0 10px',
-          whiteSpace: 'pre',
-          overflowX: 'auto',
-          overflowY: 'hidden',
-        }}
-      >
-        {line.text}
-      </span>
+      <span style={{ width: 22, flexShrink: 0, textAlign: 'center', fontWeight: 700 }}>{sign}</span>
+      <span style={{ padding: '0 10px', whiteSpace: 'pre' }}>{line.text}</span>
     </div>
   )
 }

@@ -170,7 +170,9 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     const key = ['groups', projectId, groupId, 'messages'] as const
 
     const currentSequence = (): number => {
-      const rows = queryClient.getQueryData<{ data?: Message[] }>(key)?.data ?? []
+      // useInfiniteQuery 缓存结构为 { pages, pageParams }：取全部页的消息算最大 sequence
+      const cached = queryClient.getQueryData<InfiniteData<Page<Message>>>(key)
+      const rows = cached?.pages.flatMap((p) => p.data) ?? []
       return rows.reduce((max, item) => Math.max(max, item.sequence ?? 0), 0)
     }
     const sync = async (): Promise<void> => {
@@ -183,8 +185,11 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       try {
         let afterSequence = currentSequence()
         const received: Message[] = []
+        let lastPage: Page<Message> | undefined
         while (!stopped) {
-          const result = await groupApi.listMessagesAfter(projectId, groupId, afterSequence)
+          // 后端接口为 /messages/incremental?afterSequence=N（listMessagesIncremental）
+          const result = await groupApi.listMessagesIncremental(projectId, groupId, afterSequence)
+          lastPage = result
           received.push(...result.data)
           if (!result.page.hasMore || !result.page.nextCursor) break
           const nextSequence = Number(result.page.nextCursor)
@@ -192,10 +197,17 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           afterSequence = nextSequence
         }
         if (stopped || received.length === 0) return
-        queryClient.setQueryData(key, (old: { data?: Message[]; page?: unknown } | undefined) => {
-          const merged = new Map<string, Message>((old?.data ?? []).map((item) => [item.id, item]))
-          for (const item of received) merged.set(item.id, item)
-          return { data: [...merged.values()].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0)), page: old?.page }
+        queryClient.setQueryData<InfiniteData<Page<Message>>>(key, (old) => {
+          if (!old || !lastPage) {
+            return { pages: [{ ...(lastPage as Page<Message>), data: received }], pageParams: [undefined] }
+          }
+          const [first, ...rest] = old.pages
+          const known = new Set(first.data.map((m) => m.id))
+          const merged = [...first.data, ...received.filter((m) => !known.has(m.id))]
+          return {
+            ...old,
+            pages: [{ ...first, data: merged }, ...rest],
+          }
         })
       } catch {
         // REST 是可靠来源；短暂网络失败交由下一次 SSE/WS 信号或重连再次补偿。

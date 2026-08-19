@@ -1,13 +1,14 @@
 // src/pages/ProjectDetail/sections/SettingsPage.tsx
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Tabs, Typography, Input, Switch, Spin, Tag, message } from 'antd'
-import { GithubOutlined, SaveOutlined, LockOutlined } from '@ant-design/icons'
+import { Button, Tabs, Typography, Input, Switch, Spin, Tag, message, Avatar, Upload } from 'antd'
+import { GithubOutlined, SaveOutlined, LockOutlined, UploadOutlined, CameraOutlined } from '@ant-design/icons'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { TabsProps } from 'antd'
 import { projectApi } from '@/api'
 import { githubApi } from '@/api/github'
 import { useTasks } from '@/hooks/task-model'
+import { useProjectAvatarUpload } from '@/hooks/useProjectAvatarUpload'
 import { TaskModelStatusTag } from '@/pages/ProjectDetail/TaskCenter/TaskModelStatusTag'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
@@ -124,6 +125,8 @@ function BasicInfoTab({
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  // 项目头像（v2.0.6：从群聊设置栏迁入项目设置-基本信息）
+  const { uploading: avatarUploading, uploadAvatar } = useProjectAvatarUpload(project?.teamId)
 
   // project 异步加载完成后同步到本地 state，避免初始空串不更新
   useEffect(() => {
@@ -154,6 +157,30 @@ function BasicInfoTab({
   return (
     <div className="settings-tab">
       <div className="settings-tab__content">
+        {/* 项目头像（v2.0.6：从群聊设置栏迁入项目设置-基本信息；主群会话头像跟随项目头像） */}
+        <div className="settings-tab__field">
+          <label className="settings-tab__label">项目头像</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Avatar size={64} src={project?.avatarUrl} icon={<CameraOutlined />} style={{ flexShrink: 0 }} />
+            {isEditable ? (
+              <Upload
+                accept="image/*"
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  void uploadAvatar(projectId, file)
+                  return false
+                }}
+              >
+                <Button icon={<UploadOutlined />} loading={avatarUploading}>
+                  {project?.avatarUrl ? '更换头像' : '上传头像'}
+                </Button>
+              </Upload>
+            ) : (
+              <Text type="secondary">仅项目管理员可修改</Text>
+            )}
+          </div>
+        </div>
+
         <div className="settings-tab__field">
           <label className="settings-tab__label">项目名称</label>
           {isEditable ? (

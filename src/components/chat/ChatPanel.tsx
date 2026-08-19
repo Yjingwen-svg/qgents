@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Drawer, Divider, Avatar, Spin } from 'antd'
 import { App, Upload } from 'antd'
+import type { TextAreaRef } from 'antd/es/input/TextArea'
 import {
   SendOutlined,
   ThunderboltOutlined,
@@ -14,6 +15,7 @@ import {
   PaperClipOutlined,
   CloseOutlined,
   SettingOutlined,
+  TeamOutlined,
 } from '@ant-design/icons'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
@@ -86,6 +88,10 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const shouldStickToBottomRef = useRef(true)
   // 本次发送后需要强制滚到底（即使布局滚动事件把 stick 标志重算为 false 也照滚），待消息渲染后清除。
   const pendingScrollRef = useRef(false)
+  // 消息输入框 ref：右键「@ta」后聚焦进入编辑态
+  const inputRef = useRef<TextAreaRef>(null)
+  // 右键成员消息的上下文菜单（@ta）：记录触发位置与目标消息
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: Message } | null>(null)
 
   const { data: groups = [] } = useQuery({
     queryKey: ['groups', projectId],
@@ -251,6 +257,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   useEffect(() => {
     shouldStickToBottomRef.current = true
     scrollToBottom()
+    // 右键 @ta 菜单随群切换关闭，避免残留到新群的旧坐标菜单
+    setCtxMenu(null)
   }, [groupId, scrollToBottom])
 
   // 进群全读（§三）：直接调后端推进已读游标。
@@ -502,6 +510,50 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     setMentions((prev) => [...prev, { type: target.type, id: target.id }])
   }
 
+  /**
+   * 右键「@ta」：把目标消息的发送者解析为可 @ 的候选（与候选面板同源：userMembers / teamAgents）。
+   * 解析不到的（如 SYSTEM、自己、非候选 Agent）返回 null，不弹出菜单。
+   */
+  function resolveCtxMention(m: Message): { displayName: string; type: MentionType } | null {
+    if (m.senderType === 'USER') {
+      const member = userMembers.find((mem) => mem.id === m.senderId)
+      return member ? { displayName: member.displayName, type: 'USER' } : null
+    }
+    if (m.senderType === 'AGENT') {
+      const agent = teamAgents.find((a) => a.id === m.senderId)
+      return agent ? { displayName: agent.name, type: 'AGENT' } : null
+    }
+    return null
+  }
+
+  /** 右键菜单「@ta」：在输入框追加 @该成员 + 空格，登记提及并聚焦输入框进入编辑态 */
+  function mentionFromCtx(m: Message): void {
+    const resolved = resolveCtxMention(m)
+    if (!resolved || !m.senderId) return
+    setDraft((prev) => {
+      const base = prev.trimEnd()
+      return base ? `${base} @${resolved.displayName} ` : `@${resolved.displayName} `
+    })
+    setMentions((prev) => [...prev, { type: resolved.type, id: m.senderId as string }])
+    setCtxMenu(null)
+    // 等 draft 更新后再聚焦（TextArea 由受控 value 驱动，聚焦本身不依赖 draft）
+    window.setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  // 右键菜单打开时：点击任意处 / 滚动 / 失焦关闭（菜单自身 mousedown 会阻止冒泡，避免点菜单即关）
+  useEffect(() => {
+    if (!ctxMenu) return
+    const close = () => setCtxMenu(null)
+    document.addEventListener('mousedown', close)
+    document.addEventListener('scroll', close, true)
+    window.addEventListener('blur', close)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('scroll', close, true)
+      window.removeEventListener('blur', close)
+    }
+  }, [ctxMenu])
+
   async function handleSend() {
     const text = draft.trim()
     // 允许纯引用（引用 DIFF 卡等）：回复目标存在时正文可为空（B3，服务端用群描述兜底）
@@ -694,15 +746,26 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         }}
       >
         <>
-          <div>
-            <Text strong style={{ fontSize: 16 }}>
-              <Text type="success">#</Text> {group?.title ?? '群聊'}
-            </Text>
-            <div>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {group?.type === 'PROJECT_MAIN' ? '项目总群' : '需求群'}
-                {group?.memberCount ? ` · ${group.memberCount} 人` : ''}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            {/* 项目主群：群头像 = 项目头像（v2.0.6，与群聊工作台会话列表一致）；需求群不显示 */}
+            {group?.type === 'PROJECT_MAIN' ? (
+              <Avatar
+                size={36}
+                src={project?.avatarUrl}
+                icon={<TeamOutlined />}
+                style={{ background: '#3b82f6', flexShrink: 0 }}
+              />
+            ) : null}
+            <div style={{ minWidth: 0 }}>
+              <Text strong style={{ fontSize: 16 }}>
+                <Text type="success">#</Text> {group?.title ?? '群聊'}
               </Text>
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {group?.type === 'PROJECT_MAIN' ? '项目总群' : '需求群'}
+                  {group?.memberCount ? ` · ${group.memberCount} 人` : ''}
+                </Text>
+              </div>
             </div>
           </div>
           <Space size={8}>
@@ -768,6 +831,14 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                 <div
                   key={m.id}
                   id={`msg-${m.id}`}
+                  onContextMenu={
+                    !isSelf && m.senderType !== 'SYSTEM'
+                      ? (e) => {
+                          e.preventDefault()
+                          setCtxMenu({ x: e.clientX, y: e.clientY, message: m })
+                        }
+                      : undefined
+                  }
                   style={{
                     display: 'flex',
                     alignItems: 'flex-start',
@@ -798,6 +869,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                     <MessageBubble
                       message={m}
                       isSelf={isSelf}
+                      selfDisplayName={user?.displayName ?? '我'}
                       projectId={projectId}
                       onReply={setReplyTo}
                       onOpenFile={openFile}
@@ -940,6 +1012,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             <Button icon={<PaperClipOutlined />} loading={uploading} aria-label="发送文件" />
           </Upload>
           <Input.TextArea
+            ref={inputRef}
             placeholder="输入消息，@ 可提及成员或 Agent，回车发送…"
             autoSize={{ minRows: 1, maxRows: 4 }}
             value={draft}
@@ -1026,6 +1099,34 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           embeddedPreviewUrl={previewTarget.embeddedPreviewUrl}
           onClose={() => setPreviewTarget(null)}
         />
+      ) : null}
+      {/* 右键成员消息上下文菜单：@ta 该成员（点击空白/滚动/失焦自动关闭） */}
+      {ctxMenu ? (
+        <div
+          style={{
+            position: 'fixed',
+            left: ctxMenu.x,
+            top: ctxMenu.y,
+            zIndex: 1000,
+            minWidth: 120,
+            padding: 4,
+            background: token.colorBgContainer,
+            border: `1px solid ${token.colorBorder}`,
+            borderRadius: 8,
+            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.16)',
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <Button
+            type="text"
+            block
+            onClick={() => mentionFromCtx(ctxMenu.message)}
+            style={{ textAlign: 'left' }}
+          >
+            <Text strong style={{ marginRight: 6 }}>@</Text>
+            ta
+          </Button>
+        </div>
       ) : null}
       </Layout>
     </ErrorBoundary>
@@ -1203,6 +1304,7 @@ function MentionGroup({
 function MessageBubble({
   message,
   isSelf,
+  selfDisplayName,
   projectId,
   onReply,
   onOpenFile,
@@ -1210,6 +1312,8 @@ function MessageBubble({
 }: {
   message: Message
   isSelf: boolean
+  /** 自己的实时昵称（改昵称后即时更新；来自 ChatPanel 的 user.displayName） */
+  selfDisplayName?: string
   projectId: string
   /** 点击「回复」时回调，用于设置回复引用（SYSTEM 消息不提供） */
   onReply?: (m: Message) => void
@@ -1284,8 +1388,9 @@ function MessageBubble({
             <Text type="secondary" style={{ fontSize: 11 }}>
               {formatClock(message.createdAt)}
             </Text>
+            {/* 自己消息昵称：用实时 selfDisplayName（改昵称后即时更新），不用后端落库的旧 senderName */}
             <Text type="secondary">
-              {message.senderName ?? (message.senderType === 'AGENT' ? 'Agent' : '成员')}
+              {message.senderType === 'AGENT' ? 'Agent' : (selfDisplayName ?? message.senderName ?? '我')}
             </Text>
           </>
         ) : (

@@ -136,11 +136,15 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
         ) : null}
       </div>
 
-      {/* 展开区：固定高度「文件树 + diff 视图」左右分栏 */}
+      {/* 展开区：固定高度「文件树 + diff 视图」左右分栏。
+          宽度固定 620px（窄屏受气泡 maxWidth 78% 限制收缩，不会溢出），
+          避免右侧代码行少时整框跟着缩水。 */}
       {open ? (
         <div
           style={{
             display: 'flex',
+            width: 620,
+            maxWidth: '100%',
             height: PANEL_HEIGHT,
             marginTop: 8,
             border: '1px solid #d9e2ef',

@@ -285,6 +285,45 @@ export function PreflightPanel({
 
   const allLoading = preflights.every((p) => p.loading)
 
+  // 计算整体预检状态，用于动态渲染顶部 Alert
+  const summary = useMemo(() => {
+    const loaded = preflights.filter((p) => !p.loading && p.preflight)
+    const loading = preflights.filter((p) => p.loading)
+    const errored = preflights.filter((p) => p.error)
+
+    if (loaded.length === 0 && loading.length > 0) {
+      return { type: 'info' as const, message: '代码已推送，Dry Run 自动执行中', description: '请由非任务发起人完成 CQ+1，审核通过后系统将自动创建 MR。' }
+    }
+
+    const allDryRunRunning = loaded.every((p) => {
+      const ds = p.preflight?.dryRun?.status
+      return ds === 'QUEUED' || ds === 'RUNNING' || !ds
+    })
+    const someDryRunFailed = loaded.some((p) => p.preflight?.dryRun?.status === 'FAILED')
+    const allCqApproved = loaded.length > 0 && loaded.every((p) => p.preflight?.cqPlusOne?.status === 'APPROVED')
+    const someCqMissing = loaded.some((p) => {
+      const cs = p.preflight?.cqPlusOne?.status
+      return !cs || cs === 'MISSING'
+    })
+
+    if (someDryRunFailed) {
+      return { type: 'error' as const, message: '部分 Dry Run 失败', description: '请查看失败仓库的报告，修复后由系统重新触发 Dry Run。' }
+    }
+    if (allCqApproved) {
+      return { type: 'success' as const, message: 'CQ+1 已通过，系统正在创建 MR', description: 'MR 创建完成后将自动出现在 MR 列表中。' }
+    }
+    if (allDryRunRunning) {
+      return { type: 'info' as const, message: '代码已推送，Dry Run 自动执行中', description: '请由非任务发起人完成 CQ+1，审核通过后系统将自动创建 MR。' }
+    }
+    if (someCqMissing) {
+      return { type: 'warning' as const, message: 'Dry Run 已通过，等待独立成员 CQ+1', description: '请由非任务发起人完成 CQ+1 审批，审核通过后系统将自动创建 MR。' }
+    }
+    if (errored.length > 0) {
+      return { type: 'error' as const, message: '部分仓库预检加载失败', description: '点击刷新全部重试。' }
+    }
+    return { type: 'info' as const, message: '预检状态汇总', description: '请查看下方各仓库的详细状态。' }
+  }, [preflights])
+
   if (allLoading && preflights.length === 0) {
     return (
       <div style={{ padding: 12 }}>
@@ -296,14 +335,10 @@ export function PreflightPanel({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <Alert
-        type="info"
+        type={summary.type}
         showIcon
-        message="代码已推送，Dry Run 自动执行中"
-        description={
-          <Text type="secondary">
-            请由非任务发起人完成 CQ+1，审核通过后系统将自动创建 MR。
-          </Text>
-        }
+        message={summary.message}
+        description={<Text type="secondary">{summary.description}</Text>}
         action={
           preflights.some((p) => p.loading) ? (
             <Spin size="small" />

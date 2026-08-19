@@ -664,21 +664,6 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     [message],
   )
 
-  /** 打开图片预览弹窗（增量契约 §4：点击图片页内放大） */
-  const openImagePreview = useCallback(
-    (target: Message) => {
-      const c = target.content as ImageMessageContent
-      const attachmentId = c.attachmentId || extractAttachmentId(c.url)
-      if (!attachmentId) return
-      setPreviewTarget({
-        attachmentId,
-        fileName: '图片预览',
-        embeddedPreviewUrl: c.previewUrl,
-      })
-    },
-    [],
-  )
-
   // AI 自动沉淀 Memory（草稿）：后端自动检索当前群最近聊天并生成草稿，投给用户/Admin 审核确认
   const createAiMemory = useMutation({
     mutationFn: () => memoryApi.generateDraft(projectId, { groupId }),
@@ -816,7 +801,6 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                       projectId={projectId}
                       onReply={setReplyTo}
                       onOpenFile={openFile}
-                      onOpenImage={openImagePreview}
                       onImageLoad={handleImageLoad}
                     />
                   </div>
@@ -1222,7 +1206,6 @@ function MessageBubble({
   projectId,
   onReply,
   onOpenFile,
-  onOpenImage,
   onImageLoad,
 }: {
   message: Message
@@ -1232,8 +1215,6 @@ function MessageBubble({
   onReply?: (m: Message) => void
   /** 打开文件消息（FILE 类型走页内预览/下载，见 AttachmentPreviewModal） */
   onOpenFile?: (m: Message) => void
-  /** 点击图片放大预览（增量契约 §4） */
-  onOpenImage?: (m: Message) => void
   /** 图片真正加载完成回调（透传给 AuthedImage，供 ChatPanel 保持贴底） */
   onImageLoad?: () => void
 }) {
@@ -1244,7 +1225,7 @@ function MessageBubble({
     return (
       <div style={{ textAlign: 'center' }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          {renderContent(message, projectId, onOpenFile, onOpenImage, onImageLoad, onReply)}
+          {renderContent(message, projectId, onOpenFile, onImageLoad, onReply)}
         </Text>
       </div>
     )
@@ -1350,7 +1331,7 @@ function MessageBubble({
           overflow: 'hidden',
         }}
       >
-        {renderContent(message, projectId, onOpenFile, onOpenImage, onImageLoad, onReply)}
+        {renderContent(message, projectId, onOpenFile, onImageLoad, onReply)}
       </div>
       {/* QUOTE 引用消息：被引用的原消息挂载在气泡下方（带竖线），类似微信「当前消息 + 引用原消息」 */}
       {message.type === 'QUOTE' ? (
@@ -1392,7 +1373,6 @@ function renderContent(
   message: Message,
   projectId: string,
   onOpenFile?: (m: Message) => void,
-  onOpenImage?: (m: Message) => void,
   onImageLoad?: () => void,
   onReply?: (m: Message) => void,
 ): React.ReactNode {
@@ -1416,25 +1396,8 @@ function renderContent(
           onLoad={onImageLoad}
         />
       )
-      // 增量契约 §4：点击图片页内放大预览（onOpenImage 由 ChatPanel 提供时）
-      if (!onOpenImage) return image
-      return (
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label="点击放大图片"
-          style={{ cursor: 'zoom-in', display: 'inline-block' }}
-          onClick={() => onOpenImage(message)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              onOpenImage(message)
-            }
-          }}
-        >
-          {image}
-        </div>
-      )
+      // 图片查看走 antd <Image> 内置全屏预览（AuthedImage 默认开启），不再套自定义 AttachmentPreviewModal
+      return image
     }
     case 'FILE': {
       const c = message.content as FileMessageContent

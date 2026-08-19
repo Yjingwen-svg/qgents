@@ -74,12 +74,17 @@ export const attachmentApi = {
 }
 
 /**
- * 把后端返回的相对 previewUrl 拼成可直接打开的绝对地址（增量契约 §4.1：
- * previewUrl 为相对路径，前端拼接 ORIGIN 使用）。
+ * 把后端返回的相对 previewUrl 拼成可直接打开的绝对地址（增量契约 §4.1）。
+ * 不用 window.location.origin：后端 previewUrl 自带 `/api/v1` 前缀，走 dev vite 代理
+ * 会把 `/api` rewrite 成 `/api/v1` 导致 `/api/v1/api/v1/...` 双前缀 404。
+ * 改为取 API base 的 origin 拼接（dev 直连 localhost:8080、生产直连 api.qgents...），
+ * 与 contentUrl 的构造语义一致，dev/生产都能直接访问预览端点。
  */
 export function resolvePreviewUrl(previewUrl: string): string {
   if (/^https?:\/\//i.test(previewUrl)) return previewUrl
-  return `${window.location.origin}${previewUrl.startsWith('/') ? previewUrl : `/${previewUrl}`}`
+  const base = getApiBaseUrl()
+  const origin = /^https?:\/\//i.test(base) ? new URL(base).origin : window.location.origin
+  return `${origin}${previewUrl.startsWith('/') ? previewUrl : `/${previewUrl}`}`
 }
 
 /**

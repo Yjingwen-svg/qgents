@@ -57,5 +57,6 @@ export function AuthedImage({ src, fallback, onLoad, ...rest }: AuthedImageProps
 
   // 加载中 / 失败时显示 fallback（与原 Image.fallback 语义一致，且更早生效）
   // onLoad 绑定到 <Image>：objectURL 就绪、图片真正解码渲染后触发（≠ fetch 完成）
+  // 保留 antd 内置全屏预览：聊天图片点击直接用 antd 预览放大，不走自定义 AttachmentPreviewModal
   return <Image src={objectUrl ?? fallback} onLoad={onLoad} {...rest} />
 }

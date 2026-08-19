@@ -564,13 +564,18 @@
   }
 }
 
-/* —— 响应式：窄屏下三栏 → 两栏 → 单栏，避免中栏被挤压 / 右侧 aside 溢出覆盖 —— */
+/* —— 响应式：窄屏下三栏 → 两栏（右侧动态换行到下方占满整行，不隐藏）→ 单栏 —— */
 @media (max-width: 1200px) {
   .team-detail {
     grid-template-columns: 248px minmax(0, 1fr);
   }
   .team-detail__aside {
-    display: none;
+    /* 不再 display:none：换行到第二行，横跨整行展示「最近动态」，避免中栏被挤压/右侧溢出覆盖 */
+    display: block;
+    grid-column: 1 / -1;
+    border-left: 0;
+    border-top: 1px solid #d9e2ef;
+    padding: 24px 20px 36px;
   }
 }
 

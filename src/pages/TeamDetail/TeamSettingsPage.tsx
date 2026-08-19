@@ -313,16 +313,6 @@ function MembersTab({ teamId, members, isOwner }: { teamId: string; members: Tea
     onError: (err) => message.error(formatApiError(err)),
   })
 
-  const updateRoleMutation = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
-      teamApi.updateMemberRole(teamId, userId, role),
-    onSuccess: () => {
-      message.success('角色已更新')
-      queryClient.invalidateQueries({ queryKey: ['teams', teamId, 'members'] })
-    },
-    onError: (err) => message.error(formatApiError(err)),
-  })
-
   const removeMutation = useMutation({
     mutationFn: (userId: string) => teamApi.removeMember(teamId, userId),
     onSuccess: () => {
@@ -358,9 +348,16 @@ function MembersTab({ teamId, members, isOwner }: { teamId: string; members: Tea
     {
       title: '角色',
       key: 'role',
-      width: 120,
+      width: 160,
       render: (_, m) => (
-        <Tag color={m.role === 'TEAM_OWNER' ? 'gold' : 'default'}>{getRoleLabel(m.role)}</Tag>
+        <Space size={4}>
+          <Tag color={m.role === 'TEAM_OWNER' ? 'gold' : 'default'}>{getRoleLabel(m.role)}</Tag>
+          {m.role === 'TEAM_OWNER' ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              （不可降级）
+            </Text>
+          ) : null}
+        </Space>
       ),
     },
     ...(isOwner
@@ -368,30 +365,25 @@ function MembersTab({ teamId, members, isOwner }: { teamId: string; members: Tea
           {
             title: '操作',
             key: 'action',
-            width: 240,
+            width: 120,
             render: (_: unknown, m: TeamMember) => {
               const isSelf = m.userId === user?.id
-              return (
-                <Space>
-                  <Select
-                    size="small"
-                    value={m.role}
-                    options={ROLE_OPTIONS}
-                    style={{ width: 110 }}
-                    onChange={(role) => updateRoleMutation.mutate({ userId: m.userId, role })}
-                  />
-                  {!isSelf && (
-                    <Button
-                      size="small"
-                      danger
-                      type="link"
-                      loading={removeMutation.isPending}
-                      onClick={() => confirmRemove(m)}
-                    >
-                      移除
-                    </Button>
-                  )}
-                </Space>
+              // 角色不可在页面直接调整（Owner 不可降级自己；成员角色由邀请/移除管理），
+              // 这里只保留「移除成员」操作；自己不可移除。
+              return !isSelf ? (
+                <Button
+                  size="small"
+                  danger
+                  type="link"
+                  loading={removeMutation.isPending}
+                  onClick={() => confirmRemove(m)}
+                >
+                  移除
+                </Button>
+              ) : (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  —
+                </Text>
               )
             },
           },

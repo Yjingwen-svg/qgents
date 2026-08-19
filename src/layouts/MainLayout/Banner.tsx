@@ -78,7 +78,8 @@ export function Banner() {
       return
     }
     if (key === 'chat') {
-      navigate(PATHS.CHAT)
+      // 携带当前团队进入项目群聊：刷新后仍停留在该团队（v2.0.6）
+      navigate(currentTeamId ? PATHS.chat(currentTeamId) : PATHS.CHAT)
       return
     }
     if (key === 'project' && projectDetailNav) {

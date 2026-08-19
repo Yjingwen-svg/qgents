@@ -56,8 +56,11 @@ export const PATHS = {
   /**
    * 项目群聊工作台外壳
    * 左侧会话列表 + 顶栏 + 底部输入；中间消息区留空待填充
+   * 团队上下文挂在路由层：/app/chat?teamId=xxx，刷新后不串团队（v2.0.6）
    */
   CHAT: '/app/chat',
+  /** 项目群聊工作台（携带当前团队，刷新保持不串团队；无团队时用 CHAT 由页面兜底） */
+  chat: (teamId: string) => `/app/chat?teamId=${encodeURIComponent(teamId)}`,
 
   /** 项目详情根路径（会重定向到默认子页） */
   projectDetail: (projectId: string) => `/app/projects/${projectId}`,

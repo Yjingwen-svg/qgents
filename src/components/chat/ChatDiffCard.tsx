@@ -137,13 +137,13 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
       </div>
 
       {/* 展开区：固定高度「文件树 + diff 视图」左右分栏。
-          宽度固定 620px（窄屏受气泡 maxWidth 78% 限制收缩，不会溢出），
-          避免右侧代码行少时整框跟着缩水。 */}
+          宽度固定 820px（窄屏受气泡 maxWidth 78% 限制收缩，不会溢出），
+          避免右侧代码行少时整框跟着缩水；代码超长行在右侧内容区横向滚动。 */}
       {open ? (
         <div
           style={{
             display: 'flex',
-            width: 620,
+            width: 820,
             maxWidth: '100%',
             height: PANEL_HEIGHT,
             marginTop: 8,
@@ -348,7 +348,15 @@ function DiffLineRow({ line }: { line: DiffLine }) {
         {line.newLine ?? ''}
       </span>
       <span style={{ textAlign: 'center', fontWeight: 700 }}>{sign}</span>
-      <span style={{ padding: '0 10px', whiteSpace: 'pre', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      {/* 代码列：超长行在行内横向滚动（white-space: pre 不换行不截断） */}
+      <span
+        style={{
+          padding: '0 10px',
+          whiteSpace: 'pre',
+          overflowX: 'auto',
+          overflowY: 'hidden',
+        }}
+      >
         {line.text}
       </span>
     </div>

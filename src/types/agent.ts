@@ -1,9 +1,10 @@
 import type { TaskRepositorySummary, TaskRunStatus, TaskStepRole } from './task-model'
 
 export type AgentRole = 'ORCHESTRATOR' | 'PLANNER' | 'DEVELOPER' | 'TESTER' | 'REVIEWER' | 'GENERAL'
-export type AgentVisibility = 'PRIVATE' | 'TEAM' | 'SYSTEM'
+// §30.1 AgentVisibility 加 PENDING
+export type AgentVisibility = 'PRIVATE' | 'PENDING' | 'TEAM' | 'SYSTEM'
 export type AgentStatus = 'ACTIVE' | 'ARCHIVED'
-export type AgentDetailTab = 'overview' | 'assignments' | 'config' | 'capabilities' | 'runs'
+export type AgentDetailTab = 'overview' | 'assignments' | 'config' | 'runs'
 export type AgentRuntimeStatus = 'IDLE' | 'RUNNING'
 export type AgentAccessScope = 'PROJECT'
 
@@ -33,6 +34,12 @@ export interface AgentSummary {
   visibility: AgentVisibility
   status: AgentStatus
   createdBy: string | null
+  /** §30.1 拒绝发布原因（PENDING 状态被 Team Owner 拒绝后填充） */
+  reviewReason?: string | null
+  /** §30.1 审核人（Team Owner） */
+  reviewedBy?: string | null
+  /** §30.1 审核时间 */
+  reviewedAt?: string | null
 }
 
 export interface AgentDetail extends AgentSummary {

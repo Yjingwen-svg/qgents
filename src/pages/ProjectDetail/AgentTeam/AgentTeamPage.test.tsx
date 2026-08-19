@@ -40,7 +40,6 @@ describe('AgentTeamPage', () => {
     expect(hooks.useAgent).toHaveBeenLastCalledWith('project-one', 'team-one', 'agent-one')
     expect(hooks.useAgentAssignments).toHaveBeenCalledWith('project-one', 'agent-one', { type: 'REQUIREMENT_GROUP' }, false)
     expect(hooks.useAgentTaskRuns).toHaveBeenCalledWith('project-one', 'agent-one', undefined, true)
-    expect(hooks.useAgentSkillBindings).toHaveBeenCalledWith('project-one', 'agent-one', false)
   })
 
   it('shows independent assignment and run tabs', async () => {
@@ -53,18 +52,15 @@ describe('AgentTeamPage', () => {
     expect(screen.getByText('TASK-1')).toBeInTheDocument()
   })
 
-  it('keeps assignment errors independent and shows project resource empty states', async () => {
+  it('keeps assignment errors independent', async () => {
     hooks.useAgentAssignments.mockImplementation((_projectId: string, _agentId: string, filters: { type?: string }) => filters.type === 'REQUIREMENT_GROUP'
       ? { data: undefined, isError: true, isLoading: false }
       : { data: { data: [], page: { nextCursor: null, hasMore: false } }, isError: false, isLoading: false })
     hooks.useAgent.mockReturnValue({ data: { ...agent, tools: [], memoryAccess: [] }, isLoading: false, isError: false, refetch: vi.fn() })
-    hooks.useAgentSkillBindings.mockReturnValue({ data: { agentId: agent.id, skillIds: [], skills: [], updatedAt: '2026-08-13T00:00:00Z' }, isError: false, isLoading: false })
     renderPage()
     await waitFor(() => expect(screen.getAllByText('Agent One').length).toBeGreaterThan(0))
     fireEvent.click(screen.getByRole('button', { name: '分配详情' }))
     expect(screen.getByText('分配详情加载失败')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '项目资源' }))
-    expect(screen.getByText('暂无已绑定 Skill')).toBeInTheDocument()
   })
 
   it('shows empty and error states without treating them as the same', async () => {

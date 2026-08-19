@@ -31,6 +31,8 @@ export function createAgentFixtures(): AgentDetail[] {
     { id: 'agent-system-planner', name: 'Planner Agent', avatar: null, role: 'PLANNER', visibility: 'SYSTEM', status: 'ACTIVE', createdBy: null, description: '系统内置的任务规划 Agent。' },
     { id: 'agent-private-backend', name: 'Backend Developer Agent', avatar: null, role: 'DEVELOPER', visibility: 'PRIVATE', status: 'ACTIVE', createdBy: MOCK_CURRENT_USER.id, description: '负责后端接口与数据层实现。', prompt: '仅创建者可见的 Prompt', tools: ['代码执行', '测试运行'], memoryAccess: ['当前项目共享 Memory'] },
     { id: 'agent-team-tester', name: 'Tester Agent', avatar: null, role: 'TESTER', visibility: 'TEAM', status: 'ACTIVE', createdBy: MOCK_CURRENT_USER.id, description: '负责自动化测试与质量检查。', tools: [], memoryAccess: ['当前项目共享 Memory'] },
+    // §30 PENDING 状态样例
+    { id: 'agent-pending-frontend', name: 'Frontend Developer Agent', avatar: null, role: 'DEVELOPER', visibility: 'PENDING', status: 'ACTIVE', createdBy: MOCK_CURRENT_USER.id, description: '负责前端页面与交互实现。', tools: [], memoryAccess: [], reviewReason: null, reviewedBy: null, reviewedAt: null },
     { id: 'agent-archived-reviewer', name: 'Reviewer Agent', avatar: null, role: 'REVIEWER', visibility: 'PRIVATE', status: 'ARCHIVED', createdBy: MOCK_CURRENT_USER.id, description: '已归档的审查 Agent。' },
     { id: 'agent-other-user', name: 'Other User Agent', avatar: null, role: 'GENERAL', visibility: 'PRIVATE', status: 'ACTIVE', createdBy: 'user-002', description: 'Other user fixture for isolation tests.' },
   ]

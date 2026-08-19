@@ -6,7 +6,7 @@
 .actions { display: flex; flex-wrap: nowrap; justify-content: flex-end; gap: clamp(2px, 0.1vw + 1px, 4px); }
 .name { margin: 0 !important; overflow: hidden; color: #172a59 !important; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(13px, 0.5vw + 8px, 15px); }
 .tabs { display: flex; padding: 0 clamp(8px, 0.4vw + 5px, 12px); border-bottom: 1px solid #e0e7f0; overflow-x: auto; }
-.tab { padding: clamp(5px, 0.3vw + 3px, 8px) clamp(7px, 0.3vw + 4px, 10px); color: #6a7da1; border: 0; border-bottom: 2px solid transparent; background: transparent; white-space: nowrap; cursor: pointer; font-size: clamp(10px, 0.2vw + 8px, 12px); }
+.tabs > .tab { flex: 1 1 0; min-width: 0; padding: clamp(5px, 0.3vw + 3px, 8px) clamp(7px, 0.3vw + 4px, 10px); color: #6a7da1; border: 0; border-bottom: 2px solid transparent; background: transparent; white-space: nowrap; cursor: pointer; text-align: center; font-size: clamp(10px, 0.2vw + 8px, 12px); }
 .tab:hover { color: #1677ff; background: #f3f8ff; }
 .tabActive { color: #1677ff; border-bottom-color: #1677ff; font-weight: 650; }
 .body { padding: clamp(10px, 0.5vw + 6px, 16px) clamp(10px, 0.6vw + 6px, 18px) clamp(14px, 0.6vw + 8px, 22px); }

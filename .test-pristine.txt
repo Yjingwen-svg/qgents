@@ -1,0 +1,16 @@
+﻿
+ RUN  v4.1.10 D:/qgents
+
+node.exe : Not implemented: Window's getComputedStyle() method: with pseudo-elements
+所在位置 行:1 字符: 1
++ & "D:\software/node.exe" "D:\software/node_modules/npm/bin/npx-cli.js ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Not implemented...pseudo-elements:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  23:17:52
+   Duration  12.10s (transform 712ms, setup 307ms, import 6.09s, tests 3.92s, environment 1.43s)
+

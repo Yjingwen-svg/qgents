@@ -1,0 +1,153 @@
+import { requestModelData } from './modelClient'
+import type { WorkspaceDiffPreview, WorkspaceDiffPreviewFile, WorkspaceDiffPreviewChangeType } from '@/types/task-model'
+
+/**
+ * Preview 的可恢复状态：后端可能在写入触发前、Worker 不可用、Preview 被清理时返回。
+ * - `unavailable`：预览未就绪（404、503 等可恢复），UI 应展示"实时预览暂不可用"，不视为错误。
+ * - `available`：携带完整数据。
+ */
+export type WorkspaceDiffPreviewStatus =
+  | { kind: 'available'; preview: WorkspaceDiffPreview }
+  | { kind: 'unavailable'; reason: 'NOT_FOUND' | 'WORKER_UNAVAILABLE' | 'UNKNOWN'; message: string }
+
+const PREVIEW_PATH = (projectId: string, taskId: string) =>
+  `/projects/${projectId}/tasks/${taskId}/workspace-diff-preview`
+
+const PREVIEW_FILES_PATH = (projectId: string, taskId: string) =>
+  `${PREVIEW_PATH(projectId, taskId)}/files`
+
+const CHANGE_TYPES: readonly WorkspaceDiffPreviewChangeType[] = ['ADDED', 'MODIFIED', 'DELETED', 'RENAMED']
+
+function readString(raw: Record<string, unknown>, key: string): string {
+  const value = raw[key]
+  return typeof value === 'string' ? value : ''
+}
+
+function readNumber(raw: Record<string, unknown>, key: string): number {
+  const value = raw[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function readChangeType(raw: Record<string, unknown>): WorkspaceDiffPreviewChangeType {
+  const value = raw.changeType
+  return CHANGE_TYPES.includes(value as WorkspaceDiffPreviewChangeType)
+    ? (value as WorkspaceDiffPreviewChangeType)
+    : 'MODIFIED'
+}
+
+export function mapWorkspaceDiffPreview(raw: unknown): WorkspaceDiffPreview {
+  const row = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw as Record<string, unknown> : {}
+  return {
+    projectId: readString(row, 'projectId'),
+    taskId: readString(row, 'taskId'),
+    taskRunId: typeof row.taskRunId === 'string' && row.taskRunId ? row.taskRunId : null,
+    workspaceId: readString(row, 'workspaceId'),
+    revision: readNumber(row, 'revision'),
+    baseCommit: typeof row.baseCommit === 'string' && row.baseCommit ? row.baseCommit : null,
+    workingTreeHash: readString(row, 'workingTreeHash'),
+    filesChanged: readNumber(row, 'filesChanged'),
+    additions: readNumber(row, 'additions'),
+    deletions: readNumber(row, 'deletions'),
+    patch: readString(row, 'patch'),
+    createdAt: readString(row, 'createdAt'),
+  }
+}
+
+export function mapWorkspaceDiffPreviewFile(raw: unknown): WorkspaceDiffPreviewFile | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const row = raw as Record<string, unknown>
+  const path = readString(row, 'path')
+  const repositoryId = readString(row, 'repositoryId')
+  if (!path || !repositoryId) return null
+  return {
+    repositoryId,
+    repositoryPath: readString(row, 'repositoryPath') || repositoryId,
+    path,
+    changeType: readChangeType(row),
+    additions: readNumber(row, 'additions'),
+    deletions: readNumber(row, 'deletions'),
+    binary: row.binary === true,
+  }
+}
+
+export function mapWorkspaceDiffPreviewFiles(raw: unknown): WorkspaceDiffPreviewFile[] {
+  if (!Array.isArray(raw)) return []
+  const files: WorkspaceDiffPreviewFile[] = []
+  for (const item of raw) {
+    const mapped = mapWorkspaceDiffPreviewFile(item)
+    if (mapped) files.push(mapped)
+  }
+  return files
+}
+
+/**
+ * 解析 Preview 详情：后端 404 / 503 表示预览不可用，不视为错误。
+ * 其它非 2xx 仍然抛出，由调用方决定是否展示兜底文案。
+ */
+export async function fetchWorkspaceDiffPreview(
+  projectId: string,
+  taskId: string,
+  revision?: number,
+): Promise<WorkspaceDiffPreviewStatus> {
+  const query: Record<string, string> = {}
+  if (typeof revision === 'number' && Number.isInteger(revision) && revision >= 0) {
+    query.revision = String(revision)
+  }
+  try {
+    const data = await requestModelData<unknown>(appendQuery(PREVIEW_PATH(projectId, taskId), query))
+    return { kind: 'available', preview: mapWorkspaceDiffPreview(data) }
+  } catch (error) {
+    return previewUnavailable(error)
+  }
+}
+
+export async function fetchWorkspaceDiffPreviewFiles(
+  projectId: string,
+  taskId: string,
+  revision?: number,
+): Promise<WorkspaceDiffPreviewFile[]> {
+  const query: Record<string, string> = {}
+  if (typeof revision === 'number' && Number.isInteger(revision) && revision >= 0) {
+    query.revision = String(revision)
+  }
+  try {
+    const data = await requestModelData<unknown>(appendQuery(PREVIEW_FILES_PATH(projectId, taskId), query))
+    return mapWorkspaceDiffPreviewFiles(data)
+  } catch {
+    // 文件列表是辅助信息；失败时不阻塞 UI 详情，按空数组处理即可。
+    return []
+  }
+}
+
+function previewUnavailable(error: unknown): WorkspaceDiffPreviewStatus {
+  const status = readStatus(error)
+  const message = readMessage(error)
+  if (status === 404) return { kind: 'unavailable', reason: 'NOT_FOUND', message: message || 'Preview 尚未生成' }
+  if (status === 503) return { kind: 'unavailable', reason: 'WORKER_UNAVAILABLE', message: message || 'Worker 暂不可用，实时预览暂不可用' }
+  return { kind: 'unavailable', reason: 'UNKNOWN', message: message || '实时预览暂不可用' }
+}
+
+function readStatus(error: unknown): number | null {
+  if (!error || typeof error !== 'object') return null
+  const status = (error as { status?: unknown }).status
+  return typeof status === 'number' && Number.isFinite(status) ? status : null
+}
+
+function readMessage(error: unknown): string {
+  if (!error || typeof error !== 'object') return ''
+  const message = (error as { message?: unknown }).message
+  return typeof message === 'string' ? message : ''
+}
+
+function appendQuery(path: string, query: Record<string, string>): string {
+  const keys = Object.keys(query)
+  if (keys.length === 0) return path
+  const search = new URLSearchParams()
+  for (const key of keys) search.set(key, query[key])
+  return `${path}?${search.toString()}`
+}
+
+export const workspaceDiffPreviewApi = {
+  get: fetchWorkspaceDiffPreview,
+  files: fetchWorkspaceDiffPreviewFiles,
+}

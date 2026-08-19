@@ -1,0 +1,25 @@
+﻿
+ RUN  v4.1.10 D:/qgents
+
+ 鉂?src/api/workspaceDiffPreview.test.ts (6 tests | 1 failed) 25ms
+     脳 maps 404 to unavailable / NOT_FOUND 10ms
+ 鉂?src/realtime/queryInvalidation.test.ts (17 tests | 2 failed) 22ms
+     脳 maps task-step.updated to Task, TaskStep list, and TaskRun list 6ms
+     脳 maps task-run.updated to run detail, task runs, and Task detail 1ms
+ 鉂?src/mocks/delivery-center/handlers.test.ts (6 tests | 1 failed) 145ms
+     脳 serves all three discriminated item types and full-dataset summary 64ms
+ 鉂?src/mocks/agent/handlers.test.ts (9 tests | 1 failed) 98ms
+     脳 creates, publishes, unpublishes and archives using formal status and visibility 11ms
+node.exe : Not implemented: Window's getComputedStyle() method: with pseudo-elements
+所在位置 行:1 字符: 1
++ & "D:\software/node.exe" "D:\software/node_modules/npm/bin/npx-cli.js ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Not implemented...pseudo-elements:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Not implemented: Window's getComputedStyle() method: with pseudo-elements
+Not implemented: Window's getComputedStyle() method: with pseudo-elements
+Not implemented: Window's getComputedStyle() method: with pseudo-elements
+Not implemented: Window's getComputedStyle() method: with pseudo-elements
+Not implemented: Window's getComputedStyle() method: with pseudo-elements
+Not implemented: Window's getComputedStyle() method: with pseudo-elements

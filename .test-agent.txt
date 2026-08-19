@@ -1,0 +1,9 @@
+﻿
+ RUN  v4.1.10 D:/qgents
+
+
+ Test Files  1 skipped (1)
+      Tests  6 skipped (6)
+   Start at  23:19:20
+   Duration  6.43s (transform 648ms, setup 202ms, import 4.56s, tests 0ms, environment 1.26s)
+

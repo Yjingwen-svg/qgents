@@ -43,8 +43,52 @@ export const agentHandlers = [
     store(value(params, 'teamId')).push(agent); return response(agent, 201)
   }),
   http.patch('*/api/teams/:teamId/agents/:agentId', async ({ params, request }) => { const agent = store(value(params, 'teamId')).find((item) => item.id === value(params, 'agentId') && item.createdBy === currentUserId); if (!agent) return error(404, 'AGENT_NOT_FOUND'); if (agent.visibility === 'SYSTEM') return error(403, 'AGENT_EDIT_FORBIDDEN'); const input = await body(request) as UpdateAgentPayload; if (nonEmpty(input.name)) agent.name = input.name.trim(); if (typeof input.avatar === 'string') agent.avatar = input.avatar || null; if (input.role && supportedAgentRoles.includes(input.role)) agent.role = input.role; if (nonEmpty(input.description)) agent.description = input.description.trim(); if (typeof input.prompt === 'string') agent.prompt = input.prompt; return response(agent) }),
-  http.post('*/api/teams/:teamId/agents/:agentId/publish', ({ params, request }) => { const agent = store(value(params, 'teamId')).find((item) => item.id === value(params, 'agentId')); if (!agent) return error(404, 'AGENT_NOT_FOUND'); if (new URL(request.url).searchParams.get('error') === 'CONFLICT') return error(409, 'INVALID_AGENT_STATE'); if (agent.status !== 'ACTIVE' || agent.visibility !== 'PRIVATE') return error(422, 'AGENT_NOT_PUBLISHABLE'); agent.visibility = 'TEAM'; return response(agent, 202) }),
-  http.post('*/api/teams/:teamId/agents/:agentId/unpublish', ({ params }) => { const agent = store(value(params, 'teamId')).find((item) => item.id === value(params, 'agentId')); if (!agent) return error(404, 'AGENT_NOT_FOUND'); if (agent.status !== 'ACTIVE' || agent.visibility !== 'TEAM') return error(422, 'AGENT_NOT_UNPUBLISHABLE'); agent.visibility = 'PRIVATE'; return response(agent, 202) }),
+  http.post('*/api/teams/:teamId/agents/:agentId/publish', ({ params, request }) => {
+    const agent = store(value(params, 'teamId')).find((item) => item.id === value(params, 'agentId'))
+    if (!agent) return error(404, 'AGENT_NOT_FOUND')
+    if (new URL(request.url).searchParams.get('error') === 'CONFLICT') return error(409, 'INVALID_AGENT_STATE')
+    if (agent.status !== 'ACTIVE' || agent.visibility !== 'PRIVATE') return error(422, 'AGENT_NOT_PUBLISHABLE')
+    if (agent.createdBy !== currentUserId) return error(403, 'AGENT_PUBLISH_FORBIDDEN')
+    // §30.1 publish：PRIVATE → PENDING（提交审核）
+    agent.visibility = 'PENDING'
+    agent.reviewReason = null
+    agent.reviewedBy = null
+    agent.reviewedAt = null
+    return response(agent, 202)
+  }),
+  // §30.1 approve：Team Owner 触发，PENDING → TEAM，记录 reviewedBy/At
+  http.post('*/api/teams/:teamId/agents/:agentId/approve', ({ params }) => {
+    const agent = store(value(params, 'teamId')).find((item) => item.id === value(params, 'agentId'))
+    if (!agent) return error(404, 'AGENT_NOT_FOUND')
+    if (agent.status !== 'ACTIVE' || agent.visibility !== 'PENDING') return error(422, 'AGENT_NOT_APPROVABLE')
+    agent.visibility = 'TEAM'
+    agent.reviewReason = null
+    agent.reviewedBy = currentUserId
+    agent.reviewedAt = new Date().toISOString()
+    return response(agent, 202)
+  }),
+  // §30.1 reject：Team Owner 触发，PENDING → PRIVATE，记录拒绝原因
+  http.post('*/api/teams/:teamId/agents/:agentId/reject', async ({ params, request }) => {
+    const agent = store(value(params, 'teamId')).find((item) => item.id === value(params, 'agentId'))
+    if (!agent) return error(404, 'AGENT_NOT_FOUND')
+    if (agent.status !== 'ACTIVE' || agent.visibility !== 'PENDING') return error(422, 'AGENT_NOT_REJECTABLE')
+    let reason: string | null = null
+    try {
+      const input = await body(request)
+      if (typeof input.reason === 'string' && input.reason.trim().length > 0) reason = input.reason.trim()
+    } catch { /* empty body is allowed */ }
+    agent.visibility = 'PRIVATE'
+    agent.reviewReason = reason
+    agent.reviewedBy = currentUserId
+    agent.reviewedAt = new Date().toISOString()
+    return response(agent, 202)
+  }),
+  // §30.1 unpublish：已废弃，返回 409 AGENT_UNPUBLISH_DISALLOWED
+  http.post('*/api/teams/:teamId/agents/:agentId/unpublish', ({ params }) => {
+    const agent = store(value(params, 'teamId')).find((item) => item.id === value(params, 'agentId'))
+    if (!agent) return error(404, 'AGENT_NOT_FOUND')
+    return error(409, 'AGENT_UNPUBLISH_DISALLOWED')
+  }),
   http.post('*/api/teams/:teamId/agents/:agentId/archive', ({ params }) => { const agent = store(value(params, 'teamId')).find((item) => item.id === value(params, 'agentId')); if (!agent) return error(404, 'AGENT_NOT_FOUND'); if (agent.status === 'ARCHIVED' || agent.visibility === 'SYSTEM') return error(422, 'AGENT_NOT_ARCHIVABLE'); agent.status = 'ARCHIVED'; return response(agent, 202) }),
   http.get('*/api/projects/:projectId/agent-skill-bindings/:agentId', ({ params }) => {
     const agent = store('team-owned-001').find((item) => item.id === value(params, 'agentId') && item.createdBy === currentUserId)

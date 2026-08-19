@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/api'
 import { useCancelTask, useConfirmTaskDiffReview, useDiffs, useRejectTaskDiffReview, useRetryTaskDiffReviewDelivery, useTask, useTaskDiffReview, useTaskRuns, useTaskSteps } from '@/hooks/task-model'
+import { usePreflight } from '@/hooks/qualityGate'
 import type { DiffReviewBatch, Task, TaskRunSummary, TaskStep } from '@/types/task-model'
 import { PATHS } from '@/routes/paths'
 import { useTaskCompletedWithoutCode } from '@/store/taskNoCodeChangeStore'
 import { TaskModelStatusTag } from '../TaskCenter/TaskModelStatusTag'
 import { TaskRunInspectorPanel } from './TaskRunInspectorDrawer'
+import { PreflightPanel } from '../PreflightPanel'
 import styles from './TaskDetailPage.module.scss'
 
 const { Text, Title } = Typography
@@ -26,6 +28,15 @@ export default function TaskDetailPage() {
   const reviewEnabled =
     (isDiffReviewTask(taskQuery.data?.status) || taskQuery.data?.status === 'SUCCEEDED') && !completedWithoutCode
   const diffReviewQuery = useTaskDiffReview(projectId, taskId, reviewEnabled)
+
+  // WAITING_PREFLIGHT 时查询预检数据（取第一个仓库作为默认）
+  const firstRepo = taskQuery.data?.repositories?.[0]
+  const preflightQuery = usePreflight(
+    projectId,
+    taskId,
+    firstRepo?.repositoryId ?? '',
+    firstRepo?.baseRef ?? '',
+  )
 
   // G1：交付中心等入口带 ?diffReviewBatchId 跳转时，定位到「任务产出与交付」卡片
   const [searchParams, setSearchParams] = useSearchParams()
@@ -88,6 +99,15 @@ export default function TaskDetailPage() {
           <CompactTaskHeader task={currentTask} projectId={projectId} location={location} onCancel={handleCancel} cancelPending={cancelMutation.isPending} completedWithoutCode={completedWithoutCode} />
           {cancelMutation.error ? <CancelError error={cancelMutation.error} onRefresh={() => void taskQuery.refetch()} /> : null}
           {currentTask.attention ? <AttentionBanner task={currentTask} steps={steps} onLocate={locate} onOpenRun={openRun} /> : null}
+          {task.status === 'WAITING_PREFLIGHT' ? (
+            <PreflightPanel
+              projectId={projectId}
+              preflight={preflightQuery.data}
+              loading={preflightQuery.isLoading}
+              error={preflightQuery.isError ? preflightQuery.error : null}
+              onRefresh={() => void preflightQuery.refetch()}
+            />
+          ) : null}
           <main className={styles.content}>
             <ExecutionFlowRow task={currentTask} query={stepsQuery} steps={steps} onOpenRun={openRun} />
             <div className={styles.workbenchMain}>

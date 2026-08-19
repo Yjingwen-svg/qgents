@@ -108,11 +108,11 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.diffs.detail(projectId, diffId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.taskDiffReview.detail(projectId, taskId))
+      addKey(keys, deliveryCenterKeys.all(projectId))
       if (taskRunId) {
         addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
         addKey(keys, taskModelQueryKeys.taskRuns.all(projectId, taskId))
       }
-      addKey(keys, deliveryCenterKeys.all(projectId))
       // §6.2：diff.created 影响工作分支的 latestDiff
       addKey(keys, queryKeys.workBranches.all(projectId))
       break
@@ -143,6 +143,7 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.tasks.all(projectId))
       addKey(keys, taskModelQueryKeys.taskDiffReview.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      addKey(keys, queryKeys.workBranches.all(projectId))
       addDeliveryQueries()
       break
     case 'delivery.repository.updated':
@@ -204,6 +205,21 @@ export function queryKeysForProjectTaskEvent(
       if (!dryRunId) return []
       addKey(keys, queryKeys.dryRuns.all(projectId))
       addKey(keys, queryKeys.dryRuns.report(projectId, dryRunId))
+      // Dry Run 状态变化可能带动预检结论变化：仅当 payload 带 taskId 时才能定位到关联预检
+      const repositoryId = stringId(payload, 'repositoryId')
+      const targetBranch = stringId(payload, 'targetBranch')
+      if (taskId && repositoryId && targetBranch) {
+        addKey(keys, queryKeys.preflight.detail(projectId, taskId, repositoryId, targetBranch))
+      } else if (taskId) {
+        addKey(keys, queryKeys.preflight.all(projectId, taskId))
+      }
+      break
+    }
+    case 'preflight.updated': {
+      const repositoryId = stringId(payload, 'repositoryId')
+      const targetBranch = stringId(payload, 'targetBranch')
+      if (!taskId || !repositoryId || !targetBranch) return []
+      addKey(keys, queryKeys.preflight.detail(projectId, taskId, repositoryId, targetBranch))
       break
     }
   }

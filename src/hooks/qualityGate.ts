@@ -1,0 +1,113 @@
+import { useMutation, useQuery, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query'
+import { branchPolicyApi, dryRunCqApi, preflightApi, qualityGateApi } from '@/api/qualityGate'
+import { queryClient, queryKeys } from '@/query'
+import type {
+  BranchPolicy,
+  BranchPolicyUpdateInput,
+  DryRunCqInput,
+  DryRunCqResult,
+  Preflight,
+  QualityGateConfig,
+  QualityGateUpdateInput,
+} from '@/types/qualityGate'
+
+function invalidatePolicyScoped(projectId: string, repositoryId: string, branch: string): void {
+  void queryClient.invalidateQueries({
+    queryKey: queryKeys.branchPolicies.detail(projectId, repositoryId, branch),
+  })
+  void queryClient.invalidateQueries({
+    queryKey: queryKeys.qualityGates.detail(projectId, repositoryId, branch),
+  })
+}
+
+/** 查询某条分支的受保护策略 */
+export function useBranchPolicy(
+  projectId: string,
+  repositoryId: string,
+  branch: string,
+): UseQueryResult<BranchPolicy> {
+  return useQuery({
+    queryKey: queryKeys.branchPolicies.detail(projectId, repositoryId, branch),
+    queryFn: () => branchPolicyApi.get(projectId, repositoryId, branch),
+    enabled: Boolean(projectId && repositoryId && branch),
+  })
+}
+
+/** 查询某条目标分支的质量门禁配置 */
+export function useQualityGate(
+  projectId: string,
+  repositoryId: string,
+  branch: string,
+): UseQueryResult<QualityGateConfig> {
+  return useQuery({
+    queryKey: queryKeys.qualityGates.detail(projectId, repositoryId, branch),
+    queryFn: () => qualityGateApi.get(projectId, repositoryId, branch),
+    enabled: Boolean(projectId && repositoryId && branch),
+  })
+}
+
+/** 更新分支策略（仅 PROJECT_ADMIN） */
+export function useUpdateBranchPolicy(
+  projectId: string,
+): UseMutationResult<BranchPolicy, Error, { repositoryId: string; branch: string; input: BranchPolicyUpdateInput }> {
+  return useMutation({
+    mutationFn: ({ repositoryId, branch, input }) =>
+      branchPolicyApi.update(projectId, repositoryId, branch, input),
+    onSuccess: (_policy, variables) => {
+      invalidatePolicyScoped(projectId, variables.repositoryId, variables.branch)
+    },
+  })
+}
+
+/** 更新质量门禁（仅 PROJECT_ADMIN；当前只编辑 requiredTestsetIds） */
+export function useUpdateQualityGate(
+  projectId: string,
+): UseMutationResult<QualityGateConfig, Error, { repositoryId: string; branch: string; input: QualityGateUpdateInput }> {
+  return useMutation({
+    mutationFn: ({ repositoryId, branch, input }) =>
+      qualityGateApi.update(projectId, repositoryId, branch, input),
+    onSuccess: (_config, variables) => {
+      invalidatePolicyScoped(projectId, variables.repositoryId, variables.branch)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.testsets.all(projectId) })
+    },
+  })
+}
+
+/**
+ * 查询 MR 前预检。
+ * 以 taskId + repositoryId + targetBranch 为唯一键；STALE/FAILED 都不表示可创建 MR。
+ */
+export function usePreflight(
+  projectId: string,
+  taskId: string,
+  repositoryId: string,
+  targetBranch: string,
+): UseQueryResult<Preflight> {
+  return useQuery({
+    queryKey: queryKeys.preflight.detail(projectId, taskId, repositoryId, targetBranch),
+    queryFn: () => preflightApi.get(projectId, taskId, repositoryId, targetBranch),
+    enabled: Boolean(projectId && targetBranch),
+  })
+}
+
+/** 给当前 PASSED 的 Dry Run 盖 CQ+1 */
+export function useApproveDryRunCq(projectId: string): UseMutationResult<DryRunCqResult, Error, { dryRunId: string; input: DryRunCqInput }> {
+  return useMutation({
+    mutationFn: ({ dryRunId, input }) => dryRunCqApi.approve(projectId, dryRunId, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dryRuns.all(projectId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.preflight.all(projectId) })
+    },
+  })
+}
+
+/** 拒绝 Dry Run CQ */
+export function useRejectDryRunCq(projectId: string): UseMutationResult<DryRunCqResult, Error, { dryRunId: string; input: DryRunCqInput }> {
+  return useMutation({
+    mutationFn: ({ dryRunId, input }) => dryRunCqApi.reject(projectId, dryRunId, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dryRuns.all(projectId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.preflight.all(projectId) })
+    },
+  })
+}

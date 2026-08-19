@@ -14,9 +14,9 @@ import {
   Empty,
   Spin,
   Select,
-  Tabs,
   App,
   theme,
+  Tabs,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
@@ -49,7 +49,7 @@ export function CodePage() {
   const { message } = App.useApp()
   const { projectId = 'demo-project' } = useParams<{ projectId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
-  const tab = searchParams.get('tab') === 'mr' ? 'mr' : 'branches'
+  const tab = searchParams.get('tab') ?? 'branches'
 
   const [requirementGroupId, setRequirementGroupId] = useState<string | undefined>()
   const [drawer, setDrawer] = useState<{
@@ -70,6 +70,7 @@ export function CodePage() {
     queryFn: () => groupApi.listByProject(projectId),
     enabled: Boolean(projectId),
   })
+
   const requirementGroups = groups.filter((g) => g.type === 'REQUIREMENT')
 
   // 项目工作分支视图（§6.2）；SSE 会 invalidate 本 query
@@ -100,20 +101,16 @@ export function CodePage() {
   }
 
   function setTab(next: string) {
-    const nextParams = new URLSearchParams(searchParams)
+    const nextParams = new URLSearchParams()
     if (next === 'mr') nextParams.set('tab', 'mr')
     else nextParams.delete('tab')
-    if (next !== 'mr') {
-      nextParams.delete('repositoryId')
-      nextParams.delete('status')
-    }
     setSearchParams(nextParams, { replace: true })
   }
 
   return (
     <div style={{ padding: 24 }}>
       <Title level={3} style={{ marginTop: 0, marginBottom: 8 }}>
-        代码与 Branch
+        分支与 Diff 详情
       </Title>
       <Paragraph type="secondary" style={{ marginBottom: 16 }}>
         projectId: <Text code>{projectId}</Text>
@@ -392,6 +389,18 @@ function BranchDetailBody({
         <Descriptions.Item label="Diff">
           <DiffStatLink projectId={projectId} branch={branch} />
         </Descriptions.Item>
+        {branch.latestDiff?.taskId ? (
+          <Descriptions.Item label="Diff 所属 Task">
+            <Space wrap size={4}>
+              <Link to={PATHS.projectTaskDetail(projectId, branch.latestDiff.taskId)}>
+                {branch.latestDiff.taskId}
+              </Link>
+              {branch.latestTask && branch.latestDiff.taskId !== branch.latestTask.id ? (
+                <Text type="secondary">（与最近 Task 不同，为历史快照）</Text>
+              ) : null}
+            </Space>
+          </Descriptions.Item>
+        ) : null}
         <Descriptions.Item label="MR">
           {branch.openMergeRequest ? (
             <Text>

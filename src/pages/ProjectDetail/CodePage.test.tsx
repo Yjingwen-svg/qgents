@@ -40,16 +40,14 @@ const mergeRequests: MergeRequestSummary[] = [
   {
     id: 'mr-1',
     repositoryId: 'bound-demo-auth-service',
-    groupIds: ['group-1'],
-    provider: 'GITHUB',
+    groupIds: ['group-login'],
+    provider: 'github',
     number: 42,
-    title: '实现邮箱登录',
+    title: 'feat: add login API',
     sourceBranch: 'feat/login-api',
     targetBranch: 'main',
     status: 'OPEN',
     headCommit: 'abc1234',
-    webUrl: 'https://github.com/mock/demo/pull/42',
-    qualityGate: { status: 'PENDING', requiredChecks: ['TESTSET'] },
   },
 ]
 
@@ -92,6 +90,9 @@ function renderPage(path = '/app/projects/demo-project/code') {
         <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/app/projects/:projectId/code" element={<CodePage />} />
+            <Route path="/app/projects/:projectId/tasks/:taskId" element={<div>task detail</div>} />
+            <Route path="/app/projects/:projectId/code/diff/:diffId" element={<div>diff detail</div>} />
+            <Route path="/app/projects/:projectId/code/mr/:mergeRequestId" element={<div>mr detail</div>} />
           </Routes>
         </MemoryRouter>
       </App>
@@ -139,26 +140,6 @@ describe('CodePage', () => {
     expect(await screen.findByText('feat/login-api')).toBeInTheDocument()
     expect(screen.getByText('T-1024')).toBeInTheDocument()
     expect(screen.queryByText('实现邮箱登录')).not.toBeInTheDocument()
-  })
-
-  it('opens the MR list tab from the documented query string', async () => {
-    renderPage('/app/projects/demo-project/code?tab=mr')
-    expect(await screen.findByText('实现邮箱登录')).toBeInTheDocument()
-    expect(screen.getByText('#42')).toBeInTheDocument()
-    expect(useMergeRequestsMock).toHaveBeenCalledWith('demo-project', {
-      repositoryId: undefined,
-      status: undefined,
-      limit: 50,
-    })
-    expect(screen.queryByText('需求过滤')).not.toBeInTheDocument()
-  })
-
-  it('switches to the MR tab from the page tabs', async () => {
-    const user = userEvent.setup()
-    renderPage()
-    await screen.findByText('需求过滤')
-    await user.click(screen.getByRole('tab', { name: 'MR' }))
-    expect(await screen.findByText('实现邮箱登录')).toBeInTheDocument()
   })
 
   it('filters branches by the real requirement group dropdown', async () => {

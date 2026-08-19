@@ -6,12 +6,16 @@ import type {
   CreateTestsetPayload,
   DryRunConflict,
   DryRunReport,
+  DryRunReportBody,
   DryRunStatus,
+  DryRunTestsPayload,
   TestCaseDetail,
   TestCaseStatus,
   TestCaseSummary,
   TestRun,
   TestRunArtifactRef,
+  TestRunExecutionSummary,
+  TestRunResultItem,
   TestRunStatus,
   Testset,
   TestsetListFilters,
@@ -78,7 +82,7 @@ export function mapTestset(raw: unknown): Testset {
     projectId: readString(row, 'projectId'),
     name: readString(row, 'name'),
     repositoryId: readString(row, 'repositoryId'),
-    /** 创建请求有 scopeTags，当前响应未返回——缺则 []，不要当 Bug */
+    /** 创建请求有 scopeTags；确认项：当前已回传 */
     scopeTags: readStringArray(row.scopeTags),
     command: readString(row, 'command') || readString(definition, 'command'),
     timeoutSeconds: readNumber(row, 'timeoutSeconds') || readNumber(definition, 'timeoutSeconds') || 900,
@@ -193,19 +197,88 @@ function readSandboxId(row: Record<string, unknown>): string | null {
   return readString(sandbox, 'id') || null
 }
 
+function readNullableNumber(raw: Record<string, unknown>, key: string): number | null {
+  const value = raw[key]
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+function mapTestRunResultItem(raw: unknown): TestRunResultItem | null {
+  if (!isRecord(raw)) return null
+  const testsetId = readString(raw, 'testsetId')
+  if (!testsetId) return null
+  return {
+    testsetId,
+    status: mapTestRunStatus(raw.status),
+    exitCode: readNullableNumber(raw, 'exitCode'),
+    durationMs: readNullableNumber(raw, 'durationMs'),
+    failureCode: readString(raw, 'failureCode') || null,
+  }
+}
+
+/**
+ * 解析 Test Run / Dry Run tests 的执行摘要。
+ * 对象 summary 为正式路径；纯字符串 summary 本轮忽略（不展示原始文案）。
+ */
+export function mapTestRunExecutionSummary(raw: unknown): TestRunExecutionSummary | null {
+  if (!isRecord(raw)) return null
+  // 旧文档曾把 summary 当 string；确认项要求结构化对象
+  if (!('results' in raw) && !('resolvedHeadCommit' in raw) && !('status' in raw)) return null
+  const resultsRaw = raw.results
+  const results = Array.isArray(resultsRaw)
+    ? resultsRaw.flatMap((item) => {
+        const mapped = mapTestRunResultItem(item)
+        return mapped ? [mapped] : []
+      })
+    : []
+  return {
+    status: mapTestRunStatus(raw.status),
+    resolvedHeadCommit: readString(raw, 'resolvedHeadCommit') || null,
+    results,
+  }
+}
+
+function mapDryRunTests(raw: unknown): DryRunTestsPayload | null {
+  if (!isRecord(raw)) return null
+  const status = raw.status
+  if (status === 'NOT_REQUIRED' || status === 'SKIPPED') {
+    const reason = raw.reason === 'MERGE_CONFLICT' ? 'MERGE_CONFLICT' : null
+    return { status, results: [], reason }
+  }
+  return mapTestRunExecutionSummary(raw)
+}
+
+function mapDryRunReportBody(raw: unknown): DryRunReportBody | null {
+  if (!isRecord(raw)) return null
+  return {
+    targetCommit: readString(raw, 'targetCommit') || null,
+    mergeable: typeof raw.mergeable === 'boolean' ? raw.mergeable : null,
+    conflicts: mapConflicts(raw.conflicts),
+    tests: mapDryRunTests(raw.tests),
+    failureCode: readString(raw, 'failureCode') || null,
+  }
+}
+
 /** 把 GET test-run 响应收成 TestRun */
 export function mapTestRun(raw: unknown): TestRun {
   const row = isRecord(raw) ? raw : {}
   const artifacts = mapArtifacts(row.artifacts)
+  const executionSummary = mapTestRunExecutionSummary(row.summary)
+  const testsetIds = readStringArray(row.testsetIds)
+  const fromResults = executionSummary?.results.map((item) => item.testsetId) ?? []
   return {
     id: readString(row, 'id'),
     projectId: readString(row, 'projectId'),
     repositoryId: readString(row, 'repositoryId'),
-    testsetIds: readStringArray(row.testsetIds),
+    testsetIds: testsetIds.length > 0 ? testsetIds : fromResults,
     taskId: readString(row, 'taskId') || null,
     ref: readString(row, 'ref') || null,
     status: mapTestRunStatus(row.status),
-    summary: readString(row, 'summary'),
+    executionSummary,
     createdBy: readString(row, 'createdBy') || null,
     createdAt: readString(row, 'createdAt'),
     caseSummary: mapCaseSummary(row.caseSummary),
@@ -222,16 +295,30 @@ export function mapTestRun(raw: unknown): TestRun {
 function mapConflicts(raw: unknown): DryRunConflict[] {
   if (!Array.isArray(raw)) return []
   return raw.flatMap((item) => {
+    if (typeof item === 'string' && item.trim()) {
+      return [{ path: item, message: '' }]
+    }
     if (!isRecord(item)) return []
-    const path = readString(item, 'path')
+    const path = readString(item, 'path') || readString(item, 'file')
     const message = readString(item, 'message') || readString(item, 'reason')
     return path || message ? [{ path, message }] : []
   })
 }
 
-/** 把 GET dry-run report 响应收成 DryRunReport；POST dry-runs 若直接返回报告也走这里 */
+/**
+ * 把 GET dry-run report 响应收成 DryRunReport。
+ * 支持嵌套 report（确认项），并兼容顶层 conflicts / 扁平字段。
+ */
 export function mapDryRunReport(raw: unknown): DryRunReport {
   const row = isRecord(raw) ? raw : {}
+  const nested = mapDryRunReportBody(row.report)
+  const topConflicts = mapConflicts(row.conflicts)
+  const conflicts = nested?.conflicts.length ? nested.conflicts : topConflicts
+  const tests = nested?.tests ?? null
+  const testsetIdsFromTests =
+    tests && Array.isArray(tests.results)
+      ? tests.results.map((item) => item.testsetId).filter(Boolean)
+      : []
   return {
     id: readString(row, 'id') || readString(row, 'dryRunId'),
     projectId: readString(row, 'projectId'),
@@ -240,17 +327,19 @@ export function mapDryRunReport(raw: unknown): DryRunReport {
     targetBranch: readString(row, 'targetBranch'),
     taskId: readString(row, 'taskId') || null,
     status: mapDryRunStatus(row.status),
-    conflicts: mapConflicts(row.conflicts),
+    report: nested,
+    conflicts,
     caseSummary: mapCaseSummary(row.caseSummary) ?? mapCaseSummary(row.testSummary),
     cases: mapCases(row.cases ?? row.caseDetails),
-    summary: readString(row, 'summary'),
     reportUrl: readString(row, 'reportUrl') || null,
     pdfUrl: readPdfUrl(row, mapArtifacts(row.artifacts)),
     startedAt: readString(row, 'startedAt') || null,
     finishedAt: readString(row, 'finishedAt') || null,
     durationSeconds: typeof row.durationSeconds === 'number' ? row.durationSeconds : null,
     sandboxId: readSandboxId(row),
-    testsetIds: readStringArray(row.testsetIds),
+    testsetIds: readStringArray(row.testsetIds).length
+      ? readStringArray(row.testsetIds)
+      : testsetIdsFromTests,
     createdAt: readString(row, 'createdAt'),
   }
 }

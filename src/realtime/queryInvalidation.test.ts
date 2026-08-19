@@ -128,6 +128,7 @@ describe('project SSE Task model query invalidation mapping', () => {
   it('maps skipped Diff and MR updates without writing entity cache', () => {
     const skipped = keysFor('diff-review.skipped', { taskId: 'task-1', reason: 'FINAL_DIFF_EMPTY' })
     expect(skipped).toContain(JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']))
+    expect(skipped).toContain(JSON.stringify(['qgents', 'projects', projectId, 'work-branches']))
     const mergeRequest = keysFor('merge-request.updated', { mergeRequestId: 'mr-1' })
     expect(mergeRequest).toEqual([
       JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']),

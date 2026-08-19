@@ -15,11 +15,13 @@ describe('testset mock handlers', () => {
   it('lists one ENABLED testset without an enabled boolean', async () => {
     const response = await fetch('/api/projects/demo-project/testsets')
     expect(response.status).toBe(200)
-    const payload = (await response.json()) as { data: Array<{ status: string; enabled?: boolean }> }
+    const payload = (await response.json()) as {
+      data: Array<{ status: string; enabled?: boolean; scopeTags?: string[] }>
+    }
     expect(payload.data).toHaveLength(1)
     expect(payload.data[0]?.status).toBe('ENABLED')
     expect(payload.data[0]?.enabled).toBeUndefined()
-    expect(payload.data[0]).not.toHaveProperty('scopeTags')
+    expect(payload.data[0]?.scopeTags).toEqual(['api'])
   })
 
   it('creates a test-run and returns it by id', async () => {
@@ -56,10 +58,12 @@ describe('testset mock handlers', () => {
     const body = (await created.json()) as { data: { id: string } }
     const report = await fetch(`/api/projects/demo-project/dry-runs/${body.data.id}/report`)
     expect(report.status).toBe(200)
-    const payload = (await report.json()) as { data: { id: string; status: string; createdAt: string; conflicts?: unknown } }
+    const payload = (await report.json()) as {
+      data: { id: string; status: string; createdAt: string; report?: { mergeable?: boolean } }
+    }
     expect(payload.data.id).toBe(body.data.id)
     expect(payload.data.status).toBeTruthy()
     expect(payload.data.createdAt).toBeTruthy()
-    expect(payload.data.conflicts).toBeUndefined()
+    expect(payload.data.report?.mergeable).toBe(true)
   })
 })

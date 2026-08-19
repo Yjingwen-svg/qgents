@@ -26,6 +26,8 @@ const useReplyTaskRunInputRequestMock = vi.hoisted(() => vi.fn())
 const useApproveTaskRunInputRequestMock = vi.hoisted(() => vi.fn())
 const useRejectTaskRunInputRequestMock = vi.hoisted(() => vi.fn())
 
+const usePreflightMock = vi.hoisted(() => vi.fn())
+
 vi.mock('@/hooks/task-model', () => ({
   useTask: useTaskMock,
   useTaskSteps: useTaskStepsMock,
@@ -46,6 +48,10 @@ vi.mock('@/hooks/task-model', () => ({
   useReplyTaskRunInputRequest: useReplyTaskRunInputRequestMock,
   useApproveTaskRunInputRequest: useApproveTaskRunInputRequestMock,
   useRejectTaskRunInputRequest: useRejectTaskRunInputRequestMock,
+}))
+
+vi.mock('@/hooks/qualityGate', () => ({
+  usePreflight: usePreflightMock,
 }))
 
 import TaskDetailPage from './TaskDetailPage'
@@ -80,6 +86,7 @@ beforeEach(() => {
   useConfirmTaskDiffReviewMock.mockReturnValue(idleMutation)
   useRejectTaskDiffReviewMock.mockReturnValue(idleMutation)
   useRetryTaskDiffReviewDeliveryMock.mockReturnValue(idleMutation)
+  usePreflightMock.mockReturnValue({ data: undefined, error: null, isError: false, isLoading: false, isFetching: false, refetch: vi.fn() })
   useTaskRunMock.mockReturnValue({ ...idleQuery, data: run })
   useTaskRunLogsMock.mockReturnValue({ data: page([]), error: null, isError: false, isLoading: false })
   useTaskRunExecutionContextMock.mockReturnValue(idleQuery)

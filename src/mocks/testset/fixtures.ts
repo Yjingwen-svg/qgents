@@ -1,4 +1,4 @@
-import type { DryRunReport, TestRun, Testset } from '@/types/testset'
+import type { DryRunReport, TestRun, TestRunExecutionSummary, Testset } from '@/types/testset'
 
 const NOW = '2026-08-15T02:00:00Z'
 
@@ -8,7 +8,6 @@ export function mockBoundRepositoryId(projectId: string): string {
   return `bound-${projectId}-repository-1`
 }
 
-/** 生成一条最小 Testset。响应层会去掉 scopeTags，与当前后端一致。 */
 export function createMockTestset(projectId: string, status: Testset['status'] = 'ENABLED'): Testset {
   return {
     id: `testset-${projectId}-login`,
@@ -27,13 +26,14 @@ export function createMockTestset(projectId: string, status: Testset['status'] =
   }
 }
 
-/** GET TestsetResponse：无 scopeTags */
+/** 确认项：scopeTags 已回传 */
 export function toTestsetResponse(item: Testset): Record<string, unknown> {
   return {
     id: item.id,
     projectId: item.projectId,
     repositoryId: item.repositoryId,
     name: item.name,
+    scopeTags: item.scopeTags,
     command: item.command,
     timeoutSeconds: item.timeoutSeconds,
     passRule: item.passRule,
@@ -45,8 +45,29 @@ export function toTestsetResponse(item: Testset): Record<string, unknown> {
   }
 }
 
-/** 对齐 TestRunResponse 本轮字段 */
+function defaultExecutionSummary(
+  projectId: string,
+  status: TestRun['status'] = 'PASSED',
+): TestRunExecutionSummary {
+  const testsetId = `testset-${projectId}-login`
+  return {
+    status,
+    resolvedHeadCommit: 'a1b2c3d4e5f6789012345678abcdef0123456789',
+    results: [
+      {
+        testsetId,
+        status,
+        exitCode: status === 'PASSED' ? 0 : 254,
+        durationMs: status === 'PASSED' ? 1200 : 279,
+        failureCode: status === 'PASSED' ? null : 'UNEXPECTED_EXIT_CODE',
+      },
+    ],
+  }
+}
+
 export function createMockTestRun(projectId: string, input: Partial<TestRun> = {}): TestRun {
+  const status = input.status ?? 'PASSED'
+  const executionSummary = input.executionSummary ?? defaultExecutionSummary(projectId, status)
   return {
     id: input.id ?? `testrun-${projectId}-1`,
     projectId,
@@ -54,8 +75,8 @@ export function createMockTestRun(projectId: string, input: Partial<TestRun> = {
     testsetIds: input.testsetIds ?? [`testset-${projectId}-login`],
     taskId: input.taskId ?? null,
     ref: input.ref ?? 'feat/login-api',
-    status: input.status ?? 'PASSED',
-    summary: input.summary ?? '',
+    status,
+    executionSummary,
     createdBy: input.createdBy ?? 'user-001',
     createdAt: input.createdAt ?? NOW,
     caseSummary: null,
@@ -77,14 +98,32 @@ export function toTestRunResponse(run: TestRun): Record<string, unknown> {
     ref: run.ref,
     testsetIds: run.testsetIds,
     status: run.status,
-    summary: run.summary,
+    summary: run.executionSummary,
     createdBy: run.createdBy,
     createdAt: run.createdAt,
   }
 }
 
-/** Dry-run 内存对象；HTTP 只吐 id/status/createdAt */
 export function createMockDryRunReport(projectId: string, input: Partial<DryRunReport> = {}): DryRunReport {
+  const status = input.status ?? 'PASSED'
+  const executionSummary = defaultExecutionSummary(projectId, status === 'CONFLICT' ? 'FAILED' : status)
+  const report =
+    input.report ??
+    (status === 'CONFLICT'
+      ? {
+          targetCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          mergeable: false,
+          conflicts: [{ path: 'src/Auth.ts', message: '双方都修改了 login' }],
+          tests: { status: 'SKIPPED' as const, results: [], reason: 'MERGE_CONFLICT' as const },
+          failureCode: null,
+        }
+      : {
+          targetCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          mergeable: true,
+          conflicts: [],
+          tests: executionSummary,
+          failureCode: null,
+        })
   return {
     id: input.id ?? `dryrun-${projectId}-1`,
     projectId,
@@ -92,18 +131,18 @@ export function createMockDryRunReport(projectId: string, input: Partial<DryRunR
     sourceRef: input.sourceRef ?? 'feat/login-api',
     targetBranch: input.targetBranch ?? 'main',
     taskId: input.taskId ?? null,
-    status: input.status ?? 'PASSED',
-    conflicts: [],
+    status: status === 'CONFLICT' ? 'FAILED' : status,
+    report,
+    conflicts: report.conflicts,
     caseSummary: null,
     cases: [],
-    summary: input.summary ?? '',
     reportUrl: null,
     pdfUrl: null,
     startedAt: null,
     finishedAt: null,
     durationSeconds: null,
     sandboxId: null,
-    testsetIds: [],
+    testsetIds: input.testsetIds ?? [`testset-${projectId}-login`],
     createdAt: input.createdAt ?? NOW,
   }
 }
@@ -111,7 +150,12 @@ export function createMockDryRunReport(projectId: string, input: Partial<DryRunR
 export function toDryRunReportResponse(report: DryRunReport): Record<string, unknown> {
   return {
     id: report.id,
+    projectId: report.projectId,
+    repositoryId: report.repositoryId,
+    sourceRef: report.sourceRef,
+    targetBranch: report.targetBranch,
     status: report.status,
     createdAt: report.createdAt,
+    report: report.report,
   }
 }

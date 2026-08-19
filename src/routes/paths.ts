@@ -135,8 +135,8 @@ export const PROJECT_NAV = [
   { path: 'agents', label: 'Agent 团队', to: PATHS.projectAgents },
   { path: 'skills', label: '共享 Skill', to: PATHS.projectSkills },
   { path: 'memory', label: '共享 Memory', to: PATHS.projectMemory },
-  { path: 'code', label: '代码与 Branch', to: PATHS.projectCode },
-  { path: 'testset', label: 'Testset', to: PATHS.projectTestset },
+  { path: 'code', label: '分支与 Diff 详情', to: PATHS.projectCode },
+  { path: 'testset', label: '质量门禁和 MR', to: PATHS.projectTestset },
   { path: 'members', label: '项目成员', to: PATHS.projectMembers },
   { path: 'settings', label: '项目设置', to: PATHS.projectSettings },
 ] as const

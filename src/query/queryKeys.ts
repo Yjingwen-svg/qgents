@@ -33,8 +33,10 @@ export const queryKeys = {
   /** 项目工作分支视图（GET /projects/{projectId}/work-branches，§6.2） */
   workBranches: {
     all: (projectId: string) => ['qgents', 'projects', projectId, 'work-branches'] as const,
-    list: (projectId: string, filters: { repositoryId?: string; requirementGroupId?: string } = {}) =>
-      ['qgents', 'projects', projectId, 'work-branches', 'list', filters] as const,
+    list: (
+      projectId: string,
+      filters: { repositoryId?: string; requirementGroupId?: string; cursor?: string; limit?: number } = {},
+    ) => ['qgents', 'projects', projectId, 'work-branches', 'list', filters] as const,
   },
   testsets: {
     all: (projectId: string) => ['qgents', 'projects', projectId, 'testsets'] as const,
@@ -52,6 +54,22 @@ export const queryKeys = {
     all: (projectId: string) => ['qgents', 'projects', projectId, 'dry-runs'] as const,
     report: (projectId: string, dryRunId: string) =>
       ['qgents', 'projects', projectId, 'dry-runs', dryRunId, 'report'] as const,
+  },
+  branchPolicies: {
+    all: (projectId: string) => ['qgents', 'projects', projectId, 'branch-policies'] as const,
+    detail: (projectId: string, repositoryId: string, branch: string) =>
+      ['qgents', 'projects', projectId, 'branch-policies', repositoryId, branch] as const,
+  },
+  qualityGates: {
+    all: (projectId: string) => ['qgents', 'projects', projectId, 'quality-gates'] as const,
+    detail: (projectId: string, repositoryId: string, branch: string) =>
+      ['qgents', 'projects', projectId, 'quality-gates', repositoryId, branch] as const,
+  },
+  preflight: {
+    all: (projectId: string, taskId = '') =>
+      ['qgents', 'projects', projectId, 'preflight', taskId] as const,
+    detail: (projectId: string, taskId: string, repositoryId: string, targetBranch: string) =>
+      ['qgents', 'projects', projectId, 'preflight', taskId, repositoryId, targetBranch] as const,
   },
 } as const
 // queryKey 是一层一层的数组路径，就像电脑文件夹路径！React Query 靠这串路径区分缓存，还能按「父文件夹」批量刷新缓存

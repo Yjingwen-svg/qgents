@@ -77,9 +77,13 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
 
   return (
     <article className="team-detail__project-card">
-      <div className="team-detail__project-icon" style={{ background: accent }}>
-        {getProjectInitial(project.name)}
-      </div>
+      {project.avatarUrl ? (
+        <img className="team-detail__project-icon team-detail__project-icon--img" src={project.avatarUrl} alt={project.name} />
+      ) : (
+        <div className="team-detail__project-icon" style={{ background: accent }}>
+          {getProjectInitial(project.name)}
+        </div>
+      )}
       <div className="team-detail__project-body">
         <div className="team-detail__project-heading">
           <h3>{project.name}</h3>

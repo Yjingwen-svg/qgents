@@ -220,6 +220,10 @@
   font-weight: 900;
 }
 
+.team-detail__project-icon--img {
+  object-fit: cover;
+}
+
 .team-detail__project-body {
   min-width: 0;
 }

@@ -215,7 +215,9 @@ function BasicInfoTab({ team, teamId, isOwner }: { team: Team; teamId: string; i
       setAvatarUrl(uploaded)
       await teamApi.update(teamId, { avatarUrl: uploaded })
       message.success('团队头像已更新')
+      // 同步刷新所有展示团队头像的查询：详情页、我的团队列表（key 不同，需分别失效）
       queryClient.invalidateQueries({ queryKey: ['teams', teamId] })
+      queryClient.invalidateQueries({ queryKey: ['teams', 'mine'] })
     } catch (error) {
       message.error(error instanceof Error ? error.message : '头像上传失败，请重试')
     } finally {

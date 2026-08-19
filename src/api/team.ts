@@ -137,6 +137,7 @@ export const teamApi = {
    * 上传团队头像并返回长期公共读 URL：签发凭证 → 直传 OSS → 确认（§28.1）。
    * 失败时抛错，由调用方 toast 展示；OSS 未启用时抛 501 错误。
    * 仅返回 avatarUrl，不自动 PATCH 回写——由调用方决定何时回写（创建团队页在创建后回写）。
+   * URL 追加版本参数（?v=时间戳）：每次上传产生新 URL，强制浏览器重新加载，避免旧图缓存 2-3 分钟。
    */
   async uploadAvatar(teamId: string, file: File): Promise<string> {
     const credential = await teamApi.avatarCredential(teamId, {
@@ -152,6 +153,13 @@ export const teamApi = {
       throw new Error(`团队头像上传失败（${putRes.status}）`)
     }
     const result = await teamApi.avatarConfirm(teamId, credential.objectKey)
-    return result.avatarUrl
+    return withCacheBuster(result.avatarUrl)
   },
+}
+
+/** 给 OSS 公共读 URL 追加版本参数，强制浏览器绕过缓存加载最新图 */
+function withCacheBuster(url: string): string {
+  if (!url) return url
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}v=${Date.now()}`
 }

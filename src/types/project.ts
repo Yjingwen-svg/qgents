@@ -10,6 +10,8 @@ export interface Project {
   teamId: string
   name: string
   description?: string
+  /** 项目头像 URL（OSS 公共读长期地址，可为空） */
+  avatarUrl?: string
   createdAt?: string
   /** 当前用户在项目中的角色（后端字段名为 role，非 myRole） */
   role?: ProjectRole
@@ -45,6 +47,8 @@ export interface CreateProjectPayload {
   repositoryIds?: string[]
   /** 创建项目时由后端新建并绑定的 GitHub 仓库；与 repositoryIds 互斥。 */
   newRepository?: NewProjectRepositoryInput
+  /** 项目头像 URL（PATCH 更新用；由项目头像上传 confirm 返回） */
+  avatarUrl?: string
 }
 
 export interface NewProjectRepositoryInput {

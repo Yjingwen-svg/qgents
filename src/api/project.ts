@@ -32,6 +32,20 @@ export const projectApi = {
     })
   },
 
+  /** POST /projects/{projectId}/avatar/credential — 签发项目头像直传凭证（§5.2；OSS 未启用时 501） */
+  avatarCredential(projectId: string, input: { mediaType: string; sizeBytes: number }) {
+    return request<{ objectKey: string; uploadUrl: string; method: string; headers: Record<string, string>; expiresAt: string }>(
+      `/projects/${projectId}/avatar/credential`, { method: 'POST', body: input })
+  },
+
+  /** POST /projects/{projectId}/avatar/confirm — 确认项目头像上传并返回公共读 URL */
+  avatarConfirm(projectId: string, objectKey: string) {
+    return request<{ avatarUrl: string }>(`/projects/${projectId}/avatar/confirm`, {
+      method: 'POST',
+      body: { objectKey },
+    })
+  },
+
   /** POST /projects/{projectId}/archive — 归档项目 */
   archive(projectId: string) {
     return request<void>(`/projects/${projectId}/archive`, { method: 'POST' })

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App, Avatar, Button, Empty, List, Modal, Popconfirm, Select, Space, Typography } from 'antd'
-import { PlusOutlined, UserOutlined } from '@ant-design/icons'
+import { App, Avatar, Button, Empty, List, Modal, Popconfirm, Select, Space, Typography, Upload } from 'antd'
+import { CameraOutlined, PlusOutlined, UploadOutlined, UserOutlined } from '@ant-design/icons'
 import { groupApi, projectApi, teamApi } from '@/api'
 import { formatApiError } from '@/utils/formatApiError'
 import { useAuth } from '@/context/AuthContext'
@@ -30,6 +30,27 @@ export function GroupMemberSettings({ projectId, group }: Props) {
   const [inviteIds, setInviteIds] = useState<string[]>([])
 
   const groupId = group?.id ?? ''
+  const [avatarUploading, setAvatarUploading] = useState(false)
+
+  /** 项目头像：签发直传凭证 → 直传 OSS → 确认返回公共 URL → PATCH /projects/{id} 回写 */
+  async function handleAvatarUpload(file: File): Promise<boolean> {
+    if (!projectId || avatarUploading) return false
+    setAvatarUploading(true)
+    try {
+      const credential = await projectApi.avatarCredential(projectId, { mediaType: file.type, sizeBytes: file.size })
+      const putRes = await fetch(credential.uploadUrl, { method: 'PUT', body: await file.arrayBuffer() })
+      if (!putRes.ok) throw new Error(`头像上传失败（${putRes.status}）`)
+      const result = await projectApi.avatarConfirm(projectId, credential.objectKey)
+      await projectApi.update(projectId, { avatarUrl: result.avatarUrl })
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
+      message.success('项目头像已更新')
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '头像上传失败，请重试')
+    } finally {
+      setAvatarUploading(false)
+    }
+    return false
+  }
 
   const { data: members = [] } = useQuery({
     queryKey: ['groups', projectId, groupId, 'members'],
@@ -111,6 +132,19 @@ export function GroupMemberSettings({ projectId, group }: Props) {
 
   return (
     <>
+      {/* 项目头像（v2.0.6）：群聊设置栏顶部，可上传/更换项目头像 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+        <Avatar size={64} src={project?.avatarUrl} icon={<CameraOutlined />} style={{ flexShrink: 0 }} />
+        <div>
+          <Text strong style={{ display: 'block' }}>项目头像</Text>
+          <Upload accept="image/*" showUploadList={false} beforeUpload={handleAvatarUpload}>
+            <Button size="small" icon={<UploadOutlined />} loading={avatarUploading}>
+              {project?.avatarUrl ? '更换头像' : '上传头像'}
+            </Button>
+          </Upload>
+        </div>
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <Text strong>成员（{members.length}）</Text>
         {canManage && (

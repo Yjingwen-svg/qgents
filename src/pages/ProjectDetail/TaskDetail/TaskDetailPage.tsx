@@ -1,6 +1,6 @@
 import { Alert, Breadcrumb, Button, Card, Form, Input, Result, Spin, Tag, Tooltip, Typography } from 'antd'
 import { ArrowLeftOutlined, ArrowRightOutlined, CodeOutlined, CopyOutlined, ExperimentOutlined, FileTextOutlined, TeamOutlined } from '@ant-design/icons'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/api'
 import { useCancelTask, useConfirmTaskDiffReview, useDiffs, useRejectTaskDiffReview, useRetryTaskDiffReviewDelivery, useTask, useTaskDiffReview, useTaskRuns, useTaskSteps } from '@/hooks/task-model'
@@ -11,6 +11,7 @@ import { useTaskCompletedWithoutCode } from '@/store/taskNoCodeChangeStore'
 import { TaskModelStatusTag } from '../TaskCenter/TaskModelStatusTag'
 import { TaskRunInspectorPanel } from './TaskRunInspectorDrawer'
 import { PreflightPanel } from '../PreflightPanel'
+import type { Preflight } from '@/types/qualityGate'
 import styles from './TaskDetailPage.module.scss'
 
 const { Text, Title } = Typography
@@ -29,14 +30,42 @@ export default function TaskDetailPage() {
     (isDiffReviewTask(taskQuery.data?.status) || taskQuery.data?.status === 'SUCCEEDED') && !completedWithoutCode
   const diffReviewQuery = useTaskDiffReview(projectId, taskId, reviewEnabled)
 
-  // WAITING_PREFLIGHT 时查询预检数据（取第一个仓库作为默认）
-  const firstRepo = taskQuery.data?.repositories?.[0]
-  const preflightQuery = usePreflight(
-    projectId,
-    taskId,
-    firstRepo?.repositoryId ?? '',
-    firstRepo?.baseRef ?? '',
-  )
+  // WAITING_PREFLIGHT 时，按仓库逐个查询预检数据
+  // 每个仓库一个 usePreflight Hook —— 通过 PreflightRepoCollector 组件封装
+  const [preflightResults, setPreflightResults] = useState<Map<string, {
+    repositoryId: string
+    repositoryName: string
+    preflight: Preflight | undefined
+    loading: boolean
+    error: Error | null
+    refetch: () => void
+  }>>(new Map())
+
+  const handlePreflightResult = useCallback((
+    repoId: string,
+    result: {
+      repositoryId: string
+      repositoryName: string
+      preflight: Preflight | undefined
+      loading: boolean
+      error: Error | null
+      refetch: () => void
+    },
+  ) => {
+    setPreflightResults((prev) => {
+      const next = new Map(prev)
+      next.set(repoId, result)
+      return next
+    })
+  }, [])
+
+  const handlePreflightRemove = useCallback((repoId: string) => {
+    setPreflightResults((prev) => {
+      const next = new Map(prev)
+      next.delete(repoId)
+      return next
+    })
+  }, [])
 
   // G1：交付中心等入口带 ?diffReviewBatchId 跳转时，定位到「任务产出与交付」卡片
   const [searchParams, setSearchParams] = useSearchParams()
@@ -91,6 +120,47 @@ export default function TaskDetailPage() {
     setSearchParams(next)
   }
 
+  const preflightRefetchAll = useCallback(() => {
+    setPreflightResults((prev) => {
+      const next = new Map(prev)
+      for (const [, v] of next) {
+        v.refetch()
+      }
+      return new Map()
+    })
+  }, [])
+
+  // 稳定的 preflights 数组，供 PreflightPanel 消费
+  const preflightArray = useMemo(() => {
+    const result: Array<{
+      repositoryId: string
+      repositoryName: string
+      preflight: Preflight | undefined
+      loading: boolean
+      error: Error | null
+      refetch: () => void
+    }> = []
+    for (const repo of task.repositories ?? []) {
+      const entry = preflightResults.get(repo.repositoryId)
+      if (entry) {
+        result.push(entry)
+      } else {
+        result.push({
+          repositoryId: repo.repositoryId,
+          repositoryName: repo.name || repo.repositoryId,
+          preflight: undefined,
+          loading: true,
+          error: null,
+          refetch: () => { },
+        })
+      }
+    }
+    return result
+  }, [task.repositories, preflightResults])
+
+  // 任务创建人 ID，用于判断 CQ+1 自审
+  const taskCreatedByUserId = task.createdByUser?.id ?? null
+
   return (
     <div className={styles.page}>
       <div className={styles.topBar}><Breadcrumb items={[{ title: '任务中心' }, { title: '任务详情' }]} /></div>
@@ -100,13 +170,27 @@ export default function TaskDetailPage() {
           {cancelMutation.error ? <CancelError error={cancelMutation.error} onRefresh={() => void taskQuery.refetch()} /> : null}
           {currentTask.attention ? <AttentionBanner task={currentTask} steps={steps} onLocate={locate} onOpenRun={openRun} /> : null}
           {task.status === 'WAITING_PREFLIGHT' ? (
-            <PreflightPanel
-              projectId={projectId}
-              preflight={preflightQuery.data}
-              loading={preflightQuery.isLoading}
-              error={preflightQuery.isError ? preflightQuery.error : null}
-              onRefresh={() => void preflightQuery.refetch()}
-            />
+            <>
+              {/* 每个仓库独立的 preflight 查询 Hook —— 组件化以确保 Hook 调用顺序稳定 */}
+              {(task.repositories ?? []).map((repo) => (
+                <PreflightRepoQuery
+                  key={repo.repositoryId}
+                  projectId={projectId}
+                  taskId={taskId}
+                  repositoryId={repo.repositoryId}
+                  repositoryName={repo.name || repo.repositoryId}
+                  targetBranch={repo.baseRef}
+                  onResult={handlePreflightResult}
+                  onUnmount={handlePreflightRemove}
+                />
+              ))}
+              <PreflightPanel
+                projectId={projectId}
+                preflights={preflightArray}
+                onRefreshAll={preflightRefetchAll}
+                taskCreatedByUserId={taskCreatedByUserId}
+              />
+            </>
           ) : null}
           <main className={styles.content}>
             <ExecutionFlowRow task={currentTask} query={stepsQuery} steps={steps} onOpenRun={openRun} />
@@ -331,17 +415,17 @@ function normalizeTaskForDisplay(task: Task): Task {
     executionSummary: task.executionSummary && typeof task.executionSummary === 'object'
       ? task.executionSummary
       : {
-          totalSteps: 0,
-          pendingSteps: 0,
-          runningSteps: 0,
-          waitingSteps: 0,
-          blockedSteps: 0,
-          succeededSteps: 0,
-          failedSteps: 0,
-          currentStage: null,
-          currentStageTitle: null,
-          requiresUserAction: false,
-        },
+        totalSteps: 0,
+        pendingSteps: 0,
+        runningSteps: 0,
+        waitingSteps: 0,
+        blockedSteps: 0,
+        succeededSteps: 0,
+        failedSteps: 0,
+        currentStage: null,
+        currentStageTitle: null,
+        requiresUserAction: false,
+      },
     capabilities: {
       canCancel: capabilities?.canCancel === true,
       canReplacePendingStepAgent: capabilities?.canReplacePendingStepAgent === true,
@@ -376,3 +460,52 @@ function diffReviewError(error: Error): string { const code = errorCode(error); 
 function display(value: string | null | undefined): string { return value?.trim() || '暂无' }
 function formatDate(value: string | null | undefined): string { if (!value) return '暂无'; const date = new Date(value); return Number.isNaN(date.getTime()) ? display(value) : new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date) }
 function resolveReturnPath(state: unknown, projectId: string, _taskId: string): string { const fallback = PATHS.projectTasks(projectId); return state && typeof state === 'object' && 'from' in state && typeof state.from === 'string' && state.from.startsWith(PATHS.projectTasks(projectId)) ? state.from : fallback }
+
+/**
+ * 单仓库 preflight 查询组件 —— 封装 usePreflight Hook，将结果通过回调上报给父组件。
+ * 父组件通过 Map 聚合所有仓库的 preflight 状态，传给 PreflightPanel 统一渲染。
+ * 设计：每个仓库一个独立组件，确保 Hook 调用顺序在渲染间保持稳定。
+ */
+function PreflightRepoQuery({
+  projectId,
+  taskId,
+  repositoryId,
+  repositoryName,
+  targetBranch,
+  onResult,
+  onUnmount,
+}: {
+  projectId: string
+  taskId: string
+  repositoryId: string
+  repositoryName: string
+  targetBranch: string
+  onResult: (repoId: string, result: {
+    repositoryId: string
+    repositoryName: string
+    preflight: Preflight | undefined
+    loading: boolean
+    error: Error | null
+    refetch: () => void
+  }) => void
+  onUnmount: (repoId: string) => void
+}) {
+  const query = usePreflight(projectId, taskId, repositoryId, targetBranch)
+
+  useEffect(() => {
+    onResult(repositoryId, {
+      repositoryId,
+      repositoryName,
+      preflight: query.data,
+      loading: query.isLoading,
+      error: query.error,
+      refetch: () => { void query.refetch() },
+    })
+  }, [repositoryId, repositoryName, query.data, query.isLoading, query.error, query, onResult])
+
+  useEffect(() => {
+    return () => { onUnmount(repositoryId) }
+  }, [repositoryId, onUnmount])
+
+  return null
+}

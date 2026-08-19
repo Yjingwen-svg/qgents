@@ -43,13 +43,14 @@ export default function QualityGateReviewPage() {
   const navigate = useNavigate()
   const { message } = App.useApp()
 
-  const mergeRequestId = searchParams.get('mr')?.trim() ?? ''
+  const mergeRequestId = searchParams.get('mr')?.trim() || undefined
 
   // 弹窗状态
   const [dryRunModalOpen, setDryRunModalOpen] = useState(false)
   const [testRunModalOpen, setTestRunModalOpen] = useState(false)
 
-  const mrQuery = useMergeRequest(projectId, mergeRequestId)
+  // MR 是可选的：质量门禁操作页不依赖 MR，MR 存在时额外加载
+  const mrQuery = useMergeRequest(projectId, mergeRequestId ?? '')
 
   // 加载仓库列表（用于 DryRun/TestRun 创建表单）
   const reposQuery = useQuery({
@@ -69,53 +70,16 @@ export default function QualityGateReviewPage() {
     navigate(PATHS.projectTestsetsManage(projectId))
   }
 
-  if (!mergeRequestId) {
-    return (
-      <ConfigProvider theme={pageTheme}>
-        <div className={styles.page}>
-          <div className={styles.state}>
-            <Empty description="缺少 MR 标识，无法加载质量门禁">
-              <Button type="primary" onClick={goBack}>返回质量门禁页</Button>
-            </Empty>
-          </div>
-        </div>
-      </ConfigProvider>
-    )
-  }
+  // MR 查询仅在有 mergeRequestId 时启用；页面核心功能不依赖 MR
+  const isMrError = !!mergeRequestId && mrQuery.isError
 
-  if (mrQuery.isLoading) {
+  if (isMrError) {
     return (
       <ConfigProvider theme={pageTheme}>
         <div className={styles.page}>
           <div className={styles.state}>
-            <Spin />
-          </div>
-        </div>
-      </ConfigProvider>
-    )
-  }
-
-  if (mrQuery.isError) {
-    return (
-      <ConfigProvider theme={pageTheme}>
-        <div className={styles.page}>
-          <div className={styles.state}>
-            <Empty description={formatApiError(mrQuery.error)}>
+            <Empty description={`MR 加载失败：${formatApiError(mrQuery.error)}`}>
               <Button onClick={() => void mrQuery.refetch()}>重试</Button>
-              <Button onClick={goBack}>返回</Button>
-            </Empty>
-          </div>
-        </div>
-      </ConfigProvider>
-    )
-  }
-
-  if (!mr) {
-    return (
-      <ConfigProvider theme={pageTheme}>
-        <div className={styles.page}>
-          <div className={styles.state}>
-            <Empty description="未找到该 MR">
               <Button onClick={goBack}>返回</Button>
             </Empty>
           </div>
@@ -136,9 +100,14 @@ export default function QualityGateReviewPage() {
           <div>
             <Title level={2} className={styles.title}>
               质量门禁
+              {mergeRequestId && mr ? (
+                <Tag color="blue" style={{ marginLeft: 8 }}>
+                  MR: {mr.number}
+                </Tag>
+              ) : null}
             </Title>
             <Paragraph className={styles.subtitle}>
-              发起测试或 Dry-run；测试配方在「管理测试集」中维护
+              {mergeRequestId && !mr ? '正在加载 MR…' : '发起测试或 Dry-run；测试配方在「管理测试集」中维护'}
             </Paragraph>
           </div>
           <Space>

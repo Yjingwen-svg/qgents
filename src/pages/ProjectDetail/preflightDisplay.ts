@@ -1,4 +1,4 @@
-import type { PreflightBlockerCode, PreflightStatus } from '@/types/qualityGate'
+import type { PreflightBlockerCode, PreflightCqPlusOneStatus, PreflightStatus } from '@/types/qualityGate'
 
 /**
  * MR 前预检（Preflight）的展示映射。
@@ -30,6 +30,123 @@ export function preflightStatusColor(status: PreflightStatus): 'default' | 'proc
     default:
       return 'processing'
   }
+}
+
+// ---------------------------------------------------------------------------
+// Dry Run 状态 → 用户友好文案
+// ---------------------------------------------------------------------------
+
+/** Dry Run 原始状态 → 用户友好描述 */
+export function dryRunStatusDescription(dryRunStatus: string | null | undefined): string {
+  if (!dryRunStatus) return '尚未发起 Dry Run'
+  switch (dryRunStatus) {
+    case 'QUEUED':
+      return 'Dry Run 排队中'
+    case 'RUNNING':
+      return 'Dry Run 自动执行中'
+    case 'PASSED':
+      return 'Dry Run 已通过'
+    case 'FAILED':
+      return 'Dry Run 失败'
+    case 'CANCELLED':
+      return 'Dry Run 已取消'
+    default:
+      return `Dry Run ${dryRunStatus}`
+  }
+}
+
+/** Dry Run 状态 → tag 颜色 */
+export function dryRunStatusColor(dryRunStatus: string | null | undefined): 'default' | 'processing' | 'success' | 'error' | 'warning' {
+  if (!dryRunStatus) return 'default'
+  switch (dryRunStatus) {
+    case 'PASSED':
+      return 'success'
+    case 'FAILED':
+      return 'error'
+    case 'QUEUED':
+    case 'RUNNING':
+      return 'processing'
+    case 'CANCELLED':
+      return 'warning'
+    default:
+      return 'default'
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CQ+1 状态 → 用户友好文案
+// ---------------------------------------------------------------------------
+
+export function cqPlusOneStatusDescription(status: PreflightCqPlusOneStatus | null | undefined): string {
+  if (!status || status === 'MISSING') return '等待 CQ+1'
+  switch (status) {
+    case 'APPROVED':
+      return 'CQ+1 已通过'
+    case 'REJECTED':
+      return 'CQ+1 被拒绝'
+    default:
+      return 'CQ+1 状态未知'
+  }
+}
+
+export function cqPlusOneStatusColor(status: PreflightCqPlusOneStatus | null | undefined): 'default' | 'success' | 'error' | 'warning' {
+  if (!status || status === 'MISSING') return 'warning'
+  switch (status) {
+    case 'APPROVED':
+      return 'success'
+    case 'REJECTED':
+      return 'error'
+    default:
+      return 'default'
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 组合文案：按仓库展示的状态行
+// ---------------------------------------------------------------------------
+
+/**
+ * 根据 preflight 的 dryRun + cqPlusOne 组合，生成一行用户友好的描述。
+ * 用于 TaskDetail 页的「逐仓库预检状态」列表。
+ */
+export function preflightRepoSummary(params: {
+  dryRunStatus: string | null | undefined
+  cqStatus: PreflightCqPlusOneStatus | null | undefined
+  blockers: Array<{ code: string }>
+}): { text: string; color: 'default' | 'processing' | 'success' | 'error' | 'warning' } {
+  const { dryRunStatus, cqStatus, blockers } = params
+
+  // Dry Run 失败
+  if (dryRunStatus === 'FAILED') {
+    return { text: 'Dry Run 失败，请查看报告修复后重试', color: 'error' }
+  }
+  // Dry Run 运行中
+  if (dryRunStatus === 'QUEUED' || dryRunStatus === 'RUNNING') {
+    return { text: 'Dry Run 自动执行中，请等待完成', color: 'processing' }
+  }
+  // Dry Run 尚未发起
+  if (!dryRunStatus) {
+    return { text: 'Dry Run 尚未发起', color: 'warning' }
+  }
+
+  // Dry Run 通过，检查 CQ+1
+  if (dryRunStatus === 'PASSED') {
+    if (cqStatus === 'APPROVED') {
+      // 检查是否还有其他 blockers（如 PREFLIGHT_CONTEXT_STALE）
+      const hasStale = blockers.some((b) => b.code === 'PREFLIGHT_CONTEXT_STALE' || b.code === 'MR_SOURCE_HEAD_CHANGED')
+      if (hasStale) {
+        return { text: 'CQ+1 已通过，但提交上下文已变化，请重新预检', color: 'warning' }
+      }
+      return { text: 'CQ+1 已通过，系统正在创建 MR', color: 'success' }
+    }
+    if (cqStatus === 'REJECTED') {
+      return { text: 'CQ+1 被拒绝，请按意见修改后重试', color: 'error' }
+    }
+    // CQ+1 缺失
+    return { text: 'Dry Run 已通过，等待 CQ+1 审批', color: 'warning' }
+  }
+
+  return { text: '预检状态未知', color: 'default' }
 }
 
 const BLOCKER_LABEL: Record<PreflightBlockerCode, string> = {

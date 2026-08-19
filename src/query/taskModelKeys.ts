@@ -6,6 +6,7 @@ export const taskModelQueryKeys = {
     list: (projectId: string, filters: TaskListFilters = {}) => ['qgents', 'projects', projectId, 'tasks', 'list', filters] as const,
     infinite: (projectId: string, filters: Omit<TaskListFilters, 'cursor'> = {}) => ['qgents', 'projects', projectId, 'tasks', 'infinite', filters] as const,
     detail: (projectId: string, taskId: string) => ['qgents', 'projects', projectId, 'tasks', taskId] as const,
+    diagnostics: (projectId: string, taskId: string) => ['qgents', 'projects', projectId, 'tasks', taskId, 'diagnostics'] as const,
   },
   taskArtifacts: {
     root: (projectId: string) => ['qgents', 'projects', projectId, 'task-artifacts'] as const,
@@ -27,6 +28,7 @@ export const taskModelQueryKeys = {
     list: (projectId: string, taskId: string, filters: TaskRunListFilters = {}) => ['qgents', 'projects', projectId, 'tasks', taskId, 'task-runs', 'list', filters] as const,
     infinite: (projectId: string, taskId: string, filters: Omit<TaskRunListFilters, 'cursor'> = {}) => ['qgents', 'projects', projectId, 'tasks', taskId, 'task-runs', 'infinite', filters] as const,
     detail: (projectId: string, taskRunId: string) => ['qgents', 'projects', projectId, 'task-runs', taskRunId] as const,
+    diagnostics: (projectId: string, taskRunId: string) => ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'diagnostics'] as const,
     logs: (projectId: string, taskRunId: string, filters: PageFilters = {}) => ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'logs', filters] as const,
     executionContext: (projectId: string, taskRunId: string) => ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'execution-context'] as const,
     inputRequests: {

@@ -89,6 +89,14 @@ export interface TaskDiffReviewSummary { available: boolean; /** Representative 
 export interface TaskSourceMessage { id: string; sender: TaskUserSummary; textExcerpt: string; createdAt: string }
 export interface Task extends TaskListItem { requirement: string; acceptanceCriteria: TaskAcceptanceCriterion[]; workspace: TaskWorkspace | null; capabilities: TaskCapabilities; artifactSummary: TaskArtifactSummary; diffReviewSummary: TaskDiffReviewSummary; sourceMessage: TaskSourceMessage | null; triggerMessageId: string | null }
 
+export interface TaskDiagnostics {
+  taskId: string
+  status: TaskStatus
+  stage: string
+  failure: TaskRunStatusReason | null
+  latestFailedRun: TaskRunDiagnostics | null
+}
+
 export interface TaskArtifact {
   id: string
   taskId: string
@@ -160,7 +168,7 @@ export interface ReplaceTaskStepAgentInput {
 }
 
 export interface TaskRunAgentSummary { id: string; name: string; role: TaskStepRole; avatarUrl: string | null }
-export interface TaskRunStatusReason { code: 'INPUT_REQUIRED' | 'APPROVAL_REQUIRED' | 'BLOCKED' | 'EXECUTION_FAILED' | 'CANCELLED'; title: string; summary: string; retryable: boolean; occurredAt: string }
+export interface TaskRunStatusReason { code: 'INPUT_REQUIRED' | 'APPROVAL_REQUIRED' | 'BLOCKED' | 'EXECUTION_FAILED' | 'STARTUP_FAILED' | 'DELIVERY_FAILED' | 'CANCELLED'; failureCode?: string | null; title: string; summary: string; retryable: boolean; occurredAt: string | null }
 export interface TaskRunArtifactSummary { total: number; diffCount: number }
 export interface TaskRunSummary { id: string; taskId: string; taskStepId: string; taskStepTitle: string; agent: TaskRunAgentSummary | null; role: TaskStepRole; status: TaskRunStatus; retryOfTaskRunId: string | null; statusSummary: string | null; statusReason: TaskRunStatusReason | null; startedAt: string | null; finishedAt: string | null; durationMs: number | null; artifactSummary: TaskRunArtifactSummary; createdAt: string; updatedAt: string }
 
@@ -174,6 +182,26 @@ export interface TaskRunStep {
 }
 
 export interface TaskRunDetail extends TaskRunSummary { steps?: TaskRunStep[] }
+
+export interface WorkerExecutionDiagnostic {
+  executionId: string
+  tool: string | null
+  status: string | null
+  exitCode: number | null
+  failureCode: string | null
+  failureSummary: string | null
+  createdAt: string | null
+  finishedAt: string | null
+}
+
+export interface TaskRunDiagnostics {
+  taskRunId: string
+  taskId: string
+  status: TaskRunStatus
+  stage: string
+  failure: TaskRunStatusReason | null
+  workerExecutions: WorkerExecutionDiagnostic[]
+}
 
 export type TaskRun = TaskRunSummary | TaskRunDetail
 

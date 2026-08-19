@@ -1140,6 +1140,25 @@
   gap: clamp(3px, 0.1vw + 2px, 100%);
 }
 
+.taskFailureDiagnostic {
+  margin: 8px 0 0;
+}
+
+.inspectorDiagnostic {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+}
+
+.inspectorDiagnosticItem {
+  display: grid;
+  gap: 2px;
+  margin-top: 5px;
+  padding: 6px 8px;
+  border: 1px solid #edf1f5;
+  border-radius: 5px;
+}
+
 .panelState {
   display: grid;
   min-height: clamp(56px, 3vw + 24px, 100%);

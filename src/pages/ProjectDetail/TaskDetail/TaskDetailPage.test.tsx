@@ -7,6 +7,7 @@ import { useTaskNoCodeChangeStore } from '@/store/taskNoCodeChangeStore'
 import type { DiffListItem, DiffReviewBatch, Task, TaskModelPage, TaskRunDetail, TaskRunSummary, TaskStep } from '@/types/task-model'
 
 const useTaskMock = vi.hoisted(() => vi.fn())
+const useTaskDiagnosticsMock = vi.hoisted(() => vi.fn())
 const useTaskStepsMock = vi.hoisted(() => vi.fn())
 const useTaskRunsMock = vi.hoisted(() => vi.fn())
 const useCancelTaskMock = vi.hoisted(() => vi.fn())
@@ -18,6 +19,7 @@ const useRejectTaskDiffReviewMock = vi.hoisted(() => vi.fn())
 const useRetryTaskDiffReviewDeliveryMock = vi.hoisted(() => vi.fn())
 const useTaskRunMock = vi.hoisted(() => vi.fn())
 const useInfiniteTaskRunLogsMock = vi.hoisted(() => vi.fn())
+const useTaskRunDiagnosticsMock = vi.hoisted(() => vi.fn())
 const useTaskRunExecutionContextMock = vi.hoisted(() => vi.fn())
 const useTaskRunInputRequestsMock = vi.hoisted(() => vi.fn())
 const useRetryTaskRunModelMock = vi.hoisted(() => vi.fn())
@@ -30,6 +32,7 @@ const usePreflightMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/task-model', () => ({
   useTask: useTaskMock,
+  useTaskDiagnostics: useTaskDiagnosticsMock,
   useTaskSteps: useTaskStepsMock,
   useTaskRuns: useTaskRunsMock,
   useCancelTask: useCancelTaskMock,
@@ -41,6 +44,7 @@ vi.mock('@/hooks/task-model', () => ({
   useRetryTaskDiffReviewDelivery: useRetryTaskDiffReviewDeliveryMock,
   useTaskRun: useTaskRunMock,
   useInfiniteTaskRunLogs: useInfiniteTaskRunLogsMock,
+  useTaskRunDiagnostics: useTaskRunDiagnosticsMock,
   useTaskRunExecutionContext: useTaskRunExecutionContextMock,
   useTaskRunInputRequests: useTaskRunInputRequestsMock,
   useRetryTaskRunModel: useRetryTaskRunModelMock,
@@ -77,6 +81,7 @@ const idleQuery = { data: undefined, error: null, isError: false, isLoading: fal
 beforeEach(() => {
   useTaskNoCodeChangeStore.getState().clearAllCompletedWithoutCode()
   useTaskMock.mockReturnValue({ data: task, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+  useTaskDiagnosticsMock.mockReturnValue({ ...idleQuery, data: { taskId: task.id, status: task.status, stage: 'CODING', failure: null, latestFailedRun: null } })
   useTaskStepsMock.mockReturnValue({ data: page([step]), error: null, isError: false, isLoading: false })
   useTaskRunsMock.mockReturnValue({ data: page<TaskRunSummary>([run]), error: null, isError: false, isLoading: false })
   useCancelTaskMock.mockReturnValue(idleMutation)
@@ -86,15 +91,17 @@ beforeEach(() => {
   useConfirmTaskDiffReviewMock.mockReturnValue(idleMutation)
   useRejectTaskDiffReviewMock.mockReturnValue(idleMutation)
   useRetryTaskDiffReviewDeliveryMock.mockReturnValue(idleMutation)
-  useTaskRunMock.mockReturnValue({ ...idleQuery, data: run });
-  useInfiniteTaskRunLogsMock.mockReturnValue({ data: { pages: [{ data: [], page: { nextCursor: null, hasMore: false }, requestId: 'req-1' }], pageParams: [undefined] }, error: null, isError: false, isLoading: false, isFetching: false, isFetchingNextPage: false, hasNextPage: false, isFetchNextPageError: false, refetch: vi.fn(), fetchNextPage: vi.fn() });
-  useTaskRunExecutionContextMock.mockReturnValue(idleQuery);
-  useTaskRunInputRequestsMock.mockReturnValue({ data: page([]), error: null, isError: false, isLoading: false });
-  useRetryTaskRunModelMock.mockReturnValue(idleMutation);
-  useCancelTaskRunModelMock.mockReturnValue(idleMutation);
-  useReplyTaskRunInputRequestMock.mockReturnValue(idleMutation);
-  useApproveTaskRunInputRequestMock.mockReturnValue(idleMutation);
-  useRejectTaskRunInputRequestMock.mockReturnValue(idleMutation);
+  useTaskRunMock.mockReturnValue({ ...idleQuery, data: run })
+  useInfiniteTaskRunLogsMock.mockReturnValue({ data: { pages: [{ data: [], page: { nextCursor: null, hasMore: false }, requestId: 'req-1' }], pageParams: [undefined] }, error: null, isError: false, isLoading: false, isFetching: false, isFetchingNextPage: false, hasNextPage: false, isFetchNextPageError: false, refetch: vi.fn(), fetchNextPage: vi.fn() })
+  useTaskRunDiagnosticsMock.mockReturnValue({ ...idleQuery, data: { taskRunId: run.id, taskId: run.taskId, status: run.status, stage: 'CODING', failure: null, workerExecutions: [] } })
+  usePreflightMock.mockReturnValue({ data: undefined, error: null, isError: false, isLoading: false, isFetching: false, refetch: vi.fn() })
+  useTaskRunExecutionContextMock.mockReturnValue(idleQuery)
+  useTaskRunInputRequestsMock.mockReturnValue({ data: page([]), error: null, isError: false, isLoading: false })
+  useRetryTaskRunModelMock.mockReturnValue(idleMutation)
+  useCancelTaskRunModelMock.mockReturnValue(idleMutation)
+  useReplyTaskRunInputRequestMock.mockReturnValue(idleMutation)
+  useApproveTaskRunInputRequestMock.mockReturnValue(idleMutation)
+  useRejectTaskRunInputRequestMock.mockReturnValue(idleMutation)
 })
 
 describe('TaskDetailPage workbench', () => {

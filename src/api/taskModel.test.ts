@@ -73,17 +73,29 @@ describe('new task model API', () => {
     }))
   })
 
+  it('uses the Task-level diagnostics path without requiring a TaskRun id', async () => {
+    const fetchMock = vi.mocked(fetch)
+    await tasksApi.diagnostics('project-1', 'task-1')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/project-1/tasks/task-1/diagnostics',
+      expect.objectContaining({ body: undefined }),
+    )
+  })
+
   it('uses TaskRun by-task paths and does not expose a standalone steps endpoint', async () => {
     const fetchMock = vi.mocked(fetch)
     await taskRunsApi.list('project-1', 'task-1', { status: 'FAILED', cursor: 'c1', limit: 20 })
     await taskRunsApi.get('project-1', 'run-1')
+    await taskRunsApi.diagnostics('project-1', 'run-1')
     await taskRunsApi.retry('project-1', 'run-1')
     await taskRunsApi.logs('project-1', 'run-1', { cursor: 'c2', limit: 10 })
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/projects/project-1/tasks/task-1/task-runs?status=FAILED&cursor=c1&limit=20', expect.any(Object))
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/projects/project-1/task-runs/run-1', expect.any(Object))
-    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/projects/project-1/task-runs/run-1/retry', expect.objectContaining({ method: 'POST' }))
-    expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/projects/project-1/task-runs/run-1/logs?cursor=c2&limit=10', expect.any(Object))
+    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/projects/project-1/task-runs/run-1/diagnostics', expect.any(Object))
+    expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/projects/project-1/task-runs/run-1/retry', expect.objectContaining({ method: 'POST' }))
+    expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/projects/project-1/task-runs/run-1/logs?cursor=c2&limit=10', expect.any(Object))
     expect(fetchMock.mock.calls.some(([path]) => String(path).includes('/steps'))).toBe(false)
   })
 

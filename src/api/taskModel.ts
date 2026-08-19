@@ -21,10 +21,12 @@ import type {
   InputRequestAnswer,
   InputRequestDecision,
   Task,
+  TaskDiagnostics,
   TaskListItem,
   TaskCreateInput,
   TaskListFilters,
   TaskRunDetail,
+  TaskRunDiagnostics,
   TaskRunListFilters,
   TaskRunLog,
   TaskRunSummary,
@@ -58,6 +60,10 @@ export const tasksApi = {
 
   get(projectId: string, taskId: string) {
     return requestModelData<Task>(taskPath(projectId, taskId))
+  },
+
+  diagnostics(projectId: string, taskId: string) {
+    return requestModelData<TaskDiagnostics>(`${taskPath(projectId, taskId)}/diagnostics`)
   },
 
   artifacts(projectId: string, taskId: string) {
@@ -130,6 +136,10 @@ export const taskRunsApi = {
 
   get(projectId: string, taskRunId: string) {
     return requestModelData<TaskRunDetail>(taskRunPath(projectId, taskRunId))
+  },
+
+  diagnostics(projectId: string, taskRunId: string) {
+    return requestModelData<TaskRunDiagnostics>(`${taskRunPath(projectId, taskRunId)}/diagnostics`)
   },
 
   retry(projectId: string, taskRunId: string) {

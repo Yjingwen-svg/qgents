@@ -22,10 +22,12 @@ import type {
   InputRequestAnswer,
   InputRequestDecision,
   Task,
+  TaskDiagnostics,
   TaskListItem,
   TaskCreateInput,
   TaskListFilters,
   TaskRunDetail,
+  TaskRunDiagnostics,
   TaskRunListFilters,
   TaskRunLog,
   TaskRunSummary,
@@ -126,6 +128,22 @@ export function useTaskRun(projectId: string, taskRunId: string): UseQueryResult
   return useQuery({
     queryKey: taskModelQueryKeys.taskRuns.detail(projectId, taskRunId),
     queryFn: () => taskRunsApi.get(projectId, taskRunId),
+    enabled: Boolean(projectId && taskRunId),
+  })
+}
+
+export function useTaskDiagnostics(projectId: string, taskId: string): UseQueryResult<TaskDiagnostics> {
+  return useQuery({
+    queryKey: taskModelQueryKeys.tasks.diagnostics(projectId, taskId),
+    queryFn: () => tasksApi.diagnostics(projectId, taskId),
+    enabled: Boolean(projectId && taskId),
+  })
+}
+
+export function useTaskRunDiagnostics(projectId: string, taskRunId: string): UseQueryResult<TaskRunDiagnostics> {
+  return useQuery({
+    queryKey: taskModelQueryKeys.taskRuns.diagnostics(projectId, taskRunId),
+    queryFn: () => taskRunsApi.diagnostics(projectId, taskRunId),
     enabled: Boolean(projectId && taskRunId),
   })
 }

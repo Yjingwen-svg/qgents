@@ -5,7 +5,7 @@ import type { TaskStatusReason } from '@/types/task-model'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/api'
-import { useCancelTask, useConfirmTaskDiffReview, useDiffs, useRejectTaskDiffReview, useRetryTaskDiffReviewDelivery, useTask, useTaskDiffReview, useTaskRuns, useTaskSteps } from '@/hooks/task-model'
+import { useCancelTask, useConfirmTaskDiffReview, useDiffs, useRejectTaskDiffReview, useRetryTaskDiffReviewDelivery, useTask, useTaskDiagnostics, useTaskDiffReview, useTaskRuns, useTaskSteps } from '@/hooks/task-model'
 import { usePreflight } from '@/hooks/qualityGate'
 import type { DiffReviewBatch, Task, TaskRunSummary, TaskStep } from '@/types/task-model'
 import { PATHS } from '@/routes/paths'
@@ -22,6 +22,7 @@ export default function TaskDetailPage() {
   const { projectId = '', taskId = '' } = useParams<{ projectId: string; taskId: string }>()
   const navigate = useNavigate()
   const taskQuery = useTask(projectId, taskId)
+  const diagnosticsQuery = useTaskDiagnostics(projectId, taskId)
   const stepsQuery = useTaskSteps(projectId, taskId, { limit: 100 })
   const taskRunsQuery = useTaskRuns(projectId, taskId, { limit: 5 })
   const diffsQuery = useDiffs(projectId, { taskId, limit: 100 })
@@ -174,6 +175,7 @@ export default function TaskDetailPage() {
           <CompactTaskHeader task={currentTask} projectId={projectId} onCancel={handleCancel} cancelPending={cancelMutation.isPending} completedWithoutCode={completedWithoutCode} />
           {cancelMutation.error ? <CancelError error={cancelMutation.error} onRefresh={() => void taskQuery.refetch()} /> : null}
           {currentTask.attention ? <AttentionBanner task={currentTask} steps={steps} onLocate={locate} onOpenRun={openRun} /> : null}
+          <TaskFailureDiagnostic query={diagnosticsQuery} onOpenRun={openRun} />
           {task.status === 'WAITING_PREFLIGHT' ? (
             <>
               {/* 每个仓库独立的 preflight 查询 Hook —— 组件化以确保 Hook 调用顺序稳定 */}
@@ -211,6 +213,15 @@ export default function TaskDetailPage() {
       </div>
     </div>
   )
+}
+
+function TaskFailureDiagnostic({ query, onOpenRun }: { query: ReturnType<typeof useTaskDiagnostics>; onOpenRun: (taskRunId: string) => void }) {
+  if (query.isLoading || query.isError || !query.data?.failure) return null
+  const diagnostic = query.data
+  const run = diagnostic.latestFailedRun
+  return <Alert type="error" showIcon className={styles.taskFailureDiagnostic}
+    title={`任务失败：${diagnostic.failure?.failureCode ?? diagnostic.failure?.title ?? '未知原因'}`}
+    description={<span>{diagnostic.failure?.summary ?? '任务执行失败'} · 阶段：{diagnostic.stage}{run ? <> · <Button type="link" size="small" onClick={() => onOpenRun(run.taskRunId)}>查看失败运行</Button></> : ' · 失败发生在创建执行记录之前'}</span>} />
 }
 
 function CompactTaskHeader({ task, projectId, onCancel, cancelPending, completedWithoutCode }: { task: Task; projectId: string; onCancel: () => void; cancelPending: boolean; completedWithoutCode: boolean }) {

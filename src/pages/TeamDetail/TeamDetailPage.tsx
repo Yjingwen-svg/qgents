@@ -55,9 +55,13 @@ function MemberPreview({ member }: { member: TeamMember }) {
   const email = member.email || '—'
   return (
     <li className="team-detail__member-row">
-      <span className="team-detail__member-avatar" aria-hidden>
-        {displayName.slice(0, 1)}
-      </span>
+      {member.avatarUrl ? (
+        <img className="team-detail__member-avatar team-detail__member-avatar--img" src={member.avatarUrl} alt={displayName} aria-hidden />
+      ) : (
+        <span className="team-detail__member-avatar" aria-hidden>
+          {displayName.slice(0, 1)}
+        </span>
+      )}
       <div className="team-detail__member-copy">
         <strong>{displayName}</strong>
         <span>{email}</span>
@@ -182,7 +186,16 @@ export default function TeamDetailPage() {
     <div className="team-detail">
       <aside className="team-detail__sidebar" aria-label="团队导航">
         <div className="team-detail__team-card">
-          <div className="team-detail__team-logo">{team.name.slice(0, 1)}</div>
+          {team.avatarUrl ? (
+            <img
+              className="team-detail__team-logo team-detail__team-logo--img"
+              src={team.avatarUrl}
+              alt={`${team.name} 的团队头像`}
+              aria-hidden
+            />
+          ) : (
+            <div className="team-detail__team-logo">{team.name.slice(0, 1)}</div>
+          )}
           <div>
             <h2>{team.name}</h2>
             <p>{team.description || '团队项目协作空间'}</p>

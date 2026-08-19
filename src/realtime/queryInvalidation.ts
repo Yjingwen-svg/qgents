@@ -10,6 +10,7 @@ export const TASK_MODEL_QUERY_ROOTS = (projectId: string): readonly QueryKey[] =
   taskModelQueryKeys.taskDiffReview.root(projectId),
   deliveryCenterKeys.all(projectId),
   taskModelQueryKeys.mergeRequests.all(projectId),
+  queryKeys.workBranches.all(projectId),
 ]
 
 function stringId(payload: ProjectTaskEventPayload, name: string): string | null {
@@ -74,6 +75,7 @@ export function queryKeysForProjectTaskEvent(
       if (!taskId) return []
       addKey(keys, taskModelQueryKeys.tasks.all(projectId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      // §6.2：task.updated 影响工作分支的 latestTask
       addKey(keys, queryKeys.workBranches.all(projectId))
       break
     case 'task-step.updated':
@@ -106,12 +108,13 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.diffs.detail(projectId, diffId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.taskDiffReview.detail(projectId, taskId))
-      addKey(keys, queryKeys.workBranches.all(projectId))
+      addKey(keys, deliveryCenterKeys.all(projectId))
       if (taskRunId) {
         addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
         addKey(keys, taskModelQueryKeys.taskRuns.all(projectId, taskId))
       }
-      addKey(keys, deliveryCenterKeys.all(projectId))
+      // §6.2：diff.created 影响工作分支的 latestDiff
+      addKey(keys, queryKeys.workBranches.all(projectId))
       break
     case 'task.artifact.created':
       if (!taskId || !artifactId) return []
@@ -165,6 +168,7 @@ export function queryKeysForProjectTaskEvent(
       if (!stringId(payload, 'mergeRequestId')) return []
       addKey(keys, deliveryCenterKeys.all(projectId))
       addKey(keys, taskModelQueryKeys.mergeRequests.all(projectId))
+      // §6.2：merge-request.updated 影响工作分支的 openMergeRequest
       addKey(keys, queryKeys.workBranches.all(projectId))
       if (taskId) {
         addKey(keys, taskModelQueryKeys.tasks.all(projectId))
@@ -192,6 +196,8 @@ export function queryKeysForProjectTaskEvent(
       if (!testRunId) return []
       addKey(keys, queryKeys.testRuns.all(projectId))
       addKey(keys, queryKeys.testRuns.detail(projectId, testRunId))
+      // §6.2：test-run.updated 影响工作分支的 lastVerification
+      addKey(keys, queryKeys.workBranches.all(projectId))
       break
     }
     case 'dry-run.updated': {

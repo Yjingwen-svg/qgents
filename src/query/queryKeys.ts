@@ -30,6 +30,7 @@ export const queryKeys = {
   teamProjects: (teamId: string) => ['qgents', 'teams', teamId, 'projects'] as const,
   projectRepositories: (projectId: string) =>
     ['qgents', 'projects', projectId, 'repositories'] as const,
+  /** 项目工作分支视图（GET /projects/{projectId}/work-branches，§6.2） */
   workBranches: {
     all: (projectId: string) => ['qgents', 'projects', projectId, 'work-branches'] as const,
     list: (

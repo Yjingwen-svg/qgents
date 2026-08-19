@@ -308,10 +308,18 @@ function CreateSkillModal({
   }, [open, editTarget, form])
 
   const create = useMutation({
-    mutationFn: (payload: CreateSkillPayload) => skillApi.create(projectId, payload),
+    // 编辑模式走 patch（更新原记录），新建才走 create（对照 MemoryPage 同一模式）
+    mutationFn: (payload: CreateSkillPayload) =>
+      editTarget
+        ? skillApi.patch(projectId, editTarget.id, payload)
+        : skillApi.create(projectId, payload),
     onSuccess: (saved) => {
       form.resetFields()
       onCreated()
+      if (editTarget) {
+        message.success('Skill 已更新')
+        return
+      }
       // PRIVATE 创建即生效；PROJECT_SHARED 的 Admin 自建免审、成员为草稿
       if (saved.status === 'PUBLISHED') {
         message.success(saved.visibility === 'PRIVATE' ? 'Skill 已创建（私有，仅自己可用）' : 'Skill 已创建并发布')

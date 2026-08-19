@@ -54,12 +54,13 @@ describe('project SSE Task model query invalidation mapping', () => {
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks', 'task-1']))
   })
 
-  it('maps diff.created to Diff list/detail, Task, and optional TaskRun detail', () => {
+  it('maps diff.created to Diff list/detail, Task, optional TaskRun detail, and work-branches', () => {
     const keys = keysFor('diff.created', { taskId: 'task-1', diffId: 'diff-1', taskRunId: 'run-1' })
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'diffs']))
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'diffs', 'diff-1']))
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks', 'task-1']))
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1']))
+    expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'work-branches']))
     expect(keysFor('diff.created', { taskId: 'task-1', diffId: 'diff-1' }).some((key) => key.includes('task-runs'))).toBe(false)
   })
 
@@ -107,6 +108,7 @@ describe('project SSE Task model query invalidation mapping', () => {
     expect(keysFor('test-run.updated', { testRunId: 'testrun-1' })).toEqual([
       JSON.stringify(['qgents', 'projects', projectId, 'test-runs']),
       JSON.stringify(['qgents', 'projects', projectId, 'test-runs', 'testrun-1']),
+      JSON.stringify(['qgents', 'projects', projectId, 'work-branches']),
     ])
     expect(keysFor('dry-run.updated', { dryRunId: 'dryrun-1' })).toEqual([
       JSON.stringify(['qgents', 'projects', projectId, 'dry-runs']),
@@ -170,6 +172,7 @@ describe('project SSE Task model query invalidation mapping', () => {
       JSON.stringify(['qgents', 'projects', projectId, 'task-diff-review']),
       JSON.stringify(['qgents', 'projects', projectId, 'delivery-center']),
       JSON.stringify(['qgents', 'projects', projectId, 'merge-requests']),
+      JSON.stringify(['qgents', 'projects', projectId, 'work-branches']),
     ])
   })
 })

@@ -24,8 +24,8 @@ interface AuthContextValue {
 
   /** 登录：只调接口 + 存 token，返回会话，不更新 state */
   login: (email: string, password: string) => Promise<AuthSession>
-  /** 注册：只调接口 + 存 token，返回会话，不更新 state */
-  register: (email: string, password: string, displayName: string) => Promise<AuthSession>
+  /** 注册：只调接口 + 存 token，返回会话，不更新 state；verificationCode 为邮箱验证码 */
+  register: (email: string, password: string, displayName: string, verificationCode: string) => Promise<AuthSession>
   /** 把登录/注册结果一次性写入 state（与 navigate 同批调用，避免 RedirectIfAuthed 抢跳） */
   completeAuth: (session: AuthSession) => void
   /** 退出登录 */
@@ -147,7 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ──── 注册：只调接口 + 存 token，返回会话（新用户没有团队）────
   const register = useCallback(
-    async (email: string, password: string, displayName: string): Promise<AuthSession> => {
+    async (email: string, password: string, displayName: string, verificationCode: string): Promise<AuthSession> => {
       // 使用硬编码的固定 RSA 公钥加密密码（mock 阶段 encryptPassword 直传明文）
       const encryptedPassword = await encryptPassword(password)
 
@@ -156,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password: encryptedPassword,
         passwordKeyId: RSA_KEY_ID,
         displayName,
+        verificationCode,
       })
 
       localStorage.setItem(ACCESS_TOKEN_KEY, result.accessToken)

@@ -1,4 +1,5 @@
 import { request } from './client'
+import { withQuery } from './requestHelpers'
 import type {
   BindProjectRepositoryPayload,
   GithubAccountType,
@@ -10,7 +11,10 @@ import type {
   GithubAuthorizedRepository,
   GithubRepoVisibility,
   ProjectBoundRepository,
+  WorkBranch,
+  WorkBranchListFilters,
 } from '@/types/github'
+import type { TaskModelPage } from '@/types/task-model'
 
 /** 接口文档统一成功响应外壳：{ data, requestId } */
 interface ApiEnvelope<T> {
@@ -303,5 +307,17 @@ export const githubApi = {
       method: 'DELETE',
       headers: idempotencyHeaders(),
     })
+  },
+
+  /**
+   * GET /projects/{projectId}/work-branches — 项目工作分支视图（接口文档 v2.0.8 §6.2）。
+   * 支持 repositoryId / requirementGroupId / cursor / limit 过滤；统一游标分页外壳。
+   * 前端只消费真实字段，latestTask/latestDiff/openMergeRequest/lastVerification 为 null 时显示空状态。
+   */
+  workBranches(projectId: string, filters: WorkBranchListFilters = {}) {
+    return request<TaskModelPage<WorkBranch>>(
+      withQuery(`/projects/${projectId}/work-branches`, filters),
+      { unwrapData: false },
+    )
   },
 }

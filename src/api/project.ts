@@ -1,4 +1,5 @@
-import { request } from './client'
+import { request, requestPage } from './client'
+import { withQuery } from './requestHelpers'
 import type { CreateProjectPayload, Project, ProjectMember, ProjectSettings } from '@/types'
 
 /**
@@ -54,9 +55,28 @@ export const projectApi = {
     return request<void>(`/projects/${projectId}/restore`, { method: 'POST' })
   },
 
-  /** GET /projects/{projectId}/members — 项目成员与角色 */
-  listMembers(projectId: string) {
-    return request<ProjectMember[]>(`/projects/${projectId}/members`)
+  /**
+   * GET /projects/{projectId}/members — 项目成员（§24.2 分页契约）。
+   * 仅返回 project_members 显式成员（不为 canonical Team Owner 虚构行）；
+   * 当前用户可访问项目但不在列表中是合法状态，权限判断用 GET /projects/{id} 的 data.role。
+   */
+  listMembersPage(projectId: string, filters: { cursor?: string; limit?: number } = {}) {
+    return requestPage<ProjectMember>(withQuery(`/projects/${projectId}/members`, filters))
+  },
+
+  /**
+   * 兼容旧调用方：循环翻页拉取全部显式项目成员（§24.2）。
+   * 成员量级小（项目成员），一次全量返回便于 displayName 补全与差集计算。
+   */
+  async listMembers(projectId: string): Promise<ProjectMember[]> {
+    const all: ProjectMember[] = []
+    let cursor: string | undefined
+    do {
+      const page = await this.listMembersPage(projectId, { cursor, limit: 100 })
+      all.push(...page.data)
+      cursor = page.page.hasMore ? (page.page.nextCursor ?? undefined) : undefined
+    } while (cursor)
+    return all
   },
 
   /** POST /projects/{projectId}/members — 将现有团队成员加入项目 */

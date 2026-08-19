@@ -9,6 +9,9 @@ import { RedirectIfAuthed, RequireAuth, RequireTeam } from "@/routes/guards";
 // ✅ 登录页首屏直接加载
 import { LoginPage } from "@/pages/Login/LoginPage";
 
+// ✅ 忘记密码页（匿名可访问，与登录页同级）
+const ForgotPasswordPage = lazy(() => import("@/pages/ForgotPassword/ForgotPasswordPage"));
+
 // ✅ sections 统一导入保持不变
 import {
   OverviewPage,
@@ -97,6 +100,15 @@ export function AppRouter() {
             element={
               <RedirectIfAuthed>
                 <LoginPage />
+              </RedirectIfAuthed>
+            }
+          />
+
+          <Route
+            path={PATHS.FORGOT_PASSWORD}
+            element={
+              <RedirectIfAuthed>
+                <ForgotPasswordPage />
               </RedirectIfAuthed>
             }
           />

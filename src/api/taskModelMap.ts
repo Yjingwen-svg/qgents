@@ -5,6 +5,10 @@ import type {
   DiffHunk,
   DiffLine,
   DiffLineKind,
+  DiffPreview,
+  DiffPreviewFile,
+  DiffPreviewLine,
+  DiffPreviewLineType,
   MergeRequestCheck,
   MergeRequestCheckName,
   MergeRequestCqDecision,
@@ -110,6 +114,64 @@ export function mapDiffFile(raw: unknown): DiffFile {
 export function mapDiffFilePage(page: TaskModelPage<unknown>): TaskModelPage<DiffFile> {
   const data = Array.isArray(page.data) ? page.data.map(mapDiffFile) : []
   return { ...page, data }
+}
+
+/** §16 群聊 Diff 卡预览映射（GET /diffs/{diffId}/preview） */
+function mapDiffPreviewFile(raw: unknown): DiffPreviewFile | null {
+  if (!isRecord(raw)) return null
+  const fileId = readString(raw, 'fileId')
+  const path = readString(raw, 'path')
+  if (!fileId || !path) return null
+  const changeType = mapChangeType(raw.changeType ?? 'MODIFIED')
+  const extension = readOptionalString(raw, 'extension')
+  return {
+    fileId,
+    sequence: readNumber(raw, 'sequence'),
+    path,
+    fileName: readString(raw, 'fileName') || path.split('/').pop() || path,
+    extension: extension ?? undefined,
+    changeType,
+    additions: readNumber(raw, 'additions'),
+    deletions: readNumber(raw, 'deletions'),
+    binary: raw.binary === true,
+  }
+}
+
+function mapDiffPreviewLine(raw: unknown): DiffPreviewLine | null {
+  if (!isRecord(raw)) return null
+  const typeValue = raw.type
+  const type: DiffPreviewLineType =
+    typeValue === 'CONTEXT' || typeValue === 'DELETE' || typeValue === 'ADD' ? typeValue : 'CONTEXT'
+  return {
+    type,
+    oldLineNo: typeof raw.oldLineNo === 'number' ? raw.oldLineNo : null,
+    newLineNo: typeof raw.newLineNo === 'number' ? raw.newLineNo : null,
+    content: typeof raw.content === 'string' ? raw.content : '',
+    contentTruncated: raw.contentTruncated === true,
+  }
+}
+
+export function mapDiffPreview(raw: unknown): DiffPreview {
+  const row = isRecord(raw) ? raw : {}
+  return {
+    diffId: readString(row, 'diffId'),
+    detailPath: readString(row, 'detailPath'),
+    previewLineLimit: readNumber(row, 'previewLineLimit'),
+    totalFileCount: readNumber(row, 'totalFileCount'),
+    filesTruncated: row.filesTruncated === true,
+    files: Array.isArray(row.files) ? row.files.flatMap((item) => {
+      const file = mapDiffPreviewFile(item)
+      return file ? [file] : []
+    }) : [],
+    selectedFileId: readString(row, 'selectedFileId'),
+    totalLineCount: readNumber(row, 'totalLineCount'),
+    lines: Array.isArray(row.lines) ? row.lines.flatMap((item) => {
+      const line = mapDiffPreviewLine(item)
+      return line ? [line] : []
+    }) : [],
+    truncated: row.truncated === true,
+    viewDetailsRequired: row.viewDetailsRequired === true,
+  }
 }
 
 /** DiffCommentResponse：authorUserId + createdAt；authorName 需补前可缺。 */

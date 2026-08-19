@@ -1,21 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Button, Empty, Input, Spin, Typography } from 'antd'
 import { BranchesOutlined, DownOutlined, SearchOutlined, UpOutlined } from '@ant-design/icons'
-import { useDiffFiles } from '@/hooks/task-model'
+import { useQuery } from '@tanstack/react-query'
+import { ApiError, diffsApi } from '@/api'
+import { taskModelQueryKeys } from '@/query/taskModelKeys'
 import { diffFileStatusLabel } from '@/types/diff'
 import { PATHS } from '@/routes/paths'
-import type { DiffFile, DiffLine } from '@/types/task-model'
+import type { DiffPreviewFile, DiffPreviewLine } from '@/types/task-model'
 import type { DiffMessageContent, Message } from '@/types'
 
 const { Text } = Typography
 
 /** 群聊内联 Diff 展开区的固定高度（左右栏内部各自滚动） */
 const PANEL_HEIGHT = 440
-/** 文件变更行数（additions + deletions）超过该值 → 群聊内不渲染行级 diff，提示跳转详情 */
-const INLINE_MAX_CHANGED_LINES = 200
 /** 左栏文件树宽度 */
 const FILE_TREE_WIDTH = 208
+/** §16.2 卡片展开/切文件时才请求预览；以下错误码关闭预览或跳转详情 */
+const CODE_FINAL_ONLY = 'DIFF_PREVIEW_FINAL_ONLY'
+const CODE_CONTEXT_INVALID = 'DIFF_PREVIEW_CONTEXT_INVALID'
+const CODE_FILE_LIMIT = 'DIFF_PREVIEW_FILE_LIMIT'
 
 interface Props {
   message: Message
@@ -24,42 +28,64 @@ interface Props {
 }
 
 /**
- * 群聊内 Diff 卡片 —— 固定高度可展开的「文件树 + 代码提交 diff 视图」框。
- * - 头部摘要保留；点「展开 Diff」拉出固定高度左右分栏（文件树 / 行级 diff），再点收起
- * - 文件树中变更文件用绿色圆点 + A/M/D 标记；点哪个文件就打开哪个文件的 diff
- * - 文件变更行数 > 200 行 → 提示「文件太长」，点击跳转 Diff 详情页
+ * 群聊内 Diff 卡片 —— §16 契约：固定高度可展开的「文件树 + 代码提交 diff 视图」框。
+ * - 只展开 Task 级最终 Diff（后端 preview 接口校验，中间/普通 Diff 返回 422 时前端关闭预览）
+ * - 卡片折叠时不请求预览；展开 / 切换文件时才调用 GET /diffs/{diffId}/preview
+ * - 切换文件以 files[].fileId 重请求，用响应 selectedFileId 替换当前预览
+ * - viewDetailsRequired = truncated || filesTruncated || contentTruncated → 显示「查看详情」跳 detailPath
  * - 「查看 Diff」跳转 /app/projects/:projectId/code/diff/:diffId（代码提交 diff 视图）
  */
 export function ChatDiffCard({ message, projectId, onReply }: Props) {
   const c = message.content as DiffMessageContent
   const diffId = c.diffId ?? ''
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [keyword, setKeyword] = useState('')
-  const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
 
-  // 展开后才拉取文件列表：消息列表可能有多条 Diff 卡，避免全部预取
-  const { data, isLoading } = useDiffFiles(projectId, open ? diffId : '', { limit: 100 })
-  // 稳定化引用：避免每次渲染产生新数组导致下方 useMemo 重算
-  const files = useMemo(() => data?.data ?? [], [data])
+  // §16.2 卡片折叠时不请求预览；展开 / 切换文件时才调用本接口
+  const previewQuery = useQuery({
+    queryKey: taskModelQueryKeys.diffs.preview(projectId, diffId, selectedFileId ?? undefined),
+    queryFn: () => diffsApi.preview(projectId, diffId, selectedFileId ?? undefined),
+    enabled: open && !!diffId,
+  })
+  const preview = previewQuery.data
 
-  const visibleFiles = useMemo(() => {
-    const q = keyword.trim().toLowerCase()
-    if (!q) return files
-    return files.filter((f) => f.path.toLowerCase().includes(q))
-  }, [files, keyword])
-
-  // 首次加载 / 关键词过滤后，自动选中第一个可见文件
+  // §16.3.3 以响应 selectedFileId 对齐本地选中（后端可能纠正/选定默认文件），避免预览与文件树不一致
   useEffect(() => {
-    if (visibleFiles.length === 0) return
-    if (!visibleFiles.some((f) => f.path === selectedPath)) {
-      setSelectedPath(visibleFiles[0].path)
-    }
-  }, [visibleFiles, selectedPath])
+    if (!preview || !preview.selectedFileId) return
+    if (preview.selectedFileId !== selectedFileId) setSelectedFileId(preview.selectedFileId)
+  }, [preview, selectedFileId])
 
-  const current = visibleFiles.find((f) => f.path === selectedPath) ?? visibleFiles[0]
-  const changedLines = (current?.additions ?? 0) + (current?.deletions ?? 0)
-  const tooLong = changedLines > INLINE_MAX_CHANGED_LINES
+  // §16.3.5 错误码：422 FINAL_ONLY / CONTEXT_INVALID → 不可展开；422 FILE_LIMIT → 直接跳详情
+  const previewErrorCode =
+    previewQuery.error instanceof ApiError &&
+    previewQuery.error.body &&
+    typeof previewQuery.error.body === 'object' &&
+    'error' in previewQuery.error.body
+      ? (previewQuery.error.body as { error?: { code?: unknown } }).error?.code
+      : undefined
+  const notExpandable = previewErrorCode === CODE_FINAL_ONLY || previewErrorCode === CODE_CONTEXT_INVALID
+  useEffect(() => {
+    if (previewErrorCode === CODE_FILE_LIMIT) {
+      navigate(PATHS.projectCodeDiff(projectId, diffId))
+    }
+  }, [previewErrorCode, projectId, diffId, navigate])
+
+  // 文件树：按文件名/路径过滤；文件标签用 fileName + extension，path 区分同名
+  const visibleFiles = useMemo<DiffPreviewFile[]>(() => {
+    if (!preview) return []
+    const q = keyword.trim().toLowerCase()
+    if (!q) return preview.files
+    return preview.files.filter(
+      (f) => f.path.toLowerCase().includes(q) || f.fileName.toLowerCase().includes(q),
+    )
+  }, [preview, keyword])
+
+  const selectedFile =
+    preview?.files.find((f) => f.fileId === preview.selectedFileId) ?? visibleFiles[0]
   const tree = useMemo(() => groupFiles(visibleFiles), [visibleFiles])
+  const detailPath = preview?.detailPath || PATHS.projectCodeDiff(projectId, diffId)
 
   const displayTitle = c.displayCode
     ? `${c.displayCode}${c.repositoryName ? ` · ${c.repositoryName}` : ''}${c.sourceBranch ? ` / ${c.sourceBranch}` : ''}`
@@ -97,11 +123,11 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
         {c.deletions != null ? (
           <Text style={{ fontSize: 12, color: '#dc2626' }}>-{c.deletions}</Text>
         ) : null}
-        {files.length > 0 ? (
-          <Text type="secondary" style={{ fontSize: 12 }}>{files.length} 个文件</Text>
+        {preview && preview.totalFileCount > 0 ? (
+          <Text type="secondary" style={{ fontSize: 12 }}>{preview.totalFileCount} 个文件</Text>
         ) : null}
       </div>
-      {/* 变更文件列表（收起时展示路径摘要） */}
+      {/* 变更文件列表（收起时展示消息 content 里的路径摘要） */}
       {!open && c.files && c.files.length > 0 ? (
         <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
           {c.files.slice(0, 5).map((file) => (
@@ -137,8 +163,8 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
       </div>
 
       {/* 展开区：固定高度「文件树 + diff 视图」左右分栏。
-          宽度固定 820px（窄屏受气泡 maxWidth 78% 限制收缩，不会溢出），
-          避免右侧代码行少时整框跟着缩水；代码超长行在右侧内容区横向滚动。 */}
+          宽度固定 820px（窄屏受气泡 maxWidth 78% 限制收缩，不会溢出）；
+          代码超长行在右侧内容区整体横向滚动。 */}
       {open ? (
         <div
           style={{
@@ -186,84 +212,119 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
               />
             </div>
             <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-              {isLoading ? (
+              {previewQuery.isLoading ? (
                 <div style={{ textAlign: 'center', padding: 24 }}>
                   <Spin size="small" />
+                </div>
+              ) : notExpandable ? (
+                <div style={{ padding: 16, fontSize: 12, color: '#5b6b82' }}>
+                  该 Diff 不可在群聊中展开（仅 Task 级最终 Diff 可预览）
                 </div>
               ) : tree.length === 0 ? (
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有文件" />
               ) : (
-                tree.map((group) => (
-                  <div key={group.dir || '(root)'}>
-                    {group.dir ? (
-                      <div style={{ padding: '6px 12px 2px', fontSize: 12, color: '#5b6b82' }}>
-                        {group.dir}
-                      </div>
-                    ) : null}
-                    {group.files.map((file) => {
-                      const active = current?.path === file.path
-                      const mark = diffFileStatusLabel(file.changeType || file.status)
-                      return (
-                        <button
-                          key={file.path}
-                          type="button"
-                          onClick={() => setSelectedPath(file.path)}
-                          style={{
-                            width: '100%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            border: 0,
-                            background: active ? '#eef8f6' : 'transparent',
-                            padding: '6px 12px 6px 20px',
-                            textAlign: 'left',
-                            cursor: 'pointer',
-                            color: 'inherit',
-                          }}
-                        >
-                          {/* 有 diff 的文件的绿色符号标记 */}
-                          <span
+                <>
+                  {tree.map((group) => (
+                    <div key={group.dir || '(root)'}>
+                      {group.dir ? (
+                        <div style={{ padding: '6px 12px 2px', fontSize: 12, color: '#5b6b82' }}>
+                          {group.dir}
+                        </div>
+                      ) : null}
+                      {group.files.map((file) => {
+                        const active = selectedFile?.fileId === file.fileId
+                        const mark = diffFileStatusLabel(file.changeType || 'MODIFIED')
+                        return (
+                          <button
+                            key={file.fileId}
+                            type="button"
+                            onClick={() => setSelectedFileId(file.fileId)}
+                            title={file.path}
                             style={{
-                              width: 6,
-                              height: 6,
-                              borderRadius: '50%',
-                              background: '#16a34a',
-                              flexShrink: 0,
-                            }}
-                          />
-                          <span
-                            style={{
-                              minWidth: 0,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              fontSize: 13,
+                              width: '100%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              border: 0,
+                              background: active ? '#eef8f6' : 'transparent',
+                              padding: '6px 12px 6px 20px',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              color: 'inherit',
                             }}
                           >
-                            {fileName(file.path)}
-                          </span>
-                          <span
-                            style={{
-                              marginLeft: 'auto',
-                              fontSize: 11,
-                              fontWeight: 800,
-                              color: mark === 'A' ? '#16a34a' : mark === 'M' ? '#2563eb' : '#dc2626',
-                            }}
-                          >
-                            {mark}
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                ))
+                            {/* 有 diff 的文件的绿色符号标记 */}
+                            <span
+                              style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: '50%',
+                                background: '#16a34a',
+                                flexShrink: 0,
+                              }}
+                            />
+                            <span
+                              style={{
+                                minWidth: 0,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                fontSize: 13,
+                              }}
+                            >
+                              {file.fileName}
+                            </span>
+                            <span
+                              style={{
+                                marginLeft: 'auto',
+                                fontSize: 11,
+                                fontWeight: 800,
+                                color: mark === 'A' ? '#16a34a' : mark === 'M' ? '#2563eb' : '#dc2626',
+                              }}
+                            >
+                              {mark}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ))}
+                  {preview?.filesTruncated ? (
+                    <div style={{ padding: '8px 12px', fontSize: 12, color: '#5b6b82' }}>
+                      仅显示前 {preview.files.length} 个文件 ·{' '}
+                      <Link to={detailPath}>查看详情</Link>
+                    </div>
+                  ) : null}
+                </>
               )}
             </div>
           </div>
 
-          {/* 右栏：行级 diff 视图（整体横向滚动：内容按最长代码行撑宽，一个总滚动条） */}
+          {/* 右栏：行级 diff 预览（整体横向滚动，行号列固定） */}
           <div style={{ flex: 1, minWidth: 0, overflow: 'auto', background: '#fff' }}>
-            {current ? (
+            {notExpandable ? (
+              <div style={{ padding: '40px 16px', textAlign: 'center', color: '#5b6b82' }}>
+                <Text style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>
+                  该 Diff 不可在群聊中展开（仅 Task 级最终 Diff 可预览）
+                </Text>
+                <Link to={detailPath}>
+                  <Button size="small" type="primary">查看详情</Button>
+                </Link>
+              </div>
+            ) : previewQuery.isLoading ? (
+              <div style={{ textAlign: 'center', padding: 40 }}>
+                <Spin />
+              </div>
+            ) : previewQuery.isError ? (
+              <div style={{ padding: '40px 16px', textAlign: 'center', color: '#5b6b82' }}>
+                <Text style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>
+                  预览加载失败
+                </Text>
+                <Button size="small" onClick={() => void previewQuery.refetch()}>重试</Button>
+              </div>
+            ) : !preview || !selectedFile ? (
+              <Empty style={{ margin: 40 }} description="没有文件" />
+            ) : (
               <>
                 <div
                   style={{
@@ -278,49 +339,36 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
                   }}
                 >
                   <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {current.path}
+                    {selectedFile.path}
                   </span>
-                  <Text type="success" style={{ fontSize: 12 }}>+{current.additions}</Text>
-                  <Text type="danger" style={{ fontSize: 12 }}>-{current.deletions}</Text>
-                </div>
-                {tooLong ? (
-                  <div style={{ padding: '40px 16px', textAlign: 'center', color: '#5b6b82' }}>
-                    <Text style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>
-                      文件变更 {changedLines} 行，内容过长，群聊内不展示行级 Diff
-                    </Text>
-                    <Link to={PATHS.projectCodeDiff(projectId, diffId)}>
-                      <Button size="small" type="primary">
-                        查看完整 Diff
-                      </Button>
+                  <Text type="success" style={{ fontSize: 12 }}>+{selectedFile.additions}</Text>
+                  <Text type="danger" style={{ fontSize: 12 }}>-{selectedFile.deletions}</Text>
+                  {preview.viewDetailsRequired ? (
+                    <Link to={detailPath} style={{ marginLeft: 'auto' }}>
+                      <Button size="small" type="link">查看详情</Button>
                     </Link>
+                  ) : null}
+                </div>
+                {selectedFile.binary ? (
+                  <div style={{ padding: 36, textAlign: 'center', color: '#5b6b82' }}>
+                    二进制文件，无法展示正文
                   </div>
-                ) : current.binary || current.hunks.length === 0 ? (
-                  <Empty style={{ margin: 40 }} description="无行级 Diff（二进制文件或暂无 hunks）" />
+                ) : preview.lines.length === 0 ? (
+                  <Empty style={{ margin: 40 }} description="无行级 Diff" />
                 ) : (
                   <div style={{ width: 'max-content', minWidth: '100%' }}>
-                    {current.hunks.map((hunk) => (
-                      <div key={hunk.id}>
-                        <div
-                          style={{
-                            padding: '6px 12px',
-                            background: '#f4f7fb',
-                            color: '#5b6b82',
-                            fontFamily: 'ui-monospace, Consolas, monospace',
-                            fontSize: 12,
-                          }}
-                        >
-                          {hunk.header}
-                        </div>
-                        {hunk.lines.map((line, lineIndex) => (
-                          <DiffLineRow key={`${hunk.id}-${lineIndex}`} line={line} />
-                        ))}
-                      </div>
+                    {preview.lines.map((line, index) => (
+                      <PreviewLineRow key={index} line={line} />
                     ))}
+                    {preview.truncated ? (
+                      <div style={{ padding: '10px 12px', fontSize: 12, color: '#5b6b82' }}>
+                        已显示前 {preview.previewLineLimit} 行（共至少 {preview.totalLineCount} 行）·{' '}
+                        <Link to={detailPath}>查看详情</Link>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </>
-            ) : (
-              <Empty style={{ margin: 40 }} description="没有文件" />
             )}
           </div>
         </div>
@@ -329,10 +377,9 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
   )
 }
 
-/** 行级 diff：行号 + 符号 + 内容（ADD 绿底 / DEL 红底）。
- *  代码列不换行不截断，由右侧内容区的总横向滚动条统一滚动（行号列固定不跟着滚）。 */
-function DiffLineRow({ line }: { line: DiffLine }) {
-  const sign = line.kind === 'ADD' ? '+' : line.kind === 'DEL' ? '-' : ''
+/** 预览行：行号 + 符号 + 内容（ADD 绿底 / DELETE 红底 / CONTEXT 无背景） */
+function PreviewLineRow({ line }: { line: DiffPreviewLine }) {
+  const sign = line.type === 'ADD' ? '+' : line.type === 'DELETE' ? '-' : ''
   return (
     <div
       style={{
@@ -340,27 +387,23 @@ function DiffLineRow({ line }: { line: DiffLine }) {
         fontFamily: 'ui-monospace, Consolas, monospace',
         fontSize: 12,
         lineHeight: 1.55,
-        background: line.kind === 'ADD' ? '#e7f8ee' : line.kind === 'DEL' ? '#fdecec' : undefined,
+        background: line.type === 'ADD' ? '#e7f8ee' : line.type === 'DELETE' ? '#fdecec' : undefined,
       }}
     >
       <span style={{ width: 44, flexShrink: 0, color: '#94a3b8', textAlign: 'right', padding: '0 6px', userSelect: 'none' }}>
-        {line.oldLine ?? ''}
+        {line.oldLineNo ?? ''}
       </span>
       <span style={{ width: 44, flexShrink: 0, color: '#94a3b8', textAlign: 'right', padding: '0 6px', userSelect: 'none' }}>
-        {line.newLine ?? ''}
+        {line.newLineNo ?? ''}
       </span>
       <span style={{ width: 22, flexShrink: 0, textAlign: 'center', fontWeight: 700 }}>{sign}</span>
-      <span style={{ padding: '0 10px', whiteSpace: 'pre' }}>{line.text}</span>
+      <span style={{ padding: '0 10px', whiteSpace: 'pre' }}>{line.content}</span>
     </div>
   )
 }
 
-function fileName(path: string): string {
-  return path.split('/').pop() || path
-}
-
-function groupFiles(files: DiffFile[]): Array<{ dir: string; files: DiffFile[] }> {
-  const map = new Map<string, DiffFile[]>()
+function groupFiles(files: DiffPreviewFile[]): Array<{ dir: string; files: DiffPreviewFile[] }> {
+  const map = new Map<string, DiffPreviewFile[]>()
   for (const file of files) {
     const parts = file.path.split('/')
     const dir = parts.slice(0, -1).join('/')

@@ -41,6 +41,9 @@ export const taskModelQueryKeys = {
     detail: (projectId: string, diffId: string) => ['qgents', 'projects', projectId, 'diffs', diffId] as const,
     files: (projectId: string, diffId: string, filters: PageFilters = {}) => ['qgents', 'projects', projectId, 'diffs', diffId, 'files', filters] as const,
     comments: (projectId: string, diffId: string, filters: PageFilters = {}) => ['qgents', 'projects', projectId, 'diffs', diffId, 'comments', filters] as const,
+    /** §16 群聊 Diff 卡预览（fileId 为空 = 未选文件，取顺序最早文件） */
+    preview: (projectId: string, diffId: string, fileId?: string) =>
+      ['qgents', 'projects', projectId, 'diffs', diffId, 'preview', fileId ?? ''] as const,
   },
   mergeRequests: {
     all: (projectId: string) => ['qgents', 'projects', projectId, 'merge-requests'] as const,

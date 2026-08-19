@@ -301,6 +301,48 @@ export interface DiffFile {
   hunks: DiffHunk[]
 }
 
+/** §16 群聊 Diff 卡预览（GET /diffs/{diffId}/preview，只允许 Task 级最终 Diff） */
+export type DiffPreviewLineType = 'CONTEXT' | 'DELETE' | 'ADD'
+
+/** 预览文件标签（最多 100 项；filesTruncated=true 时未返回的文件不展示） */
+export interface DiffPreviewFile {
+  fileId: string
+  sequence: number
+  path: string
+  fileName: string
+  extension?: string
+  changeType: DiffFileStatus
+  additions: number
+  deletions: number
+  binary: boolean
+}
+
+/** 预览行：content 不带 unified diff 的 + - 前缀，按 type 渲染 */
+export interface DiffPreviewLine {
+  type: DiffPreviewLineType
+  oldLineNo: number | null
+  newLineNo: number | null
+  content: string
+  contentTruncated: boolean
+}
+
+/** §16.1 预览响应 data */
+export interface DiffPreview {
+  diffId: string
+  /** 前端路由 /app/projects/{projectId}/code/diff/{diffId}（“查看详情”跳转目标） */
+  detailPath: string
+  previewLineLimit: number
+  totalFileCount: number
+  filesTruncated: boolean
+  files: DiffPreviewFile[]
+  selectedFileId: string
+  totalLineCount: number
+  lines: DiffPreviewLine[]
+  truncated: boolean
+  /** viewDetailsRequired = truncated || filesTruncated || lines[].contentTruncated */
+  viewDetailsRequired: boolean
+}
+
 export interface DiffComment {
   id: string
   diffId?: string | null

@@ -211,11 +211,22 @@
 
 .diff-review__aside {
   padding: 12px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
-.diff-review__aside h3 {
+.diff-review__aside-title {
+  flex-shrink: 0;
   margin: 0 0 8px;
   font-size: 13px;
+}
+
+.diff-review__aside-history {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .diff-review__aside p {
@@ -232,6 +243,19 @@
 
 .diff-review__actions .ant-btn {
   width: 100%;
+}
+
+.diff-review__composer {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #e8edf3;
+}
+
+.diff-review__composer .ant-input {
+  font-size: 13px;
 }
 
 .diff-review__action-wrap {

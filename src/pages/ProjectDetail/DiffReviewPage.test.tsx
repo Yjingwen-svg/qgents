@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { App } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -226,6 +226,32 @@ describe('DiffReviewPage', () => {
   })
 
   // 9 个依赖已下线功能（accept/reject/create MR/MR 列表/自动跳转新快照）的测试已下线
+
+  it('can submit a comment via the comment composer', async () => {
+    const submitMock = vi.fn().mockResolvedValue(undefined)
+    const mutateMock = vi.fn((_input, opts) => {
+      opts?.onSuccess()
+      submitMock()
+    })
+    useAddDiffCommentMock.mockReturnValue({ mutate: mutateMock, mutateAsync: vi.fn(), isPending: false })
+
+    renderPage()
+    const textarea = await screen.findByPlaceholderText('在当前 Diff 发表意见')
+    fireEvent.change(textarea, { target: { value: '这段逻辑需要优化一下' } })
+    const button = screen.getByRole('button', { name: /发表评论/ })
+    expect(button).not.toBeDisabled()
+    fireEvent.click(button)
+    await waitFor(() => {
+      expect(mutateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ body: '这段逻辑需要优化一下', path: 'src/auth/AuthController.ts' }),
+        expect.any(Object),
+      )
+    })
+    await waitFor(() => {
+      expect(submitMock).toHaveBeenCalled()
+    })
+    expect(screen.getByPlaceholderText('在当前 Diff 发表意见')).toHaveValue('')
+  })
 
   it('shows an empty hunk state when files have no structured lines', async () => {
     useDiffFilesMock.mockReturnValue({

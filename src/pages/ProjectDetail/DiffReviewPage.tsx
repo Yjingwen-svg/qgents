@@ -11,11 +11,13 @@ import {
   App,
   Spin,
   Alert,
+  Input,
 } from 'antd'
 import {
   LeftOutlined,
   RightOutlined,
   DownloadOutlined,
+  SendOutlined,
 } from '@ant-design/icons'
 import { projectApi } from '@/api/project'
 import { formatApiError } from '@/utils/formatApiError'
@@ -25,6 +27,7 @@ import {
   useDiffComments,
   useDiffFiles,
   useTask,
+  useAddDiffComment,
 } from '@/hooks/task-model'
 import { isEmptyBranchDiffId } from './emptyBranchDiff'
 import { diffFileStatusLabel, diffStatusLabel } from '@/types/diff'
@@ -58,6 +61,7 @@ const FILE_PAGE_SIZE = 100
 export default function DiffReviewPage() {
   const { message } = App.useApp()
 void message // message 占位：暂未使用，保留以便后续提示
+  const [draft, setDraft] = useState('')
   const { projectId = '', diffId = '' } = useParams<{
     projectId: string
     diffId: string
@@ -78,6 +82,7 @@ void message // message 占位：暂未使用，保留以便后续提示
   const filesQuery = useDiffFiles(projectId, liveDiffId, { limit: FILE_PAGE_SIZE })
   const commentsQuery = useDiffComments(projectId, liveDiffId, { limit: FILE_PAGE_SIZE })
   const taskQuery = useTask(projectId, detailQuery.data?.taskId ?? '')
+  const addComment = useAddDiffComment(projectId, liveDiffId)
 
   const review = detailQuery.data
   const files = filesQuery.data?.data ?? []
@@ -107,6 +112,29 @@ void message // message 占位：暂未使用，保留以便后续提示
   function goFile(next: number) {
     if (next < 0 || next >= files.length) return
     setFileIndex(next)
+  }
+
+  function submitComment() {
+    if (!review || !draft.trim()) return
+    const firstChanged = current?.hunks
+      .flatMap((hunk) => hunk.lines)
+      .find((line) => line.kind === 'ADD' || line.kind === 'DEL')
+    addComment.mutate(
+      {
+        path: current?.path,
+        side: 'RIGHT',
+        line: firstChanged?.newLine ?? firstChanged?.oldLine ?? 1,
+        hunkId: current?.hunks[0]?.id,
+        body: draft.trim(),
+      },
+      {
+        onSuccess: () => {
+          setDraft('')
+          message.success('评论已提交')
+        },
+        onError: (error) => message.error(formatApiError(error)),
+      },
+    )
   }
 
 
@@ -269,15 +297,6 @@ void message // message 占位：暂未使用，保留以便后续提示
                   </div>
                 ))
               )}
-              <div className="diff-review__thread">
-                {fileComments.length === 0 ? (
-                  <Text type="secondary">当前文件还没有行级评论</Text>
-                ) : (
-                  fileComments.map((item) => (
-                    <CommentCard key={item.id} comment={item} members={members} />
-                  ))
-                )}
-              </div>
             </>
           ) : (
             <Empty style={{ margin: 48 }} description="没有文件" />
@@ -289,6 +308,10 @@ void message // message 占位：暂未使用，保留以便后续提示
             comments={comments}
             members={members}
             fileLookup={fileLookup}
+            draft={draft}
+            submitting={addComment.isPending}
+            onDraftChange={setDraft}
+            onSubmit={submitComment}
           />
         </aside>
       </div>
@@ -300,10 +323,18 @@ function ReviewAside({
   comments,
   members,
   fileLookup,
+  draft,
+  submitting,
+  onDraftChange,
+  onSubmit,
 }: {
   comments: DiffComment[]
   members: Array<{ userId: string; displayName?: string }>
   fileLookup: Map<string, string>
+  draft: string
+  submitting: boolean
+  onDraftChange: (value: string) => void
+  onSubmit: () => void
 }) {
   // 按创建时间升序：旧 → 新
   const sorted = [...comments].sort((a, b) => {
@@ -314,58 +345,40 @@ function ReviewAside({
 
   return (
     <div className="diff-review__aside">
-      <h3>历史评论</h3>
-      {sorted.length === 0 ? (
-        <Text type="secondary">还没有评论记录</Text>
-      ) : (
-        <div className="diff-review__thread">
-          {sorted.map((item) => (
+      <h3 className="diff-review__aside-title">历史评论</h3>
+      <div className="diff-review__aside-history">
+        {sorted.length === 0 ? (
+          <Text type="secondary">还没有评论记录</Text>
+        ) : (
+          sorted.map((item) => (
             <CommentCard
               key={item.id}
               comment={item}
               members={members}
               fileLabel={item.path ? fileLookup.get(item.path) ?? item.path : undefined}
             />
-          ))}
-        </div>
-      )}
-
-      {/* 暂未启用：保留供后续恢复
-      <h3>关联跳转</h3>
-      <Space direction="vertical" size={4}>
-        <Link to={reqChatTo}>引用 Diff 回需求群</Link>
-        <Link to={PATHS.projectTasks(projectId)}>跳转关联任务</Link>
-        <Link to={`${PATHS.projectCode(projectId)}?tab=mr`}>查看项目 MR 列表</Link>
-        <Link to={PATHS.projectDiff(projectId, review.id)}>交付中心摘要</Link>
-      </Space>
-      <h3 style={{ marginTop: 16 }}>MR 前预检</h3>
-      <PreflightPanel
-        preflight={preflight}
-        loading={preflightLoading}
-        error={preflightError}
-        onRefresh={onRefreshPreflight}
-      />
-      <div className="diff-review__actions">
-        <Button disabled>标记评论已解决</Button>
-        {canReviewDiff && pending ? (
-          <Button danger loading={rejecting} onClick={onReject} aria-label="reject-diff">
-            请求修改
-          </Button>
-        ) : null}
-        <ReviewPrimaryButton
-          canReviewDiff={canReviewDiff}
-          pending={pending}
-          accepting={accepting}
-          creatingMr={creatingMr}
-          createMrHint={createMrHint}
-          existingMr={existingMr}
-          githubMrUrl={githubMrUrl}
-          projectId={projectId}
-          onAccept={onAccept}
-          onCreateMr={onCreateMr}
-        />
+          ))
+        )}
       </div>
-      */}
+
+      <div className="diff-review__composer">
+        <Input.TextArea
+          id="diff-comment-input"
+          value={draft}
+          placeholder="在当前 Diff 发表意见"
+          autoSize={{ minRows: 3, maxRows: 6 }}
+          onChange={(event) => onDraftChange(event.target.value)}
+        />
+        <Button
+          type="primary"
+          icon={<SendOutlined />}
+          loading={submitting}
+          disabled={!draft.trim()}
+          onClick={onSubmit}
+        >
+          发表评论
+        </Button>
+      </div>
     </div>
   )
 }

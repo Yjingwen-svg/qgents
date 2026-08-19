@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Drawer, Divider, Avatar } from 'antd'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Drawer, Divider, Avatar, Spin } from 'antd'
 import { App, Upload } from 'antd'
 import {
   SendOutlined,
@@ -15,7 +15,7 @@ import {
   CloseOutlined,
   SettingOutlined,
 } from '@ant-design/icons'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
 import { ApiError, groupApi, projectApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
 import { resolvePreviewUrl } from '@/api/attachment'
@@ -133,14 +133,20 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     data: page,
     isLoading,
     isError,
-  } = useQuery({
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['groups', projectId, groupId, 'messages'],
-    queryFn: () => groupApi.listMessages(projectId, groupId),
+    queryFn: ({ pageParam }) => groupApi.listMessages(projectId, groupId, pageParam as string | undefined),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => (lastPage.page.hasMore ? lastPage.page.nextCursor : undefined),
     enabled: !!projectId && !!groupId,
   })
-  // 后端消息列表不保证顺序，按 sequence（缺则退回 createdAt）升序排，保证新消息在下方
+  // 后端消息列表不保证顺序，按 sequence（缺则退回 createdAt）升序排，保证新消息在下方。
+  // useInfiniteQuery 的 page 顺序是「第一页(最新) → 下一页(更早)」，合并后统一按 sequence 升序。
   const messages = useMemo(() => {
-    const list = page?.data ?? []
+    const list = page?.pages.flatMap((p) => p.data) ?? []
     return [...list].sort((a, b) => {
       const as = a.sequence ?? Number.MAX_SAFE_INTEGER
       const bs = b.sequence ?? Number.MAX_SAFE_INTEGER
@@ -182,11 +188,34 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
 
   // 用户滚动消息列表：据此更新「是否应该保持贴底」。
   // 接近底部 → 贴底；明显上翻查看历史 → 不贴底（图片加载也不拉回）。
+  // 滚到顶部且还有更早的历史 → 触发分页加载（cursor 翻页，往上加载更早消息）。
   const handleScroll = useCallback(() => {
     const el = listRef.current
     if (!el) return
     shouldStickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 80
-  }, [])
+    // 顶部触发加载更早历史：scrollTop 接近 0 且还有下一页，且不在加载中
+    if (el.scrollTop <= 24 && hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage()
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
+  // 向上加载更早消息后保持滚动位置：记录加载前的「距底距离」，加载完成后恢复，
+  // 避免新页插入顶部后视图跳到顶部（停留在原来看的那条消息附近）。
+  const prevScrollAnchorRef = useRef<number | null>(null)
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    if (isFetchingNextPage) {
+      prevScrollAnchorRef.current = el.scrollHeight - el.scrollTop
+      return
+    }
+    const anchor = prevScrollAnchorRef.current
+    if (anchor != null && messages.length > 0) {
+      el.scrollTop = el.scrollHeight - anchor
+    }
+    prevScrollAnchorRef.current = null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFetchingNextPage, messages.length])
 
   // ResizeObserver：监听消息内容容器高度变化（图片加载、新消息渲染都会改变高度）。
   // 辅助机制：图片 onLoad 是主信号，RO 兜底覆盖「图片失败/懒加载等无 onLoad 场景」。
@@ -257,18 +286,20 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   }, [groupId, markGroupReadNow])
 
   // 离开群 / 组件卸载时：补一次「离开即已读」，把游标推进到该群最新消息。
-  // 否则「进群后新消息累积的 unreadCount」会在离开群后于侧栏冒红点
-  // （侧栏红点渲染只看 unreadCount，不看当前是否在看该群——见 ProjectDetailLayout）。
+  // 否则「进群后新消息累积的 unreadCount / mentionedUnread」会在离开群后于侧栏残留红点/红字
+  // （侧栏红点与「有人@你」渲染只看 unreadCount / mentionedUnread，不看当前是否在看该群——见 ProjectDetailLayout）。
   // 注意：只调接口 + 更新 queryClient 缓存，不做 setState（卸载时 setState 会告警）。
   useEffect(() => {
     const projectIdAtMount = projectId
     const groupIdAtMount = groupId
     return () => {
       if (!projectIdAtMount || !groupIdAtMount) return
-      // 乐观清零该群 unreadCount，避免离开后侧栏红点残留
+      // 乐观清零该群 unreadCount 与 mentionedUnread，避免离开后侧栏红点/红字残留
       const clearLeft = (groups: Group[] | undefined): Group[] | undefined =>
         groups
-          ? groups.map((g) => (g.id === groupIdAtMount ? { ...g, unreadCount: 0 } : g))
+          ? groups.map((g) =>
+              g.id === groupIdAtMount ? { ...g, unreadCount: 0, mentionedUnread: 0 } : g,
+            )
           : groups
       queryClient.setQueryData<Group[]>(['groups', projectIdAtMount], clearLeft)
       queryClient.setQueryData<Group[]>(['chat', 'main-groups'], clearLeft)
@@ -295,10 +326,15 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
    */
   const reconcileMessages = useCallback(async (): Promise<void> => {
     if (!projectId || !groupId) return
-    const cached = queryClient.getQueryData<Page<Message>>(['groups', projectId, groupId, 'messages'])
-    const sequences = (cached?.data ?? [])
-      .map((m) => m.sequence)
-      .filter((s): s is number => typeof s === 'number')
+    // useInfiniteQuery 缓存结构为 { pages, pageParams }：取全部页的消息算最大 sequence
+    const cached = queryClient.getQueryData<InfiniteData<Page<Message>>>([
+      'groups',
+      projectId,
+      groupId,
+      'messages',
+    ])
+    const all = cached?.pages.flatMap((p) => p.data) ?? []
+    const sequences = all.map((m) => m.sequence).filter((s): s is number => typeof s === 'number')
     const maxSequence = sequences.length > 0 ? Math.max(...sequences) : null
 
     if (maxSequence == null) {
@@ -310,16 +346,25 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     }
 
     try {
-      // §1：增量拉取 sequence > maxSequence 的消息，按 id 去重合并
+      // §1：增量拉取 sequence > maxSequence 的消息，按 id 去重合并进第一页（最新页）
       const incremental = await groupApi.listMessagesIncremental(projectId, groupId, maxSequence)
       if (incremental.data.length === 0) return
-      queryClient.setQueryData<Page<Message>>(
+      queryClient.setQueryData<InfiniteData<Page<Message>>>(
         ['groups', projectId, groupId, 'messages'],
         (prev) => {
-          const base = prev ?? { data: [], page: { nextCursor: null, hasMore: false } }
-          const known = new Set(base.data.map((m) => m.id))
-          const merged = [...base.data, ...incremental.data.filter((m) => !known.has(m.id))]
-          return { ...base, data: merged }
+          if (!prev) {
+            return {
+              pages: [incremental],
+              pageParams: [undefined],
+            }
+          }
+          const [first, ...rest] = prev.pages
+          const known = new Set(first.data.map((m) => m.id))
+          const merged = [...first.data, ...incremental.data.filter((m) => !known.has(m.id))]
+          return {
+            ...prev,
+            pages: [{ ...first, data: merged }, ...rest],
+          }
         },
       )
       // 群列表/主群的最新消息摘要也需校准
@@ -425,10 +470,21 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       void groupApi
         .getMessage(projectId, groupId, mentionMessageId)
         .then((msg) => {
-          queryClient.setQueryData<Page<Message>>(['groups', projectId, groupId, 'messages'], (prev) => {
-            if (!prev || prev.data.some((m) => m.id === msg.id)) return prev
-            return { ...prev, data: [...prev.data, msg] }
-          })
+          // useInfiniteQuery 缓存结构为 { pages, pageParams }：单条合并进第一页（最新页）
+          queryClient.setQueryData<InfiniteData<Page<Message>>>(
+            ['groups', projectId, groupId, 'messages'],
+            (prev) => {
+              if (!prev || prev.pages[0]?.data.some((m) => m.id === msg.id)) return prev
+              const [first, ...rest] = prev.pages
+              return {
+                ...prev,
+                pages: [
+                  { ...first, data: [...first.data, msg] },
+                  ...rest,
+                ],
+              }
+            },
+          )
         })
         .catch(() => {
           // 单条拉取失败：静默，不阻塞聊天
@@ -706,6 +762,20 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           <Empty description="还没有消息，来说点什么吧" />
         ) : (
           <div ref={contentRef} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* 顶部：加载更早历史的分页指示 */}
+            <div style={{ textAlign: 'center', padding: '8px 0' }}>
+              {isFetchingNextPage ? (
+                <Spin size="small" />
+              ) : hasNextPage ? (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  向上滚动加载更早消息
+                </Text>
+              ) : (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  — 已加载全部历史消息 —
+                </Text>
+              )}
+            </div>
             {messages.map((m) => {
               const isSelf = m.senderType === 'USER' && m.senderId === user?.id
               const flashing = mentionFlashId === m.id

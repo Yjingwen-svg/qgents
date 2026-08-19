@@ -145,7 +145,10 @@ export default function ChatWorkspacePage() {
                             {s.groupTitle}
                           </Text>
                           <Space size={4}>
-                            {typeof s.mentionedUnread === 'number' && s.mentionedUnread > 0 ? (
+                            {/* 正在查看的群不显示「有人@你」（人在群里，无需侧栏提示；离开时 markRead 清掉） */}
+                            {selected?.groupId !== s.groupId &&
+                            typeof s.mentionedUnread === 'number' &&
+                            s.mentionedUnread > 0 ? (
                               <span
                                 style={{
                                   padding: '0 7px',

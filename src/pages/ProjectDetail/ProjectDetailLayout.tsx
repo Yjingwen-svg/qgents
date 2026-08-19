@@ -179,8 +179,11 @@ export default function ProjectDetailLayout() {
               {pinned && <PushpinOutlined className="pd-nav__branch-pin" />}
               <span className="pd-nav__branch-title">{g.title}</span>
               {isMain && <span className="pd-nav__branch-main-tag">总群</span>}
-              {/* 未读 @ 角标：该群有 @ 我的未读消息（后端 mentionedUnread > 0 时显示） */}
-              {typeof g.mentionedUnread === 'number' && g.mentionedUnread > 0 ? (
+              {/* 未读 @ 角标：该群有 @ 我的未读消息（后端 mentionedUnread > 0 时显示）。
+                  正在查看的群不显示（人在群里，无需侧栏红字提示；离开时 markRead 会清掉） */}
+              {(!onReqChat || groupId !== g.id) &&
+              typeof g.mentionedUnread === 'number' &&
+              g.mentionedUnread > 0 ? (
                 <span
                   style={{
                     padding: '0 7px',

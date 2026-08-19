@@ -41,8 +41,14 @@ export function GroupMemberSettings({ projectId, group }: Props) {
       const putRes = await fetch(credential.uploadUrl, { method: 'PUT', body: await file.arrayBuffer() })
       if (!putRes.ok) throw new Error(`头像上传失败（${putRes.status}）`)
       const result = await projectApi.avatarConfirm(projectId, credential.objectKey)
-      await projectApi.update(projectId, { avatarUrl: result.avatarUrl })
-      void queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
+      // URL 追加版本参数：强制浏览器绕过缓存加载最新图（避免旧图缓存 2-3 分钟）
+      const avatarUrl = withCacheBuster(result.avatarUrl)
+      await projectApi.update(projectId, { avatarUrl })
+      // 同步刷新所有展示项目头像的查询：项目详情/群聊、团队首页-项目列表（key 不同，需分别失效）
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
+      if (project?.teamId) {
+        queryClient.invalidateQueries({ queryKey: ['teams', project.teamId, 'projects'] })
+      }
       message.success('项目头像已更新')
     } catch (err) {
       message.error(err instanceof Error ? err.message : '头像上传失败，请重试')
@@ -253,4 +259,11 @@ export function GroupMemberSettings({ projectId, group }: Props) {
       </Modal>
     </>
   )
+}
+
+/** 给 OSS 公共读 URL 追加版本参数，强制浏览器绕过缓存加载最新图 */
+function withCacheBuster(url: string): string {
+  if (!url) return url
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}v=${Date.now()}`
 }

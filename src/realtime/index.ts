@@ -5,3 +5,4 @@ export { invalidateProjectTaskModel, queryKeysForProjectTaskEvent } from './quer
 export { ProjectEventConnection, EventCursorExpiredError } from './projectEventConnection'
 export type { ProjectEventConnectionStatus } from './projectEventConnection'
 export { useProjectTaskDomainEvents } from './useProjectTaskDomainEvents'
+export { subscribeRealtimeReconnect } from './realtimeClient'

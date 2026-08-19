@@ -23,6 +23,7 @@ import { AttachmentPreviewModal } from '@/components/chat/AttachmentPreviewModal
 import { getApiBaseUrl } from '@/api/client'
 import { useAuth } from '@/context/AuthContext'
 import { useAgents } from '@/hooks/agents'
+import { subscribeRealtimeReconnect } from '@/realtime'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { TaskTriggerModal } from '@/components/task-domain'
 import { GroupMemberSettings } from '@/pages/ProjectDetail/GroupMemberSettings'
@@ -322,6 +323,15 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [projectId, groupId, queryClient, reconcileMessages])
+
+  // WS 断线重连成功后：对当前群消息做增量补齐（可靠消息同步 §1/§2），
+  // 比整页重拉更精准——只拉 sequence 之后的缺失消息合并进缓存。
+  useEffect(() => {
+    if (!projectId || !groupId) return
+    return subscribeRealtimeReconnect(() => {
+      void reconcileMessages()
+    })
+  }, [projectId, groupId, reconcileMessages])
 
   // @ 提及面板：最后一个 @ 到行尾无空格时弹出；@ 后输入的字符作为候选过滤关键词（如 @张 → 只剩名字带「张」）
   const lastAt = draft.lastIndexOf('@')

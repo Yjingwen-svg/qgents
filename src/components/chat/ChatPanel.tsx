@@ -10,7 +10,6 @@ import {
   FilePdfOutlined,
   CodeOutlined,
   MessageOutlined,
-  BranchesOutlined,
   InboxOutlined,
   PaperClipOutlined,
   CloseOutlined,
@@ -1695,19 +1694,12 @@ function renderContent(
             <Text type="secondary" style={{ fontSize: 12 }}>
               {diffReady ? '任务已产生代码变更' : '代码变更生成后在此查看'}
             </Text>
-            {diffReady ? (
-              <Link to={`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(c.taskId)}`}>
-                <Button size="small" type="link" icon={<BranchesOutlined />}>
-                  查看 Diff
-                </Button>
-              </Link>
-            ) : (
-              <Link to={PATHS.projectTaskDetail(projectId, c.taskId)}>
-                <Button size="small" type="link">
-                  查看任务
-                </Button>
-              </Link>
-            )}
+            {/* 右下角按钮：任务运行状态框 → 查看任务（Diff 查看走专门的 DIFF 卡片） */}
+            <Link to={PATHS.projectTaskDetail(projectId, c.taskId)}>
+              <Button size="small" type="link">
+                查看任务
+              </Button>
+            </Link>
           </div>
         </div>
       )

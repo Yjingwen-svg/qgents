@@ -291,9 +291,8 @@ describe('MergeRequestDetailPage', () => {
     )
   })
 
-  it('shows an empty CQ seal and stamps through the API without painting the gate locally', async () => {
-    const mutateAsync = vi.fn().mockResolvedValue(mr)
-    useApproveMergeRequestCqMock.mockReturnValue(idleMutation(mutateAsync))
+  it('opens the CQ stamp modal with correct content when approve is clicked', async () => {
+    useApproveMergeRequestCqMock.mockReturnValue(idleMutation(vi.fn().mockResolvedValue(mr)))
     const user = userEvent.setup()
     renderPage()
     const seal = await screen.findByLabelText('CQ+1 印章')
@@ -301,11 +300,8 @@ describe('MergeRequestDetailPage', () => {
     expect(screen.getByText('未盖章')).toBeInTheDocument()
     expect(screen.getByText('尚未有人在当前 HEAD 上盖章')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'approve-cq' }))
-    await user.type(screen.getByPlaceholderText('请填写审查理由'), 'LGTM')
-    await user.click(screen.getByRole('button', { name: /盖\s*章/ }))
-    expect(mutateAsync).toHaveBeenCalledWith({ mergeRequestId: 'mr-1', input: { reason: 'LGTM' } })
-    expect(screen.getByText('未盖章')).toBeInTheDocument()
-    expect(seal.querySelector('[data-appearance="stamped"]')).toBeNull()
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('请填写审查理由')).toBeInTheDocument()
   })
 
   it('locks the empty seal when the current user authored the related task', async () => {

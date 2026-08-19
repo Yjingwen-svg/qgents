@@ -19,6 +19,7 @@ export function CqSealCard({
   busy,
   onApprove,
   onReject,
+  rootRef,
 }: {
   projectId: string
   mergeRequestId: string
@@ -29,6 +30,7 @@ export function CqSealCard({
   busy: boolean
   onApprove: () => void
   onReject: () => void
+  rootRef?: React.RefObject<HTMLDivElement | null>
 }) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const reviewsQuery = useMergeRequestReviews(projectId, mergeRequestId, historyOpen)
@@ -48,7 +50,7 @@ export function CqSealCard({
   const showReject = canAct
 
   return (
-    <div className={styles.sealBlock} aria-label="CQ+1 印章">
+    <div ref={rootRef} className={styles.sealBlock} aria-label="CQ+1 印章">
       <div
         className={`${styles.seal} ${sealClass(appearance)}`}
         data-appearance={appearance}

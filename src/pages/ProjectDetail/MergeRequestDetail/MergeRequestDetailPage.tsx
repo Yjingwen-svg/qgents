@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -55,6 +55,7 @@ import { commentAuthorName, HUNK_UNAVAILABLE_HINT } from '../commentAuthor'
 import { findCqCheck, isMergeRequestAuthor } from '../cqSeal'
 import { githubPullRequestUrl } from '../mergeRequestDisplay'
 import { qualityGateNodeHref } from '../qualityGateNav'
+import { FlowStepper } from '../components/FlowStepper/FlowStepper'
 import { CqSealCard } from './CqSealCard'
 import { CommitHistoryCard } from './CommitHistoryCard'
 import styles from './MergeRequestDetailPage.module.scss'
@@ -108,6 +109,17 @@ export default function MergeRequestDetailPage() {
   const view: DetailView = isDetailView(viewParam) ? viewParam : 'gate'
   const [fileIndex, setFileIndex] = useState(0)
   const [draft, setDraft] = useState('')
+  const cqRef = useRef<HTMLDivElement>(null)
+
+  function scrollToCq() {
+    cqRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  function handleCreateMr() {
+    if (!mr) return
+    const to = `${PATHS.projectDiffs(projectId)}?tab=mr`
+    window.location.href = to
+  }
 
   const { data: project } = useQuery({
     queryKey: ['projects', projectId],
@@ -293,6 +305,9 @@ export default function MergeRequestDetailPage() {
   const cqCheck = findCqCheck(checksQuery.data)
   const isAuthor = isMergeRequestAuthor(user?.id, taskQuery.data?.createdByUser?.id)
 
+  const gatePassed = gateNodes.length > 0 && gateNodes.every((n) => n.status === 'PASSED')
+  const cqStatus = cqCheck?.status ?? 'PENDING'
+
   return (
     <div className={styles.page}>
       <Link to={listToMr} className={styles.back}>
@@ -345,6 +360,18 @@ export default function MergeRequestDetailPage() {
         </div>
       </header>
 
+      <FlowStepper
+        projectId={projectId}
+        status={{
+          gate: gatePassed ? 'passed' : gateNodes.some((n) => n.status === 'FAILED') ? 'failed' : 'pending',
+          cq: cqStatus === 'PASSED' ? 'approved' : cqStatus === 'FAILED' ? 'rejected' : 'pending',
+          createMr: gatePassed && cqStatus === 'PASSED',
+        }}
+        onClickGate={() => { window.location.href = PATHS.projectTestset(projectId) }}
+        onClickCq={scrollToCq}
+        onClickCreateMr={handleCreateMr}
+      />
+
       {project?.role === 'PROJECT_ADMIN' && mr.status === 'OPEN' && mr.qualityGate?.status !== 'PASSED' ? (
         <Alert
           type="info"
@@ -389,6 +416,7 @@ export default function MergeRequestDetailPage() {
                     busy={approveCq.isPending || rejectCq.isPending}
                     onApprove={() => submitCq('approve')}
                     onReject={() => submitCq('reject')}
+                    rootRef={cqRef}
                   />
                 </section>
                 <CommitHistoryCard projectId={projectId} mergeRequestId={mr.id} />

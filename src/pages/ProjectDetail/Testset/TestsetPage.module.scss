@@ -279,6 +279,134 @@
   padding: 64px 0;
 }
 
+/* FlowStepper area */
+.flowArea {
+  margin-bottom: 16px;
+}
+
+/* Detail panel (gate / CQ expand) */
+.detailPanel {
+  background: #fff;
+  border: 1px solid #e8edf3;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #eef2f6;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f1b33;
+  background: #f7f9fc;
+}
+
+.closeBtn {
+  border: 0;
+  background: transparent;
+  color: #5b6b82;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.closeBtn:hover {
+  background: #e8edf3;
+  color: #0f1b33;
+}
+
+.detailState {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+  color: #5b6b82;
+  font-size: 13px;
+}
+
+/* Gate nodes */
+.gateNodes {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gateNode {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot_passed {
+  background: #16a34a;
+}
+
+.dot_failed {
+  background: #dc2626;
+}
+
+.dot_pending {
+  background: #94a3b8;
+}
+
+.gateNodeName {
+  font-weight: 600;
+  color: #0f1b33;
+  min-width: 120px;
+}
+
+.gateNodeStatus {
+  color: #5b6b82;
+}
+
+/* CQ detail */
+.cqContent {
+  padding: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.cqContent strong {
+  display: block;
+  font-size: 14px;
+  color: #0f1b33;
+}
+
+.cqMeta {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #5b6b82;
+}
+
+.cqReason {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #334155;
+  line-height: 1.5;
+}
+
+.cqApproved,
+.cqRejected,
+.cqPending {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
 @media (max-width: 900px) {
   .metaGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -86,7 +86,7 @@ export function usePreflight(
   return useQuery({
     queryKey: queryKeys.preflight.detail(projectId, taskId, repositoryId, targetBranch),
     queryFn: () => preflightApi.get(projectId, taskId, repositoryId, targetBranch),
-    enabled: Boolean(projectId && taskId && repositoryId && targetBranch),
+    enabled: Boolean(projectId && targetBranch),
   })
 }
 

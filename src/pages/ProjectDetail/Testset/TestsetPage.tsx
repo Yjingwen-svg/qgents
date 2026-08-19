@@ -81,6 +81,7 @@ import { useAuth } from '@/context/AuthContext'
 import { isMergeRequestAuthor } from '../cqSeal'
 import { QualityGateConfigDrawer } from './QualityGateConfigDrawer'
 import { DryRunCqPanel } from './DryRunCqPanel'
+import { PreflightGateBar } from '../PreflightGateBar'
 import styles from './TestsetPage.module.scss'
 
 const { Title, Text, Paragraph } = Typography
@@ -411,7 +412,7 @@ export function TestsetPage() {
         <header className={styles.header}>
           <div>
             <Title level={2} className={styles.title}>
-              Testset
+              质量门禁和 MR
             </Title>
             <Text type="secondary">发起测试或 Dry-run；测试配方在「管理测试集」中维护</Text>
           </div>
@@ -424,6 +425,13 @@ export function TestsetPage() {
             </Button>
           </Space>
         </header>
+
+        <PreflightGateBar
+          projectId={projectId}
+          taskId={dryRunQuery.data?.taskId ?? taskId}
+          repositoryId={dryRunQuery.data?.repositoryId ?? repositoryId}
+          targetBranch={dryRunQuery.data?.targetBranch ?? undefined}
+        />
 
         <div className={`${styles.layout} ${relatedTestsets.length > 0 ? styles.layoutWithRecipes : styles.layoutRunOnly}`}>
           {relatedTestsets.length > 0 ? (

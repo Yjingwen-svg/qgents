@@ -81,7 +81,10 @@ const useUpdateQualityGateMock = vi.hoisted(() => vi.fn())
 const useApproveDryRunCqMock = vi.hoisted(() => vi.fn())
 const useRejectDryRunCqMock = vi.hoisted(() => vi.fn())
 
+const usePreflightMock = vi.hoisted(() => vi.fn())
+
 vi.mock('@/hooks/qualityGate', () => ({
+  usePreflight: usePreflightMock,
   useQualityGate: useQualityGateMock,
   useBranchPolicy: useBranchPolicyMock,
   useUpdateBranchPolicy: useUpdateBranchPolicyMock,
@@ -170,6 +173,7 @@ beforeEach(() => {
   useUpdateQualityGateMock.mockReturnValue(idleMutation())
   useApproveDryRunCqMock.mockReturnValue(idleMutation())
   useRejectDryRunCqMock.mockReturnValue(idleMutation())
+  usePreflightMock.mockReturnValue({ data: undefined, isLoading: false, isError: false, isFetching: false, refetch: vi.fn() })
   vi.mocked(tasksApi.list).mockResolvedValue({ data: [], page: { nextCursor: null, hasMore: false }, requestId: 'req' })
   vi.mocked(projectApi.getById).mockResolvedValue({
     id: 'demo-project',
@@ -183,7 +187,7 @@ beforeEach(() => {
 describe('TestsetPage', () => {
   it('keeps the recipe catalog in 管理测试集 and does not list it on the run page', async () => {
     renderPage()
-    expect(await screen.findByRole('heading', { name: 'Testset' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '质量门禁和 MR' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '管理测试集' })).toBeInTheDocument()
     expect(screen.queryByText('登录接口测试')).not.toBeInTheDocument()
     expect(screen.queryByText('新建 Testset')).not.toBeInTheDocument()
@@ -193,7 +197,7 @@ describe('TestsetPage', () => {
   it('opens the manage drawer with status-based testset cards', async () => {
     const user = userEvent.setup()
     renderPage()
-    await screen.findByRole('heading', { name: 'Testset' })
+    await screen.findByRole('heading', { name: '质量门禁和 MR' })
     await user.click(screen.getByRole('button', { name: '管理测试集' }))
     expect(await screen.findByText('登录接口测试')).toBeInTheDocument()
     expect(screen.getByText('已启用')).toBeInTheDocument()
@@ -212,19 +216,19 @@ describe('TestsetPage', () => {
     })
     const user = userEvent.setup()
     renderPage()
-    await screen.findByRole('heading', { name: 'Testset' })
+    await screen.findByRole('heading', { name: '质量门禁和 MR' })
     expect(screen.getByRole('button', { name: '运行测试' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建 Dry-run' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '管理测试集' }))
     expect(await screen.findByText('登录接口测试')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '新建 Testset' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '停用 Testset' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '停用质量门禁和 MR' })).not.toBeInTheDocument()
   })
 
   it('switches run-test target between Task and git ref', async () => {
     const user = userEvent.setup()
     renderPage()
-    await screen.findByRole('heading', { name: 'Testset' })
+    await screen.findByRole('heading', { name: '质量门禁和 MR' })
     await user.click(screen.getByRole('button', { name: '运行测试' }))
     expect(await screen.findByRole('radio', { name: '使用已有代码任务 Task' })).toBeChecked()
     expect(screen.getByLabelText('关联 Task')).toBeInTheDocument()
@@ -237,7 +241,7 @@ describe('TestsetPage', () => {
   it('opens the dry-run dialog from the documented action', async () => {
     const user = userEvent.setup()
     renderPage()
-    await screen.findByRole('heading', { name: 'Testset' })
+    await screen.findByRole('heading', { name: '质量门禁和 MR' })
     await user.click(screen.getByRole('button', { name: '新建 Dry-run' }))
     expect(await screen.findByLabelText('源分支 / ref')).toBeInTheDocument()
     expect(screen.getByLabelText('目标分支')).toBeInTheDocument()
@@ -258,7 +262,7 @@ describe('TestsetPage', () => {
     } as Awaited<ReturnType<typeof tasksApi.list>>)
     const user = userEvent.setup()
     renderPage('/app/projects/demo-project/testset?taskId=task-1')
-    await screen.findByRole('heading', { name: 'Testset' })
+    await screen.findByRole('heading', { name: '质量门禁和 MR' })
     await user.click(screen.getByRole('button', { name: '新建 Dry-run' }))
     expect(await screen.findByDisplayValue('feat/login-api')).toBeInTheDocument()
   })
@@ -268,7 +272,7 @@ describe('TestsetPage', () => {
     useDisableTestsetMock.mockReturnValue({ mutateAsync: disable, isPending: false, error: null })
     const user = userEvent.setup()
     renderPage()
-    await screen.findByRole('heading', { name: 'Testset' })
+    await screen.findByRole('heading', { name: '质量门禁和 MR' })
     await user.click(screen.getByRole('button', { name: '管理测试集' }))
     await screen.findByRole('button', { name: '新建 Testset' })
     await user.click(screen.getByRole('button', { name: '停用 Testset' }))
@@ -277,7 +281,7 @@ describe('TestsetPage', () => {
 
   it('keeps history in the aside and does not tag an empty current run', async () => {
     renderPage()
-    expect(await screen.findByRole('heading', { name: 'Testset' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '质量门禁和 MR' })).toBeInTheDocument()
     expect(screen.getByText('当前运行')).toBeInTheDocument()
     expect(screen.queryByText('test-run')).not.toBeInTheDocument()
     expect(screen.queryByText('dry-run')).not.toBeInTheDocument()

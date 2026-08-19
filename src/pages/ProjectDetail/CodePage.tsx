@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Typography,
@@ -14,7 +14,6 @@ import {
   Empty,
   Spin,
   Select,
-  Tabs,
   App,
   theme,
 } from 'antd'
@@ -29,7 +28,8 @@ import { formatApiError } from '@/utils/formatApiError'
 import type { ProjectBoundRepository } from '@/types/github'
 import type { WorkBranch } from '@/types/workBranch'
 import { workBranchRowKey } from '@/types/workBranch'
-import { MergeRequestTab } from './MergeRequestTab'
+// 临时禁用：MR 列表当前被独立路由的 Diff 详情替换，后续按需恢复
+// import { MergeRequestTab } from './MergeRequestTab'
 
 const { Title, Paragraph, Text } = Typography
 
@@ -39,8 +39,8 @@ const { Title, Paragraph, Text } = Typography
  * 仓库卡片：GET /projects/{projectId}/repositories
  * 工作分支：GET /projects/{projectId}/work-branches（行内 latestDiff / latestTask / openMergeRequest）
  * 需求筛选：GET /projects/{projectId}/groups（REQUIREMENT + Group UUID）
- * Diff 跳转：仅使用行内 latestDiff.id，禁止按分支名反查
- * MR Tab：GET /projects/{projectId}/merge-requests
+ * Diff 跳转：仅使用行内 latestDiff.id，跳转至 /code/diff/:diffId
+ * MR 列表已下线，独立路由的 Diff 详情占位；MR Tab 由 MergeRequestTab 渲染，目前禁用以待后续启用
  *
  * 口径：docs/frontend/code-branch-backend-confirm.md
  */
@@ -48,8 +48,6 @@ export function CodePage() {
   const { token } = theme.useToken()
   const { message } = App.useApp()
   const { projectId = 'demo-project' } = useParams<{ projectId: string }>()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const tab = searchParams.get('tab') === 'mr' ? 'mr' : 'branches'
 
   const [requirementGroupId, setRequirementGroupId] = useState<string | undefined>()
   const [drawer, setDrawer] = useState<{
@@ -111,17 +109,6 @@ export function CodePage() {
     }
   }
 
-  function setTab(next: string) {
-    const nextParams = new URLSearchParams(searchParams)
-    if (next === 'mr') nextParams.set('tab', 'mr')
-    else nextParams.delete('tab')
-    if (next !== 'mr') {
-      nextParams.delete('repositoryId')
-      nextParams.delete('status')
-    }
-    setSearchParams(nextParams, { replace: true })
-  }
-
   const branchesLoading = reposQuery.isLoading || workBranchesQuery.isLoading
   const branchesError = reposQuery.isError || workBranchesQuery.isError
   const branchesErrorObj = reposQuery.error ?? workBranchesQuery.error
@@ -129,46 +116,32 @@ export function CodePage() {
   return (
     <div style={{ padding: 24 }}>
       <Title level={3} style={{ marginTop: 0, marginBottom: 8 }}>
-        代码与 Branch
+        分支与 Diff 详情
       </Title>
       <Paragraph type="secondary" style={{ marginBottom: 16 }}>
         projectId: <Text code>{projectId}</Text>
       </Paragraph>
 
-      <Tabs
-        activeKey={tab}
-        onChange={setTab}
-        items={[
-          { key: 'branches', label: '分支' },
-          { key: 'mr', label: 'MR' },
-        ]}
-        style={{ marginBottom: 8 }}
+      <Space wrap style={{ marginBottom: 16 }}>
+        <Text type="secondary">需求过滤</Text>
+        <Select
+          allowClear
+          placeholder="全部需求群"
+          style={{ minWidth: 200 }}
+          loading={groupsQuery.isLoading}
+          value={requirementGroupId}
+          onChange={(value) => setRequirementGroupId(value)}
+          options={requirementOptions}
+        />
+      </Space>
+
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="仅展示 Qgents 可追溯的工作分支，不是 GitHub 全量远程分支。"
+        description="Diff 列仅在后端给出 latestDiff.id 时可进入详情；+/- 来自行内 latestDiff.changeStats。无 Diff 时不可跳转。需求筛选使用需求群 UUID。"
       />
-
-      {tab === 'mr' ? (
-        <MergeRequestTab projectId={projectId} repositories={reposQuery.data ?? []} />
-      ) : (
-        <>
-          <Space wrap style={{ marginBottom: 16 }}>
-            <Text type="secondary">需求过滤</Text>
-            <Select
-              allowClear
-              placeholder="全部需求群"
-              style={{ minWidth: 200 }}
-              loading={groupsQuery.isLoading}
-              value={requirementGroupId}
-              onChange={(value) => setRequirementGroupId(value)}
-              options={requirementOptions}
-            />
-          </Space>
-
-          <Alert
-            type="info"
-            showIcon
-            style={{ marginBottom: 16 }}
-            message="仅展示 Qgents 可追溯的工作分支，不是 GitHub 全量远程分支。"
-            description="Diff 列仅在后端给出 latestDiff.id 时可进入详情；+/- 来自行内 latestDiff.changeStats。无 Diff 时不可跳转。需求筛选使用需求群 UUID。"
-          />
 
           {branchesLoading ? (
             <div style={{ textAlign: 'center', padding: 48 }}>
@@ -246,8 +219,6 @@ export function CodePage() {
               />
             ) : null}
           </Drawer>
-        </>
-      )}
     </div>
   )
 }

@@ -1,5 +1,4 @@
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { App } from 'antd'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -7,15 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { githubApi } from '@/api/github'
 import { groupApi } from '@/api/group'
 import { workBranchesApi } from '@/api/workBranches'
-import type { MergeRequestSummary } from '@/types/task-model'
 import type { WorkBranch } from '@/types/workBranch'
 import { CodePage } from './CodePage'
-
-const useMergeRequestsMock = vi.hoisted(() => vi.fn())
-
-vi.mock('@/hooks/task-model', () => ({
-  useMergeRequests: useMergeRequestsMock,
-}))
 
 vi.mock('@/api/github', () => ({
   githubApi: {
@@ -34,23 +26,6 @@ vi.mock('@/api/workBranches', () => ({
     list: vi.fn(),
   },
 }))
-
-const mergeRequests: MergeRequestSummary[] = [
-  {
-    id: 'mr-1',
-    repositoryId: 'bound-demo-auth-service',
-    groupIds: ['group-1'],
-    provider: 'GITHUB',
-    number: 42,
-    title: '实现邮箱登录',
-    sourceBranch: 'feat/login-api',
-    targetBranch: 'main',
-    status: 'OPEN',
-    headCommit: 'abc1234',
-    webUrl: 'https://github.com/mock/demo/pull/42',
-    qualityGate: { status: 'PENDING', requiredChecks: ['TESTSET'] },
-  },
-]
 
 const workBranches: WorkBranch[] = [
   {
@@ -141,13 +116,6 @@ beforeEach(() => {
     page: { nextCursor: null, hasMore: false },
     requestId: 'req_work_branches',
   })
-  useMergeRequestsMock.mockReturnValue({
-    data: { data: mergeRequests, page: { nextCursor: null, hasMore: false }, requestId: 'r1' },
-    isLoading: false,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  })
 })
 
 describe('CodePage', () => {
@@ -162,26 +130,6 @@ describe('CodePage', () => {
     renderPage()
     await screen.findByText('需求过滤')
     expect(groupApi.listByProject).toHaveBeenCalledWith('demo-project')
-  })
-
-  it('opens the MR list tab from the documented query string', async () => {
-    renderPage('/app/projects/demo-project/code?tab=mr')
-    expect(await screen.findByText('实现邮箱登录')).toBeInTheDocument()
-    expect(screen.getByText('#42')).toBeInTheDocument()
-    expect(useMergeRequestsMock).toHaveBeenCalledWith('demo-project', {
-      repositoryId: undefined,
-      status: undefined,
-      limit: 50,
-    })
-    expect(screen.queryByText('需求过滤')).not.toBeInTheDocument()
-  })
-
-  it('switches to the MR tab from the page tabs', async () => {
-    const user = userEvent.setup()
-    renderPage()
-    await screen.findByText('需求过滤')
-    await user.click(screen.getByRole('tab', { name: 'MR' }))
-    expect(await screen.findByText('实现邮箱登录')).toBeInTheDocument()
   })
 
   it('links Diff only when latestDiff.id is present', async () => {

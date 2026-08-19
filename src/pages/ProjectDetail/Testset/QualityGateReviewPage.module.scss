@@ -167,3 +167,23 @@
 .recentRunStatus {
   margin-left: auto;
 }
+
+// 历史列表项可点击
+:global(.ant-list-item) {
+  cursor: pointer;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #f0f7f7;
+  }
+}
+
+// 选中项高亮
+.selectedListItem {
+  background-color: #e6f5f5 !important;
+  border-left: 3px solid #0d9b9b;
+
+  &:hover {
+    background-color: #d4eded !important;
+  }
+}

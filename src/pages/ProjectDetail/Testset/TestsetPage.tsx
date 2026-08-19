@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ConfigProvider, Empty, Button, Tabs, Typography, Spin } from 'antd'
+import { ConfigProvider, Empty, Button, Tabs, Typography, Spin, Space } from 'antd'
+import { SettingOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { githubApi, projectApi } from '@/api'
-import { useMergeRequests, useMergeRequestChecks } from '@/hooks'
+import { useMergeRequests, useMergeRequestChecks, useTestsets } from '@/hooks'
 import { PATHS } from '@/routes/paths'
 import { queryKeys } from '@/query'
 import { FlowStepper } from '../components/FlowStepper/FlowStepper'
@@ -56,6 +57,8 @@ export function TestsetPage() {
   })
 
   const isAdmin = projectQuery.data?.role === 'PROJECT_ADMIN'
+
+  const testsetsQuery = useTestsets(projectId)
 
   const mrsQuery = useMergeRequests(projectId)
   const mrList = mrsQuery.data?.data ?? []
@@ -178,6 +181,16 @@ export function TestsetPage() {
               发起测试或 Dry-run；测试配方在「管理测试集」中维护
             </Text>
           </div>
+          <Space>
+            <Button
+              icon={<SettingOutlined />}
+              onClick={() => setConfigOpen(true)}
+              disabled={!isAdmin}
+              title={isAdmin ? '配置分支策略与质量门禁' : '仅 Project Admin 可配置'}
+            >
+              分支策略与门禁
+            </Button>
+          </Space>
         </header>
 
         <Tabs
@@ -193,7 +206,7 @@ export function TestsetPage() {
           projectId={projectId}
           isAdmin={isAdmin}
           repositories={reposQuery.data ?? []}
-          testsets={[]}
+          testsets={testsetsQuery.data ?? []}
         />
       </div>
     </ConfigProvider>

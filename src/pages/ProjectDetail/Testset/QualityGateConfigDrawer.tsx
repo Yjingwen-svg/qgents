@@ -69,6 +69,11 @@ export function QualityGateConfigDrawer({
     if (!open) return
     if (!repositoryId && repositories.length > 0) {
       const first = repositories[0]
+      console.log('[QualityGate] 选择仓库', {
+        id: first.id,
+        repositoryId: first.repositoryId,
+        fullName: first.fullName,
+      })
       setRepositoryId(first.id)
       setBranch(first.defaultBranch?.trim() || 'main')
     }

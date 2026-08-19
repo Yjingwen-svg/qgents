@@ -18,7 +18,6 @@ import {
 import { PlusOutlined, SettingOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRemoteBranches, useCreateRemoteBranch } from '@/hooks'
-import { githubApi } from '@/api'
 import { queryKeys } from '@/query'
 import type { ProjectBoundRepository, RemoteBranch } from '@/types/github'
 
@@ -67,8 +66,6 @@ export default function RemoteBranchSection({
     repo.id,
     branchFilters,
   )
-
-  const createBranchMutation = useCreateRemoteBranch(projectId, repo.id)
 
   const handleSetDefault = useCallback((branch: RemoteBranch) => {
     modal.confirm({

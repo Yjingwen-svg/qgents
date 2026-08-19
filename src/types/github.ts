@@ -114,6 +114,91 @@ export interface ProjectBoundRepository {
 }
 
 /**
+ * GET /projects/{projectId}/work-branches 行（接口文档 v2.0.8 §6.2）
+ * 行的逻辑唯一键是 projectRepositoryId + name；后端不虚构“分支记录 UUID”。
+ * latestTask / latestDiff / openMergeRequest / lastVerification 均可为 null，
+ * 前端显示空状态，不得补演示数据。
+ * 本接口不返回 GitHub 保护状态、冲突/落后状态、提交总数、构建产物或 MR 总数。
+ */
+export interface WorkBranch {
+  /** project_repositories.id（绑定记录 UUID） */
+  projectRepositoryId: string
+  name: string
+  workspaceId: string
+  lastKnownHead: string
+  /** 最近关联任务，不是分支唯一所有者 */
+  latestTask: {
+    id: string
+    displayCode: string
+    title: string
+    updatedAt: string
+  } | null
+  /** 关联 Task 的需求群集合；工作分支不天然归属单个需求群 */
+  requirementGroups: Array<{ id: string; title: string }>
+  /** 该工作分支历史上最近的真实 Diff 快照 */
+  latestDiff: {
+    id: string
+    taskId: string
+    status: string
+    changeStats: { additions: number; deletions: number }
+    createdAt: string
+  } | null
+  /** 同一项目仓库绑定和源分支的 Open MR；不存在时为 null */
+  openMergeRequest: {
+    id: string
+    number: number
+    status: string
+  } | null
+  /** 仅在已完成 TestRun 的 executionSourceRef 与 lastKnownHead 完全一致时返回；否则为 null */
+  lastVerification: {
+    kind: string
+    status: string
+    commitSha: string
+    completedAt: string
+  } | null
+}
+
+/** GET /projects/{projectId}/work-branches 查询参数（§6.2） */
+export interface WorkBranchListFilters {
+  repositoryId?: string
+  requirementGroupId?: string
+  cursor?: string
+  limit?: number
+}
+
+/**
+ * 远程分支 —— 接口文档 §6 + 分支管理前后端执行计划
+ * GET /projects/{projectId}/repositories/{projectRepositoryId}/branches
+ *
+ * 与 WorkBranch 不同：
+ * - RemoteBranch 来自 GitHub 真实远程分支
+ * - WorkBranch 来自 Qgents Task/Workspace 工作分支视图
+ * - main/develop 可以是 RemoteBranch 但不是 WorkBranch
+ */
+export interface RemoteBranch {
+  name: string
+  headCommit: string
+  isProjectDefault: boolean
+  isGithubDefault: boolean
+  canCreateTaskFrom: boolean
+  canDelete: boolean
+}
+
+/** 创建远程分支请求 */
+export interface CreateRemoteBranchPayload {
+  name: string
+  fromRef: string
+}
+
+/** 远程分支列表筛选参数 */
+export interface RemoteBranchListFilters {
+  keyword?: string
+  cursor?: string
+  limit?: number
+  includeSha?: boolean
+}
+
+/**
  * POST /projects/{projectId}/repositories 请求体
  * 已冻结见 docs：只传本地 UUID；defaultBranch 省略，后端以授权仓元数据为准。
  */

@@ -9,7 +9,25 @@ export interface AttachmentCredential {
   headers: Record<string, string>
 }
 
-/** 附件直传与下载（接口文档 §18） */
+/** 附件预览类型（增量契约 §2.1，服务端判定） */
+export type AttachmentPreviewType = 'IMAGE' | 'PDF' | 'TEXT' | 'CODE' | 'UNSUPPORTED'
+
+/** GET .../attachments/{attachmentId}/preview-url 响应（增量契约 §4.1） */
+export interface AttachmentPreview {
+  attachmentId: string
+  fileName: string
+  mediaType: string | null
+  sizeBytes: number | null
+  previewable: boolean
+  previewType: AttachmentPreviewType
+  /** 相对路径，带短期 token 查询参数；前端拼 ORIGIN 使用，有效期见 expiresAt */
+  previewUrl: string
+  /** 下载地址（attachment 语义）；本地回退时可能 501 */
+  downloadUrl: string | null
+  expiresAt: string
+}
+
+/** 附件直传与下载（接口文档 §18）+ 内联预览（增量契约：附件预览与多模态输入） */
 export const attachmentApi = {
   /** 创建对象存储直传凭证（§18.1） */
   createCredential(
@@ -41,6 +59,32 @@ export const attachmentApi = {
       `/projects/${projectId}/attachments/${attachmentId}/download-url`,
     )
   },
+
+  /**
+   * 获取附件预览元数据 + 签名预览 URL（增量契约 §4）。
+   * 响应 previewUrl 为相对路径（带短期 token），前端拼 ORIGIN 后直接交给 <img>/iframe/新标签。
+   * 错误：403 FORBIDDEN / 404 ATTACHMENT_NOT_FOUND / 409 ATTACHMENT_NOT_READY /
+   *       501 ATTACHMENT_DOWNLOAD_UNSUPPORTED（本地回退，previewUrl 仍可用）。
+   */
+  previewUrl(projectId: string, attachmentId: string) {
+    return request<AttachmentPreview>(
+      `/projects/${projectId}/attachments/${attachmentId}/preview-url`,
+    )
+  },
+}
+
+/**
+ * 把后端返回的相对 previewUrl 拼成可直接打开的绝对地址（增量契约 §4.1）。
+ * 不用 window.location.origin：后端 previewUrl 自带 `/api/v1` 前缀，走 dev vite 代理
+ * 会把 `/api` rewrite 成 `/api/v1` 导致 `/api/v1/api/v1/...` 双前缀 404。
+ * 改为取 API base 的 origin 拼接（dev 直连 localhost:8080、生产直连 api.qgents...），
+ * 与 contentUrl 的构造语义一致，dev/生产都能直接访问预览端点。
+ */
+export function resolvePreviewUrl(previewUrl: string): string {
+  if (/^https?:\/\//i.test(previewUrl)) return previewUrl
+  const base = getApiBaseUrl()
+  const origin = /^https?:\/\//i.test(base) ? new URL(base).origin : window.location.origin
+  return `${origin}${previewUrl.startsWith('/') ? previewUrl : `/${previewUrl}`}`
 }
 
 /**

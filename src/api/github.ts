@@ -1,6 +1,8 @@
 import { request } from './client'
+import { withQuery } from './requestHelpers'
 import type {
   BindProjectRepositoryPayload,
+  CreateRemoteBranchPayload,
   GithubAccountType,
   GithubAuthorizationStatus,
   GithubInstallClient,
@@ -10,7 +12,12 @@ import type {
   GithubAuthorizedRepository,
   GithubRepoVisibility,
   ProjectBoundRepository,
+  RemoteBranch,
+  RemoteBranchListFilters,
+  WorkBranch,
+  WorkBranchListFilters,
 } from '@/types/github'
+import type { TaskModelPage } from '@/types/task-model'
 
 /** 接口文档统一成功响应外壳：{ data, requestId } */
 interface ApiEnvelope<T> {
@@ -107,6 +114,21 @@ function mapProjectBoundRepository(raw: unknown): ProjectBoundRepository {
     authorizationStatus: mapAuthorizationStatus(row.authorizationStatus),
     metadataSyncedAt: readString(row, 'metadataSyncedAt'),
     boundAt: readString(row, 'boundAt'),
+  }
+}
+
+/**
+ * 远程分支 DTO → 前端类型
+ */
+function mapRemoteBranch(raw: unknown): RemoteBranch {
+  const row = isRecord(raw) ? raw : {}
+  return {
+    name: readString(row, 'name'),
+    headCommit: readString(row, 'headCommit'),
+    isProjectDefault: readBool(row, 'isProjectDefault'),
+    isGithubDefault: readBool(row, 'isGithubDefault'),
+    canCreateTaskFrom: readBool(row, 'canCreateTaskFrom'),
+    canDelete: readBool(row, 'canDelete'),
   }
 }
 
@@ -246,7 +268,7 @@ export const githubApi = {
       { unwrapData: false },
     ).then((res) => asList(res.data).map(mapAuthorizedRepository))
   }, //只要请求回来的仓库数组
-//拉项目的仓库
+  //拉项目的仓库
   /** GET /projects/{projectId}/repositories */
   listProjectRepositories(projectId: string) {
     return request<ApiEnvelope<unknown>>(
@@ -276,12 +298,12 @@ export const githubApi = {
 
   /**
    * PATCH /projects/{projectId}/repositories/{projectRepositoryId}
-   * 已冻结见 docs：路径 ID 为绑定记录 id；第一版前端不调用修改默认分支。
+   * 已冻结见 docs：路径 ID 为绑定记录 id；支持 displayName 和 defaultBranch。
    */
   updateProjectRepository(
     projectId: string,
     projectRepositoryId: string,
-    payload: { displayName?: string },
+    payload: { displayName?: string; defaultBranch?: string },
   ) {
     return request<ApiEnvelope<unknown>>(
       `/projects/${projectId}/repositories/${projectRepositoryId}`,
@@ -303,5 +325,59 @@ export const githubApi = {
       method: 'DELETE',
       headers: idempotencyHeaders(),
     })
+  },
+
+  /**
+   * GET /projects/{projectId}/work-branches — 项目工作分支视图（接口文档 v2.0.8 §6.2）。
+   * 支持 repositoryId / requirementGroupId / cursor / limit 过滤；统一游标分页外壳。
+   * 前端只消费真实字段，latestTask/latestDiff/openMergeRequest/lastVerification 为 null 时显示空状态。
+   */
+  workBranches(projectId: string, filters: WorkBranchListFilters = {}) {
+    return request<TaskModelPage<WorkBranch>>(
+      withQuery(`/projects/${projectId}/work-branches`, filters),
+      { unwrapData: false },
+    )
+  },
+
+  /**
+   * GET /projects/{projectId}/repositories/{projectRepositoryId}/branches
+   * 查询 GitHub 远程分支列表（接口文档 §6 + 分支管理计划 阶段 B）。
+   * 支持 keyword / cursor / limit / includeSha 过滤。
+   */
+  listRemoteBranches(
+    projectId: string,
+    projectRepositoryId: string,
+    filters: RemoteBranchListFilters = {},
+  ) {
+    const query: Record<string, string> = {}
+    if (filters.keyword) query.keyword = filters.keyword
+    if (filters.cursor) query.cursor = filters.cursor
+    if (filters.limit) query.limit = String(filters.limit)
+    if (filters.includeSha !== undefined) query.includeSha = String(filters.includeSha)
+    return request<ApiEnvelope<unknown>>(
+      withQuery(`/projects/${projectId}/repositories/${projectRepositoryId}/branches`, query),
+      { unwrapData: false },
+    ).then((res) => asList(res.data).map(mapRemoteBranch))
+  },
+
+  /**
+   * POST /projects/{projectId}/repositories/{projectRepositoryId}/branches
+   * 从已有分支或提交创建远程分支（分支管理计划 阶段 C）。
+   * 需 PROJECT_ADMIN 权限；使用幂等键防重复创建。
+   */
+  createRemoteBranch(
+    projectId: string,
+    projectRepositoryId: string,
+    payload: CreateRemoteBranchPayload,
+  ) {
+    return request<ApiEnvelope<unknown>>(
+      `/projects/${projectId}/repositories/${projectRepositoryId}/branches`,
+      {
+        method: 'POST',
+        unwrapData: false,
+        body: payload,
+        headers: idempotencyHeaders(),
+      },
+    ).then((res) => mapRemoteBranch(res.data))
   },
 }

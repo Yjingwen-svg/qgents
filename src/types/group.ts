@@ -75,19 +75,35 @@ export interface CodeMessageContent {
   language?: string
 }
 
-/** IMAGE 消息内容 */
+/** IMAGE 消息内容（增量契约 §6：attachmentId 必填；§7 可选回填 previewUrl 等预览字段） */
 export interface ImageMessageContent {
   url: string
+  /** 已确认上传（READY）的附件 ID（增量契约 §6.2，必填） */
+  attachmentId: string
   width?: number
   height?: number
+  /** §7 可选增强：服务端回填的内联预览地址（相对路径带短期 token） */
+  previewUrl?: string
+  /** §7 可选增强：是否可内联预览 */
+  previewable?: boolean
+  /** §7 可选增强：预览类型 */
+  previewType?: string
 }
 
-/** FILE 消息内容 */
+/** FILE 消息内容（增量契约 §6：attachmentId 必填；§7 可选回填预览字段） */
 export interface FileMessageContent {
   url: string
+  /** 已确认上传（READY）的附件 ID（增量契约 §6.2，必填） */
+  attachmentId: string
   name: string
   size: number
   mimeType: string
+  /** §7 可选增强：服务端回填的内联预览地址（相对路径带短期 token） */
+  previewUrl?: string
+  /** §7 可选增强：是否可内联预览 */
+  previewable?: boolean
+  /** §7 可选增强：预览类型 */
+  previewType?: string
 }
 
 /** QUOTE 引用消息内容：quotedText 为被引用消息的原始内容摘要，replyText 为回复者输入的正文 */
@@ -163,6 +179,8 @@ export interface Message {
   sequence?: number
   createdAt: string
   replyToId?: string | null
+  /** QUOTE 消息的回复正文（§7 冻结：顶层字段；发送与回显同构）。嵌套引用取 replyText ?? quotedText */
+  replyText?: string
   /** @ 提及对象（后端 MessageResponse.mentions 回显；被 @ 用户据此展示「有人@我」） */
   mentions?: Mention[]
 }
@@ -173,6 +191,8 @@ export interface SendMessagePayload {
   mentions?: Mention[]
   replyToId?: string | null
   clientMessageId: string
+  /** QUOTE 消息的回复正文（§7 冻结：顶层字段，与 content 内旧字段并存提交） */
+  replyText?: string
 }
 
 /** @ 提及 —— 对象数组，type 区分 USER / AGENT（接口文档 v1.9.3 §7） */

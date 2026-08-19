@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons'
 import { githubApi, groupApi, projectApi, tasksApi } from '@/api'
 import { PATHS } from '@/routes/paths'
-import { queryKeys } from '@/query'
+import { queryKeys, taskModelQueryKeys } from '@/query'
 import type { TaskStatus } from '@/types/task-model'
 import './OverviewPage.css'
 
@@ -59,8 +59,10 @@ export function OverviewPage() {
   })
 
   const { data: taskPage } = useQuery({
-    queryKey: ['tasks', projectId, 'list'],
-    queryFn: () => tasksApi.list(projectId),
+    // 必须用 taskModelQueryKeys 前缀（['qgents','projects',projectId,'tasks',...]），
+    // SSE 事件失效与任务 mutation 都 invalidate 该前缀；孤儿 key 会导致「进行中任务」计数永不刷新
+    queryKey: taskModelQueryKeys.tasks.list(projectId, { limit: 100 }),
+    queryFn: () => tasksApi.list(projectId, { limit: 100 }),
     enabled: !!projectId,
   })
   const runningTasks = (taskPage?.data ?? []).filter((t) =>
@@ -111,7 +113,7 @@ export function OverviewPage() {
         <QuickLink icon={<MessageOutlined />} label="需求群聊" desc="项目总群与需求群" to={PATHS.projectDetail(projectId)} />
         <QuickLink icon={<ProfileOutlined />} label="任务中心" desc="任务与执行状态" to={PATHS.projectTasks(projectId)} />
         <QuickLink icon={<BranchesOutlined />} label="交付中心" desc="Diff 与 MR 交付" to={PATHS.projectDiffs(projectId)} />
-        <QuickLink icon={<CodeOutlined />} label="代码与 Branch" desc="分支与仓库" to={PATHS.projectCode(projectId)} />
+        <QuickLink icon={<CodeOutlined />} label="分支与 Diff 详情" desc="分支与仓库" to={PATHS.projectCode(projectId)} />
         <QuickLink icon={<UserOutlined />} label="项目成员" desc="成员与权限" to={PATHS.projectMembers(projectId)} />
         <QuickLink icon={<SettingOutlined />} label="项目设置" desc="规则与基本设置" to={PATHS.projectSettings(projectId)} />
       </div>

@@ -101,10 +101,10 @@ export default function ProjectDetailLayout() {
   const projectName = project?.name ?? projectId
 
   // 群列表（项目总群 + 需求群）
-  const { data: groups = [] } = useQuery({//没回来或失败时当空数组,1 个项目总群 + 若干需求群
+  const { data: groups = [], isLoading: groupsLoading } = useQuery({
     queryKey: ['groups', projectId],
     queryFn: () => groupApi.listByProject(projectId),
-    enabled: !!projectId,//!! 把值变成 true/false
+    enabled: !!projectId,
   })
   const mainGroup = groups.find((g) => g.type === 'PROJECT_MAIN') ?? groups[0]
 
@@ -157,9 +157,12 @@ export default function ProjectDetailLayout() {
     },
   })
 
-  // 在群聊路径但未指定具体群（/req-chat 无 groupId）时，重定向到项目总群
-  if (onReqChat && !groupId && mainGroup) {
-    return <Navigate to={PATHS.projectReqChat(projectId, mainGroup.id)} replace />
+  // 在群聊路径但未指定具体群（/req-chat 无 groupId）时，重定向到项目总群。
+  // groups 加载完成前不重定向（避免闪成空态），加载完成后自动跳主群。
+  if (onReqChat && !groupId && !groupsLoading) {
+    if (mainGroup) {
+      return <Navigate to={PATHS.projectReqChat(projectId, mainGroup.id)} replace />
+    }
   }
 
   // 单个群列表项：置顶标记 + 标题 + 未读数 + 最新消息摘要
@@ -179,8 +182,11 @@ export default function ProjectDetailLayout() {
               {pinned && <PushpinOutlined className="pd-nav__branch-pin" />}
               <span className="pd-nav__branch-title">{g.title}</span>
               {isMain && <span className="pd-nav__branch-main-tag">总群</span>}
-              {/* 未读 @ 角标：该群有 @ 我的未读消息（后端 mentionedUnread > 0 时显示） */}
-              {typeof g.mentionedUnread === 'number' && g.mentionedUnread > 0 ? (
+              {/* 未读 @ 角标：该群有 @ 我的未读消息（后端 mentionedUnread > 0 时显示）。
+                  正在查看的群不显示（人在群里，无需侧栏红字提示；离开时 markRead 会清掉） */}
+              {(!onReqChat || groupId !== g.id) &&
+              typeof g.mentionedUnread === 'number' &&
+              g.mentionedUnread > 0 ? (
                 <span
                   style={{
                     padding: '0 7px',
@@ -274,15 +280,21 @@ export default function ProjectDetailLayout() {
             size="small"
           />
           <ul className="pd-nav__branch-list">
-            {mainGroup && matches(mainGroup) && renderBranch(mainGroup)}
-            {pinnedGroups.map((g) => renderBranch(g, true))}
-            {normalGroups.map((g) => renderBranch(g))}
-            {archivedMatches.length > 0 && (
-              <li className="pd-nav__branches-subhead">已归档</li>
-            )}
-            {archivedMatches.map((g) => renderBranch(g))}
-            {activeRequirement.length === 0 && !keyword && (
-              <li className="pd-nav__empty">暂无需求群，点击下方新建</li>
+            {groupsLoading ? (
+              <li className="pd-nav__empty">正在加载群聊…</li>
+            ) : (
+              <>
+                {mainGroup && matches(mainGroup) && renderBranch(mainGroup)}
+                {pinnedGroups.map((g) => renderBranch(g, true))}
+                {normalGroups.map((g) => renderBranch(g))}
+                {archivedMatches.length > 0 && (
+                  <li className="pd-nav__branches-subhead">已归档</li>
+                )}
+                {archivedMatches.map((g) => renderBranch(g))}
+                {activeRequirement.length === 0 && !keyword && (
+                  <li className="pd-nav__empty">暂无需求群，点击下方新建</li>
+                )}
+              </>
             )}
           </ul>
 

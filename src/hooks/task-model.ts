@@ -315,6 +315,7 @@ export function useAddDiffComment(
     mutationFn: (input) => diffsApi.addComment(projectId, diffId, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.diffs.detail(projectId, diffId) })
+      void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'diffs', diffId, 'comments'] })
     },
   })
 }

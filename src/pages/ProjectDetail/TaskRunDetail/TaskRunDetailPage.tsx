@@ -10,3 +10,4 @@ export default function TaskRunDetailPage() {
   const target = `${PATHS.projectTaskDetail(projectId, taskId)}?runId=${encodeURIComponent(taskRunId)}`
   return <Navigate replace to={target} />
 }
+

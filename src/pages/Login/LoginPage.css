@@ -272,6 +272,39 @@
   color: var(--qg-teal);
 }
 
+/* —— 注册验证码：输入框右侧内嵌「获取验证码」按钮 —— */
+.login-field--code input {
+  padding-right: 104px;
+}
+
+.login-field__code-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--qg-border-light);
+  border-radius: var(--qg-radius-sm);
+  background: #fff;
+  color: var(--qg-teal);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.2s var(--qg-ease), border-color 0.2s var(--qg-ease);
+}
+
+.login-field__code-btn:hover:not(:disabled) {
+  background: rgba(13, 155, 138, 0.08);
+  border-color: var(--qg-teal);
+}
+
+.login-field__code-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .login-card__meta {
   display: flex;
   align-items: center;

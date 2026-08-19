@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Modal, Form, Input, Select, Empty, Radio, Switch, Typography } from 'antd'
+import { Modal, Form, Input, Select, Empty, Radio, Switch, Typography, Upload, Avatar, Button } from 'antd'
+import { CameraOutlined, UploadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { projectApi, teamApi, githubApi } from '@/api'
+import { useProjectAvatarUpload } from '@/hooks/useProjectAvatarUpload'
 import { PATHS } from '@/routes/paths'
 import { isGithubRepoBindable } from '@/types/github'
 import type { CreateProjectPayload, NewProjectRepositoryInput } from '@/types'
@@ -34,6 +36,16 @@ export function CreateProjectModal({
   const queryClient=useQueryClient()
   const [form] = Form.useForm<CreateProjectFormValues>()
   const [repositoryMode, setRepositoryMode] = useState<'existing' | 'new'>('existing')
+  // 项目头像（v2.0.6：创建时可选；项目创建成功后才直传并回写）
+  const { uploading: avatarUploading, uploadAvatar } = useProjectAvatarUpload(teamId)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  // 预览 URL 生命周期：弹窗关闭/重选时释放，避免内存泄漏
+  useEffect(() => {
+    return () => {
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview)
+    }
+  }, [avatarPreview])
 
   // 团队成员列表（作为「初始成员」多选候选）
   const { data: teamMembers = [] } = useQuery({
@@ -62,12 +74,7 @@ export function CreateProjectModal({
 
   const createProject = useMutation({
     mutationFn: (payload: CreateProjectPayload) => projectApi.create(payload),
-    onSuccess: (project) => {
-      form.resetFields()
-      onClose()
-      queryClient.invalidateQueries({queryKey:['teams',teamId,'projects']})
-      navigate(PATHS.projectDetail(project.id), { replace: true })
-    },
+    // 跳转/头像上传统一在 onFinish 的 mutateAsync 后处理（头像需要先拿到 project.id）
   })
 
   // 弹窗打开时重置表单
@@ -76,8 +83,18 @@ export function CreateProjectModal({
       form.resetFields()
       form.setFieldsValue({ newRepository: { isPrivate: true } })
       setRepositoryMode('existing')
+      setAvatarFile(null)
+      setAvatarPreview(null)
     }
   }, [open, form])
+
+  // 选择头像：仅暂存文件与本地预览，项目创建成功后才直传 OSS 并回写
+  function handleAvatarSelect(file: File): boolean {
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview)
+    setAvatarFile(file)
+    setAvatarPreview(URL.createObjectURL(file))
+    return false
+  }
 
   return (
     <Modal
@@ -93,26 +110,40 @@ export function CreateProjectModal({
       <Form
         form={form}
         layout="vertical"
-        onFinish={(values) => {
+        onFinish={async (values) => {
           const newRepository = values.newRepository
-          createProject.mutate({
-            teamId,
-            name: values.name,
-            description: values.description,
-            memberIds: values.memberIds,
-            repositoryIds: repositoryMode === 'existing' ? values.repositoryIds : undefined,
-            newRepository: repositoryMode === 'new' && newRepository
-              ? {
-                  name: newRepository.name.trim(),
-                  description: newRepository.description?.trim() || undefined,
-                  isPrivate: newRepository.isPrivate ?? true,
-                  installationId: activeInstallations.length === 1
-                    ? undefined
-                    : newRepository.installationId,
-                  displayName: newRepository.displayName?.trim() || undefined,
-                }
-              : undefined,
-          })
+          try {
+            // 先创建项目（拿到 project.id），再直传头像回写，最后跳转项目总群
+            const project = await createProject.mutateAsync({
+              teamId,
+              name: values.name,
+              description: values.description,
+              memberIds: values.memberIds,
+              repositoryIds: repositoryMode === 'existing' ? values.repositoryIds : undefined,
+              newRepository: repositoryMode === 'new' && newRepository
+                ? {
+                    name: newRepository.name.trim(),
+                    description: newRepository.description?.trim() || undefined,
+                    isPrivate: newRepository.isPrivate ?? true,
+                    installationId: activeInstallations.length === 1
+                      ? undefined
+                      : newRepository.installationId,
+                    displayName: newRepository.displayName?.trim() || undefined,
+                  }
+                : undefined,
+            })
+            if (avatarFile) {
+              await uploadAvatar(project.id, avatarFile)
+            }
+            form.resetFields()
+            setAvatarFile(null)
+            setAvatarPreview(null)
+            onClose()
+            queryClient.invalidateQueries({ queryKey: ['teams', teamId, 'projects'] })
+            navigate(PATHS.projectDetail(project.id), { replace: true })
+          } catch {
+            // mutateAsync 抛错由 useMutation 的 onError 兜底提示（此处保持弹窗打开，用户可修正后重试）
+          }
         }}
       >
         <Form.Item
@@ -128,6 +159,22 @@ export function CreateProjectModal({
             autoSize={{ minRows: 2, maxRows: 4 }}
             maxLength={200}
           />
+        </Form.Item>
+        {/* 项目头像（v2.0.6）：创建时可选，创建成功后再直传回写；项目主群会话头像跟随项目头像 */}
+        <Form.Item label="项目头像（可选）">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Avatar size={48} src={avatarPreview ?? undefined} icon={<CameraOutlined />} style={{ flexShrink: 0 }} />
+            <Upload accept="image/*" showUploadList={false} beforeUpload={handleAvatarSelect}>
+              <Button icon={<UploadOutlined />} loading={avatarUploading}>
+                {avatarFile ? '重新选择' : '选择头像'}
+              </Button>
+            </Upload>
+            {avatarFile ? (
+              <Button type="text" onClick={() => { setAvatarFile(null); setAvatarPreview(null) }}>
+                移除
+              </Button>
+            ) : null}
+          </div>
         </Form.Item>
         <Form.Item name="memberIds" label="初始成员（可选）">
           <Select

@@ -926,6 +926,39 @@ const taskModelMergeRequestHandlers: HttpHandler[] = [
     store.mergeRequests.set(created.id, created)
     return response(created, 201)
   }),
+
+  http.get('*/api/projects/:projectId/tasks/:taskId/repositories/:repositoryId/preflight', ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const store = getStore(projectId, request)
+    const taskId = pathParam(params, 'taskId')
+    const repositoryId = pathParam(params, 'repositoryId')
+    const targetBranch = new URL(request.url).searchParams.get('targetBranch') ?? 'main'
+    if (!findTask(store, taskId)) return missing('Task')
+    const diff = [...store.diffs.values()].find(
+      (item) => item.taskId === taskId && item.repositoryId === repositoryId,
+    )
+    const sourceCommit = diff?.headCommit ?? 'a1b2c3d4e5f6789012345678abcdef0123456789'
+    const targetCommit = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    return response({
+      taskId,
+      repositoryId,
+      targetBranch,
+      sourceCommit,
+      targetCommit,
+      status: 'PASSED',
+      blockers: [],
+      dryRun: { id: `dryrun-${projectId}-preflight`, status: 'PASSED', sourceCommit, targetCommit },
+      cqPlusOne: {
+        status: 'APPROVED',
+        reviewerUserId: 'mock-reviewer',
+        reviewerName: 'Mock Reviewer',
+        reason: 'looks good',
+        reviewedAt: '2026-08-15T02:10:00Z',
+      },
+    })
+  }),
 ]
 
 const taskModelRepositoryHandlers: HttpHandler[] = [

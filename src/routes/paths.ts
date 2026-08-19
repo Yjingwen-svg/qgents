@@ -6,6 +6,9 @@ export const PATHS = {
   /** 登录 / 注册 */
   LOGIN: '/login',
 
+  /** 忘记密码（输入邮箱获取验证码 → 设置新密码） */
+  FORGOT_PASSWORD: '/forgot-password',
+
   /**
    * 登录后若尚未加入任何团队 → 欢迎页（创建 / 加入）
    * 对应原型：欢迎来到 Qgents
@@ -53,8 +56,11 @@ export const PATHS = {
   /**
    * 项目群聊工作台外壳
    * 左侧会话列表 + 顶栏 + 底部输入；中间消息区留空待填充
+   * 团队上下文挂在路由层：/app/chat?teamId=xxx，刷新后不串团队（v2.0.6）
    */
   CHAT: '/app/chat',
+  /** 项目群聊工作台（携带当前团队，刷新保持不串团队；无团队时用 CHAT 由页面兜底） */
+  chat: (teamId: string) => `/app/chat?teamId=${encodeURIComponent(teamId)}`,
 
   /** 项目详情根路径（会重定向到默认子页） */
   projectDetail: (projectId: string) => `/app/projects/${projectId}`,
@@ -87,6 +93,9 @@ export const PATHS = {
   projectCodeMr: (projectId: string, mergeRequestId: string) =>
     `/app/projects/${projectId}/code/mr/${encodeURIComponent(mergeRequestId)}`,
   projectTestset: (projectId: string) => `/app/projects/${projectId}/testset`,
+  projectTestsetsManage: (projectId: string) => `/app/projects/${projectId}/testset/manage`,
+  projectQualityGate: (projectId: string) => `/app/projects/${projectId}/quality-gate`,
+  projectCqReview: (projectId: string) => `/app/projects/${projectId}/cq-review`,
   projectMembers: (projectId: string) => `/app/projects/${projectId}/members`,
   projectSettings: (projectId: string) => `/app/projects/${projectId}/settings`,
 
@@ -132,8 +141,8 @@ export const PROJECT_NAV = [
   { path: 'agents', label: 'Agent 团队', to: PATHS.projectAgents },
   { path: 'skills', label: '共享 Skill', to: PATHS.projectSkills },
   { path: 'memory', label: '共享 Memory', to: PATHS.projectMemory },
-  { path: 'code', label: '代码与 Branch', to: PATHS.projectCode },
-  { path: 'testset', label: 'Testset', to: PATHS.projectTestset },
+  { path: 'code', label: '分支与 Diff 详情', to: PATHS.projectCode },
+  { path: 'testset', label: '质量门禁和 MR', to: PATHS.projectTestset },
   { path: 'members', label: '项目成员', to: PATHS.projectMembers },
   { path: 'settings', label: '项目设置', to: PATHS.projectSettings },
 ] as const

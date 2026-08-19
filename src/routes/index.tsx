@@ -9,6 +9,9 @@ import { RedirectIfAuthed, RequireAuth, RequireTeam } from "@/routes/guards";
 // ✅ 登录页首屏直接加载
 import { LoginPage } from "@/pages/Login/LoginPage";
 
+// ✅ 忘记密码页（匿名可访问，与登录页同级）
+const ForgotPasswordPage = lazy(() => import("@/pages/ForgotPassword/ForgotPasswordPage"));
+
 // ✅ sections 统一导入保持不变
 import {
   OverviewPage,
@@ -63,6 +66,18 @@ const MergeRequestDetailPage = lazy(
   () =>
     import("@/pages/ProjectDetail/MergeRequestDetail/MergeRequestDetailPage"),
 );
+const CqReviewPage = lazy(
+  () =>
+    import("@/pages/ProjectDetail/Testset/CqReviewPage"),
+);
+const QualityGateReviewPage = lazy(
+  () =>
+    import("@/pages/ProjectDetail/Testset/QualityGateReviewPage"),
+);
+const TestsetManagePage = lazy(
+  () =>
+    import("@/pages/ProjectDetail/Testset/TestsetManagePage"),
+);
 const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 const ForbiddenPage = lazy(() => import("@/pages/ForbiddenPage"));
 const TaskDetailPage = lazy(
@@ -97,6 +112,15 @@ export function AppRouter() {
             element={
               <RedirectIfAuthed>
                 <LoginPage />
+              </RedirectIfAuthed>
+            }
+          />
+
+          <Route
+            path={PATHS.FORGOT_PASSWORD}
+            element={
+              <RedirectIfAuthed>
+                <ForgotPasswordPage />
               </RedirectIfAuthed>
             }
           />
@@ -178,6 +202,9 @@ export function AppRouter() {
                   />
                   <Route path="code" element={<CodePage />} />
                   <Route path="testset" element={<TestsetPage />} />
+                  <Route path="testset/manage" element={<TestsetManagePage />} />
+                  <Route path="quality-gate" element={<QualityGateReviewPage />} />
+                  <Route path="cq-review" element={<CqReviewPage />} />
                   <Route path="members" element={<MembersPage />} />
                   <Route path="settings" element={<SettingsPage />} />
                 </Route>

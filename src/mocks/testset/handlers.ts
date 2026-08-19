@@ -1,11 +1,14 @@
 import { http, HttpResponse, type HttpHandler, type PathParams } from 'msw'
 import type { DryRunReport, TestRun, Testset, TestsetStatus } from '@/types/testset'
+import type { BranchPolicy, DryRunCqResult, QualityGateConfig } from '@/types/qualityGate'
 import { createMockDryRunReport, createMockTestRun, createMockTestset, toDryRunReportResponse, toTestRunResponse, toTestsetResponse } from './fixtures'
 
 interface TestsetStore {
   testsets: Testset[]
   testRuns: Map<string, TestRun>
   dryRuns: Map<string, DryRunReport>
+  branchPolicies: Map<string, BranchPolicy>
+  qualityGates: Map<string, QualityGateConfig>
 }
 
 const stores = new Map<string, TestsetStore>()
@@ -32,9 +35,29 @@ function storeFor(projectId: string): TestsetStore {
     testsets: [createMockTestset(projectId)],
     testRuns: new Map([[seededRun.id, seededRun]]),
     dryRuns: new Map([[seededDryRun.id, seededDryRun]]),
+    branchPolicies: new Map(),
+    qualityGates: new Map(),
   }
   stores.set(projectId, created)
   return created
+}
+
+function policyKey(repositoryId: string, branch: string): string {
+  return `${repositoryId}\0${branch}`
+}
+
+function defaultPolicy(): BranchPolicy {
+  return { requirePullRequest: true, minimumHumanApprovals: 1, allowDirectPush: false }
+}
+
+function defaultGate(): QualityGateConfig {
+  return {
+    requirePullRequest: true,
+    requiredChecks: ['AI_REVIEW'],
+    requiredTestsetIds: [],
+    minimumHumanApprovals: 1,
+    allowDirectPush: false,
+  }
 }
 
 async function readBody(request: Request): Promise<Record<string, unknown>> {
@@ -205,5 +228,72 @@ export const testsetHandlers: HttpHandler[] = [
   http.get('*/api/projects/:projectId/dry-runs/:dryRunId/report', ({ params }) => {
     const report = storeFor(pathParam(params, 'projectId')).dryRuns.get(pathParam(params, 'dryRunId'))
     return report ? envelope(toDryRunReportResponse(report)) : error(404, 'DRY_RUN_NOT_FOUND', 'Dry run not found')
+  }),
+
+  http.get('*/api/projects/:projectId/repositories/:repositoryId/branch-policies/:branch', ({ params }) => {
+    const store = storeFor(pathParam(params, 'projectId'))
+    const key = policyKey(pathParam(params, 'repositoryId'), pathParam(params, 'branch'))
+    return envelope(store.branchPolicies.get(key) ?? defaultPolicy())
+  }),
+
+  http.put('*/api/projects/:projectId/repositories/:repositoryId/branch-policies/:branch', async ({ params, request }) => {
+    const store = storeFor(pathParam(params, 'projectId'))
+    const key = policyKey(pathParam(params, 'repositoryId'), pathParam(params, 'branch'))
+    const body = await readBody(request)
+    const next: BranchPolicy = {
+      requirePullRequest: typeof body.requirePullRequest === 'boolean' ? body.requirePullRequest : defaultPolicy().requirePullRequest,
+      minimumHumanApprovals: typeof body.minimumHumanApprovals === 'number' ? body.minimumHumanApprovals : defaultPolicy().minimumHumanApprovals,
+      allowDirectPush: typeof body.allowDirectPush === 'boolean' ? body.allowDirectPush : defaultPolicy().allowDirectPush,
+    }
+    store.branchPolicies.set(key, next)
+    return envelope(next)
+  }),
+
+  http.get('*/api/projects/:projectId/repositories/:repositoryId/quality-gates/:branch', ({ params }) => {
+    const store = storeFor(pathParam(params, 'projectId'))
+    const key = policyKey(pathParam(params, 'repositoryId'), pathParam(params, 'branch'))
+    return envelope(store.qualityGates.get(key) ?? defaultGate())
+  }),
+
+  http.put('*/api/projects/:projectId/repositories/:repositoryId/quality-gates/:branch', async ({ params, request }) => {
+    const store = storeFor(pathParam(params, 'projectId'))
+    const key = policyKey(pathParam(params, 'repositoryId'), pathParam(params, 'branch'))
+    const body = await readBody(request)
+    const current = store.qualityGates.get(key) ?? defaultGate()
+    const next: QualityGateConfig = {
+      ...current,
+      requiredTestsetIds: asStringArray(body.requiredTestsetIds),
+    }
+    store.qualityGates.set(key, next)
+    return envelope(next)
+  }),
+
+  http.post('*/api/projects/:projectId/dry-runs/:dryRunId/cq-approvals', ({ params }) => {
+    const dryRunId = pathParam(params, 'dryRunId')
+    const result: DryRunCqResult = {
+      dryRunId,
+      decision: 'APPROVED',
+      reviewerUserId: 'mock-reviewer',
+      reviewerName: 'Mock Reviewer',
+      reason: '',
+      reviewedAt: new Date().toISOString(),
+    }
+    return envelope(result, 201)
+  }),
+
+  http.post('*/api/projects/:projectId/dry-runs/:dryRunId/cq-rejections', async ({ params, request }) => {
+    const dryRunId = pathParam(params, 'dryRunId')
+    const body = await readBody(request)
+    const reason = asString(body.reason).trim()
+    if (!reason) return error(422, 'VALIDATION_FAILED', 'reason 必填')
+    const result: DryRunCqResult = {
+      dryRunId,
+      decision: 'REJECTED',
+      reviewerUserId: 'mock-reviewer',
+      reviewerName: 'Mock Reviewer',
+      reason,
+      reviewedAt: new Date().toISOString(),
+    }
+    return envelope(result, 201)
   }),
 ]

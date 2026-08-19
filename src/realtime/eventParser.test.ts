@@ -13,6 +13,8 @@ describe('project SSE event parsing', () => {
       ? { testRunId: 'test-run-1' }
       : eventType === 'dry-run.updated'
         ? { dryRunId: 'dry-run-1' }
+        : eventType === 'preflight.updated'
+          ? { taskId: 'task-1', repositoryId: 'repo-1', targetBranch: 'main' }
     : eventType === 'task-run.step.progress'
       ? { taskId: 'task-1', stepId: 'step-1', taskRunId: 'run-1' }
       : eventType === 'task.updated'

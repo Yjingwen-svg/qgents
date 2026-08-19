@@ -49,6 +49,20 @@ export const teamApi = {
     return request<Team>('/teams', { method: 'POST', body: payload })
   },
 
+  /** POST /teams/{teamId}/avatar/credential — 签发团队头像直传凭证（§5.1；OSS 未启用时 501） */
+  avatarCredential(teamId: string, input: { mediaType: string; sizeBytes: number }) {
+    return request<{ objectKey: string; uploadUrl: string; method: string; headers: Record<string, string>; expiresAt: string }>(
+      `/teams/${teamId}/avatar/credential`, { method: 'POST', body: input })
+  },
+
+  /** POST /teams/{teamId}/avatar/confirm — 确认团队头像上传并返回公共读 URL */
+  avatarConfirm(teamId: string, objectKey: string) {
+    return request<{ avatarUrl: string }>(`/teams/${teamId}/avatar/confirm`, {
+      method: 'POST',
+      body: { objectKey },
+    })
+  },
+
   /** GET /teams/{teamId} — 获取团队资料 */
   getById(teamId: string) {
     return request<Team>(`/teams/${teamId}`).then(normalizeTeam)
@@ -118,4 +132,34 @@ export const teamApi = {
   disband(teamId: string) {
     return request<void>(`/teams/${teamId}`, { method: 'DELETE' })
   },
+
+  /**
+   * 上传团队头像并返回长期公共读 URL：签发凭证 → 直传 OSS → 确认（§28.1）。
+   * 失败时抛错，由调用方 toast 展示；OSS 未启用时抛 501 错误。
+   * 仅返回 avatarUrl，不自动 PATCH 回写——由调用方决定何时回写（创建团队页在创建后回写）。
+   * URL 追加版本参数（?v=时间戳）：每次上传产生新 URL，强制浏览器重新加载，避免旧图缓存 2-3 分钟。
+   */
+  async uploadAvatar(teamId: string, file: File): Promise<string> {
+    const credential = await teamApi.avatarCredential(teamId, {
+      mediaType: file.type,
+      sizeBytes: file.size,
+    })
+    // 用 ArrayBuffer 作 body：fetch 不会自动带 Content-Type 头，避免预签名 PUT 签名不匹配
+    const putRes = await fetch(credential.uploadUrl, {
+      method: 'PUT',
+      body: await file.arrayBuffer(),
+    })
+    if (!putRes.ok) {
+      throw new Error(`团队头像上传失败（${putRes.status}）`)
+    }
+    const result = await teamApi.avatarConfirm(teamId, credential.objectKey)
+    return withCacheBuster(result.avatarUrl)
+  },
+}
+
+/** 给 OSS 公共读 URL 追加版本参数，强制浏览器绕过缓存加载最新图 */
+function withCacheBuster(url: string): string {
+  if (!url) return url
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}v=${Date.now()}`
 }

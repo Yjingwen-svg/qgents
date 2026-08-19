@@ -1,20 +1,22 @@
 /**
- * Testset / Test Run / Dry Run —— 对齐 README/Qgents接口文档.md §10、§12.4
+ * Testset / Test Run / Dry Run
+ * 口径：docs/frontend/testset-frontend-confirm.md（2026-08-17 前端确认项）
  *
- * Testset 是项目自建、可复用的测试配置（命令、超时、通过规则），不是特殊语法。
- * repositoryId 一律使用 project_repositories.id（项目绑定 UUID），不是 GitHub 数字 ID。
- *
- * 决策 2 选项 1：后端 v1 用 status = ENABLED | DISABLED，不使用 enabled 布尔字段。
- * 页面是否启用请用 isTestsetEnabled()（status === 'ENABLED'）。
+ * repositoryId 一律使用 project_repositories.id（项目绑定 UUID）。
+ * 启用态只用 status === 'ENABLED'，不读 enabled 布尔。
  */
 
-/** Testset 启用状态（后端枚举，不要自行发明 enabled） */
+/** Testset 启用状态（后端枚举） */
 export type TestsetStatus = 'ENABLED' | 'DISABLED'
 
-/** 测试运行状态：GET /test-runs/{id} */
+/** 测试运行 / summary.results 项状态 */
 export type TestRunStatus = 'QUEUED' | 'RUNNING' | 'PASSED' | 'FAILED' | 'CANCELLED'
 
-/** Dry-run 报告状态：GET /dry-runs/{id}/report */
+/**
+ * Dry-run 顶层状态。
+ * 后端确认枚举为 QUEUED|RUNNING|PASSED|FAILED|CANCELLED；
+ * CONFLICT 仅作前端展示派生（mergeable=false / MERGE_CONFLICT），不表示测试失败。
+ */
 export type DryRunStatus = 'QUEUED' | 'RUNNING' | 'PASSED' | 'FAILED' | 'CONFLICT' | 'CANCELLED'
 
 /** 通过规则：文档创建示例为 EXIT_CODE + expected */
@@ -24,8 +26,7 @@ export interface TestsetPassRule {
 }
 
 /**
- * GET/POST/PATCH /projects/{projectId}/testsets 的 Testset 对象
- * 列表项与详情共用同一形状；后端若多返回字段，映射层丢弃即可。
+ * GET/POST/PATCH /projects/{projectId}/testsets
  */
 export interface Testset {
   id: string
@@ -44,7 +45,6 @@ export interface Testset {
   updatedAt: string
 }
 
-/** POST /projects/{projectId}/testsets 请求体（与文档创建示例一致） */
 export interface CreateTestsetPayload {
   name: string
   repositoryId: string
@@ -55,20 +55,13 @@ export interface CreateTestsetPayload {
   acceptanceNotes: string
 }
 
-/** PATCH /projects/{projectId}/testsets/{testsetId} 只提交可改配置，不含 status */
 export type UpdateTestsetPayload = Partial<CreateTestsetPayload>
 
-/** GET /projects/{projectId}/testsets 查询参数 */
 export interface TestsetListFilters {
   repositoryId?: string
-  /** 启用状态过滤；不传表示全部。对应后端 status，不是 enabled */
   status?: TestsetStatus
 }
 
-/**
- * POST /projects/{projectId}/test-runs
- * 必须提供 repositoryId，以及 taskId 或 ref 之一；testsetIds 须属该仓库且 ENABLED。
- */
 export interface CreateTestRunPayload {
   repositoryId: string
   testsetIds: string[]
@@ -76,7 +69,7 @@ export interface CreateTestRunPayload {
   ref?: string
 }
 
-/** 用例计数摘要（GET test-run / dry-run report 已有；缺省字段用 0） */
+/** 本轮暂缓：逐用例统计；有则展示，无则空态 */
 export interface TestCaseSummary {
   passed: number
   failed: number
@@ -85,21 +78,15 @@ export interface TestCaseSummary {
   total: number
 }
 
-/**
- * 逐条用例详情。本轮后端不返回 cases[]；映射层若遇到则收下，页面默认空态。
- */
 export type TestCaseStatus = 'PASSED' | 'FAILED' | 'BLOCKED' | 'SKIPPED'
 
 export interface TestCaseDetail {
   id: string
-  /** 用例名称，例如 should reject invalid password */
   name: string
   testsetId: string | null
-  /** 套件 / 类名 / describe */
   suite: string | null
   status: TestCaseStatus
   durationMs: number | null
-  /** 失败或阻塞原因 */
   message: string | null
   filePath: string | null
 }
@@ -110,19 +97,35 @@ export interface TestRunArtifactRef {
   contentType: string | null
 }
 
+/** GET test-runs 的 summary 对象（确认项 §2.2） */
+export interface TestRunResultItem {
+  testsetId: string
+  status: TestRunStatus
+  exitCode: number | null
+  durationMs: number | null
+  failureCode: string | null
+}
+
+export interface TestRunExecutionSummary {
+  status: TestRunStatus
+  resolvedHeadCommit: string | null
+  results: TestRunResultItem[]
+}
+
 /** GET /projects/{projectId}/test-runs/{testRunId} */
 export interface TestRun {
   id: string
   projectId: string
   repositoryId: string
   testsetIds: string[]
+  /** GET 本轮可能不回传；有则展示 */
   taskId: string | null
   ref: string | null
   status: TestRunStatus
-  summary: string
+  /** 结构化执行摘要；字段均可空 */
+  executionSummary: TestRunExecutionSummary | null
   createdBy: string | null
   createdAt: string
-  /** 本轮契约没有；若后端以后带上则展示 */
   caseSummary: TestCaseSummary | null
   cases: TestCaseDetail[]
   artifacts: TestRunArtifactRef[]
@@ -133,10 +136,6 @@ export interface TestRun {
   sandboxId: string | null
 }
 
-/**
- * POST /projects/{projectId}/dry-runs
- * 必须提供 repositoryId、sourceRef、targetBranch，可选 taskId。
- */
 export interface CreateDryRunPayload {
   repositoryId: string
   sourceRef: string
@@ -144,10 +143,27 @@ export interface CreateDryRunPayload {
   taskId?: string
 }
 
-/** Dry-run 冲突条目（报告接口；后端字段名若不同在映射层对齐） */
 export interface DryRunConflict {
   path: string
   message: string
+}
+
+/** Dry-run report.tests：执行摘要，或未跑测试的占位 */
+export type DryRunTestsPayload =
+  | TestRunExecutionSummary
+  | {
+      status: 'NOT_REQUIRED' | 'SKIPPED'
+      results: TestRunResultItem[]
+      reason: 'MERGE_CONFLICT' | null
+    }
+
+/** 嵌套 report（确认项 §2.3） */
+export interface DryRunReportBody {
+  targetCommit: string | null
+  mergeable: boolean | null
+  conflicts: DryRunConflict[]
+  tests: DryRunTestsPayload | null
+  failureCode: string | null
 }
 
 /** GET /projects/{projectId}/dry-runs/{dryRunId}/report */
@@ -159,23 +175,23 @@ export interface DryRunReport {
   targetBranch: string
   taskId: string | null
   status: DryRunStatus
+  /** 后端真实报告体；QUEUED/RUNNING 时常为 null */
+  report: DryRunReportBody | null
+  /** 兼容：从 report.conflicts 抽出，供冲突 Tab */
   conflicts: DryRunConflict[]
   caseSummary: TestCaseSummary | null
   cases: TestCaseDetail[]
-  summary: string
   reportUrl: string | null
   pdfUrl: string | null
   startedAt: string | null
   finishedAt: string | null
   durationSeconds: number | null
-  /** GET 文档未写死该字段；有则展示，没有则页面显示 — */
   sandboxId: string | null
-  /** 报告若带回本次用到的测试集；缺省为空，页面显示 — */
   testsetIds: string[]
   createdAt: string
 }
 
-/** 前端会话内历史（后端没有历史列表接口时使用，不是 HTTP 资源） */
+/** 本设备会话历史（非权威跨设备列表） */
 export type LocalRunKind = 'TEST_RUN' | 'DRY_RUN'
 
 export interface LocalRunHistoryItem {
@@ -184,4 +200,19 @@ export interface LocalRunHistoryItem {
   repositoryId: string
   createdAt: string
   label: string
+}
+
+/** 是否为「未执行测试」占位（冲突跳过 / 未配置必选 Testset） */
+export function isDryRunTestsSkipped(
+  tests: DryRunTestsPayload | null,
+): tests is Extract<DryRunTestsPayload, { status: 'NOT_REQUIRED' | 'SKIPPED' }> {
+  return Boolean(tests && (tests.status === 'NOT_REQUIRED' || tests.status === 'SKIPPED'))
+}
+
+/** 从 Dry Run 报告判断应展示冲突（不是测试失败） */
+export function dryRunHasMergeConflict(report: Pick<DryRunReport, 'report' | 'conflicts'>): boolean {
+  if (report.report?.mergeable === false) return true
+  if (report.conflicts.length > 0) return true
+  const tests = report.report?.tests
+  return Boolean(tests && isDryRunTestsSkipped(tests) && tests.reason === 'MERGE_CONFLICT')
 }

@@ -38,6 +38,7 @@ export const PROJECT_TASK_EVENT_TYPES = [
   'skill.archived',
   'test-run.updated',
   'dry-run.updated',
+  'preflight.updated',
 ] as const
 
 export type ProjectTaskEventType = (typeof PROJECT_TASK_EVENT_TYPES)[number]
@@ -102,6 +103,7 @@ function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPay
     'skill.archived': ['resourceId', 'updatedAt'],
     'test-run.updated': ['testRunId'],
     'dry-run.updated': ['dryRunId'],
+    'preflight.updated': ['taskId', 'repositoryId', 'targetBranch'],
   }
   if (type === 'task-run.step.progress') {
     // 兼容两种 ID 命名：文档主口径使用 taskStepId，但旧实现/示例偶发仍以 stepId 推送。

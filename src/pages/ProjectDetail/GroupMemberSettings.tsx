@@ -31,6 +31,8 @@ export function GroupMemberSettings({ projectId, group }: Props) {
 
   const groupId = group?.id ?? ''
 
+  /** 项目头像：已迁出群聊设置栏，改由「项目设置-基本信息」与「创建项目」弹窗提供（v2.0.6） */
+
   const { data: members = [] } = useQuery({
     queryKey: ['groups', projectId, groupId, 'members'],
     queryFn: () => groupApi.listMembers(projectId, groupId),
@@ -163,16 +165,16 @@ export function GroupMemberSettings({ projectId, group }: Props) {
               avatar={
                 <Avatar
                   size={32}
-                  src={member.avatarUrl}
+                  src={member.id === user?.id ? user?.avatarUrl : member.avatarUrl}
                   style={{ background: '#3b82f6' }}
                   icon={<UserOutlined />}
                 >
-                  {member.displayName.slice(0, 1)}
+                  {(member.id === user?.id ? (user?.displayName ?? '我') : member.displayName).slice(0, 1)}
                 </Avatar>
               }
               title={
                 <Text strong>
-                  {member.displayName}
+                  {member.id === user?.id ? user?.displayName ?? member.displayName : member.displayName}
                   {member.id === user?.id ? <Text type="secondary">（我）</Text> : null}
                 </Text>
               }

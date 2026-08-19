@@ -108,6 +108,9 @@ export class RealtimeClient {
     void queryClient.invalidateQueries({ queryKey: ['notifications'] })
     void queryClient.invalidateQueries({ queryKey: ['teams', 'mine'] })
     void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('qgents:realtime-reconnected'))
+    }
     for (const listener of this.reconnectListeners) listener()
   }
 
@@ -200,6 +203,8 @@ export class RealtimeClient {
 
 let sharedClient: RealtimeClient | null = null
 let refCount = 0
+/** subscribeRealtimeReconnect 在 sharedClient 创建前注册的待挂监听（子组件 effect 先于父组件执行） */
+let pendingReconnectListeners = new Set<() => void>()
 
 /**
  * 订阅全局实时通道（每账号一条连接）。返回取消订阅函数。
@@ -208,6 +213,13 @@ let refCount = 0
 export function subscribeRealtime(): () => void {
   if (!projectEventsEnabled()) return () => {}
   sharedClient ??= new RealtimeClient()
+  // 连接就绪后补挂之前排队等待的重连监听
+  if (pendingReconnectListeners.size > 0) {
+    for (const listener of pendingReconnectListeners) {
+      sharedClient.addReconnectListener(listener)
+    }
+    pendingReconnectListeners.clear()
+  }
   refCount += 1
   sharedClient.start()
   return () => {
@@ -217,4 +229,22 @@ export function subscribeRealtime(): () => void {
       sharedClient = null
     }
   }
+}
+
+/**
+ * 订阅全局实时通道的「断线重连成功」回调（可靠消息同步 §1/§2）。
+ * 与 subscribeRealtime 共用同一条连接，不重复建连；返回退订函数。
+ * 连接由 MainLayout 的 subscribeRealtime 持有 refCount，本函数只挂监听。
+ * 子组件 effect 先于父组件执行：若连接尚未创建，先排队等 subscribeRealtime 创建后补挂。
+ * 典型用途：断线重连后对当前群消息做增量补齐（reconcileMessages），比整页重拉更精准。
+ */
+export function subscribeRealtimeReconnect(listener: () => void): () => void {
+  if (!projectEventsEnabled()) return () => {}
+  if (!sharedClient) {
+    pendingReconnectListeners.add(listener)
+    return () => {
+      pendingReconnectListeners.delete(listener)
+    }
+  }
+  return sharedClient.addReconnectListener(listener)
 }

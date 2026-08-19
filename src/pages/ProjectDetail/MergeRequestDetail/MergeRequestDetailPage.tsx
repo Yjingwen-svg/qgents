@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -55,6 +55,7 @@ import { commentAuthorName, HUNK_UNAVAILABLE_HINT } from '../commentAuthor'
 import { findCqCheck, isMergeRequestAuthor } from '../cqSeal'
 import { githubPullRequestUrl } from '../mergeRequestDisplay'
 import { qualityGateNodeHref } from '../qualityGateNav'
+import { FlowStepper } from '../components/FlowStepper/FlowStepper'
 import { CqSealCard } from './CqSealCard'
 import { CommitHistoryCard } from './CommitHistoryCard'
 import styles from './MergeRequestDetailPage.module.scss'
@@ -63,7 +64,6 @@ const { Text } = Typography
 
 const FILE_PAGE_SIZE = 100
 
-const QUALITY_GATE_NAMES: MergeRequestCheckName[] = ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE']
 type QualityGateName = MergeRequestCheckName
 
 const GATE_LABEL: Record<QualityGateName, string> = {
@@ -72,6 +72,15 @@ const GATE_LABEL: Record<QualityGateName, string> = {
   DRY_RUN: 'Dry-run',
   CQ_PLUS_ONE: 'CQ+1',
 }
+
+/**
+ * MR 创建前由「预检」闭环完成的节点（Dry Run + CQ+1 + 强制 Testset）。
+ * 它们只读地反映 MR 前审计，不是 MR 创建后 qualityGate 的必过节点。
+ */
+const PRE_MR_GATE_NAMES: readonly QualityGateName[] = ['TESTSET', 'DRY_RUN', 'CQ_PLUS_ONE']
+
+/** 接口允许的检查名白名单，用于过滤未知项 */
+const KNOWN_GATE_NAMES: readonly string[] = ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE']
 
 type DetailView = 'gate' | 'changes' | 'comments'
 
@@ -100,6 +109,17 @@ export default function MergeRequestDetailPage() {
   const view: DetailView = isDetailView(viewParam) ? viewParam : 'gate'
   const [fileIndex, setFileIndex] = useState(0)
   const [draft, setDraft] = useState('')
+  const cqRef = useRef<HTMLDivElement>(null)
+
+  function scrollToCq() {
+    cqRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  function handleCreateMr() {
+    if (!mr) return
+    const to = `${PATHS.projectDiffs(projectId)}?tab=mr`
+    window.location.href = to
+  }
 
   const { data: project } = useQuery({
     queryKey: ['projects', projectId],
@@ -285,6 +305,9 @@ export default function MergeRequestDetailPage() {
   const cqCheck = findCqCheck(checksQuery.data)
   const isAuthor = isMergeRequestAuthor(user?.id, taskQuery.data?.createdByUser?.id)
 
+  const gatePassed = gateNodes.length > 0 && gateNodes.every((n) => n.status === 'PASSED')
+  const cqStatus = cqCheck?.status ?? 'PENDING'
+
   return (
     <div className={styles.page}>
       <Link to={listToMr} className={styles.back}>
@@ -337,12 +360,27 @@ export default function MergeRequestDetailPage() {
         </div>
       </header>
 
+      <FlowStepper
+        projectId={projectId}
+        status={{
+          gate: gatePassed ? 'passed' : gateNodes.some((n) => n.status === 'FAILED') ? 'failed' : 'pending',
+          cq: cqStatus === 'PASSED' ? 'approved' : cqStatus === 'FAILED' ? 'rejected' : 'pending',
+          createMr: gatePassed && cqStatus === 'PASSED',
+        }}
+        onClickGate={() => {
+          const mrParam = `?mr=${encodeURIComponent(mr.id)}`
+          window.location.href = `${PATHS.projectQualityGate(projectId)}${mrParam}`
+        }}
+        onClickCq={scrollToCq}
+        onClickCreateMr={handleCreateMr}
+      />
+
       {project?.role === 'PROJECT_ADMIN' && mr.status === 'OPEN' && mr.qualityGate?.status !== 'PASSED' ? (
         <Alert
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message="质量门禁未全部通过前不显示合并。Testset、AI Review、Dry-run、CQ+1 均需 PASSED。"
+          message="质量门禁未全部通过前不显示合并。Testset / Dry-run / CQ+1 属 MR 前预检审计；MR 创建后的门禁只含接口返回的 MR 后检查。"
         />
       ) : null}
 
@@ -381,6 +419,7 @@ export default function MergeRequestDetailPage() {
                     busy={approveCq.isPending || rejectCq.isPending}
                     onApprove={() => submitCq('approve')}
                     onReject={() => submitCq('reject')}
+                    rootRef={cqRef}
                   />
                 </section>
                 <CommitHistoryCard projectId={projectId} mergeRequestId={mr.id} />
@@ -626,15 +665,15 @@ function pickRelatedDiff(items: DiffListItem[], mr: MergeRequestSummary): DiffLi
 function qualityGateNodes(
   checks: MergeRequestCheck[] | undefined,
   mr: MergeRequestSummary,
-): Array<{ name: QualityGateName; status: MergeRequestCheck['status']; check?: MergeRequestCheck }> {
-  const names = (mr.qualityGate?.requiredChecks ?? QUALITY_GATE_NAMES).filter(isQualityGateName)
-  const ordered = names.length > 0 ? names : [...QUALITY_GATE_NAMES]
-  return ordered.map((name) => {
+): Array<{ name: QualityGateName; status: MergeRequestCheck['status']; check?: MergeRequestCheck; preMr: boolean }> {
+  const names = (mr.qualityGate?.requiredChecks ?? []).filter(isQualityGateName)
+  return names.map((name) => {
     const item = checks?.find((check) => check.type === name)
     return {
       name,
       status: item?.status ?? 'PENDING',
       check: item,
+      preMr: PRE_MR_GATE_NAMES.includes(name),
     }
   })
 }
@@ -646,7 +685,7 @@ function GateNode({
 }: {
   projectId: string
   mr: MergeRequestSummary
-  node: { name: QualityGateName; status: MergeRequestCheck['status']; check?: MergeRequestCheck }
+  node: { name: QualityGateName; status: MergeRequestCheck['status']; check?: MergeRequestCheck; preMr: boolean }
 }) {
   const href = qualityGateNodeHref(projectId, node.name, mr, node.check)
   const reportHref =
@@ -655,7 +694,10 @@ function GateNode({
   const body = (
     <>
       <span className={`${styles.gateDot} ${gateDotClass(node.status)}`}>{gateIcon(node.status)}</span>
-      <strong className={styles.gateName}>{GATE_LABEL[node.name]}</strong>
+      <strong className={styles.gateName}>
+        {GATE_LABEL[node.name]}
+        {node.preMr ? <Text type="secondary"> · MR 前预检审计</Text> : null}
+      </strong>
       <p className={styles.gateSummary}>{gateStatusLabel(node.status)}</p>
     </>
   )
@@ -678,7 +720,7 @@ function GateNode({
 }
 
 function isQualityGateName(value: string): value is QualityGateName {
-  return (QUALITY_GATE_NAMES as readonly string[]).includes(value)
+  return (KNOWN_GATE_NAMES as readonly string[]).includes(value)
 }
 
 function isDetailView(value: string | null): value is DetailView {

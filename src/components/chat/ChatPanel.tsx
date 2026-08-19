@@ -1,23 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Drawer, Divider, Avatar } from 'antd'
+import { Layout, Button, Input, Space, Typography, theme, Empty, Tag, Popconfirm, Drawer, Divider, Avatar, Spin } from 'antd'
 import { App, Upload } from 'antd'
+import type { TextAreaRef } from 'antd/es/input/TextArea'
 import {
   SendOutlined,
   ThunderboltOutlined,
   FileOutlined,
+  FilePdfOutlined,
+  CodeOutlined,
   MessageOutlined,
   BranchesOutlined,
   InboxOutlined,
   PaperClipOutlined,
   CloseOutlined,
   SettingOutlined,
+  TeamOutlined,
 } from '@ant-design/icons'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
-import { ApiError, groupApi, projectApi, agentApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
+import { ApiError, groupApi, projectApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
+import { resolvePreviewUrl } from '@/api/attachment'
+import { AttachmentPreviewModal } from '@/components/chat/AttachmentPreviewModal'
 import { getApiBaseUrl } from '@/api/client'
 import { useAuth } from '@/context/AuthContext'
+import { useAgents } from '@/hooks/agents'
+import { subscribeRealtimeReconnect } from '@/realtime'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { TaskTriggerModal } from '@/components/task-domain'
 import { GroupMemberSettings } from '@/pages/ProjectDetail/GroupMemberSettings'
@@ -61,7 +69,14 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const [settingsOpen, setSettingsOpen] = useState(false)
   // 回复引用：选中某条消息后，输入区显示引用条，发送时以 QUOTE 类型 + replyToId 提交
   const [replyTo, setReplyTo] = useState<Message | null>(null)
+  // 附件内联预览（增量契约 §4/§5）：点击 IMAGE/FILE 打开页内预览弹窗
+  const [previewTarget, setPreviewTarget] = useState<{
+    attachmentId: string
+    fileName?: string
+    embeddedPreviewUrl?: string
+  } | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const incrementalSyncRef = useRef<() => void>(() => {})
   // 群聊 @ 提及：已读游标（markRead 返回）与「有人@我」提示条
   const [lastReadSeq, setLastReadSeq] = useState<number | null>(null)
   const [mentionFlashId, setMentionFlashId] = useState<string | null>(null)
@@ -74,6 +89,10 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const shouldStickToBottomRef = useRef(true)
   // 本次发送后需要强制滚到底（即使布局滚动事件把 stick 标志重算为 false 也照滚），待消息渲染后清除。
   const pendingScrollRef = useRef(false)
+  // 消息输入框 ref：右键「@ta」后聚焦进入编辑态
+  const inputRef = useRef<TextAreaRef>(null)
+  // 右键成员消息的上下文菜单（@ta）：记录触发位置与目标消息
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: Message } | null>(null)
 
   const { data: groups = [] } = useQuery({
     queryKey: ['groups', projectId],
@@ -110,11 +129,10 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     enabled: !!projectId,
   })
   const teamId = project?.teamId
-  const { data: agentsPage } = useQuery({
-    queryKey: ['teams', teamId, 'agents'],
-    queryFn: () => agentApi.list(teamId ?? ''),
-    enabled: !!teamId,
-  })
+  // @ Agent 候选：走 useAgents hook（queryKeys.agents.list 前缀），
+  // 与 AgentTeamPage 的 create/publish/archive mutation invalidate 的 queryKeys.agents.all 对齐，
+  // 避免内联 key 分裂导致 @ 候选列表永不刷新
+  const { data: agentsPage } = useAgents(projectId, teamId)
   // 仅展示可被 @ 的 Agent（ACTIVE 状态）
   const teamAgents = (agentsPage?.data ?? []).filter((a) => a.status === 'ACTIVE'&&a.name==='编排助手')
 
@@ -122,20 +140,93 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     data: page,
     isLoading,
     isError,
-  } = useQuery({
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['groups', projectId, groupId, 'messages'],
-    queryFn: () => groupApi.listMessages(projectId, groupId),
+    queryFn: ({ pageParam }) => groupApi.listMessages(projectId, groupId, pageParam as string | undefined),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => (lastPage.page.hasMore ? lastPage.page.nextCursor : undefined),
     enabled: !!projectId && !!groupId,
   })
-  // 后端消息列表不保证顺序，按 sequence（缺则退回 createdAt）升序排，保证新消息在下方
+  // 后端消息列表不保证顺序，按 sequence（缺则退回 createdAt）升序排，保证新消息在下方。
+  // useInfiniteQuery 的 page 顺序是「第一页(最新) → 下一页(更早)」，合并后统一按 sequence 升序。
   const messages = useMemo(() => {
-    const list = page?.data ?? []
+    const list = page?.pages.flatMap((p) => p.data) ?? []
     return [...list].sort((a, b) => {
       const as = a.sequence ?? Number.MAX_SAFE_INTEGER
       const bs = b.sequence ?? Number.MAX_SAFE_INTEGER
       if (as !== bs) return as - bs
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     })
+  }, [page])
+
+  // 可靠增量同步：SSE/WS 只作为提示，实际消息通过 afterSequence REST 拉取并按 ID 合并。
+  useEffect(() => {
+    if (!projectId || !groupId) return
+    let stopped = false
+    let syncing = false
+    let pending = false
+    const key = ['groups', projectId, groupId, 'messages'] as const
+
+    const currentSequence = (): number => {
+      const rows = queryClient.getQueryData<{ data?: Message[] }>(key)?.data ?? []
+      return rows.reduce((max, item) => Math.max(max, item.sequence ?? 0), 0)
+    }
+    const sync = async (): Promise<void> => {
+      if (stopped) return
+      if (syncing) {
+        pending = true
+        return
+      }
+      syncing = true
+      try {
+        let afterSequence = currentSequence()
+        const received: Message[] = []
+        while (!stopped) {
+          const result = await groupApi.listMessagesAfter(projectId, groupId, afterSequence)
+          received.push(...result.data)
+          if (!result.page.hasMore || !result.page.nextCursor) break
+          const nextSequence = Number(result.page.nextCursor)
+          if (!Number.isSafeInteger(nextSequence) || nextSequence <= afterSequence) break
+          afterSequence = nextSequence
+        }
+        if (stopped || received.length === 0) return
+        queryClient.setQueryData(key, (old: { data?: Message[]; page?: unknown } | undefined) => {
+          const merged = new Map<string, Message>((old?.data ?? []).map((item) => [item.id, item]))
+          for (const item of received) merged.set(item.id, item)
+          return { data: [...merged.values()].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0)), page: old?.page }
+        })
+      } catch {
+        // REST 是可靠来源；短暂网络失败交由下一次 SSE/WS 信号或重连再次补偿。
+      } finally {
+        syncing = false
+        if (pending && !stopped) {
+          pending = false
+          void sync()
+        }
+      }
+    }
+    incrementalSyncRef.current = () => { void sync() }
+    const onMessageEvent = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string; groupId?: string }>).detail
+      if (detail?.projectId === projectId && detail.groupId === groupId) void sync()
+    }
+    const onReconnect = () => void sync()
+    window.addEventListener('qgents:message-event', onMessageEvent)
+    window.addEventListener('qgents:realtime-reconnected', onReconnect)
+    return () => {
+      stopped = true
+      incrementalSyncRef.current = () => {}
+      window.removeEventListener('qgents:message-event', onMessageEvent)
+      window.removeEventListener('qgents:realtime-reconnected', onReconnect)
+    }
+  }, [groupId, projectId, queryClient])
+
+  // 首屏列表完成后补一次，覆盖「事件先到、查询尚未写入缓存」的竞态。
+  useEffect(() => {
+    if (page) incrementalSyncRef.current()
   }, [page])
 
   // 发送者头像（微信式，边缘展示）：优先群成员 avatarUrl，自己用当前用户头像；SYSTEM 无头像
@@ -171,11 +262,34 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
 
   // 用户滚动消息列表：据此更新「是否应该保持贴底」。
   // 接近底部 → 贴底；明显上翻查看历史 → 不贴底（图片加载也不拉回）。
+  // 滚到顶部且还有更早的历史 → 触发分页加载（cursor 翻页，往上加载更早消息）。
   const handleScroll = useCallback(() => {
     const el = listRef.current
     if (!el) return
     shouldStickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 80
-  }, [])
+    // 顶部触发加载更早历史：scrollTop 接近 0 且还有下一页，且不在加载中
+    if (el.scrollTop <= 24 && hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage()
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
+  // 向上加载更早消息后保持滚动位置：记录加载前的「距底距离」，加载完成后恢复，
+  // 避免新页插入顶部后视图跳到顶部（停留在原来看的那条消息附近）。
+  const prevScrollAnchorRef = useRef<number | null>(null)
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    if (isFetchingNextPage) {
+      prevScrollAnchorRef.current = el.scrollHeight - el.scrollTop
+      return
+    }
+    const anchor = prevScrollAnchorRef.current
+    if (anchor != null && messages.length > 0) {
+      el.scrollTop = el.scrollHeight - anchor
+    }
+    prevScrollAnchorRef.current = null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFetchingNextPage, messages.length])
 
   // ResizeObserver：监听消息内容容器高度变化（图片加载、新消息渲染都会改变高度）。
   // 辅助机制：图片 onLoad 是主信号，RO 兜底覆盖「图片失败/懒加载等无 onLoad 场景」。
@@ -211,6 +325,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   useEffect(() => {
     shouldStickToBottomRef.current = true
     scrollToBottom()
+    // 右键 @ta 菜单随群切换关闭，避免残留到新群的旧坐标菜单
+    setCtxMenu(null)
   }, [groupId, scrollToBottom])
 
   // 进群全读（§三）：直接调后端推进已读游标。
@@ -245,6 +361,30 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     if (groupId) void markGroupReadNow()
   }, [groupId, markGroupReadNow])
 
+  // 离开群 / 组件卸载时：补一次「离开即已读」，把游标推进到该群最新消息。
+  // 否则「进群后新消息累积的 unreadCount / mentionedUnread」会在离开群后于侧栏残留红点/红字
+  // （侧栏红点与「有人@你」渲染只看 unreadCount / mentionedUnread，不看当前是否在看该群——见 ProjectDetailLayout）。
+  // 注意：只调接口 + 更新 queryClient 缓存，不做 setState（卸载时 setState 会告警）。
+  useEffect(() => {
+    const projectIdAtMount = projectId
+    const groupIdAtMount = groupId
+    return () => {
+      if (!projectIdAtMount || !groupIdAtMount) return
+      // 乐观清零该群 unreadCount 与 mentionedUnread，避免离开后侧栏红点/红字残留
+      const clearLeft = (groups: Group[] | undefined): Group[] | undefined =>
+        groups
+          ? groups.map((g) =>
+              g.id === groupIdAtMount ? { ...g, unreadCount: 0, mentionedUnread: 0 } : g,
+            )
+          : groups
+      queryClient.setQueryData<Group[]>(['groups', projectIdAtMount], clearLeft)
+      queryClient.setQueryData<Group[]>(['chat', 'main-groups'], clearLeft)
+      void groupApi.markRead(projectIdAtMount, groupIdAtMount).catch(() => {
+        // 离开时已读失败：下次进群 markRead 会覆盖，不阻塞
+      })
+    }
+  }, [projectId, groupId, queryClient])
+
   // 兜底：消息列表首次加载成功后补发一次 read（幂等，游标只前进）。
   // 覆盖「进群 effect 因时序/挂载问题未触发」的情况——只要点进群、消息加载出来，read 必发。
   const markReadForGroupRef = useRef<string | null>(null)
@@ -255,20 +395,86 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     void markGroupReadNow()
   }, [page, groupId, markGroupReadNow])
 
-  // 窗口从后台/最小化回到前台时重查当前群消息：浏览器会挂起后台标签页（WS 断开、消息丢失），
+  /**
+   * 消息校准（可靠消息同步 §1/§2）：
+   * - 本地消息带 sequence → 用 max(sequence) 调 /messages/incremental 补齐缺失消息，合并进缓存
+   * - incremental 失败或本地无 sequence → 回退整页 invalidate 重拉
+   */
+  const reconcileMessages = useCallback(async (): Promise<void> => {
+    if (!projectId || !groupId) return
+    // useInfiniteQuery 缓存结构为 { pages, pageParams }：取全部页的消息算最大 sequence
+    const cached = queryClient.getQueryData<InfiniteData<Page<Message>>>([
+      'groups',
+      projectId,
+      groupId,
+      'messages',
+    ])
+    const all = cached?.pages.flatMap((p) => p.data) ?? []
+    const sequences = all.map((m) => m.sequence).filter((s): s is number => typeof s === 'number')
+    const maxSequence = sequences.length > 0 ? Math.max(...sequences) : null
+
+    if (maxSequence == null) {
+      // 本地没有 sequence 信息（旧数据/首次）→ 整页重拉
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId, groupId, 'messages'] })
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+      return
+    }
+
+    try {
+      // §1：增量拉取 sequence > maxSequence 的消息，按 id 去重合并进第一页（最新页）
+      const incremental = await groupApi.listMessagesIncremental(projectId, groupId, maxSequence)
+      if (incremental.data.length === 0) return
+      queryClient.setQueryData<InfiniteData<Page<Message>>>(
+        ['groups', projectId, groupId, 'messages'],
+        (prev) => {
+          if (!prev) {
+            return {
+              pages: [incremental],
+              pageParams: [undefined],
+            }
+          }
+          const [first, ...rest] = prev.pages
+          const known = new Set(first.data.map((m) => m.id))
+          const merged = [...first.data, ...incremental.data.filter((m) => !known.has(m.id))]
+          return {
+            ...prev,
+            pages: [{ ...first, data: merged }, ...rest],
+          }
+        },
+      )
+      // 群列表/主群的最新消息摘要也需校准
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+    } catch {
+      // 增量接口失败（如后端未实现）→ 回退整页重拉
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId, groupId, 'messages'] })
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
+    }
+  }, [projectId, groupId, queryClient])
+
+  // 窗口从后台/最小化回到前台时校准当前群消息：浏览器会挂起后台标签页（WS 断开、消息丢失），
   // 而全局 refetchOnWindowFocus 为 false，回前台必须显式校准，否则群聊面板停留旧消息。
+  // 优先用可靠消息增量接口（§1）按 sequence 补齐；本地无 sequence（旧数据）才整页重拉。
   useEffect(() => {
     if (!projectId || !groupId) return
     const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        void queryClient.invalidateQueries({ queryKey: ['groups', projectId, groupId, 'messages'] })
-        void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
-        void queryClient.invalidateQueries({ queryKey: ['chat', 'main-groups'] })
-      }
+      if (document.visibilityState !== 'visible') return
+      void reconcileMessages()
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [projectId, groupId, queryClient])
+  }, [projectId, groupId, queryClient, reconcileMessages])
+
+  // WS 断线重连成功后：对当前群消息做增量补齐（可靠消息同步 §1/§2），
+  // 比整页重拉更精准——只拉 sequence 之后的缺失消息合并进缓存。
+  useEffect(() => {
+    if (!projectId || !groupId) return
+    return subscribeRealtimeReconnect(() => {
+      void reconcileMessages()
+    })
+  }, [projectId, groupId, reconcileMessages])
 
   // @ 提及面板：最后一个 @ 到行尾无空格时弹出；@ 后输入的字符作为候选过滤关键词（如 @张 → 只剩名字带「张」）
   const lastAt = draft.lastIndexOf('@')
@@ -340,10 +546,21 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       void groupApi
         .getMessage(projectId, groupId, mentionMessageId)
         .then((msg) => {
-          queryClient.setQueryData<Page<Message>>(['groups', projectId, groupId, 'messages'], (prev) => {
-            if (!prev || prev.data.some((m) => m.id === msg.id)) return prev
-            return { ...prev, data: [...prev.data, msg] }
-          })
+          // useInfiniteQuery 缓存结构为 { pages, pageParams }：单条合并进第一页（最新页）
+          queryClient.setQueryData<InfiniteData<Page<Message>>>(
+            ['groups', projectId, groupId, 'messages'],
+            (prev) => {
+              if (!prev || prev.pages[0]?.data.some((m) => m.id === msg.id)) return prev
+              const [first, ...rest] = prev.pages
+              return {
+                ...prev,
+                pages: [
+                  { ...first, data: [...first.data, msg] },
+                  ...rest,
+                ],
+              }
+            },
+          )
         })
         .catch(() => {
           // 单条拉取失败：静默，不阻塞聊天
@@ -360,6 +577,50 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     })
     setMentions((prev) => [...prev, { type: target.type, id: target.id }])
   }
+
+  /**
+   * 右键「@ta」：把目标消息的发送者解析为可 @ 的候选（与候选面板同源：userMembers / teamAgents）。
+   * 解析不到的（如 SYSTEM、自己、非候选 Agent）返回 null，不弹出菜单。
+   */
+  function resolveCtxMention(m: Message): { displayName: string; type: MentionType } | null {
+    if (m.senderType === 'USER') {
+      const member = userMembers.find((mem) => mem.id === m.senderId)
+      return member ? { displayName: member.displayName, type: 'USER' } : null
+    }
+    if (m.senderType === 'AGENT') {
+      const agent = teamAgents.find((a) => a.id === m.senderId)
+      return agent ? { displayName: agent.name, type: 'AGENT' } : null
+    }
+    return null
+  }
+
+  /** 右键菜单「@ta」：在输入框追加 @该成员 + 空格，登记提及并聚焦输入框进入编辑态 */
+  function mentionFromCtx(m: Message): void {
+    const resolved = resolveCtxMention(m)
+    if (!resolved || !m.senderId) return
+    setDraft((prev) => {
+      const base = prev.trimEnd()
+      return base ? `${base} @${resolved.displayName} ` : `@${resolved.displayName} `
+    })
+    setMentions((prev) => [...prev, { type: resolved.type, id: m.senderId as string }])
+    setCtxMenu(null)
+    // 等 draft 更新后再聚焦（TextArea 由受控 value 驱动，聚焦本身不依赖 draft）
+    window.setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  // 右键菜单打开时：点击任意处 / 滚动 / 失焦关闭（菜单自身 mousedown 会阻止冒泡，避免点菜单即关）
+  useEffect(() => {
+    if (!ctxMenu) return
+    const close = () => setCtxMenu(null)
+    document.addEventListener('mousedown', close)
+    document.addEventListener('scroll', close, true)
+    window.addEventListener('blur', close)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('scroll', close, true)
+      window.removeEventListener('blur', close)
+    }
+  }, [ctxMenu])
 
   async function handleSend() {
     const text = draft.trim()
@@ -384,7 +645,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       shouldStickToBottomRef.current = true
       // 强制滚底：发送期间产生的滚动/布局事件可能把 stick 标志重算为 false，用 pending 标志兜底
       pendingScrollRef.current = true
-      // 回复引用：type=QUOTE，quotedText 为被引用消息的原始内容摘要，replyText 为回复正文
+      // 回复引用：type=QUOTE，quotedText 为被引用消息的原始内容摘要，replyText 为回复正文。
+      // §7 冻结：replyText 放顶层；content 内保留一份以兼容旧后端/旧数据读取
       const result = await groupApi.sendMessage(projectId, groupId, {
         type: replyTo ? 'QUOTE' : 'TEXT',
         content: replyTo
@@ -395,6 +657,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
               replyText: text,
             }
           : { text },
+        replyText: replyTo ? text : undefined,
         mentions: effectiveMentions.length > 0 ? effectiveMentions : undefined,
         replyToId: replyTo ? replyTo.id : null,
         clientMessageId: `cmsg_${Date.now()}`,
@@ -472,7 +735,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     },
   })
 
-  /** 选择附件后：直传 OSS → 发送 IMAGE/FILE 消息（§18 附件链路） */
+  /** 选择附件后：直传 OSS → 发送 IMAGE/FILE 消息（§18 附件链路 + 增量契约 §6 attachmentId） */
   async function handleUpload(file: File) {
     if (uploading) return
     setUploading(true)
@@ -483,8 +746,9 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       await groupApi.sendMessage(projectId, groupId, {
         type: isImage ? 'IMAGE' : 'FILE',
         content: isImage
-          ? { url }
-          : { url, name: file.name, size: file.size, mimeType: file.type },
+          ? // §6.2：IMAGE content 必须带 attachmentId（多模态输入依赖）
+            { url, attachmentId }
+          : { url, attachmentId, name: file.name, size: file.size, mimeType: file.type },
         clientMessageId: `cmsg_${Date.now()}`,
       })
       await queryClient.invalidateQueries({
@@ -498,25 +762,26 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   }
 
   /**
-   * 打开文件消息：content.url 是鉴权下载代理（§18.5，新标签页不带 Bearer 会 401），
-   * 因此先调 §18.3 download-url 拿预签名地址（900s 有效、无需 token）再打开。
+   * 打开文件消息：解析 attachmentId 后打开页内预览弹窗（增量契约 §4/§5）。
+   * 无法解析附件 ID 时提示（不再直接跳新标签；预览弹窗内负责 preview-url / download 降级）。
    */
   const openFile = useCallback(
-    async (target: Message) => {
+    (target: Message) => {
       const c = target.content as FileMessageContent
-      const attachmentId = extractAttachmentId(c.url)
+      // §6：content.attachmentId 为必填；兼容旧消息从 url 解析
+      const attachmentId = c.attachmentId || extractAttachmentId(c.url)
       if (!attachmentId) {
         message.error('无法解析附件 ID，请刷新后重试')
         return
       }
-      try {
-        const { downloadUrl } = await attachmentApi.getDownloadUrl(projectId, attachmentId)
-        window.open(downloadUrl, '_blank', 'noopener')
-      } catch (e) {
-        message.error(e instanceof Error ? e.message : '附件打开失败')
-      }
+      setPreviewTarget({
+        attachmentId,
+        fileName: c.name,
+        // §7：后端若已回填 previewUrl（相对路径带 token），零请求直接预览
+        embeddedPreviewUrl: c.previewUrl,
+      })
     },
-    [projectId, message],
+    [message],
   )
 
   // AI 自动沉淀 Memory（草稿）：后端自动检索当前群最近聊天并生成草稿，投给用户/Admin 审核确认
@@ -549,15 +814,26 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         }}
       >
         <>
-          <div>
-            <Text strong style={{ fontSize: 16 }}>
-              <Text type="success">#</Text> {group?.title ?? '群聊'}
-            </Text>
-            <div>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {group?.type === 'PROJECT_MAIN' ? '项目总群' : '需求群'}
-                {group?.memberCount ? ` · ${group.memberCount} 人` : ''}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            {/* 项目主群：群头像 = 项目头像（v2.0.6，与群聊工作台会话列表一致）；需求群不显示 */}
+            {group?.type === 'PROJECT_MAIN' ? (
+              <Avatar
+                size={36}
+                src={project?.avatarUrl}
+                icon={<TeamOutlined />}
+                style={{ background: '#3b82f6', flexShrink: 0 }}
+              />
+            ) : null}
+            <div style={{ minWidth: 0 }}>
+              <Text strong style={{ fontSize: 16 }}>
+                <Text type="success">#</Text> {group?.title ?? '群聊'}
               </Text>
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {group?.type === 'PROJECT_MAIN' ? '项目总群' : '需求群'}
+                  {group?.memberCount ? ` · ${group.memberCount} 人` : ''}
+                </Text>
+              </div>
             </div>
           </div>
           <Space size={8}>
@@ -602,6 +878,20 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           <Empty description="还没有消息，来说点什么吧" />
         ) : (
           <div ref={contentRef} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* 顶部：加载更早历史的分页指示 */}
+            <div style={{ textAlign: 'center', padding: '8px 0' }}>
+              {isFetchingNextPage ? (
+                <Spin size="small" />
+              ) : hasNextPage ? (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  向上滚动加载更早消息
+                </Text>
+              ) : (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  — 已加载全部历史消息 —
+                </Text>
+              )}
+            </div>
             {messages.map((m) => {
               const isSelf = m.senderType === 'USER' && m.senderId === user?.id
               const flashing = mentionFlashId === m.id
@@ -609,6 +899,14 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                 <div
                   key={m.id}
                   id={`msg-${m.id}`}
+                  onContextMenu={
+                    !isSelf && m.senderType !== 'SYSTEM'
+                      ? (e) => {
+                          e.preventDefault()
+                          setCtxMenu({ x: e.clientX, y: e.clientY, message: m })
+                        }
+                      : undefined
+                  }
                   style={{
                     display: 'flex',
                     alignItems: 'flex-start',
@@ -639,6 +937,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                     <MessageBubble
                       message={m}
                       isSelf={isSelf}
+                      selfDisplayName={user?.displayName ?? '我'}
                       projectId={projectId}
                       onReply={setReplyTo}
                       onOpenFile={openFile}
@@ -716,14 +1015,14 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             {canOpenTaskTrigger && filteredAgents.length > 0 && (
               <MentionGroup
                 label="Agent"
-                members={filteredAgents.map((a) => ({ id: a.id, displayName: a.name, type: 'AGENT' as const }))}
+                members={filteredAgents.map((a) => ({ id: a.id, displayName: a.name, type: 'AGENT' as const, avatarUrl: a.avatar }))}
                 onPick={pickMention}
               />
             )}
             {filteredUsers.length > 0 && (
               <MentionGroup
                 label="成员"
-                members={filteredUsers.map((m) => ({ id: m.id, displayName: m.displayName, type: 'USER' as const }))}
+                members={filteredUsers.map((m) => ({ id: m.id, displayName: m.displayName, type: 'USER' as const, avatarUrl: m.avatarUrl }))}
                 onPick={pickMention}
               />
             )}
@@ -781,6 +1080,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             <Button icon={<PaperClipOutlined />} loading={uploading} aria-label="发送文件" />
           </Upload>
           <Input.TextArea
+            ref={inputRef}
             placeholder="输入消息，@ 可提及成员或 Agent，回车发送…"
             autoSize={{ minRows: 1, maxRows: 4 }}
             value={draft}
@@ -857,6 +1157,45 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           )}
         </Space>
       </Drawer>
+      {/* 附件内联预览（增量契约 §4/§5/§7）：图片放大 / PDF iframe / 文本代码高亮 / 不支持回退下载 */}
+      {previewTarget ? (
+        <AttachmentPreviewModal
+          open
+          projectId={projectId}
+          attachmentId={previewTarget.attachmentId}
+          fileName={previewTarget.fileName}
+          embeddedPreviewUrl={previewTarget.embeddedPreviewUrl}
+          onClose={() => setPreviewTarget(null)}
+        />
+      ) : null}
+      {/* 右键成员消息上下文菜单：@ta 该成员（点击空白/滚动/失焦自动关闭） */}
+      {ctxMenu ? (
+        <div
+          style={{
+            position: 'fixed',
+            left: ctxMenu.x,
+            top: ctxMenu.y,
+            zIndex: 1000,
+            minWidth: 120,
+            padding: 4,
+            background: token.colorBgContainer,
+            border: `1px solid ${token.colorBorder}`,
+            borderRadius: 8,
+            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.16)',
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <Button
+            type="text"
+            block
+            onClick={() => mentionFromCtx(ctxMenu.message)}
+            style={{ textAlign: 'left' }}
+          >
+            <Text strong style={{ marginRight: 6 }}>@</Text>
+            ta
+          </Button>
+        </div>
+      ) : null}
       </Layout>
     </ErrorBoundary>
   )
@@ -912,6 +1251,27 @@ function extractAttachmentId(url: string | undefined | null): string | null {
   return match ? match[1] : null
 }
 
+/**
+ * 按 mimeType 粗判附件类型图标（增量契约 §2.1 枚举的展示层近似：
+ * 精确 previewType 由服务端判定，弹窗内调 preview-url 获得）。
+ */
+function fileTypeMetaFromMime(mimeType: string | undefined): { icon: React.ReactNode; label: string } {
+  const mime = (mimeType ?? '').toLowerCase()
+  if (mime === 'application/pdf') return { icon: <FilePdfOutlined style={{ color: '#ef4444' }} />, label: 'PDF·' }
+  if (mime.startsWith('image/')) return { icon: <FileOutlined style={{ color: '#8b5cf6' }} />, label: '图片·' }
+  if (
+    mime.startsWith('text/') ||
+    mime.includes('json') ||
+    mime.includes('xml') ||
+    mime.includes('javascript') ||
+    mime.includes('yaml') ||
+    mime.includes('shell')
+  ) {
+    return { icon: <CodeOutlined style={{ color: '#3b82f6' }} />, label: '代码·' }
+  }
+  return { icon: <FileOutlined style={{ color: '#64748b' }} />, label: '' }
+}
+
 /** 生成被引用消息的一行摘要（回复引用条展示用；DIFF/IMAGE/FILE 等无文本类型给占位文案） */
 function quotePreview(message: Message): string {
   const content = message.content as Record<string, unknown> | null
@@ -930,7 +1290,8 @@ function quotePreview(message: Message): string {
       // 引用一条「引用消息」时，被引用内容应为该消息实际回复的正文（replyText），
       // 而不是其引用的上层内容——避免嵌套引用叠加成 [引用][引用]…
       const quoted = content as QuoteMessageContent | null
-      const text = quoted?.replyText ?? quoted?.quotedText ?? ''
+      // §7 冻结：replyText 回显在顶层；content.replyText 兼容旧数据
+      const text = message.replyText ?? quoted?.replyText ?? quoted?.quotedText ?? ''
       return text || '[引用]'
     }
     default: {
@@ -947,7 +1308,7 @@ function MentionGroup({
   onPick,
 }: {
   label: string
-  members: Array<{ id: string; displayName: string; type: MentionType }>
+  members: Array<{ id: string; displayName: string; type: MentionType; avatarUrl?: string | null }>
   onPick: (m: { id: string; displayName: string; type: MentionType }) => void
 }) {
   const { token } = theme.useToken()
@@ -975,10 +1336,32 @@ function MentionGroup({
             ;(e.currentTarget as HTMLDivElement).style.background = 'transparent'
           }}
         >
-          <Text style={{ fontSize: 13 }}>
-            {m.type === 'AGENT' ? '🤖 ' : ''}
-            {m.displayName}
-          </Text>
+          {m.avatarUrl ? (
+            <img
+              src={m.avatarUrl}
+              alt=""
+              style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+            />
+          ) : (
+            <span
+              aria-hidden
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: '50%',
+                background: m.type === 'AGENT' ? '#3b82f6' : '#8b5cf6',
+                color: '#fff',
+                fontSize: 12,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              {m.type === 'AGENT' ? '🤖' : (m.displayName.slice(0, 1) || '?')}
+            </span>
+          )}
+          <Text style={{ fontSize: 13 }}>{m.displayName}</Text>
         </div>
       ))}
     </div>
@@ -989,6 +1372,7 @@ function MentionGroup({
 function MessageBubble({
   message,
   isSelf,
+  selfDisplayName,
   projectId,
   onReply,
   onOpenFile,
@@ -996,10 +1380,12 @@ function MessageBubble({
 }: {
   message: Message
   isSelf: boolean
+  /** 自己的实时昵称（改昵称后即时更新；来自 ChatPanel 的 user.displayName） */
+  selfDisplayName?: string
   projectId: string
   /** 点击「回复」时回调，用于设置回复引用（SYSTEM 消息不提供） */
   onReply?: (m: Message) => void
-  /** 打开文件消息（FILE 类型走 §18.3 预签名下载地址，避免鉴权 401） */
+  /** 打开文件消息（FILE 类型走页内预览/下载，见 AttachmentPreviewModal） */
   onOpenFile?: (m: Message) => void
   /** 图片真正加载完成回调（透传给 AuthedImage，供 ChatPanel 保持贴底） */
   onImageLoad?: () => void
@@ -1070,8 +1456,9 @@ function MessageBubble({
             <Text type="secondary" style={{ fontSize: 11 }}>
               {formatClock(message.createdAt)}
             </Text>
+            {/* 自己消息昵称：用实时 selfDisplayName（改昵称后即时更新），不用后端落库的旧 senderName */}
             <Text type="secondary">
-              {message.senderName ?? (message.senderType === 'AGENT' ? 'Agent' : '成员')}
+              {message.senderType === 'AGENT' ? 'Agent' : (selfDisplayName ?? message.senderName ?? '我')}
             </Text>
           </>
         ) : (
@@ -1169,9 +1556,12 @@ function renderContent(
     }
     case 'IMAGE': {
       const c = message.content as ImageMessageContent
-      return (
+      // 增量契约 §7：content.previewUrl 若由后端回填（带短期 token），直接用；
+      // 否则回退 AuthedImage 走 §18.5 content 代理（带 Bearer 拉取）
+      const previewUrl = typeof c.previewUrl === 'string' && c.previewUrl ? resolvePreviewUrl(c.previewUrl) : null
+      const image = (
         <AuthedImage
-          src={normalizeContentUrl(c.url)}
+          src={previewUrl ?? normalizeContentUrl(c.url)}
           width={c.width ?? 260}
           height={c.height}
           style={{ borderRadius: 10, display: 'block', maxWidth: '100%' }}
@@ -1179,9 +1569,15 @@ function renderContent(
           onLoad={onImageLoad}
         />
       )
+      // 图片查看走 antd <Image> 内置全屏预览（AuthedImage 默认开启），不再套自定义 AttachmentPreviewModal
+      return image
     }
     case 'FILE': {
       const c = message.content as FileMessageContent
+      // §7：previewable=true 时提示可内联预览（点击走 previewUrl 打开）
+      const previewable = c.previewable === true || Boolean(c.previewUrl)
+      // 按 mimeType 粗判文件类型显示图标（§2.1；弹窗内会再按 previewType 精确处理）
+      const fileMeta = fileTypeMetaFromMime(c.mimeType)
       return (
         <a
           href="#"
@@ -1191,20 +1587,22 @@ function renderContent(
           }}
           style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'inherit', textDecoration: 'none', cursor: 'pointer' }}
         >
-          <FileOutlined style={{ fontSize: 24, color: '#3b82f6' }} />
+          <span style={{ fontSize: 24, display: 'inline-flex' }}>{fileMeta.icon}</span>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 600, wordBreak: 'break-all' }}>{c.name}</div>
             <Text type="secondary" style={{ fontSize: 12 }}>
               {formatFileSize(c.size)}
+              {previewable ? ` · ${fileMeta.label}点击预览` : ''}
             </Text>
           </div>
         </a>
       )
     }
     case 'QUOTE': {
-      // 气泡内只显示回复正文；被引用的原消息由 MessageBubble 挂载在气泡下方（带竖线）
-      const c = message.content as QuoteMessageContent
-      return c.replyText ?? ''
+      // 气泡内只显示回复正文；被引用的原消息由 MessageBubble 挂载在气泡下方（带竖线）。
+      // §7 冻结：replyText 回显在顶层；content.replyText 兼容旧数据
+      const c = message.content as QuoteMessageContent | null
+      return message.replyText ?? c?.replyText ?? ''
     }
     case 'DIFF': {
       const c = message.content as DiffMessageContent

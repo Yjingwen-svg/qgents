@@ -34,6 +34,19 @@ export const authApi = {
     })
   },
 
+  /**
+   * POST /auth/register/verification-codes — 注册时发送邮箱验证码（接口文档 §11.1，匿名）。
+   * 验证码 6 位数字、10 分钟有效、一次性；服务端仅存 SHA-256 哈希。
+   * 错误：409 EMAIL_ALREADY_REGISTERED（邮箱已注册，不发邮件）/ 429 RATE_LIMITED（同 IP+邮箱 1 小时超 5 次）。
+   */
+  sendRegisterCode(email: string) {
+    return request<{ message: string }>('/auth/register/verification-codes', {
+      method: 'POST',
+      body: { email },
+      skipAuth: true,
+    })
+  },
+
   /** POST /auth/refresh — 用 refreshToken 换新的 accessToken */
   refresh(refreshToken: string) {
     return request<RefreshResponse>('/auth/refresh', {
@@ -74,11 +87,24 @@ export const authApi = {
     })
   },
 
-  /** POST /auth/password-reset-requests — 发起找回密码邮件 */
+  /** POST /auth/password-reset-requests — 发起找回密码邮件（匿名；邮件内含重置令牌/验证码） */
   resetPasswordRequest(email: string) {
     return request<void>('/auth/password-reset-requests', {
       method: 'POST',
       body: { email },
+      skipAuth: true,
+    })
+  },
+
+  /**
+   * POST /auth/password-resets — 使用重置令牌设置新密码（匿名）。
+   * newPassword 必须为前端使用平台 RSA 公钥加密后的 Base64 密文（§4.1），调用方用 encryptPassword 加密。
+   * 注意：请求体字段名（token）尚未在契约中冻结，联调时以后端实际契约为准。
+   */
+  resetPassword(input: { email: string; token: string; newPassword: string; passwordKeyId: string }) {
+    return request<void>('/auth/password-resets', {
+      method: 'POST',
+      body: input,
       skipAuth: true,
     })
   },

@@ -118,7 +118,7 @@ export default function MyTeamsPage() {
 }
 
 /** 团队卡片 */
-function TeamCard({ team }: { team: { id: string; name: string; role?: string; memberCount?: number } }) {
+function TeamCard({ team }: { team: { id: string; name: string; role?: string; memberCount?: number; avatarUrl?: string } }) {
   const letter = team.name.slice(0, 1)
   const color = team.role === 'TEAM_OWNER' ? '#3b82f6' : '#8b5cf6'
   const roleLabel = team.role === 'TEAM_OWNER' ? 'Owner' : 'Member'
@@ -126,9 +126,13 @@ function TeamCard({ team }: { team: { id: string; name: string; role?: string; m
   return (
     <article className="my-teams__card">
       <div className="my-teams__card-top">
-        <span className="my-teams__logo" style={{ background: color }}>
-          {letter}
-        </span>
+        {team.avatarUrl ? (
+          <img className="my-teams__logo my-teams__logo--img" src={team.avatarUrl} alt={team.name} />
+        ) : (
+          <span className="my-teams__logo" style={{ background: color }}>
+            {letter}
+          </span>
+        )}
         <span className="my-teams__role">{roleLabel}</span>
       </div>
       <h3>{team.name}</h3>

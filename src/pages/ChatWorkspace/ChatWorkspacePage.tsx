@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { Layout, Input, List, Avatar, Typography, Space, theme, Empty, Badge, Spin } from 'antd'
 import { SearchOutlined, TeamOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { groupApi, projectApi, teamApi } from '@/api'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { latestMessageText } from '@/utils/messageSummary'
-import { useCurrentTeamId } from '@/store/appUiStore'
+import { useAppUiStore, useCurrentTeamId } from '@/store/appUiStore'
 import type { Group } from '@/types'
 
 const { Text } = Typography
@@ -24,19 +25,34 @@ interface MainGroupSession {
  * 项目群聊工作台 —— 左边聚合「**当前团队**的所有项目主群」，右边内嵌聊天面板。
  * 数据：GET /chat/main-groups 主群聚合（含全部可见项目）+ GET /teams/{id}/projects 按团队过滤；
  * 数据加载完成后自动选中第一个主群，避免刚进入时的空态闪烁。
+ *
+ * 团队上下文挂在路由层（/app/chat?teamId=xxx）：刷新页面后仍停留在上次团队，
+ * 不再退化为「第一个团队」导致串到别的团队的项目主群（v2.0.6）。
  */
 export default function ChatWorkspacePage() {
   const { token } = theme.useToken()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const routeTeamId = searchParams.get('teamId')
   const currentTeamId = useCurrentTeamId()
+  const setCurrentTeam = useAppUiStore((s) => s.setCurrentTeam)
   const [selected, setSelected] = useState<MainGroupSession | null>(null)
   const [keyword, setKeyword] = useState('')
 
   // 当前团队兜底：从未进入团队/项目页时取第一个团队
-  const { data: teams = [] } = useQuery({
+  const { data: teams = [], isLoading: teamsLoading } = useQuery({
     queryKey: ['teams', 'mine'],
     queryFn: teamApi.listMine,
   })
-  const effectiveTeamId = currentTeamId ?? teams[0]?.id ?? ''
+  const effectiveTeamId = routeTeamId ?? currentTeamId ?? teams[0]?.id ?? ''
+
+  // 团队确定后写入全局上下文 + 同步回 URL（刷新不丢团队；replace 不产生历史记录）
+  useEffect(() => {
+    if (!effectiveTeamId) return
+    if (currentTeamId !== effectiveTeamId) setCurrentTeam(effectiveTeamId)
+    if (searchParams.get('teamId') !== effectiveTeamId) {
+      setSearchParams({ teamId: effectiveTeamId }, { replace: true })
+    }
+  }, [effectiveTeamId, currentTeamId, setCurrentTeam, searchParams, setSearchParams])
 
   // 当前团队的项目 id 集合：主群聚合按团队过滤（聚合接口不返回 teamId）
   const { data: teamProjects = [], isLoading: teamProjectsLoading } = useQuery({
@@ -45,6 +61,11 @@ export default function ChatWorkspacePage() {
     enabled: !!effectiveTeamId,
   })
   const teamProjectIds = useMemo(() => new Set(teamProjects.map((p) => p.id)), [teamProjects])
+  // 项目头像映射：主群会话头像 = 项目头像（v2.0.6）
+  const projectAvatarById = useMemo(
+    () => new Map(teamProjects.map((p) => [p.id, p.avatarUrl]).filter(([, url]) => !!url) as [string, string][]),
+    [teamProjects],
+  )
 
   // 主群聚合：按最近活跃倒序；含 latestMessage / memberCount / unreadCount / mentionedUnread
   const { data: mainGroups = [], isLoading: mainGroupsLoading } = useQuery({
@@ -52,7 +73,7 @@ export default function ChatWorkspacePage() {
     queryFn: groupApi.listMainGroups,
   })
 
-  const loading = mainGroupsLoading || teamProjectsLoading
+  const loading = mainGroupsLoading || teamProjectsLoading || teamsLoading
 
   const sessions = useMemo<MainGroupSession[]>(() => {
     if (loading) return []
@@ -137,7 +158,14 @@ export default function ChatWorkspacePage() {
                   }}
                 >
                   <List.Item.Meta
-                    avatar={<Avatar style={{ background: '#3b82f6' }} icon={<TeamOutlined />} size={36} />}
+                    avatar={
+                      <Avatar
+                        src={projectAvatarById.get(s.projectId)}
+                        style={{ background: '#3b82f6', flexShrink: 0 }}
+                        icon={<TeamOutlined />}
+                        size={36}
+                      />
+                    }
                     title={
                       <Space direction="vertical" size={0} style={{ width: '100%' }}>
                         <Space style={{ width: '100%', justifyContent: 'space-between' }}>
@@ -145,7 +173,10 @@ export default function ChatWorkspacePage() {
                             {s.groupTitle}
                           </Text>
                           <Space size={4}>
-                            {typeof s.mentionedUnread === 'number' && s.mentionedUnread > 0 ? (
+                            {/* 正在查看的群不显示「有人@你」（人在群里，无需侧栏提示；离开时 markRead 清掉） */}
+                            {selected?.groupId !== s.groupId &&
+                            typeof s.mentionedUnread === 'number' &&
+                            s.mentionedUnread > 0 ? (
                               <span
                                 style={{
                                   padding: '0 7px',

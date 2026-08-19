@@ -140,6 +140,63 @@ describe('testset API mapping', () => {
     )
   })
 
+  it('maps structured test-run summary.results', () => {
+    const run = mapTestRun({
+      id: 'r1',
+      status: 'FAILED',
+      testsetIds: ['ts-1'],
+      summary: {
+        status: 'FAILED',
+        resolvedHeadCommit: 'fc3a50234ba70b5121dc328decebe97dec915a83',
+        results: [
+          {
+            testsetId: 'ts-1',
+            status: 'FAILED',
+            exitCode: 254,
+            durationMs: 279,
+            failureCode: 'UNEXPECTED_EXIT_CODE',
+          },
+        ],
+      },
+    })
+    expect(run.executionSummary).toEqual({
+      status: 'FAILED',
+      resolvedHeadCommit: 'fc3a50234ba70b5121dc328decebe97dec915a83',
+      results: [
+        {
+          testsetId: 'ts-1',
+          status: 'FAILED',
+          exitCode: 254,
+          durationMs: 279,
+          failureCode: 'UNEXPECTED_EXIT_CODE',
+        },
+      ],
+    })
+  })
+
+  it('maps nested dry-run report with merge conflict skipping tests', () => {
+    const report = mapDryRunReport({
+      id: 'dry-1',
+      status: 'FAILED',
+      sourceRef: 'feat/a',
+      targetBranch: 'main',
+      report: {
+        targetCommit: 'bbbb',
+        mergeable: false,
+        conflicts: [{ path: 'a.ts', message: 'both edited' }],
+        tests: { status: 'SKIPPED', reason: 'MERGE_CONFLICT' },
+        failureCode: null,
+      },
+    })
+    expect(report.report?.mergeable).toBe(false)
+    expect(report.conflicts).toEqual([{ path: 'a.ts', message: 'both edited' }])
+    expect(report.report?.tests).toEqual({
+      status: 'SKIPPED',
+      results: [],
+      reason: 'MERGE_CONFLICT',
+    })
+  })
+
   it('maps optional sandboxId from sandboxId or sandbox.id', () => {
     expect(mapTestRun({ id: 'r1', sandboxId: 'sbx-1' }).sandboxId).toBe('sbx-1')
     expect(mapTestRun({ id: 'r2', sandbox: { id: 'sbx-2' } }).sandboxId).toBe('sbx-2')

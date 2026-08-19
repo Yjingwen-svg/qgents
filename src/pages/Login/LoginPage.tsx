@@ -1,6 +1,8 @@
-import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { App } from 'antd'
 import { useAuth } from '@/context/AuthContext'
+import { authApi } from '@/api'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
 import './LoginPage.css'
@@ -13,25 +15,77 @@ type AuthTab = 'login' | 'register'
  */
 export function LoginPage() {
   const navigate = useNavigate()
+  const { message } = App.useApp()
   const { login, register, completeAuth } = useAuth()
   const [tab, setTab] = useState<AuthTab>('login')
   const [email, setEmail] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
+  const [verificationCode, setVerificationCode] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [codeSending, setCodeSending] = useState(false)
+  const [codeCountdown, setCodeCountdown] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const codeTimerRef = useRef<number | null>(null)
+
+  // 卸载时清理验证码倒计时定时器
+  useEffect(() => {
+    return () => {
+      if (codeTimerRef.current !== null) window.clearInterval(codeTimerRef.current)
+    }
+  }, [])
+
+  /** 注册 tab：向邮箱发送验证码（60s 后可重发）。§11.1 发送前先做邮箱格式校验 */
+  async function sendVerificationCode() {
+    const trimmedEmail = email.trim()
+    if (codeSending || codeCountdown > 0 || !trimmedEmail) return
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError('请输入正确的邮箱地址')
+      return
+    }
+    setError(null)
+    setCodeSending(true)
+    try {
+      const result = await authApi.sendRegisterCode(trimmedEmail)
+      // §11.1 响应 202：data.message 为「验证码已发送到邮箱，10 分钟内有效」
+      message.success(result?.message || '验证码已发送到邮箱，10 分钟内有效')
+      setCodeCountdown(60)
+      if (codeTimerRef.current !== null) window.clearInterval(codeTimerRef.current)
+      codeTimerRef.current = window.setInterval(() => {
+        setCodeCountdown((prev) => {
+          if (prev <= 1) {
+            if (codeTimerRef.current !== null) window.clearInterval(codeTimerRef.current)
+            codeTimerRef.current = null
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    } catch (err) {
+      setError(formatApiError(err))
+    } finally {
+      setCodeSending(false)
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
+
+    // §11.2 注册必须携带 6 位数字邮箱验证码（「过了才能通过」）
+    if (tab === 'register' && !/^\d{6}$/.test(verificationCode.trim())) {
+      setError('请输入 6 位数字邮箱验证码')
+      return
+    }
+
     setSubmitting(true)
 
     try {
       const session =
         tab === 'login'
           ? await login(email, password)
-          : await register(email, password, displayName || email.split('@')[0])
+          : await register(email, password, displayName || email.split('@')[0], verificationCode)
       // completeAuth 与 navigate 在同一同步块内，React 批处理成一次渲染，
       // 避免 setUser 先触发 RedirectIfAuthed 用残留的 location.state.from 抢跳
       completeAuth(session)
@@ -177,6 +231,33 @@ export function LoginPage() {
               </label>
             )}
 
+            {/* 邮箱验证码 —— 仅注册时显示：先获取验证码，填写后随注册提交 */}
+            {tab === 'register' && (
+              <div className="login-field login-field--code">
+                <span className="sr-only">邮箱验证码</span>
+                <span className="login-field__icon" aria-hidden>
+                  <KeyIcon />
+                </span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="邮箱验证码"
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value)}
+                  autoComplete="one-time-code"
+                  required
+                />
+                <button
+                  type="button"
+                  className="login-field__code-btn"
+                  onClick={() => void sendVerificationCode()}
+                  disabled={codeSending || codeCountdown > 0 || !email.trim()}
+                >
+                  {codeCountdown > 0 ? `${codeCountdown}s` : codeSending ? '发送中…' : '获取验证码'}
+                </button>
+              </div>
+            )}
+
             {/* 密码 */}
             <label className="login-field">
               <span className="sr-only">密码</span>
@@ -208,10 +289,10 @@ export function LoginPage() {
                   <input type="checkbox" defaultChecked />
                   保持登录
                 </label>
-                {/* TODO[P1]: 忘记密码流程 */}
-                <button type="button" className="login-card__link">
+                {/* 忘记密码：跳独立找回页（输入邮箱获取验证码 → 设置新密码） */}
+                <Link to={PATHS.FORGOT_PASSWORD} className="login-card__link">
                   忘记密码
-                </button>
+                </Link>
               </div>
             )}
 
@@ -340,6 +421,15 @@ function LockIcon() {
         strokeWidth="1.6"
         strokeLinecap="round"
       />
+    </svg>
+  )
+}
+
+function KeyIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <circle cx="8" cy="15" r="4" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M11 12l8-8M15 8l3 3M17 6l2 2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   )
 }

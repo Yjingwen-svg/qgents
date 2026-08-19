@@ -26,6 +26,8 @@ const useReplyTaskRunInputRequestMock = vi.hoisted(() => vi.fn())
 const useApproveTaskRunInputRequestMock = vi.hoisted(() => vi.fn())
 const useRejectTaskRunInputRequestMock = vi.hoisted(() => vi.fn())
 
+const usePreflightMock = vi.hoisted(() => vi.fn())
+
 vi.mock('@/hooks/task-model', () => ({
   useTask: useTaskMock,
   useTaskSteps: useTaskStepsMock,
@@ -46,6 +48,10 @@ vi.mock('@/hooks/task-model', () => ({
   useReplyTaskRunInputRequest: useReplyTaskRunInputRequestMock,
   useApproveTaskRunInputRequest: useApproveTaskRunInputRequestMock,
   useRejectTaskRunInputRequest: useRejectTaskRunInputRequestMock,
+}))
+
+vi.mock('@/hooks/qualityGate', () => ({
+  usePreflight: usePreflightMock,
 }))
 
 import TaskDetailPage from './TaskDetailPage'

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
+  Avatar,
   Button,
   ConfigProvider,
   Form,
@@ -13,9 +14,10 @@ import {
   Tabs,
   Tag,
   Typography,
+  Upload,
   message,
 } from 'antd'
-import { GithubOutlined } from '@ant-design/icons'
+import { CameraOutlined, GithubOutlined, UploadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { teamApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
@@ -187,6 +189,8 @@ export default function TeamSettingsPage() {
 function BasicInfoTab({ team, teamId, isOwner }: { team: Team; teamId: string; isOwner: boolean }) {
   const [form] = Form.useForm<CreateTeamPayload>()
   const queryClient = useQueryClient()
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(team.avatarUrl)
 
   const updateTeam = useMutation({
     mutationFn: (payload: CreateTeamPayload) => teamApi.update(teamId, payload),
@@ -199,12 +203,34 @@ function BasicInfoTab({ team, teamId, isOwner }: { team: Team; teamId: string; i
 
   useEffect(() => {
     form.setFieldsValue({ name: team.name, description: team.description ?? '' })
+    setAvatarUrl(team.avatarUrl)
   }, [team, form])
+
+  /** §28.1 团队头像：签发凭证 → 直传 OSS → 确认 → PATCH 回写（仅 Owner） */
+  async function handleAvatarUpload(file: File): Promise<boolean> {
+    if (!isOwner || avatarUploading) return false
+    setAvatarUploading(true)
+    try {
+      const uploaded = await teamApi.uploadAvatar(teamId, file)
+      setAvatarUrl(uploaded)
+      await teamApi.update(teamId, { avatarUrl: uploaded })
+      message.success('团队头像已更新')
+      // 同步刷新所有展示团队头像的查询：详情页、我的团队列表（key 不同，需分别失效）
+      queryClient.invalidateQueries({ queryKey: ['teams', teamId] })
+      queryClient.invalidateQueries({ queryKey: ['teams', 'mine'] })
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '头像上传失败，请重试')
+    } finally {
+      setAvatarUploading(false)
+    }
+    return false
+  }
 
   function handleFinish(values: CreateTeamPayload) {
     updateTeam.mutate({
       name: values.name.trim(),
       description: values.description?.trim() || undefined,
+      avatarUrl: avatarUrl ?? undefined,
     })
   }
 
@@ -216,6 +242,19 @@ function BasicInfoTab({ team, teamId, isOwner }: { team: Team; teamId: string; i
       onFinish={handleFinish}
       style={{ maxWidth: 480, margin: '0 auto' }}
     >
+      <Form.Item label="团队头像">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Avatar size={56} src={avatarUrl} icon={<CameraOutlined />} style={{ flexShrink: 0 }} />
+          <Upload accept="image/*" showUploadList={false} beforeUpload={handleAvatarUpload}>
+            <Button icon={<UploadOutlined />} loading={avatarUploading}>
+              上传图片
+            </Button>
+          </Upload>
+        </div>
+        <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
+          支持 JPG / PNG，建议 200×200 方形图片；上传后自动保存
+        </Text>
+      </Form.Item>
       <Form.Item
         name="name"
         label="团队名称"
@@ -274,16 +313,6 @@ function MembersTab({ teamId, members, isOwner }: { teamId: string; members: Tea
     onError: (err) => message.error(formatApiError(err)),
   })
 
-  const updateRoleMutation = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
-      teamApi.updateMemberRole(teamId, userId, role),
-    onSuccess: () => {
-      message.success('角色已更新')
-      queryClient.invalidateQueries({ queryKey: ['teams', teamId, 'members'] })
-    },
-    onError: (err) => message.error(formatApiError(err)),
-  })
-
   const removeMutation = useMutation({
     mutationFn: (userId: string) => teamApi.removeMember(teamId, userId),
     onSuccess: () => {
@@ -319,9 +348,16 @@ function MembersTab({ teamId, members, isOwner }: { teamId: string; members: Tea
     {
       title: '角色',
       key: 'role',
-      width: 120,
+      width: 160,
       render: (_, m) => (
-        <Tag color={m.role === 'TEAM_OWNER' ? 'gold' : 'default'}>{getRoleLabel(m.role)}</Tag>
+        <Space size={4}>
+          <Tag color={m.role === 'TEAM_OWNER' ? 'gold' : 'default'}>{getRoleLabel(m.role)}</Tag>
+          {m.role === 'TEAM_OWNER' ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              （不可降级）
+            </Text>
+          ) : null}
+        </Space>
       ),
     },
     ...(isOwner
@@ -329,30 +365,25 @@ function MembersTab({ teamId, members, isOwner }: { teamId: string; members: Tea
           {
             title: '操作',
             key: 'action',
-            width: 240,
+            width: 120,
             render: (_: unknown, m: TeamMember) => {
               const isSelf = m.userId === user?.id
-              return (
-                <Space>
-                  <Select
-                    size="small"
-                    value={m.role}
-                    options={ROLE_OPTIONS}
-                    style={{ width: 110 }}
-                    onChange={(role) => updateRoleMutation.mutate({ userId: m.userId, role })}
-                  />
-                  {!isSelf && (
-                    <Button
-                      size="small"
-                      danger
-                      type="link"
-                      loading={removeMutation.isPending}
-                      onClick={() => confirmRemove(m)}
-                    >
-                      移除
-                    </Button>
-                  )}
-                </Space>
+              // 角色不可在页面直接调整（Owner 不可降级自己；成员角色由邀请/移除管理），
+              // 这里只保留「移除成员」操作；自己不可移除。
+              return !isSelf ? (
+                <Button
+                  size="small"
+                  danger
+                  type="link"
+                  loading={removeMutation.isPending}
+                  onClick={() => confirmRemove(m)}
+                >
+                  移除
+                </Button>
+              ) : (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  —
+                </Text>
               )
             },
           },

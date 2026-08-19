@@ -31,6 +31,8 @@ export interface RegisterPayload {
   /** 固定值，与前端硬编码的公钥 keyId 一致 */
   passwordKeyId: string
   displayName: string
+  /** 邮箱验证码（§11.2：必填，长度固定 6 位数字；注册事务内校验一次，失败重试需重新获取） */
+  verificationCode: string
 }
 
 // ──── 响应体（已解包 data 层）────

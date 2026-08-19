@@ -10,6 +10,8 @@ export interface Project {
   teamId: string
   name: string
   description?: string
+  /** 项目头像 URL（OSS 公共读长期地址，可为空） */
+  avatarUrl?: string
   createdAt?: string
   /** 当前用户在项目中的角色（后端字段名为 role，非 myRole） */
   role?: ProjectRole
@@ -21,11 +23,16 @@ export interface Project {
   status?: 'ACTIVE' | 'ARCHIVED'
 }
 
+/**
+ * 显式项目成员（§24.2：GET /projects/{projectId}/members 仅返回 project_members 行，
+ * 字段为 { userId, role }，不为 canonical Team Owner 虚构行）。
+ * displayName/email 后端可能不返回，前端用团队成员列表补全（项目成员 ⊆ 团队成员）。
+ */
 export interface ProjectMember {
   userId: string
-  displayName: string
-  email: string
   role: ProjectRole
+  displayName?: string
+  email?: string
   avatarUrl?: string
 }
 
@@ -40,6 +47,8 @@ export interface CreateProjectPayload {
   repositoryIds?: string[]
   /** 创建项目时由后端新建并绑定的 GitHub 仓库；与 repositoryIds 互斥。 */
   newRepository?: NewProjectRepositoryInput
+  /** 项目头像 URL（PATCH 更新用；由项目头像上传 confirm 返回） */
+  avatarUrl?: string
 }
 
 export interface NewProjectRepositoryInput {

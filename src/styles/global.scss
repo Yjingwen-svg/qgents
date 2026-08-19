@@ -50,6 +50,22 @@ select {
   font: inherit;
 }
 
+/* 隐藏浏览器原生密码可见性图标（Chrome/Edge/Firefox），避免与页面自己的「眼睛」按钮重复。
+   页面密码框用自绘 EyeIcon 控制显示/隐藏，样式统一且可定制。 */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
+input[type="password"]::-webkit-credentials-auto-fill-button,
+input[type="password"]::-webkit-textfield-decoration-container {
+  display: none;
+}
+
+input[type="password"]::-moz-reveal {
+  display: none;
+}
+
 /* Ant Design 组件自带 font-family，不含中文时 Windows 会用宋体画汉字 */
 .ant-card,
 .ant-btn,

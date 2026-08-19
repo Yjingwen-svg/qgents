@@ -174,6 +174,21 @@ export function AttachmentPreviewModal({
             ) : null}
           </div>
         </div>
+      ) : previewQuery.isError ? (
+        // 预览接口失败（后端未实现 / 报错）→ 明确提示加载失败，不要伪装成「不支持预览」
+        <Empty description="预览信息加载失败">
+          {downloadUrl ? (
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              href={downloadUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              下载文件
+            </Button>
+          ) : null}
+        </Empty>
       ) : previewUrl && previewable ? (
         // 已知类型但当前预览分支未覆盖（如 UNSUPPORTED 但给了 previewUrl）→ 新标签打开
         <Empty description="该文件类型不支持页内预览">

@@ -3,6 +3,7 @@ import { Alert, Button, ConfigProvider, Empty, Pagination, Result, Segmented, Sp
 import { AppstoreOutlined, UnorderedListOutlined } from '@ant-design/icons'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/api'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useInfiniteTasks } from '@/hooks/task-model'
 import type { TaskListItem } from '@/types/task-model'
 import { PATHS } from '@/routes/paths'
@@ -15,8 +16,10 @@ import styles from './TaskCenterPage.module.scss'
 const { Title, Text } = Typography
 const PAGE_SIZE = 20
 const DEFAULT_VISIBLE_TASKS = 8
-const TASK_CARD_WIDTH = 285
+const TASK_CARD_TARGET_WIDTH = 285
 const MIN_TASK_CARD_GAP = 16
+// 搜索关键词防抖窗口：避免每次按键 / IME 过程就触发 URL 同步和重新查询造成列表抖动。
+const KEYWORD_DEBOUNCE_MS = 300
 const SEARCH_PARAMS = new Set(['status', 'groupId', 'createdBy', 'repositoryId', 'view', 'keyword'])
 
 const taskCenterTheme: ThemeConfig = {
@@ -35,6 +38,45 @@ export default function TaskCenterPage() {
   const search = searchParams.get('keyword') ?? ''
   const legacyTaskId = searchParams.get('taskId')?.trim() || undefined
   const view = searchParams.get('view') === 'table' ? 'table' : 'board'
+  // 输入框草稿：仅在用户主动提交（Enter / blur / 清除）时同步到 URL，
+  // 这样可以避免每次按键都触发 URL 变化和 React Query 重新查询造成列表抖动。
+  const [pendingSearch, setPendingSearch] = useState(search)
+  const debouncedSearch = useDebouncedValue(pendingSearch, KEYWORD_DEBOUNCE_MS)
+  // 记录上一次我们主动写入 URL 的 keyword 值，用于区分"外部变化"与"我们刚写入"。
+  const lastWrittenSearchRef = useRef(search)
+
+  useEffect(() => {
+    // 仅在草稿稳定（debounced 与 pending 一致）后才写 URL，避免外部清空筛选时被草稿反悔覆盖。
+    if (debouncedSearch !== pendingSearch) return
+    const trimmed = debouncedSearch.trim()
+    if (trimmed === search) {
+      lastWrittenSearchRef.current = trimmed
+      return
+    }
+    lastWrittenSearchRef.current = trimmed
+    const next = new URLSearchParams(searchParams)
+    if (trimmed) next.set('keyword', trimmed); else next.delete('keyword')
+    setSearchParams(next, { replace: true })
+  }, [debouncedSearch, pendingSearch, search, searchParams, setSearchParams])
+
+  // 用户主动提交（回车 / 失焦 / 清除）时立即同步 URL，避免等待防抖窗口。
+  function commitSearch(next: string) {
+    const trimmed = next.trim()
+    if (trimmed === search) return
+    lastWrittenSearchRef.current = trimmed
+    setPendingSearch(trimmed)
+    const nextParams = new URLSearchParams(searchParams)
+    if (trimmed) nextParams.set('keyword', trimmed); else nextParams.delete('keyword')
+    setSearchParams(nextParams, { replace: true })
+  }
+
+  useEffect(() => {
+    // 仅当 URL 是被外部改动时才把草稿同步过去，避免我们刚写入的 keyword 把正在输入的草稿覆盖掉。
+    if (search === lastWrittenSearchRef.current) return
+    lastWrittenSearchRef.current = search
+    setPendingSearch(search)
+  }, [search])
+
   const query = useInfiniteTasks(projectId, { groupId, status: status === 'all' ? undefined : status, createdBy, repositoryId, keyword: search || undefined, limit: PAGE_SIZE })
   const mainRef = useRef<HTMLElement>(null)
   const { visibleTaskCount, cardGap } = useTaskBoardLayout(mainRef)
@@ -83,6 +125,7 @@ export default function TaskCenterPage() {
   }
 
   function resetFilters() {
+    setPendingSearch('')
     const next = new URLSearchParams(searchParams)
     for (const key of ['status', 'createdBy', 'groupId', 'repositoryId']) next.delete(key)
     next.delete('keyword')
@@ -118,7 +161,7 @@ export default function TaskCenterPage() {
             <Title level={2} className={styles.title}>任务中心 <Text type="secondary">（按需求分组）</Text></Title>
             {query.isFetching && !query.isLoading ? <Spin size="small" /> : null}
           </header>
-          <TaskFilters status={status} groupId={groupId} repositoryId={repositoryId} createdBy={createdBy} search={search} groupOptions={groupOptions} repositoryOptions={repositoryOptions} createdByOptions={createdByOptions} onStatusChange={(value) => updateParam('status', value === 'all' ? undefined : value)} onGroupChange={(value) => updateParam('groupId', value)} onRepositoryChange={(value) => updateParam('repositoryId', value)} onCreatedByChange={(value) => updateParam('createdBy', value)} onSearchChange={(value) => updateParam('keyword', value.trim() || undefined)} onReset={resetFilters} />
+          <TaskFilters status={status} groupId={groupId} repositoryId={repositoryId} createdBy={createdBy} search={pendingSearch} groupOptions={groupOptions} repositoryOptions={repositoryOptions} createdByOptions={createdByOptions} onStatusChange={(value) => updateParam('status', value === 'all' ? undefined : value)} onGroupChange={(value) => updateParam('groupId', value)} onRepositoryChange={(value) => updateParam('repositoryId', value)} onCreatedByChange={(value) => updateParam('createdBy', value)} onSearchDraftChange={setPendingSearch} onSearchCommit={commitSearch} onReset={resetFilters} />
           <div className={styles.listHeading}><Text strong>任务列表</Text><Text type="secondary">{tasks.length} 项</Text><Segmented<TaskCenterView> aria-label="任务视图" value={view} onChange={(nextView) => updateParam('view', nextView)} options={[{ value: 'board', label: '看板', icon: <AppstoreOutlined /> }, { value: 'table', label: '表格', icon: <UnorderedListOutlined /> }]} /></div>
           <TaskCenterContent query={query} tasks={visibleTasks} hasServerItems={hasServerItems} isUnfiltered={isUnfiltered} view={view} onViewDetails={viewTask} onRetry={() => void query.refetch()} />
           {!query.isLoading && tasks.length > 0 ? <nav className={styles.pagination} aria-label="任务列表分页"><Pagination current={currentPage} pageSize={visibleTaskCount} total={paginationTotal} showSizeChanger={false} showQuickJumper={{ goButton: '跳转' }} showLessItems disabled={query.isFetchingNextPage} onChange={(page) => void changePage(page)} /></nav> : null}
@@ -173,8 +216,8 @@ function useTaskBoardLayout(mainRef: RefObject<HTMLElement | null>) {
         setLayout({ visibleTaskCount: 2, cardGap: MIN_TASK_CARD_GAP })
         return
       }
-      const columns = Math.max(1, Math.floor((contentWidth + MIN_TASK_CARD_GAP) / (TASK_CARD_WIDTH + MIN_TASK_CARD_GAP)))
-      const cardGap = columns > 1 ? Math.max(MIN_TASK_CARD_GAP, (contentWidth - columns * TASK_CARD_WIDTH) / (columns - 1)) : MIN_TASK_CARD_GAP
+      const columns = Math.max(1, Math.floor((contentWidth + MIN_TASK_CARD_GAP) / (TASK_CARD_TARGET_WIDTH + MIN_TASK_CARD_GAP)))
+      const cardGap = columns > 1 ? MIN_TASK_CARD_GAP : MIN_TASK_CARD_GAP
       setLayout({ visibleTaskCount: columns * 2, cardGap })
     }
     update()

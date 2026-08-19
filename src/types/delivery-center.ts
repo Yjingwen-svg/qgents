@@ -1,6 +1,6 @@
 import type { CursorPage } from './api'
 
-export type DeliveryResourceType = 'CODE' | 'MEMORY' | 'SKILL'
+export type DeliveryResourceType = 'CODE' | 'MEMORY' | 'SKILL' | 'AGENT'
 export type DeliveryDisplayStatus =
   | 'DRAFT'
   | 'PENDING_REVIEW'
@@ -16,6 +16,7 @@ export type DeliveryOpenTarget =
   | { kind: 'DIFF'; taskId: string; diffId: string }
   | { kind: 'MEMORY'; memoryId: string }
   | { kind: 'SKILL'; skillId: string }
+  | { kind: 'AGENT'; agentId: string }
 
 export type DeliverySource = {
   taskId: string | null
@@ -141,7 +142,17 @@ export interface SkillDeliveryItem extends DeliveryItemBase<Extract<DeliveryOpen
   contentExcerpt: string | null
 }
 
-export type DeliveryItem = CodeDeliveryItem | MemoryDeliveryItem | SkillDeliveryItem
+/** §30.3 交付中心 AGENT 类型：PENDING/TEAM/ARCHIVED 进入；PRIVATE/SYSTEM 不进入。 */
+export interface AgentDeliveryItem extends DeliveryItemBase<Extract<DeliveryOpenTarget, { kind: 'AGENT' }>> {
+  resourceType: 'AGENT'
+  role: string
+  descriptionExcerpt: string | null
+  isDefault: false
+  /** §30.3 唯一允许存在的内部状态值：PENDING / TEAM / ARCHIVED。 */
+  agentVisibility: 'PENDING' | 'TEAM' | 'ARCHIVED'
+}
+
+export type DeliveryItem = CodeDeliveryItem | MemoryDeliveryItem | SkillDeliveryItem | AgentDeliveryItem
 
 export interface DeliveryItemsFilters {
   groupId?: string
@@ -160,6 +171,7 @@ export interface DeliveryCountsByType {
   CODE: number
   MEMORY: number
   SKILL: number
+  AGENT: number
 }
 
 export type DeliveryStatusCounts = Record<DeliveryDisplayStatus, number>
@@ -214,6 +226,8 @@ export type DeliveryAction =
 
 export interface DeliveryActionInput {
   projectId: string
+  /** §30.3 AGENT 操作需要 teamId 命中 /api/teams/{teamId}/agents/{agentId}/... */
+  teamId?: string
   item: DeliveryItem
   action: DeliveryAction
   reason?: string

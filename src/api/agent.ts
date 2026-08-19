@@ -11,6 +11,13 @@ export const agentApi = {
   create(teamId: string, payload: CreateAgentPayload) { return requestData<AgentDetail>(teamAgentsPath(teamId), { method: 'POST', headers: writeHeaders(), body: payload }) },
   update(teamId: string, agentId: string, payload: UpdateAgentPayload) { return requestData<AgentDetail>(`${teamAgentsPath(teamId)}/${agentId}`, { method: 'PATCH', headers: writeHeaders(), body: payload }) },
   publish(teamId: string, agentId: string) { return requestData<AgentDetail>(`${teamAgentsPath(teamId)}/${agentId}/publish`, { method: 'POST', headers: writeHeaders() }) },
+  /** §30.2 Team Owner 批准发布（PENDING → TEAM） */
+  approve(teamId: string, agentId: string) { return requestData<AgentDetail>(`${teamAgentsPath(teamId)}/${agentId}/approve`, { method: 'POST', headers: writeHeaders() }) },
+  /** §30.2 Team Owner 拒绝发布（PENDING → PRIVATE），body 可选 { reason } */
+  reject(teamId: string, agentId: string, reason?: string) {
+    return requestData<AgentDetail>(`${teamAgentsPath(teamId)}/${agentId}/reject`, { method: 'POST', headers: writeHeaders(), body: reason ? { reason } : undefined })
+  },
+  /** §30.2 文档已废弃：保留方法以便后端 409 时由 UI 解释；UI 不再主动调用。 */
   unpublish(teamId: string, agentId: string) { return requestData<AgentDetail>(`${teamAgentsPath(teamId)}/${agentId}/unpublish`, { method: 'POST', headers: writeHeaders() }) },
   archive(teamId: string, agentId: string) { return requestData<AgentDetail>(`${teamAgentsPath(teamId)}/${agentId}/archive`, { method: 'POST', headers: writeHeaders() }) },
   /** Agent 头像直传：签发凭证（objectKey/uploadUrl） */

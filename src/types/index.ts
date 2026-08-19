@@ -189,6 +189,7 @@ export type {
   TaskDiffReviewSummary,
   TaskSourceMessage,
   TaskStatus,
+  TaskStatusReason,
   TaskStep,
   TaskStepCreateInput,
   ReplaceTaskStepAgentInput,
@@ -232,6 +233,7 @@ export type {
 } from './task-model'
 export type { ApiErrorDetail, ApiErrorResponse, ApiResponse, CursorPage } from './api'
 export type {
+  AgentDeliveryItem,
   CodeDeliveryItem,
   CodeDeliveryStatus,
   CodeRepositoryDelivery,

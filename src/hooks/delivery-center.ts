@@ -48,6 +48,8 @@ export function useDeliveryActionMutation() {
       void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.all(input.projectId) })
       void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.diffs.all(input.projectId) })
       void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskDiffReview.root(input.projectId) })
+      // §30.3：AGENT 操作影响 Agent 团队列表与详情
+      void queryClient.invalidateQueries({ queryKey: ['qgents', 'agents'] })
     },
     onError: (_error, input) => {
       void queryClient.invalidateQueries({ queryKey: deliveryCenterKeys.all(input.projectId) })
@@ -57,6 +59,7 @@ export function useDeliveryActionMutation() {
         void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskDiffReview.detail(input.projectId, input.item.source.taskId) })
         void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.detail(input.projectId, input.item.source.taskId) })
       }
+      if (input.item.resourceType === 'AGENT') void queryClient.invalidateQueries({ queryKey: ['qgents', 'agents'] })
     },
   })
 }

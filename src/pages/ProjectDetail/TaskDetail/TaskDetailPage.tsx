@@ -1,7 +1,9 @@
-import { Alert, Breadcrumb, Button, Card, Form, Input, Result, Spin, Tag, Tooltip, Typography } from 'antd'
+import { Alert, Button, Card, Form, Input, Result, Spin, Tag, Tooltip, Typography } from 'antd'
 import { ArrowLeftOutlined, ArrowRightOutlined, CodeOutlined, CopyOutlined, ExperimentOutlined, FileTextOutlined, TeamOutlined } from '@ant-design/icons'
-import { useEffect, useState } from 'react'
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { type ReactNode } from 'react'
+import type { TaskStatusReason } from '@/types/task-model'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/api'
 import { useCancelTask, useConfirmTaskDiffReview, useDiffs, useRejectTaskDiffReview, useRetryTaskDiffReviewDelivery, useTask, useTaskDiffReview, useTaskRuns, useTaskSteps } from '@/hooks/task-model'
 import { usePreflight } from '@/hooks/qualityGate'
@@ -11,13 +13,14 @@ import { useTaskCompletedWithoutCode } from '@/store/taskNoCodeChangeStore'
 import { TaskModelStatusTag } from '../TaskCenter/TaskModelStatusTag'
 import { TaskRunInspectorPanel } from './TaskRunInspectorDrawer'
 import { PreflightPanel } from '../PreflightPanel'
+import type { Preflight } from '@/types/qualityGate'
 import styles from './TaskDetailPage.module.scss'
 
 const { Text, Title } = Typography
 
 export default function TaskDetailPage() {
   const { projectId = '', taskId = '' } = useParams<{ projectId: string; taskId: string }>()
-  const location = useLocation()
+  const navigate = useNavigate()
   const taskQuery = useTask(projectId, taskId)
   const stepsQuery = useTaskSteps(projectId, taskId, { limit: 100 })
   const taskRunsQuery = useTaskRuns(projectId, taskId, { limit: 5 })
@@ -29,14 +32,42 @@ export default function TaskDetailPage() {
     (isDiffReviewTask(taskQuery.data?.status) || taskQuery.data?.status === 'SUCCEEDED') && !completedWithoutCode
   const diffReviewQuery = useTaskDiffReview(projectId, taskId, reviewEnabled)
 
-  // WAITING_PREFLIGHT 时查询预检数据（取第一个仓库作为默认）
-  const firstRepo = taskQuery.data?.repositories?.[0]
-  const preflightQuery = usePreflight(
-    projectId,
-    taskId,
-    firstRepo?.repositoryId ?? '',
-    firstRepo?.baseRef ?? '',
-  )
+  // WAITING_PREFLIGHT 时，按仓库逐个查询预检数据
+  // 每个仓库一个 usePreflight Hook —— 通过 PreflightRepoCollector 组件封装
+  const [preflightResults, setPreflightResults] = useState<Map<string, {
+    repositoryId: string
+    repositoryName: string
+    preflight: Preflight | undefined
+    loading: boolean
+    error: Error | null
+    refetch: () => void
+  }>>(new Map())
+
+  const handlePreflightResult = useCallback((
+    repoId: string,
+    result: {
+      repositoryId: string
+      repositoryName: string
+      preflight: Preflight | undefined
+      loading: boolean
+      error: Error | null
+      refetch: () => void
+    },
+  ) => {
+    setPreflightResults((prev) => {
+      const next = new Map(prev)
+      next.set(repoId, result)
+      return next
+    })
+  }, [])
+
+  const handlePreflightRemove = useCallback((repoId: string) => {
+    setPreflightResults((prev) => {
+      const next = new Map(prev)
+      next.delete(repoId)
+      return next
+    })
+  }, [])
 
   // G1：交付中心等入口带 ?diffReviewBatchId 跳转时，定位到「任务产出与交付」卡片
   const [searchParams, setSearchParams] = useSearchParams()
@@ -56,6 +87,47 @@ export default function TaskDetailPage() {
       target.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
   }, [paramBatchId, taskQuery.data?.attention?.diffReviewBatchId, diffReviewQuery.data?.id])
+
+  // 必须无条件调用：Rules of Hooks 要求 Hooks 在每次渲染中以相同顺序执行。
+  // 这里的回调不依赖任何条件数据，可安全前置。
+  const preflightRefetchAll = useCallback(() => {
+    setPreflightResults((prev) => {
+      const next = new Map(prev)
+      for (const [, v] of next) {
+        v.refetch()
+      }
+      return new Map()
+    })
+  }, [])
+
+  // 必须无条件调用：基于可选的 taskQuery.data 计算，缺失时返回空数组。
+  const preflightArray = useMemo(() => {
+    const repositories = taskQuery.data?.repositories ?? []
+    const result: Array<{
+      repositoryId: string
+      repositoryName: string
+      preflight: Preflight | undefined
+      loading: boolean
+      error: Error | null
+      refetch: () => void
+    }> = []
+    for (const repo of repositories) {
+      const entry = preflightResults.get(repo.repositoryId)
+      if (entry) {
+        result.push(entry)
+      } else {
+        result.push({
+          repositoryId: repo.repositoryId,
+          repositoryName: repo.name || repo.repositoryId,
+          preflight: undefined,
+          loading: true,
+          error: null,
+          refetch: () => { },
+        })
+      }
+    }
+    return result
+  }, [taskQuery.data?.repositories, preflightResults])
 
   if (taskQuery.isLoading) return <DetailState loading description="正在加载任务详情" />
   if (taskQuery.isError) return <DetailError error={taskQuery.error} resource="任务详情" />
@@ -91,22 +163,39 @@ export default function TaskDetailPage() {
     setSearchParams(next)
   }
 
+  // 任务创建人 ID，用于判断 CQ+1 自审
+  const taskCreatedByUserId = task.createdByUser?.id ?? null
+
   return (
     <div className={styles.page}>
-      <div className={styles.topBar}><Breadcrumb items={[{ title: '任务中心' }, { title: '任务详情' }]} /></div>
+      <div className={styles.topBar}><Button type="text" size="small" icon={<ArrowLeftOutlined />} onClick={() => navigate(PATHS.projectTasks(projectId))}>返回任务中心</Button></div>
       <div className={styles.taskWorkspace}>
         <div className={styles.taskWorkspaceMain}>
-          <CompactTaskHeader task={currentTask} projectId={projectId} location={location} onCancel={handleCancel} cancelPending={cancelMutation.isPending} completedWithoutCode={completedWithoutCode} />
+          <CompactTaskHeader task={currentTask} projectId={projectId} onCancel={handleCancel} cancelPending={cancelMutation.isPending} completedWithoutCode={completedWithoutCode} />
           {cancelMutation.error ? <CancelError error={cancelMutation.error} onRefresh={() => void taskQuery.refetch()} /> : null}
           {currentTask.attention ? <AttentionBanner task={currentTask} steps={steps} onLocate={locate} onOpenRun={openRun} /> : null}
           {task.status === 'WAITING_PREFLIGHT' ? (
-            <PreflightPanel
-              projectId={projectId}
-              preflight={preflightQuery.data}
-              loading={preflightQuery.isLoading}
-              error={preflightQuery.isError ? preflightQuery.error : null}
-              onRefresh={() => void preflightQuery.refetch()}
-            />
+            <>
+              {/* 每个仓库独立的 preflight 查询 Hook —— 组件化以确保 Hook 调用顺序稳定 */}
+              {(task.repositories ?? []).map((repo) => (
+                <PreflightRepoQuery
+                  key={repo.repositoryId}
+                  projectId={projectId}
+                  taskId={taskId}
+                  repositoryId={repo.repositoryId}
+                  repositoryName={repo.name || repo.repositoryId}
+                  targetBranch={repo.baseRef}
+                  onResult={handlePreflightResult}
+                  onUnmount={handlePreflightRemove}
+                />
+              ))}
+              <PreflightPanel
+                projectId={projectId}
+                preflights={preflightArray}
+                onRefreshAll={preflightRefetchAll}
+                taskCreatedByUserId={taskCreatedByUserId}
+              />
+            </>
           ) : null}
           <main className={styles.content}>
             <ExecutionFlowRow task={currentTask} query={stepsQuery} steps={steps} onOpenRun={openRun} />
@@ -124,35 +213,28 @@ export default function TaskDetailPage() {
   )
 }
 
-function CompactTaskHeader({ task, projectId, location, onCancel, cancelPending, completedWithoutCode }: { task: Task; projectId: string; location: ReturnType<typeof useLocation>; onCancel: () => void; cancelPending: boolean; completedWithoutCode: boolean }) {
+function CompactTaskHeader({ task, projectId, onCancel, cancelPending, completedWithoutCode }: { task: Task; projectId: string; onCancel: () => void; cancelPending: boolean; completedWithoutCode: boolean }) {
   const navigate = useNavigate()
-  const from = typeof location.pathname === 'string' && location.pathname.includes('/tasks/') ? location.state : undefined
   return (
     <header className={styles.taskHeader} data-testid="task-summary">
+      {task.statusReason ? <TaskStartupFailureAlert statusReason={task.statusReason} /> : null}
       <div className={styles.headerPrimary}>
-        <Button type="text" size="small" icon={<ArrowLeftOutlined />} onClick={() => navigate(resolveReturnPath(from, projectId, task.id))}>返回任务中心</Button>
-        <div className={styles.headerActions}>
-          {task.requirementGroup ? <Button size="small" onClick={() => navigate(PATHS.projectReqChat(projectId, task.requirementGroup!.id))}>返回需求群</Button> : null}
-          <Button size="small" type="primary" onClick={() => navigate(`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(task.id)}`)}>查看交付</Button>
-          {task.capabilities.canCancel ? <Button size="small" danger loading={cancelPending} disabled={cancelPending} onClick={onCancel}>取消任务</Button> : null}
-          <TaskModelStatusTag status={task.status} completedWithoutCode={completedWithoutCode} />
-        </div>
-      </div>
-      <div className={styles.headerTitleBlock}>
-        <Text className={styles.taskCode}>{task.displayCode}</Text>
         <div className={styles.headerTitleLine}>
           <Title level={2} className={styles.taskTitle}>{display(task.title)}</Title>
           <Button type="text" size="small" className={styles.copyButton} icon={<CopyOutlined />} aria-label="复制任务 ID" title={`复制任务 ID：${task.id}`} onClick={() => void navigator.clipboard?.writeText(task.id)} />
         </div>
+        <div className={styles.headerActions}>
+          {task.requirementGroup ? <Button size="small" onClick={() => navigate(PATHS.projectReqChat(projectId, task.requirementGroup!.id))}>查看完整需求来源信息</Button> : null}
+          {task.capabilities.canCancel ? <Button size="small" danger loading={cancelPending} disabled={cancelPending} onClick={onCancel}>取消任务</Button> : null}
+        </div>
       </div>
       <div className={styles.headerMeta}>
         <HeaderMeta label="需求群" value={task.requirementGroup?.name} />
-        <HeaderMeta label="当前阶段" value={task.executionSummary.currentStageTitle ?? task.executionSummary.currentStage} />
+        <HeaderMeta label="当前状态" value={<TaskModelStatusTag status={task.status} completedWithoutCode={completedWithoutCode} />} />
         <HeaderMeta label="仓库" value={`${task.repositories.length || task.repositoryIds?.length || 0} 个`} />
         <HeaderMeta label="更新于" value={formatDate(task.updatedAt)} />
         <RequirementMeta task={task} />
       </div>
-      <RequirementSourceLink projectId={projectId} requirementGroupId={task.requirementGroup?.id ?? null} />
     </header>
   )
 }
@@ -237,7 +319,7 @@ function RecentExecutionPanel({ query, onOpenRun, onClearSelection, selectedRunI
 }
 
 function RecentRunItem({ run, selected, onOpen }: { run: TaskRunSummary; selected: boolean; onOpen: () => void }) {
-  return <button type="button" className={`${styles.recentRunItem} ${selected ? styles.recentRunItemSelected : ''}`} onClick={onOpen}><div><Text strong ellipsis>{run.taskStepTitle || roleLabel(run.role)}</Text><Tag color={runStatusColor(run.status)}>{run.status}</Tag></div><Text type="secondary" ellipsis>{run.statusSummary ?? formatDate(run.updatedAt)}</Text><Text type="secondary">产物 {run.artifactSummary.total} · Diff {run.artifactSummary.diffCount}</Text></button>
+  return <button type="button" className={`${styles.recentRunItem} ${selected ? styles.recentRunItemSelected : ''}`} onClick={onOpen}><div className={styles.recentRunItemRow}><Text strong className={styles.recentRunItemTitle}>{run.taskStepTitle || roleLabel(run.role)}</Text><Tag color={runStatusColor(run.status)}>{run.status}</Tag></div><Text type="secondary" className={styles.recentRunItemStatus}>{run.statusSummary ?? formatDate(run.updatedAt)}</Text><Text type="secondary" className={styles.recentRunItemArtifact}>产物 {run.artifactSummary?.total ?? 0} · Diff {run.artifactSummary?.diffCount ?? 0}</Text></button>
 }
 
 function StepInfo({ label, value }: { label: string; value: string }) {
@@ -316,7 +398,7 @@ function DiffReviewPanel({ projectId, task, batch, onRefresh }: { projectId: str
   const authorizationLabel = batch.reviewStatus === 'ACCEPTED'
     ? batch.confirmationSource === 'SYSTEM' ? '自动交付' : '已由用户确认'
     : batch.reviewStatus
-  return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}>交付确认与结果 <Tag>{authorizationLabel}</Tag><Text type="secondary">批次 {batch.id}</Text></div><Text type="secondary">{batch.deliveryStatus} · {batch.repositoryDeliveries.length} 个仓库</Text>{task.deliveryReason ? <Text type="secondary">{task.deliveryReason}</Text> : null}{batch.reviewStatus === 'REJECTED' && batch.reviewReason ? <Text type="danger">拒绝原因：{batch.reviewReason}</Text> : null}{batch.repositoryDeliveries.length > 0 ? <div className={styles.deliverySummaryList}>{batch.repositoryDeliveries.map((delivery) => <div key={delivery.repositoryId} className={styles.deliverySummaryRow}><Text ellipsis>{delivery.repositoryName}</Text><Tag color={delivery.deliveryStatus === 'FAILED' ? 'red' : delivery.deliveryStatus === 'MR_CREATED' ? 'green' : 'orange'}>{delivery.deliveryStatus}</Tag>{delivery.failureReason ? <Text type="danger">{delivery.failureReason}</Text> : null}{delivery.mergeRequest?.webUrl ? <a href={delivery.mergeRequest.webUrl} target="_blank" rel="noreferrer">查看 MR</a> : null}</div>)}</div> : null}{batch.deliveryStatus === 'DELIVERED' ? <Text type="secondary">交付已完成，可从 MR 入口继续查看。</Text> : null}{canUserDecide ? <div className={styles.reviewActions}>{task.capabilities.canConfirmDiffReview ? <Button type="primary" loading={confirm.isPending} disabled={pending} onClick={() => confirm.mutate(batch.taskId, { onError: handleError })}>确认交付</Button> : null}{task.capabilities.canRejectDiffReview ? <Form onFinish={() => { const trimmed = reason.trim(); if (trimmed) reject.mutate({ taskId: batch.taskId, input: { reason: trimmed } }, { onError: handleError }) }}><Form.Item label="拒绝原因" required><Input.TextArea value={reason} rows={2} maxLength={4000} disabled={pending} onChange={(event) => setReason(event.target.value)} /></Form.Item><Button danger htmlType="submit" loading={reject.isPending} disabled={pending || !reason.trim()}>拒绝交付</Button></Form> : null}</div> : null}{canRetry ? <Button size="small" loading={retry.isPending} disabled={pending} onClick={() => retry.mutate(batch.taskId, { onError: handleError })}>重试交付</Button> : null}{error ? <Alert type="error" showIcon title={diffReviewError(error)} action={error instanceof ApiError && error.status === 409 ? <Button size="small" onClick={onRefresh}>刷新</Button> : undefined} /> : null}</Card>
+  return <Card className={styles.outputCard} size="small" data-testid="delivery-card"><div className={styles.cardHeading}><span>交付确认与结果</span><div className={styles.cardHeadingRight}><Tag>{authorizationLabel}</Tag></div></div>{task.deliveryReason ? <Text type="secondary">{task.deliveryReason}</Text> : null}{batch.reviewStatus === 'REJECTED' && batch.reviewReason ? <Text type="danger">拒绝原因：{batch.reviewReason}</Text> : null}{batch.repositoryDeliveries.length > 0 ? <div className={styles.deliverySummaryList}>{batch.repositoryDeliveries.map((delivery) => <div key={delivery.repositoryId} className={styles.deliverySummaryRow}><Text ellipsis>{delivery.repositoryName}</Text><Tag color={delivery.deliveryStatus === 'FAILED' ? 'red' : delivery.deliveryStatus === 'MR_CREATED' ? 'green' : 'orange'}>{delivery.deliveryStatus}</Tag>{delivery.failureReason ? <Text type="danger">{delivery.failureReason}</Text> : null}{delivery.mergeRequest?.webUrl ? <a href={delivery.mergeRequest.webUrl} target="_blank" rel="noreferrer">查看 MR</a> : null}</div>)}</div> : null}{batch.deliveryStatus === 'DELIVERED' ? <Text type="secondary">交付已完成，可从 MR 入口继续查看。</Text> : null}{canUserDecide ? <div className={styles.reviewActions}>{task.capabilities.canConfirmDiffReview ? <Button type="primary" loading={confirm.isPending} disabled={pending} onClick={() => confirm.mutate(batch.taskId, { onError: handleError })}>确认交付</Button> : null}{task.capabilities.canRejectDiffReview ? <Form onFinish={() => { const trimmed = reason.trim(); if (trimmed) reject.mutate({ taskId: batch.taskId, input: { reason: trimmed } }, { onError: handleError }) }}><Form.Item label="拒绝原因" required><Input.TextArea value={reason} rows={2} maxLength={4000} disabled={pending} onChange={(event) => setReason(event.target.value)} /></Form.Item><Button danger htmlType="submit" loading={reject.isPending} disabled={pending || !reason.trim()}>拒绝交付</Button></Form> : null}</div> : null}{canRetry ? <Button size="small" loading={retry.isPending} disabled={pending} onClick={() => retry.mutate(batch.taskId, { onError: handleError })}>重试交付</Button> : null}{error ? <Alert type="error" showIcon title={diffReviewError(error)} action={error instanceof ApiError && error.status === 409 ? <Button size="small" onClick={onRefresh}>刷新</Button> : undefined} /> : null}</Card>
 }
 
 function normalizeTaskForDisplay(task: Task): Task {
@@ -331,17 +413,17 @@ function normalizeTaskForDisplay(task: Task): Task {
     executionSummary: task.executionSummary && typeof task.executionSummary === 'object'
       ? task.executionSummary
       : {
-          totalSteps: 0,
-          pendingSteps: 0,
-          runningSteps: 0,
-          waitingSteps: 0,
-          blockedSteps: 0,
-          succeededSteps: 0,
-          failedSteps: 0,
-          currentStage: null,
-          currentStageTitle: null,
-          requiresUserAction: false,
-        },
+        totalSteps: 0,
+        pendingSteps: 0,
+        runningSteps: 0,
+        waitingSteps: 0,
+        blockedSteps: 0,
+        succeededSteps: 0,
+        failedSteps: 0,
+        currentStage: null,
+        currentStageTitle: null,
+        requiresUserAction: false,
+      },
     capabilities: {
       canCancel: capabilities?.canCancel === true,
       canReplacePendingStepAgent: capabilities?.canReplacePendingStepAgent === true,
@@ -356,14 +438,13 @@ function normalizeTaskForDisplay(task: Task): Task {
 }
 
 function RowHeading({ title, meta }: { title: string; meta?: string }) { return <div className={styles.rowHeading}><Title level={4}>{title}</Title>{meta ? <Text type="secondary">{meta}</Text> : null}</div> }
-function HeaderMeta({ label, value }: { label: string; value: string | null | undefined }) { return <div className={styles.headerMetaItem}><Text type="secondary">{label}</Text><Text ellipsis strong>{display(value)}</Text></div> }
+function HeaderMeta({ label, value }: { label: string; value: ReactNode }) { return <div className={styles.headerMetaItem}><Text type="secondary">{label}</Text><Text ellipsis strong>{value}</Text></div> }
 function RequirementMeta({ task }: { task: Task }) {
   return <div className={styles.headerMetaItem}>
     <Text type="secondary">需求说明</Text>
     <Tooltip title={display(task.requirement)}><Text ellipsis strong>{display(task.requirement)}</Text></Tooltip>
   </div>
 }
-function RequirementSourceLink({ projectId, requirementGroupId }: { projectId: string; requirementGroupId: string | null }) { const navigate = useNavigate(); return requirementGroupId ? <div className={styles.requirementSourceLink}><Button type="link" size="small" onClick={() => navigate(PATHS.projectReqChat(projectId, requirementGroupId))}>查看完整需求</Button></div> : null }
 function InlineState({ loading = false, text }: { loading?: boolean; text?: string }) { return <div className={styles.inlineState}>{loading ? <Spin size="small" /> : null}<Text type="secondary">{text ?? '正在加载'}</Text></div> }
 function SectionError({ resource, error }: { resource: string; error: Error | null }) { const status = error instanceof ApiError ? error.status : undefined; return <Alert type="error" showIcon title={status === 403 ? `暂无权限查看${resource}` : `${resource}加载失败`} /> }
 function CancelError({ error, onRefresh }: { error: Error; onRefresh: () => void }) { const status = error instanceof ApiError ? error.status : undefined; return <Alert className={styles.executionAlert} type="error" showIcon title={status === 409 ? '任务状态已变化，请刷新详情' : '取消任务失败'} action={status === 409 ? <Button type="link" onClick={onRefresh}>刷新</Button> : undefined} /> }
@@ -375,4 +456,65 @@ function errorCode(error: Error | null): string | undefined { if (!(error instan
 function diffReviewError(error: Error): string { const code = errorCode(error); if (code === 'DIFF_REVIEW_FORBIDDEN') return '暂无 Diff 验收权限'; if (code === 'DIFF_REVIEW_NOT_FOUND') return '最终 Diff 尚未生成'; if (code === 'DIFF_REVIEW_NOT_DECIDABLE') return 'Diff 状态已变化，请刷新后重试'; if (code === 'DIFF_DELIVERY_NOT_RETRYABLE') return '当前交付状态不可重试'; return 'Diff 操作失败' }
 function display(value: string | null | undefined): string { return value?.trim() || '暂无' }
 function formatDate(value: string | null | undefined): string { if (!value) return '暂无'; const date = new Date(value); return Number.isNaN(date.getTime()) ? display(value) : new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date) }
-function resolveReturnPath(state: unknown, projectId: string, _taskId: string): string { const fallback = PATHS.projectTasks(projectId); return state && typeof state === 'object' && 'from' in state && typeof state.from === 'string' && state.from.startsWith(PATHS.projectTasks(projectId)) ? state.from : fallback }
+function TaskStartupFailureAlert({ statusReason }: { statusReason: TaskStatusReason | null }) {
+  if (!statusReason) return null
+  return (
+    <Alert
+      type="error"
+      showIcon
+      className={styles.taskStartupFailureAlert}
+      title={statusReason.title}
+      description={statusReason.summary}
+      action={statusReason.retryable ? <Tag color="orange">可重试</Tag> : undefined}
+    />
+  )
+}
+
+/**
+ * 单仓库 preflight 查询组件 —— 封装 usePreflight Hook，将结果通过回调上报给父组件。
+ * 父组件通过 Map 聚合所有仓库的 preflight 状态，传给 PreflightPanel 统一渲染。
+ * 设计：每个仓库一个独立组件，确保 Hook 调用顺序在渲染间保持稳定。
+ */
+function PreflightRepoQuery({
+  projectId,
+  taskId,
+  repositoryId,
+  repositoryName,
+  targetBranch,
+  onResult,
+  onUnmount,
+}: {
+  projectId: string
+  taskId: string
+  repositoryId: string
+  repositoryName: string
+  targetBranch: string
+  onResult: (repoId: string, result: {
+    repositoryId: string
+    repositoryName: string
+    preflight: Preflight | undefined
+    loading: boolean
+    error: Error | null
+    refetch: () => void
+  }) => void
+  onUnmount: (repoId: string) => void
+}) {
+  const query = usePreflight(projectId, taskId, repositoryId, targetBranch)
+
+  useEffect(() => {
+    onResult(repositoryId, {
+      repositoryId,
+      repositoryName,
+      preflight: query.data,
+      loading: query.isLoading,
+      error: query.error,
+      refetch: () => { void query.refetch() },
+    })
+  }, [repositoryId, repositoryName, query.data, query.isLoading, query.error, query, onResult])
+
+  useEffect(() => {
+    return () => { onUnmount(repositoryId) }
+  }, [repositoryId, onUnmount])
+
+  return null
+}

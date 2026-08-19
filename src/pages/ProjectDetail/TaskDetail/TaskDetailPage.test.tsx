@@ -17,7 +17,7 @@ const useConfirmTaskDiffReviewMock = vi.hoisted(() => vi.fn())
 const useRejectTaskDiffReviewMock = vi.hoisted(() => vi.fn())
 const useRetryTaskDiffReviewDeliveryMock = vi.hoisted(() => vi.fn())
 const useTaskRunMock = vi.hoisted(() => vi.fn())
-const useTaskRunLogsMock = vi.hoisted(() => vi.fn())
+const useInfiniteTaskRunLogsMock = vi.hoisted(() => vi.fn())
 const useTaskRunExecutionContextMock = vi.hoisted(() => vi.fn())
 const useTaskRunInputRequestsMock = vi.hoisted(() => vi.fn())
 const useRetryTaskRunModelMock = vi.hoisted(() => vi.fn())
@@ -40,7 +40,7 @@ vi.mock('@/hooks/task-model', () => ({
   useRejectTaskDiffReview: useRejectTaskDiffReviewMock,
   useRetryTaskDiffReviewDelivery: useRetryTaskDiffReviewDeliveryMock,
   useTaskRun: useTaskRunMock,
-  useTaskRunLogs: useTaskRunLogsMock,
+  useInfiniteTaskRunLogs: useInfiniteTaskRunLogsMock,
   useTaskRunExecutionContext: useTaskRunExecutionContextMock,
   useTaskRunInputRequests: useTaskRunInputRequestsMock,
   useRetryTaskRunModel: useRetryTaskRunModelMock,
@@ -61,7 +61,7 @@ const task: Task = {
   requirementGroup: { id: 'group-1', name: '登录功能', status: 'ACTIVE' }, createdByUser: { id: 'user-1', displayName: 'User', avatarUrl: null },
   repositories: [{ repositoryId: 'repo-1', name: 'Web 前端', fullName: 'mock/web', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'main', baseCommit: 'base-1', sourceBranch: 'feat/login', headCommit: 'head-1' }],
   executionSummary: { totalSteps: 1, pendingSteps: 0, runningSteps: 1, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: 'DEVELOPER', currentStageTitle: '开发实现', requiresUserAction: false },
-  attention: null, createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z', requirement: '实现登录页面与接口校验，完成后提交可审查的代码变更。', acceptanceCriteria: [], workspace: null,
+  attention: null, statusReason: null, createdAt: '2026-08-11T08:00:00Z', updatedAt: '2026-08-11T08:30:00Z', requirement: '实现登录页面与接口校验，完成后提交可审查的代码变更。', acceptanceCriteria: [], workspace: null,
   capabilities: { canCancel: true, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false }, artifactSummary: { total: 0, byType: {} },
   diffReviewSummary: { available: false, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 }, sourceMessage: null, triggerMessageId: null,
 }
@@ -86,16 +86,15 @@ beforeEach(() => {
   useConfirmTaskDiffReviewMock.mockReturnValue(idleMutation)
   useRejectTaskDiffReviewMock.mockReturnValue(idleMutation)
   useRetryTaskDiffReviewDeliveryMock.mockReturnValue(idleMutation)
-  usePreflightMock.mockReturnValue({ data: undefined, error: null, isError: false, isLoading: false, isFetching: false, refetch: vi.fn() })
-  useTaskRunMock.mockReturnValue({ ...idleQuery, data: run })
-  useTaskRunLogsMock.mockReturnValue({ data: page([]), error: null, isError: false, isLoading: false })
-  useTaskRunExecutionContextMock.mockReturnValue(idleQuery)
-  useTaskRunInputRequestsMock.mockReturnValue({ data: page([]), error: null, isError: false, isLoading: false })
-  useRetryTaskRunModelMock.mockReturnValue(idleMutation)
-  useCancelTaskRunModelMock.mockReturnValue(idleMutation)
-  useReplyTaskRunInputRequestMock.mockReturnValue(idleMutation)
-  useApproveTaskRunInputRequestMock.mockReturnValue(idleMutation)
-  useRejectTaskRunInputRequestMock.mockReturnValue(idleMutation)
+  useTaskRunMock.mockReturnValue({ ...idleQuery, data: run });
+  useInfiniteTaskRunLogsMock.mockReturnValue({ data: { pages: [{ data: [], page: { nextCursor: null, hasMore: false }, requestId: 'req-1' }], pageParams: [undefined] }, error: null, isError: false, isLoading: false, isFetching: false, isFetchingNextPage: false, hasNextPage: false, isFetchNextPageError: false, refetch: vi.fn(), fetchNextPage: vi.fn() });
+  useTaskRunExecutionContextMock.mockReturnValue(idleQuery);
+  useTaskRunInputRequestsMock.mockReturnValue({ data: page([]), error: null, isError: false, isLoading: false });
+  useRetryTaskRunModelMock.mockReturnValue(idleMutation);
+  useCancelTaskRunModelMock.mockReturnValue(idleMutation);
+  useReplyTaskRunInputRequestMock.mockReturnValue(idleMutation);
+  useApproveTaskRunInputRequestMock.mockReturnValue(idleMutation);
+  useRejectTaskRunInputRequestMock.mockReturnValue(idleMutation);
 })
 
 describe('TaskDetailPage workbench', () => {
@@ -153,11 +152,11 @@ describe('TaskDetailPage workbench', () => {
     expect(screen.queryByRole('button', { name: '查看原始讨论' })).not.toBeInTheDocument()
   })
 
-  it('keeps a requirement excerpt and source jump in the header information row', () => {
+  it('keeps a requirement excerpt in the header information row without the legacy source jump link', () => {
     renderPage()
     expect(screen.getByText('需求说明')).toBeInTheDocument()
     expect(screen.getByText('实现登录页面与接口校验，完成后提交可审查的代码变更。')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '查看完整需求' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '查看完整需求' })).not.toBeInTheDocument()
   })
 
   it('keeps delivery confirmation actions in the delivery panel', async () => {

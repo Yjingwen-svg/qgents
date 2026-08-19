@@ -32,47 +32,64 @@ export function DryRunCqPanel({
   }
 
   function submit(kind: 'approve' | 'reject'): void {
-    let reason = ''
     const rejecting = kind === 'reject'
-    modal.confirm({
-      title: rejecting ? '拒绝该 Dry Run？' : '给该 Dry Run 盖 CQ+1？',
-      content: (
-        <Input.TextArea
-          placeholder={rejecting ? '请填写修改意见（必填）' : '请填写审查理由'}
-          autoSize={{ minRows: 3, maxRows: 6 }}
-          onChange={(event) => {
-            reason = event.target.value
-          }}
-        />
-      ),
-      okText: rejecting ? '拒绝' : '盖章',
-      okButtonProps: rejecting ? { danger: true } : undefined,
-      onOk: () => {
-        if (rejecting && !reason.trim()) {
-          message.warning('修改意见不能为空')
-          return Promise.reject(new Error('reason required'))
-        }
-        const mutate = rejecting ? rejectCq.mutateAsync : approveCq.mutateAsync
-        return mutate({ dryRunId: dryRun.id, input: { reason: reason.trim() } }).then(
-          () => {
-            message.success(rejecting ? '已拒绝该 Dry Run' : '已盖 CQ+1')
+    let reason = ''
+
+    const doSubmit = () => {
+      if (rejecting && !reason.trim()) {
+        message.warning('修改意见不能为空')
+        return Promise.reject(new Error('reason required'))
+      }
+      const mutate = rejecting ? rejectCq.mutateAsync : approveCq.mutateAsync
+      const input = rejecting ? { reason: reason.trim() } : {}
+      return mutate({ dryRunId: dryRun.id, input }).then(
+        () => {
+          message.success(rejecting ? '已拒绝该 Dry Run' : '已盖 CQ+1')
+          refreshPreflight()
+        },
+        (error: unknown) => {
+          const code = readApiErrorCode(error)
+          if (code === 'PREFLIGHT_CQ_AUTHOR_FORBIDDEN') {
+            message.error('Task 发起人不可自审，请由独立成员审批该 Dry Run')
+          } else if (code === 'PREFLIGHT_CONTEXT_STALE' || code === 'PREFLIGHT_TASK_NOT_READY') {
             refreshPreflight()
-          },
-          (error: unknown) => {
-            const code = readApiErrorCode(error)
-            if (code === 'PREFLIGHT_CQ_AUTHOR_FORBIDDEN') {
-              message.error('Task 发起人不可自审，请由独立成员审批该 Dry Run')
-            } else if (code === 'PREFLIGHT_CONTEXT_STALE' || code === 'PREFLIGHT_TASK_NOT_READY') {
-              refreshPreflight()
-              message.error('预检上下文已变化，已刷新预检，请重新确认')
-            } else {
-              message.error(formatApiError(error))
-            }
-            return Promise.reject(error)
-          },
-        )
-      },
-    })
+            message.error('预检上下文已变化，已刷新预检，请重新确认')
+          } else {
+            message.error(formatApiError(error))
+          }
+          return Promise.reject(error)
+        },
+      )
+    }
+
+    if (rejecting) {
+      // 拒绝必须填写原因
+      modal.confirm({
+        title: '拒绝该 Dry Run？',
+        content: (
+          <Input.TextArea
+            placeholder="请填写修改意见（必填）"
+            autoSize={{ minRows: 3, maxRows: 6 }}
+            onChange={(event) => { reason = event.target.value }}
+          />
+        ),
+        okText: '拒绝',
+        okButtonProps: { danger: true },
+        onOk: doSubmit,
+      })
+    } else {
+      // 通过 —— 不需要填写原因，直接提交
+      modal.confirm({
+        title: '给该 Dry Run 盖 CQ+1？',
+        content: (
+          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            确认由你作为独立成员审批该 Dry Run？审批通过后系统将自动创建 MR。
+          </Paragraph>
+        ),
+        okText: '盖章',
+        onOk: doSubmit,
+      })
+    }
   }
 
   return (

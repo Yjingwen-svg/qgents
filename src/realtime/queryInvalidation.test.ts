@@ -42,9 +42,14 @@ describe('project SSE Task model query invalidation mapping', () => {
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'agent', 'agent-1']))
   })
 
-  it('maps progress only to TaskRun detail and never writes content', () => {
+  it('maps progress to TaskRun detail and logs (also accepting legacy stepId)', () => {
     const keys = keysFor('task-run.step.progress', { taskId: 'task-1', taskRunId: 'run-1', stepId: 'step-1', content: 'raw event content' })
-    expect(keys).toEqual([JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1'])])
+    expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1']))
+    expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1', 'logs', {}]))
+
+    const taskStepIdKeys = keysFor('task-run.step.progress', { taskId: 'task-1', taskRunId: 'run-1', taskStepId: 'step-1' })
+    expect(taskStepIdKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1']))
+    expect(taskStepIdKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1', 'logs', {}]))
   })
 
   it.each(['input-required', 'approval-required'] as const)('maps %s to run, input requests, and Task detail', (type) => {

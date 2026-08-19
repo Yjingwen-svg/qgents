@@ -8,9 +8,14 @@ import { ApiError } from '@/api'
 const navigateMock = vi.hoisted(() => vi.fn())
 const mutationMock = vi.hoisted(() => ({ mutateAsync: vi.fn(), reset: vi.fn(), isPending: false, error: null as Error | null }))
 const repositoriesMock = vi.hoisted(() => vi.fn())
+const groupsMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/task-model', () => ({ useCreateTask: () => mutationMock }))
 vi.mock('@/api/github', () => ({ githubApi: { listProjectRepositories: repositoriesMock } }))
+vi.mock('@/api', async () => {
+  const actual = await vi.importActual<typeof import('@/api')>('@/api')
+  return { ...actual, groupApi: { listByProject: groupsMock } }
+})
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
   return { ...actual, useNavigate: () => navigateMock }
@@ -22,6 +27,7 @@ const task = { id: 'task-1' }
 const repository = {
   id: 'binding-1', installationId: 'installation-1', repositoryId: 'repo-1', fullName: 'org/repo', githubUrl: 'https://github.com/org/repo', defaultBranch: 'main', boundProjectId: 'project-test', boundProjectName: 'Test', syncStatus: 'SYNCED' as const,
 }
+const requirementGroup = { id: 'group-test', projectId: 'project-test', type: 'REQUIREMENT' as const, title: '登录功能', status: 'ACTIVE' as const }
 
 function renderModal(onClose = vi.fn()) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -29,7 +35,7 @@ function renderModal(onClose = vi.fn()) {
 }
 
 beforeEach(() => {
-  mutationMock.mutateAsync.mockReset(); mutationMock.reset.mockReset(); mutationMock.isPending = false; mutationMock.error = null; navigateMock.mockReset(); repositoriesMock.mockReset(); repositoriesMock.mockResolvedValue([repository])
+  mutationMock.mutateAsync.mockReset(); mutationMock.reset.mockReset(); mutationMock.isPending = false; mutationMock.error = null; navigateMock.mockReset(); repositoriesMock.mockReset(); repositoriesMock.mockResolvedValue([repository]); groupsMock.mockReset(); groupsMock.mockResolvedValue([requirementGroup])
 })
 
 describe('TaskTriggerModal', () => {
@@ -48,6 +54,20 @@ describe('TaskTriggerModal', () => {
   it('does not render legacy start mode controls', () => {
     renderModal()
     expect(screen.queryByText(/AUTO|MANUAL/)).not.toBeInTheDocument()
+  })
+
+  it('shows the requirement group title instead of the group UUID', async () => {
+    renderModal()
+    const input = (await screen.findByDisplayValue('登录功能')) as HTMLInputElement
+    expect(input).toHaveAttribute('readonly')
+    expect(screen.queryByDisplayValue('group-test')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the group UUID when the group title is unavailable', async () => {
+    groupsMock.mockResolvedValue([])
+    renderModal()
+    const input = (await screen.findByDisplayValue('group-test')) as HTMLInputElement
+    expect(input).toHaveAttribute('readonly')
   })
 
   it('disables submission when the project has no repositories', async () => {

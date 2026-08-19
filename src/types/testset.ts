@@ -141,6 +141,8 @@ export interface CreateDryRunPayload {
   sourceRef: string
   targetBranch: string
   taskId?: string
+  /** 用户手动指定的测试集；若不传则由服务端按目标分支门禁自动加载 */
+  testsetIds?: string[]
 }
 
 export interface DryRunConflict {
@@ -152,10 +154,10 @@ export interface DryRunConflict {
 export type DryRunTestsPayload =
   | TestRunExecutionSummary
   | {
-      status: 'NOT_REQUIRED' | 'SKIPPED'
-      results: TestRunResultItem[]
-      reason: 'MERGE_CONFLICT' | null
-    }
+    status: 'NOT_REQUIRED' | 'SKIPPED'
+    results: TestRunResultItem[]
+    reason: 'MERGE_CONFLICT' | null
+  }
 
 /** 嵌套 report（确认项 §2.3） */
 export interface DryRunReportBody {
@@ -179,16 +181,17 @@ export interface DryRunReport {
   report: DryRunReportBody | null
   /** 兼容：从 report.conflicts 抽出，供冲突 Tab */
   conflicts: DryRunConflict[]
+  createdBy: string | null
   caseSummary: TestCaseSummary | null
   cases: TestCaseDetail[]
   reportUrl: string | null
   pdfUrl: string | null
   startedAt: string | null
   finishedAt: string | null
+  createdAt: string
   durationSeconds: number | null
   sandboxId: string | null
   testsetIds: string[]
-  createdAt: string
 }
 
 /** 本设备会话历史（非权威跨设备列表） */

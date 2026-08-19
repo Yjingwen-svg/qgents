@@ -5,21 +5,21 @@
   width: 100%;
   flex-direction: column;
   overflow: hidden;
-  padding: 0 24px 20px;
+  padding: 0 clamp(10px, 0.5vw + 8px, 100%) clamp(8px, 0.5vw + 5px, 100%);
   color: #12213d;
   background: #fff;
 }
 
 .topBar {
   display: flex;
-  min-height: 42px;
+  min-height: clamp(28px, 0.4vw + 24px, 100%);
   align-items: center;
   border-bottom: 1px solid #edf1f5;
 }
 
 .taskHeader {
   flex: 0 0 auto;
-  padding: 10px 0 9px;
+  padding: clamp(8px, 0.3vw + 5px, 100%) 0 clamp(8px, 0.3vw + 5px, 100%);
   border-bottom: 1px solid #e9eef4;
 }
 
@@ -28,8 +28,8 @@
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(clamp(200px, 10vw + 60px, 100%), clamp(240px, 12vw + 80px, 100%));
+  gap: clamp(8px, 0.3vw + 6px, 100%);
   overflow: hidden;
 }
 
@@ -44,8 +44,19 @@
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 10px 0 0 14px;
+  padding: clamp(3px, 0.15vw + 2px, 100%) 0 0 clamp(5px, 0.15vw + 3px, 100%);
   border-left: 1px solid #e9eef4;
+}
+
+.taskWorkspaceAside :global(.ant-typography),
+.taskWorkspaceAside :global(.ant-typography p),
+.taskWorkspaceAside :global(h1),
+.taskWorkspaceAside :global(h2),
+.taskWorkspaceAside :global(h3),
+.taskWorkspaceAside :global(h4),
+.taskWorkspaceAside :global(h5),
+.taskWorkspaceAside :global(p) {
+  font-size: inherit !important;
 }
 
 .headerPrimary,
@@ -63,35 +74,35 @@
 .headerPrimary {
   min-width: 0;
   justify-content: space-between;
-  gap: 8px;
+  gap: clamp(4px, 0.2vw + 3px, 100%);
 }
 
 .headerActions {
   flex: 0 0 auto;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 7px;
+  gap: clamp(4px, 0.1vw + 3px, 100%);
   margin-left: auto;
 }
 
 .headerTitleBlock {
   min-width: 0;
-  margin-top: 5px;
-  padding-left: 4px;
+  margin-top: clamp(2px, 0.1vw + 1px, 100%);
+  padding-left: clamp(1px, 0.1vw + 1px, 100%);
 }
 
 .headerTitleLine {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 4px;
+  gap: clamp(1px, 0.1vw + 1px, 100%);
 }
 
 .taskCode {
   flex: 0 0 auto;
   color: #6d7d95;
   font-family: 'Cascadia Mono', Consolas, monospace;
-  font-size: 12px;
+  font-size: clamp(10px, 0.1vw + 9px, 100%);
 }
 
 .taskTitle {
@@ -99,7 +110,7 @@
   margin: 0;
   overflow: hidden;
   color: #12213d !important;
-  font-size: 20px !important;
+  font-size: clamp(15px, 0.4vw + 12px, 100%) !important;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -112,18 +123,18 @@
 .headerMeta {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  padding: 8px 0 0 40px;
+  gap: clamp(4px, 0.2vw + 3px, 100%);
+  padding: clamp(2px, 0.2vw + 2px, 100%) 0 0 clamp(14px, 1vw + 8px, 100%);
 }
 
 .headerMetaItem {
   display: grid;
   min-width: 0;
-  gap: 2px;
-  font-size: 11px;
+  gap: clamp(1px, 0.05vw + 1px, 100%);
+  font-size: clamp(10px, 0.05vw + 9px, 100%);
 }
 
-.headerMetaItem > :last-child {
+.headerMetaItem> :last-child {
   min-width: 0;
   overflow: hidden;
   color: #243855;
@@ -131,30 +142,18 @@
   white-space: nowrap;
 }
 
-.requirementSourceLink {
-  display: flex;
-  min-height: 22px;
-  align-items: center;
-  justify-content: center;
-}
-
-.requirementSourceLink :global(.ant-btn) {
-  height: auto;
-  padding-inline: 0;
-}
-
 .executionAlert {
   flex: 0 0 auto;
-  margin: 7px 0 0;
+  margin: clamp(2px, 0.15vw + 2px, 100%) 0 0;
 }
 
 .attentionBanner {
   flex: 0 0 auto;
-  padding: 8px 0 0;
+  padding: clamp(2px, 0.2vw + 2px, 100%) 0 0;
 }
 
 .attentionBanner :global(.ant-alert) {
-  padding: 7px 10px;
+  padding: clamp(3px, 0.15vw + 2px, 100%) clamp(6px, 0.15vw + 4px, 100%);
 }
 
 .attentionBanner :global(.ant-alert-description) {
@@ -168,9 +167,9 @@
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-  grid-template-rows: minmax(320px, 340px) minmax(0, 1fr);
-  gap: 10px;
-  padding-top: 10px;
+  grid-template-rows: minmax(clamp(180px, 14vw + 10px, 100%), 1.2fr) minmax(0, 1fr);
+  gap: clamp(4px, 0.2vw + 3px, 100%);
+  padding-top: clamp(4px, 0.2vw + 3px, 100%);
 }
 
 .executionFlowRow,
@@ -189,14 +188,14 @@
 .rowHeading {
   flex: 0 0 auto;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
+  gap: clamp(3px, 0.15vw + 2px, 100%);
+  margin-bottom: clamp(6px, 0.3vw + 4px, 100%);
 }
 
 .rowHeading h4 {
   margin: 0;
   color: #12213d;
-  font-size: 20px;
+  font-size: clamp(16px, 0.4vw + 13px, 100%);
 }
 
 .workbenchMain {
@@ -204,31 +203,39 @@
   container-type: size;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: minmax(148px, 0.6fr) minmax(0, 1.4fr);
-  gap: 10px;
-  overflow: hidden;
+  grid-template-rows: minmax(clamp(80px, 3vw + 38px, 100%), 0.6fr) minmax(0, 1.4fr);
+  gap: clamp(4px, 0.2vw + 3px, 100%);
+  overflow-y: auto;
 }
 
-@container (max-height: 300px) {
+@container (max-height: 360px) {
   .workbenchMain {
-    grid-template-rows: minmax(100px, 0.45fr) minmax(0, 1.55fr);
+    grid-template-rows: minmax(clamp(60px, 3vw + 24px, 100%), 0.5fr) minmax(0, 1.5fr);
   }
 }
 
-@container (max-height: 220px) {
+@container (max-height: 260px) {
   .workbenchMain {
-    grid-template-rows: minmax(80px, 0.4fr) minmax(0, 1.6fr);
+    grid-template-rows: minmax(clamp(48px, 2vw + 18px, 100%), 0.45fr) minmax(0, 1.55fr);
   }
 }
 
 .runInspectorPanel {
   display: grid;
   min-width: 0;
-  gap: 12px;
-  padding: 14px;
+  height: 100dvh;
+  gap: clamp(5px, 0.15vw + 4px, 100%);
+  padding: clamp(6px, 0.15vw + 4px, 100%);
   border: 1px solid #e4eaf2;
-  border-radius: 8px;
+  border-radius: clamp(4px, 0.1vw + 3px, 100%);
   background: #fff;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.runInspectorPanel::-webkit-scrollbar {
+  display: none;
 }
 
 .runInspectorPanelHeading {
@@ -236,25 +243,29 @@
   min-width: 0;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  padding-bottom: 10px;
+  gap: clamp(3px, 0.1vw + 2px, 100%);
+  padding-bottom: clamp(3px, 0.15vw + 2px, 100%);
   border-bottom: 1px solid #edf1f5;
 }
 
-.runInspectorPanelHeading > div:first-child {
+.runInspectorPanelHeading>div:first-child {
   min-width: 0;
 }
 
-.runInspectorPanelHeading > div:last-child {
+.runInspectorPanelHeading>div:last-child {
   display: flex;
   flex: 0 0 auto;
-  gap: 6px;
+  gap: clamp(2px, 0.1vw + 1px, 100%);
 }
 
 .runInspectorPanelHeading h4 {
   margin: 1px 0 0;
   color: #12213d;
-  font-size: 17px;
+  font-size: clamp(12px, 0.3vw + 10px, 100%) !important;
+}
+
+.runInspectorPanelHeading :global(.ant-typography) {
+  font-size: inherit !important;
 }
 
 .recentExecutionPanel,
@@ -262,16 +273,17 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 14px 16px;
-  border: 1px solid #e4eaf2;
-  border-radius: 8px;
-  background: #fff;
 }
 
 .deliveryPanel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: clamp(3px, 0.15vw + 2px, 100%);
+}
+
+.deliveryPanel .panelHeading {
+  padding-top: clamp(3px, 0.15vw + 2px, 100%);
+  border-top: 1px solid #e9eef4;
 }
 
 .panelHeading {
@@ -279,83 +291,107 @@
   min-width: 0;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 12px;
+  gap: clamp(5px, 0.15vw + 4px, 100%);
+  padding-bottom: clamp(4px, 0.2vw + 3px, 100%);
 }
 
-.panelHeading > div {
+.panelHeading>div {
   min-width: 0;
 }
 
 .panelHeading h3 {
   margin: 1px 0 0;
   color: #12213d;
-  font-size: 17px;
+  font-size: clamp(15px, 0.4vw + 12px, 100%) !important;
+}
+
+.panelHeading :global(.ant-typography) {
+  font-size: inherit !important;
 }
 
 .recentExecutionPanel {
   display: flex;
   padding: 0;
   flex-direction: column;
-  gap: 10px;
-  overflow: hidden;
+  gap: clamp(3px, 0.15vw + 2px, 100%);
+  overflow: visible;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 
 .recentExecutionPanel .panelHeading {
-  padding-top: 10px;
+  padding-top: clamp(3px, 0.15vw + 2px, 100%);
   border-top: 1px solid #e9eef4;
 }
 
 .recentExecutionPanel .panelHeading h3 {
   margin: 0;
-  font-size: 20px;
+  font-size: clamp(15px, 0.4vw + 12px, 100%) !important;
 }
 
 .recentExecutionScroller {
   min-width: 0;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
+  align-items: center;
 }
 
 .recentExecutionGrid {
   display: grid;
   width: max-content;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(220px, 270px);
-  gap: 10px;
+  grid-auto-columns: minmax(clamp(160px, 6vw + 60px, 100%), clamp(280px, 10vw + 100px, 100%));
+  gap: clamp(3px, 0.15vw + 2px, 100%);
   padding-bottom: 2px;
 }
 
 .recentRunItem {
-  display: grid;
-  width: 270px;
-  height: 108px;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 7px;
-  padding: 11px;
+  display: flex;
+  flex-direction: column;
+  width: clamp(220px, 8vw + 80px, 100%);
+  min-height: clamp(70px, 4vw + 38px, 100%);
+  gap: clamp(2px, 0.15vw + 2px, 100%);
+  padding: clamp(5px, 0.15vw + 4px, 100%);
   border: 1px solid #e4eaf2;
-  border-radius: 7px;
+  border-radius: clamp(3px, 0.1vw + 3px, 100%);
   color: inherit;
   background: #fff;
   cursor: pointer;
   text-align: left;
+  align-self: center;
 }
 
-.recentRunItem > div {
+.recentRunItemRow {
   display: flex;
   min-width: 0;
   align-items: center;
   justify-content: space-between;
-  gap: 7px;
+  gap: clamp(3px, 0.15vw + 2px, 100%);
+  overflow: visible;
 }
 
-.recentRunItem :global(.ant-typography) {
+.recentRunItemTitle {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.recentRunItemStatus {
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.recentRunItemArtifact {
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.recentRunItem :global(.ant-tag) {
+  flex: 0 0 auto;
+  margin: 0;
 }
 
 .recentRunItem :global(.ant-tag) {
@@ -373,14 +409,14 @@
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-  grid-template-columns: minmax(210px, 0.8fr) minmax(0, 1.2fr);
-  gap: 10px;
+  grid-template-columns: minmax(clamp(120px, 8vw + 40px, 100%), 0.8fr) minmax(0, 1.2fr);
+  gap: clamp(4px, 0.2vw + 3px, 100%);
 }
 
 .codeChangeCard {
   min-width: 0;
   border-color: #e4eaf2;
-  border-radius: 7px;
+  border-radius: clamp(4px, 0.1vw + 3px, 100%);
 }
 
 .codeChangeCard :global(.ant-card-body) {
@@ -388,8 +424,8 @@
   min-height: 0;
   height: 100%;
   align-content: start;
-  gap: 8px;
-  padding: 11px;
+  gap: clamp(4px, 0.15vw + 3px, 100%);
+  padding: clamp(6px, 0.2vw + 4px, 100%);
 }
 
 .flowScroller {
@@ -397,9 +433,10 @@
   container-type: size;
   min-width: 0;
   min-height: 0;
-  align-items: stretch;
+  align-items: center;
   flex: 1 1 auto;
   overflow: auto;
+  gap: clamp(8px, 0.5vw + 6px, 100%);
 }
 
 .flowEmptyState {
@@ -409,7 +446,7 @@
   align-items: center;
   justify-content: center;
   border: 1px dashed #d8e1ec;
-  border-radius: 7px;
+  border-radius: clamp(4px, 0.1vw + 3px, 100%);
   background: #fbfcfe;
 }
 
@@ -418,97 +455,97 @@
   min-width: max-content;
   height: 100%;
   grid-auto-flow: column;
-  grid-auto-columns: 225px;
-  gap: 58px;
+  grid-auto-columns: clamp(150px, 6vw + 30px, 100%);
+  gap: clamp(24px, 1.5vw + 10px, 100%);
   align-items: center;
-  padding: 0 8px;
+  padding: 0 clamp(2px, 0.2vw + 1px, 100%);
 }
 
-@container (max-height: 280px) {
+@container (max-height: 320px) {
   .flowPlanningState {
-    grid-auto-columns: 180px;
-    gap: 40px;
+    grid-auto-columns: clamp(130px, 5vw + 24px, 100%);
+    gap: clamp(20px, 1vw + 12px, 100%);
   }
 
   .flowGrid {
-    grid-auto-columns: 180px;
-    gap: 40px;
+    grid-auto-columns: clamp(170px, 5vw + 30px, 100%);
+    gap: clamp(20px, 1vw + 12px, 100%);
   }
 }
 
-@container (max-height: 220px) {
+@container (max-height: 250px) {
   .flowPlanningState {
-    grid-auto-columns: 160px;
-    gap: 32px;
+    grid-auto-columns: clamp(112px, 4vw + 20px, 100%);
+    gap: clamp(16px, 0.8vw + 10px, 100%);
   }
 
   .flowGrid {
-    grid-auto-columns: 160px;
-    gap: 32px;
+    grid-auto-columns: clamp(150px, 4vw + 26px, 100%);
+    gap: clamp(16px, 0.8vw + 10px, 100%);
   }
 }
 
-@container (max-height: 180px) {
+@container (max-height: 200px) {
   .flowPlanningState {
-    grid-auto-columns: 140px;
-    gap: 24px;
+    grid-auto-columns: clamp(100px, 3vw + 18px, 100%);
+    gap: clamp(12px, 0.6vw + 8px, 100%);
   }
 
   .flowGrid {
-    grid-auto-columns: 140px;
-    gap: 24px;
+    grid-auto-columns: clamp(130px, 3vw + 22px, 100%);
+    gap: clamp(12px, 0.6vw + 8px, 100%);
   }
 }
 
 @container (min-height: 500px) {
   .flowPlanningState {
-    grid-auto-columns: 280px;
-    gap: 72px;
+    grid-auto-columns: clamp(224px, 6vw + 120px, 100%);
+    gap: clamp(58px, 2vw + 34px, 100%);
   }
 
   .flowGrid {
-    grid-auto-columns: 280px;
-    gap: 72px;
+    grid-auto-columns: clamp(260px, 6vw + 140px, 100%);
+    gap: clamp(58px, 2vw + 34px, 100%);
   }
 }
 
 .planningStepCard {
   display: grid;
-  min-width: 225px;
+  min-width: clamp(150px, 6vw + 30px, 100%);
   height: 100%;
-  min-height: 120px;
-  max-height: 234px;
+  min-height: clamp(78px, 4vw + 36px, 100%);
+  max-height: none;
   position: relative;
-  gap: 6px;
+  gap: clamp(3px, 0.15vw + 2px, 100%);
   align-content: space-between;
-  padding: 9px 10px;
+  padding: clamp(6px, 0.15vw + 4px, 100%) clamp(7px, 0.15vw + 5px, 100%);
   border: 1px solid #e4eaf2;
-  border-radius: 7px;
+  border-radius: clamp(5px, 0.1vw + 4px, 100%);
   background: #fff;
   overflow: hidden;
 }
 
-@container (max-height: 180px) {
+@container (max-height: 220px) {
   .planningStepCard {
-    min-height: 90px;
-    padding: 6px 8px;
+    min-height: clamp(60px, 2vw + 24px, 100%);
+    padding: clamp(3px, 0.15vw + 3px, 100%) clamp(4px, 0.15vw + 3px, 100%);
   }
 
   .planningBrainIcon {
-    height: 36px;
-    font-size: 28px;
+    height: clamp(24px, 1.5vw + 10px, 100%);
+    font-size: clamp(20px, 0.8vw + 12px, 100%);
   }
 
   .planningMeta {
-    gap: 6px;
-    margin-top: 6px;
+    gap: clamp(3px, 0.15vw + 2px, 100%);
+    margin-top: clamp(3px, 0.15vw + 2px, 100%);
   }
 }
 
-@container (max-height: 140px) {
+@container (max-height: 170px) {
   .planningStepCard {
-    min-height: 70px;
-    padding: 4px 6px;
+    min-height: clamp(46px, 2vw + 18px, 100%);
+    padding: clamp(2px, 0.1vw + 2px, 100%) clamp(3px, 0.1vw + 2px, 100%);
   }
 
   .planningBrainIcon {
@@ -525,26 +562,40 @@
 }
 
 .planningStepCard:not(:last-child)::after {
-  width: 38px;
+  width: clamp(24px, 0.8vw + 12px, 100%);
   position: absolute;
   top: 50%;
-  right: -48px;
+  right: clamp(-48px, -0.8vw - 20px, 100%);
   color: #12213d;
   content: '⟶';
-  font-size: 34px;
+  font-size: clamp(24px, 0.8vw + 16px, 100%);
   line-height: 1;
   text-align: center;
   transform: translateY(-50%);
 }
 
 @keyframes skeletonPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 @keyframes cardFadeIn {
-  0% { opacity: 0; transform: translateX(20px); }
-  100% { opacity: 1; transform: translateX(0); }
+  0% {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .planningCardFadeIn {
@@ -559,30 +610,35 @@
 }
 
 @keyframes skeletonShimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .planningHeadingRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: clamp(4px, 0.15vw + 3px, 100%);
 }
 
 .skeletonHeadingLine {
-  height: 22px;
-  width: 120px;
+  height: clamp(16px, 0.2vw + 12px, 100%);
+  width: clamp(80px, 2vw + 50px, 100%);
 }
 
 .planningMeta {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
+  gap: clamp(4px, 0.2vw + 3px, 100%);
+  margin-top: clamp(4px, 0.2vw + 3px, 100%);
 }
 
 .skeletonMetaLine {
-  height: 16px;
+  height: clamp(11px, 0.15vw + 10px, 100%);
   width: 100%;
 }
 
@@ -593,18 +649,18 @@
 }
 
 .skeletonFooterLine {
-  height: 14px;
-  width: 90px;
+  height: clamp(10px, 0.15vw + 8px, 100%);
+  width: clamp(60px, 2vw + 35px, 100%);
 }
 
 .planningBrainIcon {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 54px;
-  margin: 0 0 4px;
+  height: clamp(34px, 2vw + 18px, 100%);
+  margin: 0 0 clamp(2px, 0.1vw + 1px, 100%);
   color: #8a9ab5;
-  font-size: 36px;
+  font-size: clamp(24px, 1.5vw + 14px, 100%);
 }
 
 .flowGrid {
@@ -612,63 +668,119 @@
   min-width: max-content;
   height: 100%;
   grid-auto-flow: column;
-  grid-auto-columns: 225px;
-  gap: 58px;
+  grid-auto-columns: clamp(200px, 7vw + 50px, 100%);
+  gap: clamp(24px, 1.5vw + 10px, 100%);
 }
 
 .stepCard {
   display: grid;
-  min-width: 225px;
+  min-width: clamp(200px, 7vw + 50px, 100%);
   height: 100%;
-  min-height: 120px;
-  max-height: 234px;
+  min-height: clamp(78px, 4vw + 36px, 100%);
+  max-height: none;
   position: relative;
-  gap: 6px;
+  gap: clamp(3px, 0.15vw + 2px, 100%);
   align-content: space-between;
-  padding: 9px 10px;
+  padding: clamp(10px, 0.3vw + 6px, 100%) clamp(12px, 0.4vw + 8px, 100%);
   border: 1px solid #e4eaf2;
-  border-radius: 7px;
+  border-radius: clamp(5px, 0.1vw + 4px, 100%);
   background: #fff;
+  align-self: center;
 }
 
 .stepCard:not(:last-child)::after {
-  width: 38px;
   position: absolute;
   top: 50%;
-  right: -48px;
+  right: clamp(0px, 0.3vw, 100%);
   color: #12213d;
   content: '⟶';
-  font-size: 34px;
+  font-size: clamp(24px, 0.8vw + 16px, 100%);
   line-height: 1;
-  text-align: center;
-  transform: translateY(-50%);
+  transform: translateX(calc(100% + clamp(4px, 0.3vw + 2px, 100%))) translateY(-50%);
 }
 
-@container (max-height: 180px) {
+.stepHeading {
+  min-width: 0;
+  align-items: flex-start;
+  gap: clamp(3px, 0.1vw + 2px, 100%);
+}
+
+.stepIcon {
+  display: inline-flex;
+  width: clamp(16px, 0.4vw + 11px, 100%);
+  height: clamp(16px, 0.4vw + 11px, 100%);
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: #12213d;
+  font-size: clamp(20px, 0.6vw + 15px, 100%);
+}
+
+.stepNumber {
+  display: inline-flex;
+  min-width: clamp(14px, 0.3vw + 11px, 100%);
+  height: clamp(18px, 0.3vw + 13px, 100%);
+  flex: 0 0 auto;
+  align-items: center;
+  color: #12213d;
+  font-size: clamp(15px, 0.4vw + 11px, 100%);
+  font-weight: 700;
+}
+
+.stepTitle {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #12213d !important;
+  font-size: clamp(14px, 0.4vw + 11px, 100%) !important;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepDetails {
+  display: grid;
+  min-width: 0;
+  gap: clamp(2px, 0.05vw + 2px, 100%);
+  overflow: hidden;
+  padding-left: clamp(1px, 0.1vw + 1px, 100%);
+  color: #52627b;
+  font-size: clamp(10px, 0.05vw + 9px, 100%);
+  line-height: 1.35;
+}
+
+.stepFooter {
+  min-height: clamp(16px, 0.15vw + 12px, 100%);
+  justify-content: space-between;
+  padding-top: clamp(2px, 0.1vw + 1px, 100%);
+  border-top: 1px solid #edf1f5;
+}
+
+@container (max-height: 220px) {
   .stepCard {
-    min-height: 90px;
-    padding: 6px 8px;
+    min-height: clamp(60px, 2vw + 24px, 100%);
+    padding: clamp(3px, 0.15vw + 3px, 100%) clamp(4px, 0.15vw + 3px, 100%);
   }
 
   .stepIcon {
-    width: 16px;
-    height: 16px;
-    font-size: 20px;
+    width: clamp(11px, 0.2vw + 9px, 100%);
+    height: clamp(11px, 0.2vw + 9px, 100%);
+    font-size: clamp(14px, 0.4vw + 10px, 100%);
   }
 
   .stepNumber {
-    font-size: 15px;
+    font-size: clamp(11px, 0.2vw + 10px, 100%);
   }
 
   .stepTitle {
-    font-size: 14px;
+    font-size: clamp(13px, 0.3vw + 10px, 100%) !important;
   }
 }
 
-@container (max-height: 140px) {
+@container (max-height: 170px) {
   .stepCard {
-    min-height: 70px;
-    padding: 4px 6px;
+    min-height: clamp(46px, 2vw + 18px, 100%);
+    padding: clamp(2px, 0.1vw + 2px, 100%) clamp(3px, 0.1vw + 2px, 100%);
   }
 
   .stepDetails {
@@ -689,87 +801,30 @@
   box-shadow: 0 0 0 2px rgb(18 105 199 / 10%);
 }
 
-.stepHeading {
-  min-width: 0;
-  align-items: flex-start;
-  gap: 6px;
-}
-
-.stepIcon {
-  display: inline-flex;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  color: #12213d;
-  font-size: 26px;
-}
-
-.stepNumber {
-  display: inline-flex;
-  min-width: 18px;
-  height: 22px;
-  flex: 0 0 auto;
-  align-items: center;
-  color: #12213d;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.stepTitle {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  color: #12213d !important;
-  font-size: 17px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stepDetails {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-  overflow: hidden;
-  padding-left: 3px;
-  color: #52627b;
-  font-size: 11px;
-  line-height: 1.35;
-}
-
 .stepCardCurrent .stepIcon,
 .stepCardCurrent .stepNumber,
 .stepCardCurrent .stepTitle {
   color: #1269c7 !important;
 }
 
-.stepDetails > span {
+.stepDetails>span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.stepFooter {
-  min-height: 22px;
-  justify-content: space-between;
-  padding-top: 4px;
-  border-top: 1px solid #edf1f5;
-}
-
 .workspaceNotice {
   display: block;
   flex: 0 0 auto;
-  padding-top: 3px;
-  font-size: 11px;
+  padding-top: clamp(1px, 0.1vw + 1px, 100%);
+  font-size: clamp(10px, 0.05vw + 9px, 100%);
 }
 
 .requirementRow {
   display: grid;
-  flex: 0 0 124px;
+  flex: 0 0 clamp(72px, 4vw + 36px, 100%);
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: clamp(4px, 0.2vw + 3px, 100%);
 }
 
 .contextCard,
@@ -778,7 +833,7 @@
   min-height: 0;
   overflow: hidden;
   border-color: #e4eaf2;
-  border-radius: 7px;
+  border-radius: clamp(4px, 0.1vw + 3px, 100%);
 }
 
 .contextCard :global(.ant-card-body),
@@ -788,26 +843,35 @@
   min-height: 0;
   height: 100%;
   flex-direction: column;
-  gap: 5px;
-  padding: 9px 10px;
+  gap: clamp(2px, 0.1vw + 2px, 100%);
+  padding: clamp(5px, 0.15vw + 3px, 100%) clamp(6px, 0.15vw + 4px, 100%);
 }
 
 .cardHeading {
   min-width: 0;
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: clamp(3px, 0.1vw + 2px, 100%);
   color: #243855;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
 }
 
-.cardHeading > :first-child {
+.cardHeading > span:first-child {
   flex: 0 0 auto;
   color: #1269c7;
+  font-size: 14px;
 }
 
-.outputCard[data-testid='delivery-card'] .cardHeading:has(> :nth-child(3)) > :nth-child(3) {
-  display: none;
+.cardHeadingRight {
+  display: flex;
+  align-items: center;
+  gap: clamp(3px, 0.1vw + 2px, 100%);
+}
+
+.cardHeadingRight :global(.ant-tag) {
+  font-size: 12px;
 }
 
 .requirementSummary {
@@ -816,7 +880,7 @@
   margin: 0;
   overflow: hidden;
   color: #52627b;
-  line-height: 1.45;
+  line-height: 1.4;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
 }
@@ -831,23 +895,23 @@
 .recentActivityCard {
   min-width: 0;
   border-color: #e4eaf2;
-  border-radius: 7px;
+  border-radius: clamp(4px, 0.1vw + 3px, 100%);
 }
 
 .outputSnapshotCard :global(.ant-card-body),
 .recentActivityCard :global(.ant-card-body) {
   display: grid;
-  gap: 7px;
-  padding: 11px;
+  gap: clamp(3px, 0.1vw + 2px, 100%);
+  padding: clamp(5px, 0.15vw + 3px, 100%);
 }
 
 .sideHeading {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 6px;
+  gap: clamp(3px, 0.1vw + 2px, 100%);
   color: #243855;
-  font-size: 13px;
+  font-size: clamp(10px, 0.15vw + 9px, 100%) !important;
   font-weight: 700;
 }
 
@@ -857,170 +921,109 @@
 
 .outputSnapshotList {
   display: grid;
-  gap: 6px;
+  gap: clamp(3px, 0.1vw + 2px, 100%);
 }
 
 .outputSnapshotItem {
   display: grid;
   min-width: 0;
-  gap: 3px;
-  padding: 7px 0;
+  gap: clamp(1px, 0.1vw + 1px, 100%);
+  padding: clamp(4px, 0.2vw + 3px, 100%) 0;
   border-bottom: 1px solid #edf1f5;
 }
 
-.outputSnapshotItem:last-child {
-  border-bottom: 0;
-}
-
-.outputSnapshotItem > div {
+.outputSnapshotItem>div {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 5px;
-}
-
-.outputSnapshotItem :global(.ant-tag) {
-  flex: 0 0 auto;
-  margin: 0;
-}
-
-.outputSnapshotItem :global(.ant-typography) {
-  min-width: 0;
+  gap: clamp(2px, 0.1vw + 2px, 100%);
 }
 
 .runInspector {
   display: grid;
-  gap: 14px;
+  gap: clamp(6px, 0.3vw + 4px, 100%);
 }
 
 .inspectorSummary,
 .inspectorSection {
   display: grid;
-  gap: 8px;
+  gap: clamp(4px, 0.15vw + 3px, 100%);
 }
 
 .inspectorSummary {
-  padding-bottom: 12px;
+  padding-bottom: clamp(6px, 0.2vw + 4px, 100%);
   border-bottom: 1px solid #e9eef4;
 }
 
-.inspectorSummary > div {
+.inspectorSummary>div {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.inspectorSummary h4 {
-  min-width: 0;
-  margin: 0;
-}
-
-.inspectorSummary :global(.ant-tag) {
-  margin: 0;
+  gap: clamp(4px, 0.15vw + 3px, 100%);
 }
 
 .inspectorHeading {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: clamp(3px, 0.1vw + 2px, 100%);
   color: #243855;
   font-weight: 700;
-}
-
-.inspectorHeading :first-child {
-  color: #1269c7;
 }
 
 .inspectorTimeline,
 .inspectorRequests,
 .acceptanceList {
   display: grid;
-  gap: 6px;
+  gap: clamp(3px, 0.1vw + 2px, 100%);
 }
 
-.acceptanceList > div {
+.acceptanceList>div {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 6px;
+  gap: clamp(3px, 0.1vw + 2px, 100%);
 }
 
-.acceptanceList :global(.ant-tag) {
-  flex: 0 0 auto;
-  margin: 0;
-}
-
-.acceptanceList :global(.ant-typography) {
-  min-width: 0;
-}
-
-.inspectorTimeline > div {
+.inspectorTimeline>div {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 7px;
-  padding: 7px 8px;
+  gap: clamp(4px, 0.15vw + 3px, 100%);
+  padding: clamp(4px, 0.15vw + 3px, 100%) clamp(4px, 0.15vw + 3px, 100%);
   border: 1px solid #edf1f5;
-  border-radius: 6px;
-}
-
-.inspectorTimeline :global(.ant-tag) {
-  margin: 0;
-}
-
-.inspectorTimeline > div > :last-child {
-  grid-column: 2 / -1;
+  border-radius: clamp(4px, 0.1vw + 3px, 100%);
 }
 
 .inspectorLogs {
   display: grid;
-  max-height: 280px;
+  max-height: clamp(140px, 10vw + 40px, 100%);
   overflow: auto;
-  padding: 9px;
+  padding: clamp(5px, 0.2vw + 3px, 100%);
   border: 1px solid #29394f;
-  border-radius: 7px;
+  border-radius: clamp(5px, 0.1vw + 4px, 100%);
   background: #172638;
   color: #dbe8f5;
   font-family: 'Cascadia Mono', Consolas, monospace;
-  font-size: 11px;
+  font-size: clamp(10px, 0.05vw + 9px, 100%);
   line-height: 1.5;
 }
 
-.inspectorLogs > div {
+.inspectorLogs>div {
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr);
-  gap: 7px;
-}
-
-.inspectorLogs time,
-.inspectorLogs > div > :nth-child(3) {
-  display: none;
-}
-
-.inspectorLogs span,
-.inspectorLogs time,
-.inspectorLogs :global(.ant-typography) {
-  color: #8ea6bf;
-}
-
-.inspectorLogs code {
-  min-width: 0;
-  color: #edf5ff;
-  font: inherit;
-  white-space: pre-wrap;
+  grid-template-columns: clamp(18px, 0.8vw + 12px, 100%) minmax(0, 1fr);
+  gap: clamp(4px, 0.15vw + 3px, 100%);
 }
 
 .inspectorContext,
 .inspectorForm {
   display: grid;
-  gap: 6px;
+  gap: clamp(3px, 0.1vw + 2px, 100%);
 }
 
 .inspectorState {
   display: flex;
-  min-height: 36px;
+  min-height: clamp(24px, 0.3vw + 18px, 100%);
   align-items: center;
-  gap: 7px;
+  gap: clamp(4px, 0.15vw + 3px, 100%);
 }
 
 .outputGrid {
@@ -1029,54 +1032,57 @@
   min-height: 0;
   flex: 1 1 auto;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: clamp(4px, 0.2vw + 3px, 100%);
 }
 
 .outputCard {
   height: 100%;
 }
 
-.artifactSummaryGrid,
+.artifactSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(2px, 0.1vw + 1px, 100%);
+  min-width: 0;
+  overflow: auto;
+}
+
 .diffSummaryList,
 .deliverySummaryList {
   display: grid;
   min-width: 0;
-  gap: 4px;
+  gap: clamp(2px, 0.1vw + 1px, 100%);
   overflow: auto;
-}
-
-.artifactSummaryGrid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .artifactSummary,
 .diffSummaryRow,
 .deliverySummaryRow {
   min-width: 0;
-  padding: 5px 6px;
+  padding: clamp(2px, 0.1vw + 1px, 100%) clamp(3px, 0.1vw + 2px, 100%);
   border: 1px solid #edf1f5;
-  border-radius: 5px;
+  border-radius: clamp(3px, 0.1vw + 2px, 100%);
 }
 
 .artifactSummary {
   display: grid;
-  gap: 3px;
+  gap: clamp(1px, 0.05vw + 1px, 100%);
 }
 
-.artifactSummary > div,
+.artifactSummary>div,
 .diffSummaryRow,
 .deliverySummaryRow {
-  gap: 5px;
+  gap: clamp(2px, 0.1vw + 2px, 100%);
 }
 
-.artifactSummary > div:first-child {
+.artifactSummary>div:first-child {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 4px;
+  gap: clamp(2px, 0.1vw + 1px, 100%);
 }
 
-.artifactSummary > div:first-child :last-child,
+.artifactSummary>div:first-child :last-child,
 .diffSummaryRow > :first-child,
 .deliverySummaryRow > :first-child {
   min-width: 0;
@@ -1085,10 +1091,15 @@
   white-space: nowrap;
 }
 
+.diffSummaryRow :global(.ant-tag),
+.deliverySummaryRow :global(.ant-tag) {
+  font-size: clamp(10px, 0.05vw + 9px, 100%);
+}
+
 .artifactSummary :global(.ant-tag) {
   flex: 0 0 auto;
   margin: 0;
-  font-size: 10px;
+  font-size: clamp(9px, 0.05vw + 8px, 100%);
 }
 
 .diffSummaryRow,
@@ -1097,57 +1108,82 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   color: #52627b;
-  font-size: 11px;
-}
-
-.diffSummaryRow > :last-child {
-  grid-column: 1 / -1;
-}
-
-.deliverySummaryRow {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.deliverySummaryRow > :nth-child(3) {
-  grid-column: 1 / -1;
+  font-size: clamp(10px, 0.05vw + 9px, 100%);
 }
 
 .reviewActions {
   display: grid;
-  gap: 5px;
+  gap: clamp(2px, 0.1vw + 2px, 100%);
   margin-top: auto;
 }
 
 .reviewActions form {
   display: grid;
-  gap: 2px;
+  gap: clamp(1px, 0.05vw + 1px, 100%);
 }
 
 .reviewActions :global(.ant-form-item) {
-  margin-bottom: 3px;
+  margin-bottom: clamp(1px, 0.05vw + 1px, 100%);
 }
 
 .compactEmpty,
 .inlineState {
   color: #6d7d95;
-  font-size: 11px;
+  font-size: clamp(10px, 0.1vw + 9px, 100%) !important;
+  line-height: 1.4;
 }
 
 .inlineState {
   display: flex;
-  min-height: 28px;
+  min-height: clamp(20px, 0.3vw + 16px, 100%);
   align-items: center;
-  gap: 7px;
+  gap: clamp(3px, 0.1vw + 2px, 100%);
 }
 
 .panelState {
   display: grid;
-  min-height: 120px;
+  min-height: clamp(56px, 3vw + 24px, 100%);
   place-items: center;
 }
 
 .stepInfoBullet {
   color: #12213d;
-  font-size: 16px;
+  font-size: clamp(13px, 0.3vw + 10px, 100%);
   font-weight: 700;
+}
+
+.runLogsPanel {
+  display: grid;
+  gap: clamp(4px, 0.2vw + 3px, 100%);
+}
+
+.runLogsTerminal {
+  display: grid;
+  gap: clamp(3px, 0.15vw + 2px, 100%);
+  padding: clamp(6px, 0.2vw + 4px, 100%);
+  border: 1px solid #e4eaf2;
+  border-radius: clamp(4px, 0.1vw + 3px, 100%);
+  background: #f8fafd;
+}
+
+.runLogsTerminalContent {
+  margin: 0;
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: clamp(10px, 0.05vw + 9px, 100%);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.runLogEntry {
+  display: grid;
+  grid-template-columns: clamp(18px, 0.8vw + 12px, 100%) minmax(0, 1fr);
+  gap: clamp(4px, 0.15vw + 3px, 100%);
+}
+
+.runLogEntry[data-entry-type='SYSTEM'] {
+  opacity: 0.75;
+}
+
+.runLogEntry[data-entry-type='EXECUTION'] {
+  opacity: 1;
 }

@@ -237,4 +237,110 @@ describe('testset API mapping', () => {
     expect(run.pdfUrl).toBe('https://files.example/run.pdf')
     expect(mapTestRun({ id: 'r2', artifacts: [{ name: 'report.pdf', url: '/a.pdf' }] }).pdfUrl).toBe('/a.pdf')
   })
+
+  it('maps headCommit to sourceRef per API doc, falling back to legacy sourceRef', () => {
+    // 优先使用 headCommit（API 文档字段）
+    const fromHeadCommit = mapDryRunReport({
+      id: 'dry-1',
+      headCommit: 'abc123def456',
+      sourceRef: 'legacy-sha',
+    })
+    expect(fromHeadCommit.sourceRef).toBe('abc123def456')
+
+    // 无 headCommit 时回退到 legacy sourceRef
+    const fallback = mapDryRunReport({
+      id: 'dry-2',
+      sourceRef: 'legacy-sha',
+    })
+    expect(fallback.sourceRef).toBe('legacy-sha')
+
+    // 两者都无时为 null
+    const empty = mapDryRunReport({ id: 'dry-3' })
+    expect(empty.sourceRef).toBe('')
+  })
+
+  it('maps createdAt/updatedAt to startedAt/finishedAt with legacy fallback', () => {
+    // API 文档字段
+    const fromDoc = mapDryRunReport({
+      id: 'dry-1',
+      createdAt: '2026-08-15T10:00:00Z',
+      updatedAt: '2026-08-15T10:05:00Z',
+    })
+    expect(fromDoc.startedAt).toBe('2026-08-15T10:00:00Z')
+    expect(fromDoc.finishedAt).toBe('2026-08-15T10:05:00Z')
+
+    // legacy 字段兜底
+    const fromLegacy = mapDryRunReport({
+      id: 'dry-2',
+      startedAt: '2026-08-15T11:00:00Z',
+      finishedAt: '2026-08-15T11:10:00Z',
+    })
+    expect(fromLegacy.startedAt).toBe('2026-08-15T11:00:00Z')
+    expect(fromLegacy.finishedAt).toBe('2026-08-15T11:10:00Z')
+  })
+
+  it('computes durationSeconds from timestamps when not directly provided', () => {
+    // 直接提供 durationSeconds 时优先使用
+    const direct = mapDryRunReport({
+      id: 'dry-1',
+      durationSeconds: 42,
+      createdAt: '2026-08-15T10:00:00Z',
+      updatedAt: '2026-08-15T10:05:00Z',
+    })
+    expect(direct.durationSeconds).toBe(42)
+
+    // 未提供 durationSeconds 时从时间戳计算（5 分钟 = 300 秒）
+    const computed = mapDryRunReport({
+      id: 'dry-2',
+      createdAt: '2026-08-15T10:00:00Z',
+      updatedAt: '2026-08-15T10:05:00Z',
+    })
+    expect(computed.durationSeconds).toBe(300)
+
+    // 无时间戳时为 null
+    const noTime = mapDryRunReport({ id: 'dry-3' })
+    expect(noTime.durationSeconds).toBeNull()
+  })
+
+  it('maps createdBy with creator fallback for both DryRun and TestRun', () => {
+    // DryRun: createdBy 优先
+    const dry1 = mapDryRunReport({ id: 'd1', createdBy: 'alice', creator: 'bob' })
+    expect(dry1.createdBy).toBe('alice')
+    // DryRun: creator 兜底
+    const dry2 = mapDryRunReport({ id: 'd2', creator: 'bob' })
+    expect(dry2.createdBy).toBe('bob')
+    // DryRun: 都无时为 null
+    const dry3 = mapDryRunReport({ id: 'd3' })
+    expect(dry3.createdBy).toBeNull()
+
+    // TestRun: 同样逻辑
+    const run1 = mapTestRun({ id: 'r1', createdBy: 'charlie', creator: 'dave' })
+    expect(run1.createdBy).toBe('charlie')
+    const run2 = mapTestRun({ id: 'r2', creator: 'dave' })
+    expect(run2.createdBy).toBe('dave')
+    const run3 = mapTestRun({ id: 'r3' })
+    expect(run3.createdBy).toBeNull()
+  })
+
+  it('maps TestRun time fields with updatedAt fallback', () => {
+    // TestRun: updatedAt → finishedAt 兜底
+    const fromUpdated = mapTestRun({
+      id: 'r1',
+      createdAt: '2026-08-15T10:00:00Z',
+      updatedAt: '2026-08-15T10:05:00Z',
+    })
+    expect(fromUpdated.startedAt).toBe('2026-08-15T10:00:00Z')
+    expect(fromUpdated.finishedAt).toBe('2026-08-15T10:05:00Z')
+
+    // TestRun: legacy startedAt/finishedAt 优先
+    const fromLegacy = mapTestRun({
+      id: 'r2',
+      startedAt: '2026-08-15T11:00:00Z',
+      finishedAt: '2026-08-15T11:10:00Z',
+      createdAt: '2026-08-15T10:00:00Z',
+      updatedAt: '2026-08-15T10:05:00Z',
+    })
+    expect(fromLegacy.startedAt).toBe('2026-08-15T11:00:00Z')
+    expect(fromLegacy.finishedAt).toBe('2026-08-15T11:10:00Z')
+  })
 })

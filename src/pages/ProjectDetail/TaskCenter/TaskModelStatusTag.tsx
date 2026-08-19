@@ -6,7 +6,7 @@ const STATUS_META: Record<TaskStatus, { color: string; label: string }> = {
   PENDING: { color: 'gold', label: '待处理' },
   RUNNING: { color: 'processing', label: '运行中' },
   WAITING_DIFF_CONFIRMATION: { color: 'gold', label: '等待 Diff 确认' },
-  WAITING_PREFLIGHT: { color: 'gold', label: '预检中' },
+  WAITING_PREFLIGHT: { color: 'gold', label: '等待 CQ+1' },
   DIFF_REJECTED: { color: 'error', label: 'Diff 已拒绝' },
   DELIVERING: { color: 'processing', label: '交付中' },
   DELIVERY_FAILED: { color: 'error', label: '交付失败' },

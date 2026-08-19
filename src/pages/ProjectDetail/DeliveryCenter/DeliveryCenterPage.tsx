@@ -1,6 +1,6 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useInfiniteDeliveryItems, useDeliveryActionMutation, useDeliverySummary } from '@/hooks/delivery-center'
-import { useQuery } from '@tanstack/react-query'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { Alert, App, Button, Card, Empty, Form, Input, Result, Select, Skeleton, Tag, Typography, Modal } from 'antd'
 import {
   CheckCircleOutlined,
@@ -14,6 +14,7 @@ import {
   InboxOutlined,
   ReloadOutlined,
   RollbackOutlined,
+  RobotOutlined,
   SafetyCertificateOutlined,
   SendOutlined,
   SettingOutlined,
@@ -22,9 +23,11 @@ import {
   WarningOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ApiError, groupApi, githubApi } from '@/api'
+import { useQuery } from '@tanstack/react-query'
+import { ApiError, groupApi, githubApi, projectApi } from '@/api'
 import { PATHS } from '@/routes/paths'
 import type {
+  AgentDeliveryItem,
   CodeDeliveryItem,
   DeliveryAction,
   DeliveryDisplayStatus,
@@ -59,9 +62,11 @@ const STATUS_COLORS: Record<DeliveryDisplayStatus, string> = {
   ARCHIVED: 'default',
 }
 
-const TYPE_LABELS: Record<DeliveryResourceType, string> = { CODE: 'CODE', MEMORY: 'MEMORY', SKILL: 'SKILL' }
-const TYPE_COLORS: Record<DeliveryResourceType, string> = { CODE: '#0d9b8a', MEMORY: '#7c55d9', SKILL: '#e79216' }
+const TYPE_LABELS: Record<DeliveryResourceType, string> = { CODE: 'CODE', MEMORY: 'MEMORY', SKILL: 'SKILL', AGENT: 'AGENT' }
+const TYPE_COLORS: Record<DeliveryResourceType, string> = { CODE: '#0d9b8a', MEMORY: '#7c55d9', SKILL: '#e79216', AGENT: '#2b6df0' }
 const PAGE_SIZE = 5
+// 搜索关键词防抖窗口：避免每次按键 / IME 过程就触发 URL 同步和重新查询造成页面抖动。
+const KEYWORD_DEBOUNCE_MS = 300
 
 /** 交付动作成功提示文案 */
 const ACTION_SUCCESS_TEXT: Record<DeliveryAction, string> = {
@@ -84,7 +89,7 @@ function display(value: string | null | undefined): string {
 }
 
 function readType(value: string | null): DeliveryResourceType | undefined {
-  return value === 'CODE' || value === 'MEMORY' || value === 'SKILL' ? value : undefined
+  return value === 'CODE' || value === 'MEMORY' || value === 'SKILL' || value === 'AGENT' ? value : undefined
 }
 
 function readStatus(value: string | null): DeliveryDisplayStatus | undefined {
@@ -111,6 +116,45 @@ export default function DeliveryCenterPage() {
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({})
   const [activeItemId, setActiveItemId] = useState<string | null>(null)
   const [detailTarget, setDetailTarget] = useState<DeliveryItem | null>(null)
+  // 搜索关键词草稿：仅在用户主动提交（Enter / blur / 清除）时同步到 URL，
+  // 并辅以 300ms 防抖兜底，避免每次按键就触发 URL 变化和重新查询造成页面抖动。
+  const keyword = searchParams.get('keyword') ?? ''
+  const [pendingKeyword, setPendingKeyword] = useState(keyword)
+  const debouncedKeyword = useDebouncedValue(pendingKeyword, KEYWORD_DEBOUNCE_MS)
+  // 记录上一次我们主动写入 URL 的 keyword 值，用于区分"外部变化"与"我们刚写入"。
+  const lastWrittenKeywordRef = useRef(keyword)
+
+  useEffect(() => {
+    // 仅在草稿稳定（debounced 与 pending 一致）后才写 URL，避免外部清空筛选时被草稿反悔覆盖。
+    if (debouncedKeyword !== pendingKeyword) return
+    const trimmed = debouncedKeyword.trim()
+    if (trimmed === keyword) {
+      lastWrittenKeywordRef.current = trimmed
+      return
+    }
+    lastWrittenKeywordRef.current = trimmed
+    const next = new URLSearchParams(searchParams)
+    if (trimmed) next.set('keyword', trimmed); else next.delete('keyword')
+    setSearchParams(next, { replace: true })
+  }, [debouncedKeyword, pendingKeyword, keyword, searchParams, setSearchParams])
+
+  // 用户主动提交（回车 / 失焦 / 清除）时立即同步 URL，避免等待防抖窗口。
+  function commitKeyword(next: string) {
+    const trimmed = next.trim()
+    if (trimmed === keyword) return
+    lastWrittenKeywordRef.current = trimmed
+    setPendingKeyword(trimmed)
+    const nextParams = new URLSearchParams(searchParams)
+    if (trimmed) nextParams.set('keyword', trimmed); else nextParams.delete('keyword')
+    setSearchParams(nextParams, { replace: true })
+  }
+
+  useEffect(() => {
+    // 仅当 URL 是被外部改动时才把草稿同步过去，避免我们刚写入的 keyword 把正在输入的草稿覆盖掉。
+    if (keyword === lastWrittenKeywordRef.current) return
+    lastWrittenKeywordRef.current = keyword
+    setPendingKeyword(keyword)
+  }, [keyword])
 
   const filters = useMemo(() => ({
     groupId: searchParams.get('groupId') || undefined,
@@ -142,6 +186,13 @@ export default function DeliveryCenterPage() {
     queryFn: () => githubApi.listProjectRepositories(projectId),
     enabled: Boolean(projectId),
   })
+  const { data: project } = useQuery({
+    queryKey: ['qgents', 'projects', projectId],
+    queryFn: () => projectApi.getById(projectId),
+    enabled: Boolean(projectId),
+  })
+  // §30.3 AGENT 操作需要 teamId 命中 /api/teams/{teamId}/agents/{...}
+  const teamId = project?.teamId
 
   const items = useMemo(() => {
     const seen = new Map<string, DeliveryItem>()
@@ -175,6 +226,7 @@ export default function DeliveryCenterPage() {
   }
 
   function resetFilters() {
+    setPendingKeyword('')
     setSearchParams({}, { replace: true })
   }
 
@@ -187,7 +239,7 @@ export default function DeliveryCenterPage() {
     setActiveItemId(item.id)
     setActionErrors((current) => ({ ...current, [item.id]: '' }))
     try {
-      await actionMutation.mutateAsync({ projectId, item, action, reason: reason?.trim() })
+      await actionMutation.mutateAsync({ projectId, teamId, item, action, reason: reason?.trim() })
       setActiveItemId(null)
       // 操作成功提示（申请交付等），避免用户误以为无响应后重复提交
       message.success(ACTION_SUCCESS_TEXT[action] ?? '操作成功')
@@ -212,6 +264,11 @@ export default function DeliveryCenterPage() {
     // MEMORY/SKILL 在交付中心内直接弹详情窗，避免跳转后无高亮定位（最小改动）
     if (item.openTarget.kind === 'MEMORY' || item.openTarget.kind === 'SKILL') {
       setDetailTarget(item)
+      return
+    }
+    if (item.openTarget.kind === 'AGENT') {
+      // §30.3：AGENT 交付项跳到 Agent 团队管理页，定位到具体 Agent
+      navigate(`${PATHS.projectAgents(projectId)}?agentId=${encodeURIComponent(item.openTarget.agentId)}`)
       return
     }
     switch (item.openTarget.kind) {
@@ -242,7 +299,16 @@ export default function DeliveryCenterPage() {
         <section className={styles.mainColumn}>
           <div className={styles.filterBar} aria-label="交付筛选">
             <FilterField label="搜索">
-              <Input aria-label="搜索" allowClear value={filters.keyword} placeholder="标题、摘要或来源" onChange={(event) => updateFilter('keyword', event.target.value.trim() || undefined)} />
+              <Input
+                aria-label="搜索"
+                allowClear
+                value={pendingKeyword}
+                placeholder="标题、摘要或来源（回车搜索）"
+                onChange={(event) => setPendingKeyword(event.target.value)}
+                onPressEnter={(event) => commitKeyword(event.currentTarget.value)}
+                onBlur={(event) => commitKeyword(event.currentTarget.value)}
+                onClear={() => commitKeyword('')}
+              />
             </FilterField>
             <FilterField label="需求群">
               <Select
@@ -347,9 +413,47 @@ const MEMORY_CATEGORY_LABELS: Record<string, string> = {
   GENERAL: '通用',
 }
 
-/** MEMORY/SKILL 交付详情弹窗内容（CODE 不经过此弹窗）；正文突出、属性收尾 */
+/** MEMORY/SKILL/AGENT 交付详情弹窗内容（CODE 不经过此弹窗）；正文突出、属性收尾 */
 function DeliveryDetailModal({ item }: { item: DeliveryItem }) {
   if (item.resourceType === 'CODE') return null
+  if (item.resourceType === 'AGENT') return <AgentDetailModal item={item} />
+  return <MemoryOrSkillDetailModal item={item} />
+}
+
+/** §30.3 AGENT 详情弹窗：角色、状态、描述片段、来源、审核信息 */
+function AgentDetailModal({ item }: { item: AgentDeliveryItem }) {
+  const sourceText = item.source.taskId
+    ? `来源 Task ${display(item.source.taskDisplayCode)}`
+    : item.source.messageId
+      ? `来源消息 ${item.source.messageId}`
+      : '无关联来源'
+  return (
+    <div className={styles.detailModal}>
+      <div className={styles.detailModalRow}>
+        <Tag color={TYPE_COLORS[item.resourceType]}>{TYPE_LABELS[item.resourceType]}</Tag>
+        <Tag color={STATUS_COLORS[item.displayStatus]}>{STATUS_LABELS[item.displayStatus]}</Tag>
+      </div>
+      <div className={styles.detailModalBody}>{display(item.descriptionExcerpt)}</div>
+      <div className={styles.detailModalMeta}>
+        <div><span>角色</span><b>{item.role}</b></div>
+        <div><span>可见性</span><b>{item.agentVisibility}</b></div>
+        <div><span>资源状态</span><b>{item.resourceStatus}</b></div>
+        <div><span>来源</span><b>{sourceText}</b></div>
+        <div><span>创建人</span><b>{item.creator?.displayName ?? '未知'}</b></div>
+        <div><span>创建时间</span><b>{formatDate(item.createdAt)}</b></div>
+        <div><span>提交人</span><b>{item.submitter?.displayName ?? '暂无'}</b></div>
+        <div><span>提交时间</span><b>{formatDate(item.submittedAt)}</b></div>
+        <div><span>审核人</span><b>{item.reviewer?.displayName ?? '暂无'}</b></div>
+        <div><span>更新时间</span><b>{formatDate(item.updatedAt)}</b></div>
+      </div>
+      {item.reviewReason ? (
+        <div className={styles.reviewReason}><WarningOutlined /> {item.reviewReason}</div>
+      ) : null}
+    </div>
+  )
+}
+
+function MemoryOrSkillDetailModal({ item }: { item: MemoryDeliveryItem | SkillDeliveryItem }) {
   const isMemory = item.resourceType === 'MEMORY'
   const sourceText = isMemory
     ? (item.sources ?? []).length > 0
@@ -366,10 +470,8 @@ function DeliveryDetailModal({ item }: { item: DeliveryItem }) {
         <Tag color={TYPE_COLORS[item.resourceType]}>{TYPE_LABELS[item.resourceType]}</Tag>
         <Tag color={STATUS_COLORS[item.displayStatus]}>{STATUS_LABELS[item.displayStatus]}</Tag>
       </div>
-      {/* 正文：主要信息，正常字号深色展示 */}
       <div className={styles.detailModalBody}>{display(item.contentExcerpt)}</div>
       {(item.tags ?? []).length > 0 ? <Tags tags={item.tags} /> : null}
-      {/* 属性：次要信息收尾展示 */}
       <div className={styles.detailModalMeta}>
         <div><span>分类</span><b>{isMemory ? MEMORY_CATEGORY_LABELS[item.category] ?? item.category : '—'}</b></div>
         <div><span>可见性</span><b>{item.visibility}</b></div>
@@ -411,12 +513,19 @@ function DeliveryItemCard({
   return (
     <article id={`delivery-item-${item.id}`} className={styles.itemCard}>
       <div className={styles.itemIcon} style={{ background: TYPE_COLORS[item.resourceType] }}>
-        {item.resourceType === 'CODE' ? <CodeOutlined /> : item.resourceType === 'MEMORY' ? <FileTextOutlined /> : <SafetyCertificateOutlined />}
+        {item.resourceType === 'CODE' ? <CodeOutlined /> : item.resourceType === 'MEMORY' ? <FileTextOutlined /> : item.resourceType === 'AGENT' ? <RobotOutlined /> : <SafetyCertificateOutlined />}
         <small>{TYPE_LABELS[item.resourceType]}</small>
       </div>
       <div className={styles.itemBody}>
-        <div className={styles.itemTitleRow}><div><strong>{item.title}</strong>{item.version ? <Tag className={styles.versionTag}>{item.version}</Tag> : null}</div><Tag color={STATUS_COLORS[item.displayStatus]}>{STATUS_LABELS[item.displayStatus]}</Tag></div>
-        <div className={styles.itemSummary}>{item.resourceType === 'CODE' ? <CodeDetails item={item} /> : item.resourceType === 'MEMORY' ? <MemoryDetails item={item} /> : <SkillDetails item={item} />}</div>
+        <div className={styles.itemTitleRow}>
+          <div>
+            <strong>{item.title}</strong>
+            {item.source.taskDisplayCode ? <span className={styles.taskCodeTag}>({display(item.source.taskDisplayCode)})</span> : null}
+            {item.version ? <Tag className={styles.versionTag}>{item.version}</Tag> : null}
+          </div>
+          <Tag color={STATUS_COLORS[item.displayStatus]}>{STATUS_LABELS[item.displayStatus]}</Tag>
+        </div>
+        <div className={styles.itemSummary}>{item.resourceType === 'CODE' ? <CodeDetails item={item} /> : item.resourceType === 'MEMORY' ? <MemoryDetails item={item} /> : item.resourceType === 'AGENT' ? <AgentDetails item={item} /> : <SkillDetails item={item} />}</div>
         <div className={styles.itemFooter}><span><UserOutlined /> {item.creator?.displayName ?? '未知'}</span><span>创建于 {formatDate(item.createdAt)}</span>{item.submittedAt ? <span>提交于 {formatDate(item.submittedAt)}</span> : null}{item.reviewer ? <span>审核者 {item.reviewer.displayName}</span> : null}</div>
         {item.reviewReason ? <div className={styles.reviewReason}><WarningOutlined /> {item.reviewReason}</div> : null}
         <div className={styles.itemActions}>
@@ -429,7 +538,7 @@ function DeliveryItemCard({
 }
 
 function CodeDetails({ item }: { item: CodeDeliveryItem }) {
-  return <><div className={styles.detailLine}><span><CloudUploadOutlined /> {item.repositories.map((repository) => `${repository.name} / ${display(repository.branch)}`).join('、') || '暂无仓库'}</span><span>来源 Task {display(item.source.taskDisplayCode)} / {display(item.source.taskTitle)}</span></div><div className={styles.detailLine}><span>Diff {item.filesChanged} 文件 · <b className={styles.additions}>+{item.additions}</b> <b className={styles.deletions}>-{item.deletions}</b></span><span>Review {item.reviewStatus} · Delivery {item.deliveryStatus}</span></div>{item.repositoryDeliveries.length > 1 ? <div className={styles.repositoryStrip}>{item.repositoryDeliveries.map((delivery) => <span key={delivery.repositoryId}>{delivery.repositoryName}: {delivery.deliveryStatus}</span>)}</div> : null}{item.mergeRequest ? <div className={styles.mrLine}>MR #{item.mergeRequest.number} · {item.mergeRequest.title}</div> : null}</>
+  return <><div className={styles.detailLine}><span><CloudUploadOutlined /> {item.repositories.map((repository) => `${repository.name} / ${display(repository.branch)}`).join('、') || '暂无仓库'}</span><span>来源 {display(item.requirementGroup?.name)}</span></div><div className={styles.detailLine}><span>Diff {item.filesChanged} 文件 · <b className={styles.additions}>+{item.additions}</b> <b className={styles.deletions}>-{item.deletions}</b></span><span>Review {item.reviewStatus} · Delivery {item.deliveryStatus}</span></div>{item.repositoryDeliveries.length > 1 ? <div className={styles.repositoryStrip}>{item.repositoryDeliveries.map((delivery) => <span key={delivery.repositoryId}>{delivery.repositoryName}: {delivery.deliveryStatus}</span>)}</div> : null}{item.mergeRequest ? <div className={styles.mrLine}>MR #{item.mergeRequest.number} · {item.mergeRequest.title}</div> : null}</>
 }
 
 function MemoryDetails({ item }: { item: MemoryDeliveryItem }) {
@@ -440,16 +549,24 @@ function SkillDetails({ item }: { item: SkillDeliveryItem }) {
   return <><div className={styles.detailLine}><span><SafetyCertificateOutlined /> {item.visibility} · {item.resourceStatus}</span><span>{item.source.taskId ? `来源 Task ${display(item.source.taskDisplayCode)}` : item.source.messageId ? `来源消息 ${item.source.messageId}` : '无关联来源'}</span></div><div className={styles.excerpt}>{display(item.capabilitySummary ?? item.contentExcerpt)}</div><Tags tags={item.tags} /></>
 }
 
+/** §30.3 AGENT 交付项摘要：角色 + 描述片段 + 内部状态（PENDING/TEAM/ARCHIVED） */
+function AgentDetails({ item }: { item: AgentDeliveryItem }) {
+  const internalLabel = item.agentVisibility === 'PENDING' ? '待审核' : item.agentVisibility === 'TEAM' ? '已发布' : '已归档'
+  return <><div className={styles.detailLine}><span><RobotOutlined /> 角色 {item.role} · 状态 {internalLabel} · {item.resourceStatus}</span><span>{item.source.taskId ? `来源 Task ${display(item.source.taskDisplayCode)}` : item.source.messageId ? `来源消息 ${item.source.messageId}` : '无关联来源'}</span></div><div className={styles.excerpt}>{display(item.descriptionExcerpt ?? item.summary)}</div></>
+}
+
 function Tags({ tags }: { tags: string[] }) {
   return <span className={styles.tags}>{(tags ?? []).map((tag) => <Tag key={tag} icon={<TagsOutlined />}>{tag}</Tag>)}</span>
 }
 
-function ResourceActions({ item, active, onAction, onReject, onOpenResource }: { item: MemoryDeliveryItem | SkillDeliveryItem; active: boolean; onAction: (item: DeliveryItem, action: DeliveryAction) => Promise<void>; onReject: (item: DeliveryItem) => void; onOpenResource: (item: DeliveryItem) => void }) {
+function ResourceActions({ item, active, onAction, onReject, onOpenResource }: { item: MemoryDeliveryItem | SkillDeliveryItem | AgentDeliveryItem; active: boolean; onAction: (item: DeliveryItem, action: DeliveryAction) => Promise<void>; onReject: (item: DeliveryItem) => void; onOpenResource: (item: DeliveryItem) => void }) {
+  // §30.3：AGENT 不在交付中心暴露「申请交付」入口（canSubmitReview 恒 false）
+  // 视图按钮是「查看 Agent」而非「查看详情」
   return <>
-    {item.capabilities.canOpenResource ? <Button size="small" icon={<GlobalOutlined />} onClick={() => onOpenResource(item)}>查看详情</Button> : null}
-    {item.capabilities.canSubmitReview ? <Button size="small" type="primary" icon={<SendOutlined />} loading={active} disabled={active} onClick={() => void onAction(item, 'submitReview')}>申请交付</Button> : null}
-    {item.capabilities.canApprove ? <Button size="small" type="primary" icon={<CheckOutlined />} loading={active} disabled={active} onClick={() => void onAction(item, 'approve')}>批准并共享</Button> : null}
-    {item.capabilities.canReject ? <Button size="small" danger icon={<CloseOutlined />} disabled={active} onClick={() => onReject(item)}>拒绝</Button> : null}
+    {item.capabilities.canOpenResource ? <Button size="small" icon={item.resourceType === 'AGENT' ? <RobotOutlined /> : <GlobalOutlined />} onClick={() => onOpenResource(item)}>{item.resourceType === 'AGENT' ? '查看 Agent' : '查看详情'}</Button> : null}
+    {item.resourceType !== 'AGENT' && item.capabilities.canSubmitReview ? <Button size="small" type="primary" icon={<SendOutlined />} loading={active} disabled={active} onClick={() => void onAction(item, 'submitReview')}>申请交付</Button> : null}
+    {item.capabilities.canApprove ? <Button size="small" type="primary" icon={<CheckOutlined />} loading={active} disabled={active} onClick={() => void onAction(item, 'approve')}>{item.resourceType === 'AGENT' ? '批准发布' : '批准并共享'}</Button> : null}
+    {item.capabilities.canReject ? <Button size="small" danger icon={<CloseOutlined />} disabled={active} onClick={() => onReject(item)}>{item.resourceType === 'AGENT' ? '拒绝发布' : '拒绝'}</Button> : null}
     {item.capabilities.canArchive ? <Button size="small" icon={<InboxOutlined />} loading={active} disabled={active} onClick={() => void onAction(item, 'archive')}>归档</Button> : null}
   </>
 }
@@ -483,7 +600,7 @@ function DeliveryOverview({ summaryQuery, total, groupId }: { summaryQuery: Retu
       <div className={styles.chartRow}><div className={styles.donut} style={{ background: `conic-gradient(#45bb73 0deg ${acceptedDeg}deg, #a875df ${acceptedDeg}deg ${pendingDeg}deg, #f1a62d ${pendingDeg}deg ${processingDeg}deg, #7b879a ${processingDeg}deg 360deg)` }}><div><strong>{total}</strong><span>总交付物</span></div></div><div className={styles.chartLegend}><Legend color="#45bb73" label="已接受 / 已共享" value={accepted} /><Legend color="#a875df" label="待审核" value={pending} /><Legend color="#f1a62d" label="处理中" value={processing} /><Legend color="#e05252" label="失败" value={failed} /><Legend color="#7b879a" label="草稿 / 归档" value={draft + archived} /></div></div>
     </Card>
     <Card className={styles.overviewCard} title={<span>仓库交付状态 <Text type="secondary">{repositorySummaries.length} 个仓库</Text></span>}>
-      {repositorySummaries.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无仓库交付" /> : <div className={styles.repositoryList}>{repositorySummaries.map((repository) => <div className={styles.repositoryRow} key={repository.repositoryId}><div><strong>{repository.repositoryName}</strong><span>{repository.accepted}/{repository.total} 已交付</span></div><div><Tag color={repository.failed > 0 ? 'red' : repository.pending > 0 ? 'orange' : 'green'}>{repository.deliveryStatus ?? '暂无'}</Tag>{repository.mergeRequest ? <small>MR #{repository.mergeRequest.number}</small> : null}</div></div>)}</div>}
+      {repositorySummaries.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无仓库交付" /> : <div className={styles.repositoryList}>{repositorySummaries.map((repository) => <div className={styles.repositoryRow} key={repository.repositoryId}><div><strong>{repository.repositoryName}</strong><span>{repository.accepted}/{repository.total} 已交付</span></div><div>{repository.deliveryStatus && repository.deliveryStatus !== 'NOT_STARTED' ? <Tag color={repository.failed > 0 ? 'red' : repository.pending > 0 ? 'orange' : 'green'}>{repository.deliveryStatus}</Tag> : null}{repository.mergeRequest ? <small>MR #{repository.mergeRequest.number}</small> : null}</div></div>)}</div>}
     </Card>
     <Card className={styles.overviewCard} title={<span>待我处理 <Text type="secondary">{summaryQuery.data.pendingForCurrentUser}</Text></span>}>
       <div className={styles.projectInfo}><SettingOutlined /><span>{summaryQuery.data.pendingForCurrentUser > 0 ? '当前筛选数据集中有待处理交付。' : '当前没有待处理交付。'}</span></div>

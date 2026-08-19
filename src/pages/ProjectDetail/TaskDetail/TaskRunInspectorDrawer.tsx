@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Alert, Button, Card, Input, Spin, Tag, Typography } from 'antd'
 import { CheckCircleOutlined, ClockCircleOutlined, CodeOutlined, EnvironmentOutlined, FileTextOutlined } from '@ant-design/icons'
 import { ApiError } from '@/api'
-import { useApproveTaskRunInputRequest, useCancelTaskRunModel, useRejectTaskRunInputRequest, useReplyTaskRunInputRequest, useRetryTaskRunModel, useTaskRun, useTaskRunExecutionContext, useTaskRunInputRequests, useTaskRunLogs } from '@/hooks/task-model'
+import { useApproveTaskRunInputRequest, useCancelTaskRunModel, useInfiniteTaskRunLogs, useRejectTaskRunInputRequest, useReplyTaskRunInputRequest, useRetryTaskRunModel, useTaskRun, useTaskRunExecutionContext, useTaskRunInputRequests } from '@/hooks/task-model'
 import type { InputRequest, Task, TaskRunDetail } from '@/types/task-model'
 import styles from './TaskDetailPage.module.scss'
 
@@ -18,7 +18,7 @@ interface Props {
 
 export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, onRunChange }: Props) {
   const runQuery = useTaskRun(projectId, taskRunId ?? '')
-  const logsQuery = useTaskRunLogs(projectId, taskRunId ?? '', { limit: 100 })
+  const logsQuery = useInfiniteTaskRunLogs(projectId, taskRunId ?? '', { limit: 100 })
   const contextQuery = useTaskRunExecutionContext(projectId, taskRunId ?? '')
   const requestsQuery = useTaskRunInputRequests(projectId, taskRunId ?? '', { limit: 100 })
   const retry = useRetryTaskRunModel(projectId)
@@ -28,7 +28,15 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, onRu
 
   function retryRun() {
     if (!run || !window.confirm('确认重试此执行记录？原运行将保留。')) return
-    retry.mutate(run.id, { onSuccess: (next) => onRunChange(next.id), onError: (error) => { if (error instanceof ApiError && error.status === 409) void runQuery.refetch() } })
+    retry.mutate(run.id, {
+      onSuccess: (next) => {
+        // 乐观切换到新 run，新数据已通过 setQueryData 写入缓存
+        onRunChange(next.id)
+      },
+      onError: (error) => {
+        if (error instanceof ApiError && error.status === 409) void runQuery.refetch()
+      },
+    })
   }
 
   function cancelRun() {
@@ -41,14 +49,14 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, onRu
   return <section className={styles.runInspectorPanel} data-testid="run-inspector-panel"><div className={styles.runInspectorPanelHeading}><div><Text type="secondary">单次运行</Text><Title level={4}>本次执行</Title></div><div>{canRetry ? <Button size="small" onClick={retryRun} loading={retry.isPending} disabled={pending}>重试</Button> : null}{canCancel ? <Button size="small" danger onClick={cancelRun} loading={cancel.isPending} disabled={pending}>取消</Button> : null}</div></div>{!taskRunId ? <InspectorState text="选择一条执行记录查看详情" /> : runQuery.isLoading ? <InspectorState loading /> : runQuery.isError ? <InspectorError error={runQuery.error} resource="执行详情" /> : !run || run.taskId !== taskId ? <InspectorState text="执行记录不存在或不属于当前任务" /> : <RunInspectorContent run={run} task={task} logsQuery={logsQuery} contextQuery={contextQuery} requestsQuery={requestsQuery} projectId={projectId} />}<AcceptanceOverview task={task} /></section>
 }
 
-function RunInspectorContent({ run, task, logsQuery, contextQuery, requestsQuery, projectId }: { run: TaskRunDetail; task: Task; logsQuery: ReturnType<typeof useTaskRunLogs>; contextQuery: ReturnType<typeof useTaskRunExecutionContext>; requestsQuery: ReturnType<typeof useTaskRunInputRequests>; projectId: string }) {
+function RunInspectorContent({ run, task, logsQuery, contextQuery, requestsQuery, projectId }: { run: TaskRunDetail; task: Task; logsQuery: ReturnType<typeof useInfiniteTaskRunLogs>; contextQuery: ReturnType<typeof useTaskRunExecutionContext>; requestsQuery: ReturnType<typeof useTaskRunInputRequests>; projectId: string }) {
   return <div className={styles.runInspector}>
     <section className={styles.inspectorSummary}><div><Title level={4}>{run.taskStepTitle || roleLabel(run.role)}</Title><Tag color={statusColor(run.status)}>{run.status}</Tag></div><Text type="secondary">{run.agent?.name ?? '未分配 Agent'} · {formatDuration(run.durationMs)}</Text>{run.statusSummary ? <Text>{run.statusSummary}</Text> : null}{run.statusReason ? <Alert type="warning" showIcon title={run.statusReason.title} description={run.statusReason.summary} /> : null}</section>
     <InspectorSection title="内部轨迹" icon={<ClockCircleOutlined />}>{run.steps?.length ? <div className={styles.inspectorTimeline}>{run.steps.map((step, index) => <div key={`${step.node}-${step.startedAt ?? index}`}><Tag color={statusColor(step.status)}>{index + 1}</Tag><Text strong>{step.node}</Text><Text type="secondary">{formatDuration(step.durationMs)}</Text>{step.errorCode ? <Text type="danger">{step.errorCode}</Text> : null}</div>)}</div> : <Text type="secondary">当前执行器未返回内部步骤</Text>}</InspectorSection>
     <InspectorSection title="待处理请求" icon={<FileTextOutlined />}><DrawerInputRequests projectId={projectId} taskRunId={run.id} query={requestsQuery} /></InspectorSection>
-    <InspectorSection title="运行日志" icon={<CodeOutlined />}>{logsQuery.isLoading ? <InspectorState loading /> : logsQuery.isError ? <InspectorError error={logsQuery.error} resource="日志" /> : (logsQuery.data?.data.length ?? 0) === 0 ? <Text type="secondary">暂无日志</Text> : <div className={styles.inspectorLogs}>{logsQuery.data!.data.map((log) => <div key={log.id}><span>{log.sequence}</span><time>{formatDate(log.timestamp)}</time><Text>{log.node}</Text><code>{log.content}</code></div>)}</div>}</InspectorSection>
+    <InspectorSection title="运行日志" icon={<CodeOutlined />}><RunLogsPanel query={logsQuery} runStatus={run.status} /></InspectorSection>
     <InspectorSection title="执行环境" icon={<EnvironmentOutlined />}>{contextQuery.isLoading ? <InspectorState loading /> : contextQuery.isError ? <InspectorError error={contextQuery.error} resource="执行环境" /> : contextQuery.data?.repositoryId ? <div className={styles.inspectorContext}><Text ellipsis>仓库：{repositoryLabel(task, contextQuery.data.repositoryId)}</Text></div> : <Text type="secondary">暂无仓库信息</Text>}</InspectorSection>
-    <InspectorSection title="本次产出" icon={<CodeOutlined />}><Text>产物 {run.artifactSummary.total} 个 · Diff {run.artifactSummary.diffCount} 个</Text></InspectorSection>
+    <InspectorSection title="本次产出" icon={<CodeOutlined />}><Text>产物 {run.artifactSummary?.total ?? 0} 个 · Diff {run.artifactSummary?.diffCount ?? 0} 个</Text></InspectorSection>
   </div>
 }
 
@@ -85,3 +93,40 @@ function statusColor(status: string): 'default' | 'processing' | 'success' | 'er
 function formatDate(value: string): string { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'medium' }).format(date) }
 function formatDuration(value: number | null): string { if (value === null) return '暂无耗时'; if (value < 1000) return `${value} 毫秒`; if (value < 60000) return `${Math.round(value / 1000)} 秒`; return `${Math.floor(value / 60000)} 分 ${Math.round((value % 60000) / 1000)} 秒` }
 function repositoryLabel(task: Task, repositoryId: string | null): string { return repositoryId ? task.repositories.find((repository) => repository.repositoryId === repositoryId)?.name ?? repositoryId : '暂无仓库信息' }
+
+function RunLogsPanel({ query, runStatus }: { query: ReturnType<typeof useInfiniteTaskRunLogs>; runStatus: string }) {
+  if (query.isLoading) return <InspectorState loading />
+  if (query.isError) return <InspectorError error={query.error} resource="日志" />
+  const pages = query.data?.pages ?? []
+  const allLogs = pages.flatMap((page) => page.data)
+  const nonTerminalLogs = allLogs.filter((log) => log.entryType !== 'TERMINAL')
+  const terminalLogs = allLogs.filter((log) => log.entryType === 'TERMINAL')
+
+  if (allLogs.length === 0) {
+    return runStatus === 'SUCCEEDED'
+      ? <Text type="secondary">任务已成功完成，暂无详细运行日志</Text>
+      : <Text type="secondary">暂无日志</Text>
+  }
+
+  return (
+    <div className={styles.runLogsPanel}>
+      {terminalLogs.length > 0 && (
+        <div className={styles.runLogsTerminal}>
+          <Text strong>执行结果摘要</Text>
+          <code className={styles.runLogsTerminalContent}>{terminalLogs.map((log) => log.content).join('\n')}</code>
+        </div>
+      )}
+      {nonTerminalLogs.length > 0 && (
+        <>
+          <div className={styles.inspectorLogs}>{nonTerminalLogs.map((log) => <div key={log.id} className={styles.runLogEntry} data-entry-type={log.entryType}><span>{log.sequence}</span><time>{formatDate(log.timestamp)}</time><Text>{log.node}</Text><code>{log.content}</code></div>)}</div>
+          {query.hasNextPage && (
+            <Button type="link" size="small" loading={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
+              {query.isFetchingNextPage ? '加载更多…' : '加载更多日志'}
+            </Button>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+

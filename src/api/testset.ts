@@ -270,6 +270,13 @@ export function mapTestRun(raw: unknown): TestRun {
   const executionSummary = mapTestRunExecutionSummary(row.summary)
   const testsetIds = readStringArray(row.testsetIds)
   const fromResults = executionSummary?.results.map((item) => item.testsetId) ?? []
+
+  // 时间字段：兼容 startedAt/finishedAt 与 createdAt/updatedAt
+  const createdAt = readString(row, 'createdAt')
+  const updatedAt = readString(row, 'updatedAt')
+  const startedAt = readString(row, 'startedAt') || createdAt || null
+  const finishedAt = readString(row, 'finishedAt') || updatedAt || null
+
   return {
     id: readString(row, 'id'),
     projectId: readString(row, 'projectId'),
@@ -279,15 +286,15 @@ export function mapTestRun(raw: unknown): TestRun {
     ref: readString(row, 'ref') || null,
     status: mapTestRunStatus(row.status),
     executionSummary,
-    createdBy: readString(row, 'createdBy') || null,
-    createdAt: readString(row, 'createdAt'),
+    createdBy: readString(row, 'createdBy') || readString(row, 'creator') || null,
+    createdAt,
     caseSummary: mapCaseSummary(row.caseSummary),
     cases: mapCases(row.cases ?? row.caseDetails),
     artifacts,
     reportUrl: readString(row, 'reportUrl') || null,
     pdfUrl: readPdfUrl(row, artifacts),
-    startedAt: readString(row, 'startedAt') || null,
-    finishedAt: readString(row, 'finishedAt') || null,
+    startedAt,
+    finishedAt,
     sandboxId: readSandboxId(row),
   }
 }
@@ -307,7 +314,8 @@ function mapConflicts(raw: unknown): DryRunConflict[] {
 
 /**
  * 把 GET dry-run report 响应收成 DryRunReport。
- * 支持嵌套 report（确认项），并兼容顶层 conflicts / 扁平字段。
+ * 对齐 API 文档 §32.1：响应字段为 id / status / headCommit / targetBranch / targetCommit / attemptCount / createdAt / updatedAt / report。
+ * 兼容旧字段名（sourceRef / startedAt / finishedAt / durationSeconds / testsetIds / createdBy）。
  */
 export function mapDryRunReport(raw: unknown): DryRunReport {
   const row = isRecord(raw) ? raw : {}
@@ -319,28 +327,48 @@ export function mapDryRunReport(raw: unknown): DryRunReport {
     tests && Array.isArray(tests.results)
       ? tests.results.map((item) => item.testsetId).filter(Boolean)
       : []
+
+  // 按 API 文档：sourceRef ← headCommit（源提交 SHA），旧字段 sourceRef 作兜底
+  const sourceRef = readString(row, 'headCommit') || readString(row, 'sourceRef')
+
+  // 按 API 文档：时间字段为 createdAt / updatedAt，旧字段 startedAt / finishedAt 作兜底
+  const createdAt = readString(row, 'createdAt')
+  const updatedAt = readString(row, 'updatedAt')
+  const startedAt = createdAt || readString(row, 'startedAt') || null
+  const finishedAt = updatedAt || readString(row, 'finishedAt') || null
+
+  // durationSeconds：优先用后端直接返回值；否则从时间戳计算
+  let durationSeconds: number | null = null
+  if (typeof row.durationSeconds === 'number' && Number.isFinite(row.durationSeconds)) {
+    durationSeconds = row.durationSeconds
+  } else if (startedAt && finishedAt) {
+    const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime()
+    if (Number.isFinite(ms) && ms > 0) durationSeconds = Math.round(ms / 1000)
+  }
+
   return {
     id: readString(row, 'id') || readString(row, 'dryRunId'),
     projectId: readString(row, 'projectId'),
     repositoryId: readString(row, 'repositoryId'),
-    sourceRef: readString(row, 'sourceRef'),
+    sourceRef,
     targetBranch: readString(row, 'targetBranch'),
     taskId: readString(row, 'taskId') || null,
     status: mapDryRunStatus(row.status),
     report: nested,
     conflicts,
+    createdBy: readString(row, 'createdBy') || readString(row, 'creator') || null,
     caseSummary: mapCaseSummary(row.caseSummary) ?? mapCaseSummary(row.testSummary),
     cases: mapCases(row.cases ?? row.caseDetails),
     reportUrl: readString(row, 'reportUrl') || null,
     pdfUrl: readPdfUrl(row, mapArtifacts(row.artifacts)),
-    startedAt: readString(row, 'startedAt') || null,
-    finishedAt: readString(row, 'finishedAt') || null,
-    durationSeconds: typeof row.durationSeconds === 'number' ? row.durationSeconds : null,
+    startedAt,
+    finishedAt,
+    durationSeconds,
     sandboxId: readSandboxId(row),
     testsetIds: readStringArray(row.testsetIds).length
       ? readStringArray(row.testsetIds)
       : testsetIdsFromTests,
-    createdAt: readString(row, 'createdAt'),
+    createdAt,
   }
 }
 

@@ -111,19 +111,19 @@ export function createMockDryRunReport(projectId: string, input: Partial<DryRunR
     input.report ??
     (status === 'CONFLICT'
       ? {
-          targetCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-          mergeable: false,
-          conflicts: [{ path: 'src/Auth.ts', message: '双方都修改了 login' }],
-          tests: { status: 'SKIPPED' as const, results: [], reason: 'MERGE_CONFLICT' as const },
-          failureCode: null,
-        }
+        targetCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        mergeable: false,
+        conflicts: [{ path: 'src/Auth.ts', message: '双方都修改了 login' }],
+        tests: { status: 'SKIPPED' as const, results: [], reason: 'MERGE_CONFLICT' as const },
+        failureCode: null,
+      }
       : {
-          targetCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-          mergeable: true,
-          conflicts: [],
-          tests: executionSummary,
-          failureCode: null,
-        })
+        targetCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        mergeable: true,
+        conflicts: [],
+        tests: executionSummary,
+        failureCode: null,
+      })
   return {
     id: input.id ?? `dryrun-${projectId}-1`,
     projectId,
@@ -134,6 +134,7 @@ export function createMockDryRunReport(projectId: string, input: Partial<DryRunR
     status: status === 'CONFLICT' ? 'FAILED' : status,
     report,
     conflicts: report.conflicts,
+    createdBy: input.createdBy ?? null,
     caseSummary: null,
     cases: [],
     reportUrl: null,
@@ -155,6 +156,7 @@ export function toDryRunReportResponse(report: DryRunReport): Record<string, unk
     sourceRef: report.sourceRef,
     targetBranch: report.targetBranch,
     status: report.status,
+    createdBy: report.createdBy,
     createdAt: report.createdAt,
     report: report.report,
   }

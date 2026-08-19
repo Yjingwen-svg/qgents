@@ -96,7 +96,7 @@ export interface Preflight {
 // ---------------------------------------------------------------------------
 
 export interface DryRunCqInput {
-  reason: string
+  reason?: string
 }
 
 export type DryRunCqDecision = 'APPROVED' | 'REJECTED'

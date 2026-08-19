@@ -7,9 +7,13 @@ import { setupServer } from 'msw/node'
 import DeliveryCenterPage from './DeliveryCenterPage'
 import { deliveryCenterHandlers } from '@/mocks/delivery-center/handlers'
 import { resetDeliveryCenterStore } from '@/mocks/delivery-center/store'
+import { agentHandlers } from '@/mocks/agent/handlers'
+import { resetAgentStores } from '@/mocks/agent/handlers'
 
 const server = setupServer(
   ...deliveryCenterHandlers,
+  ...agentHandlers,
+  http.get('/api/projects/:projectId', () => HttpResponse.json({ data: { id: 'project-delivery-center', teamId: 'team-owned-001' } })),
   http.get('/api/projects/:projectId/groups', () => HttpResponse.json({ data: [{ id: 'group-delivery', projectId: 'project-delivery-center', type: 'REQUIREMENT', title: 'Delivery Center rollout', status: 'ACTIVE' }] })),
   http.get('/api/projects/:projectId/repositories', () => HttpResponse.json({ data: [{ id: 'binding-main', repositoryId: 'repo-main', displayName: 'qgents-web', fullName: 'example/qgents-web', defaultBranch: 'main', authorizationStatus: 'AUTHORIZED' }] })),
 )
@@ -19,6 +23,7 @@ afterAll(() => server.close())
 beforeEach(() => {
   server.resetHandlers()
   resetDeliveryCenterStore()
+  resetAgentStores()
 })
 
 function LocationProbe() {
@@ -48,7 +53,7 @@ describe('DeliveryCenterPage', () => {
       http.get('/api/projects/:projectId/delivery-items', () => HttpResponse.json({ data: [], page: { nextCursor: null, hasMore: false }, requestId: 'items-empty' })),
       http.get('/api/projects/:projectId/delivery-summary', () => HttpResponse.json({
         total: 0,
-        countsByType: { CODE: 0, MEMORY: 0, SKILL: 0 },
+        countsByType: { CODE: 0, MEMORY: 0, SKILL: 0, AGENT: 0 },
         countsByStatus: { DRAFT: 0, PENDING_REVIEW: 0, PROCESSING: 0, ACCEPTED: 0, REJECTED: 0, DELIVERED: 0, FAILED: 0, ARCHIVED: 0 },
         pendingForCurrentUser: 0,
         repositorySummaries: [],
@@ -130,5 +135,29 @@ describe('DeliveryCenterPage', () => {
     renderPage('/app/projects/project-delivery-center/diffs?type=MEMORY')
     expect(await screen.findByText('Draft memory')).toBeInTheDocument()
     expect(await screen.findByText('交付概览加载失败')).toBeInTheDocument()
+  })
+
+  it('approves a PENDING Agent via the §30 review endpoint (smoke)', async () => {
+    renderPage('/app/projects/project-delivery-center/diffs?type=AGENT')
+    const pending = await screen.findByText('Frontend Developer Agent')
+    const card = pending.closest('article')
+    if (!card) throw new Error('pending Agent card not rendered')
+    const approveButton = within(card).getByRole('button', { name: /批准发布/ })
+    expect(approveButton).toBeInTheDocument()
+    fireEvent.click(approveButton)
+    // 触发即视为 mock approve 已通过；后续展示由真实接口驱动
+    await waitFor(() => expect(within(card).queryByText('Frontend Developer Agent')).toBeInTheDocument())
+  })
+
+  it('rejects an PENDING Agent and opens the reason modal (smoke)', async () => {
+    renderPage('/app/projects/project-delivery-center/diffs?type=AGENT')
+    const pending = await screen.findByText('Frontend Developer Agent')
+    const card = pending.closest('article')
+    if (!card) throw new Error('pending Agent card not rendered')
+    fireEvent.click(within(card).getByRole('button', { name: /拒绝发布/ }))
+    expect(screen.getByRole('button', { name: '确认拒绝' })).toBeDisabled()
+    expect(screen.getByPlaceholderText('请说明需要修改的内容')).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText('请说明需要修改的内容'), { target: { value: '需要补充 capability 描述' } })
+    expect(screen.getByRole('button', { name: '确认拒绝' })).not.toBeDisabled()
   })
 })

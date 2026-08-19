@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Modal, Form, Select, Input, App, Typography, Tag } from 'antd'
+import { Modal, Form, Select, App, Typography, Tag } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { githubApi } from '@/api'
-import { useCreateDryRun } from '@/hooks'
+import { useCreateDryRun, useTasks, useTestsets } from '@/hooks'
 import { queryKeys } from '@/query'
 import type { DryRunReport, ProjectBoundRepository } from '@/types'
 import type { CreateDryRunPayload } from '@/types/testset'
+import type { TaskListItem } from '@/types/task-model'
 
 const { Text } = Typography
 
@@ -20,8 +21,7 @@ interface DryRunCreateModalProps {
 /**
  * Dry Run 创建表单 —— 手动触发 MR 前合并预演
  * 文档：Dry Run前后端执行计划 §5.1
- * 表单字段：仓库、源引用、目标分支、关联 Task（可选）
- * 不展示 testsetIds 选择器 —— 服务端会按目标分支门禁自动加载 Testset
+ * 表单字段：仓库、关联 Task（下拉选择，自动填充源分支）、源引用、目标分支、测试集（多选）
  */
 export default function DryRunCreateModal({
   open,
@@ -31,8 +31,20 @@ export default function DryRunCreateModal({
   onCreated,
 }: DryRunCreateModalProps) {
   const { message } = App.useApp()
-  const [form] = Form.useForm<CreateDryRunPayload>()
+  const [form] = Form.useForm<CreateDryRunPayload & { testsetIds: string[] }>()
   const [repoId, setRepoId] = useState<string>('')
+  const [selectedTask, setSelectedTask] = useState<TaskListItem | null>(null)
+
+  // 加载项目任务列表
+  const { data: taskPage } = useTasks(projectId)
+  const tasks = useMemo(() => taskPage?.data ?? [], [taskPage])
+
+  // 加载已启用的测试集（供用户手动选择）
+  const { data: allTestsets = [] } = useTestsets(projectId, {})
+  const repoTestsets = useMemo(() => {
+    if (!repoId) return []
+    return allTestsets.filter((t) => t.repositoryId === repoId && t.status === 'ENABLED')
+  }, [allTestsets, repoId])
 
   // 稳定的查询参数引用，避免每次渲染都生成新 queryKey 导致无限重获取
   const branchFilters = useMemo(() => ({ limit: 50 }), [])
@@ -69,6 +81,30 @@ export default function DryRunCreateModal({
     ),
   })), [remoteBranches])
 
+  const taskOptions = useMemo(() => tasks.map((t) => ({
+    value: t.id,
+    label: (
+      <span>
+        <Text strong>{t.title}</Text>
+        <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+          #{t.displayCode} · {t.status}
+        </Text>
+      </span>
+    ),
+  })), [tasks])
+
+  const testsetOptions = useMemo(() => repoTestsets.map((t) => ({
+    value: t.id,
+    label: (
+      <span>
+        {t.name}
+        <Tag color="blue" style={{ marginLeft: 4 }}>
+          {t.scopeTags.length > 0 ? t.scopeTags.join(', ') : '无标签'}
+        </Tag>
+      </span>
+    ),
+  })), [repoTestsets])
+
   // 表单初始化：当仓库变化时，自动选中项目默认分支作为目标
   useEffect(() => {
     if (open && repositories.length > 0 && !repoId) {
@@ -85,6 +121,33 @@ export default function DryRunCreateModal({
     }
   }, [open, repoId, remoteBranches, form])
 
+  // 仓库变化时清空已选测试集和 Task
+  const handleRepoChange = useCallback((value: string) => {
+    setRepoId(value)
+    form.setFieldsValue({ testsetIds: [], taskId: undefined })
+    setSelectedTask(null)
+  }, [form])
+
+  // Task 选择变化时，自动填充源分支
+  const handleTaskChange = useCallback((taskId: string | undefined) => {
+    if (!taskId) {
+      setSelectedTask(null)
+      form.setFieldsValue({ taskId: undefined, sourceRef: undefined })
+      return
+    }
+    const task = tasks.find((t) => t.id === taskId)
+    if (!task) {
+      setSelectedTask(null)
+      return
+    }
+    setSelectedTask(task)
+    // 根据当前选中的仓库匹配任务中的 sourceBranch
+    const matchedRepo = task.repositories.find((r) => r.repositoryId === repoId)
+    if (matchedRepo?.sourceBranch) {
+      form.setFieldsValue({ sourceRef: matchedRepo.sourceBranch })
+    }
+  }, [tasks, repoId, form])
+
   const handleOk = useCallback(async () => {
     try {
       const values = await form.validateFields()
@@ -95,6 +158,9 @@ export default function DryRunCreateModal({
       }
       if (values.taskId) {
         payload.taskId = values.taskId
+      }
+      if (values.testsetIds && values.testsetIds.length > 0) {
+        payload.testsetIds = values.testsetIds
       }
 
       createMutation.mutate(payload, {
@@ -114,6 +180,7 @@ export default function DryRunCreateModal({
 
   function handleClose() {
     form.resetFields()
+    setSelectedTask(null)
     onClose()
   }
 
@@ -141,7 +208,7 @@ export default function DryRunCreateModal({
             placeholder="选择仓库"
             showSearch
             optionFilterProp="label"
-            onChange={(value) => setRepoId(value)}
+            onChange={handleRepoChange}
           >
             {repositories.map((r) => (
               <Select.Option key={r.id} value={r.id}>
@@ -152,10 +219,26 @@ export default function DryRunCreateModal({
         </Form.Item>
 
         <Form.Item
+          label="关联 Task（可选）"
+          name="taskId"
+          extra="选择后将自动填充源分支，也可手动修改"
+        >
+          <Select
+            placeholder="选择项目中的 Task"
+            showSearch
+            optionFilterProp="label"
+            allowClear
+            options={taskOptions}
+            onChange={handleTaskChange}
+            loading={tasks.length === 0}
+          />
+        </Form.Item>
+
+        <Form.Item
           label="源引用"
           name="sourceRef"
           rules={[{ required: true, message: '请选择源分支或提交引用' }]}
-          extra="Dry Run 将从此分支/提交合并到目标分支"
+          extra={selectedTask ? `已根据 Task 自动填充，可手动修改` : 'Dry Run 将从此分支/提交合并到目标分支'}
         >
           <Select
             placeholder="选择源分支"
@@ -182,11 +265,18 @@ export default function DryRunCreateModal({
         </Form.Item>
 
         <Form.Item
-          label="关联 Task（可选）"
-          name="taskId"
-          extra="如指定，将校验 Task 归属与 HEAD 一致性"
+          label="绑定测试集（可选）"
+          name="testsetIds"
+          extra={`当前仓库已启用测试集：${repoTestsets.length} 个；可多选，不选则由服务端按门禁自动加载`}
         >
-          <Input placeholder="Task ID（可选）" allowClear />
+          <Select
+            mode="multiple"
+            placeholder="选择要运行的测试集（可多选）"
+            showSearch
+            optionFilterProp="label"
+            options={testsetOptions}
+            disabled={!repoId || repoTestsets.length === 0}
+          />
         </Form.Item>
 
         <Form.Item style={{ marginBottom: 0 }}>

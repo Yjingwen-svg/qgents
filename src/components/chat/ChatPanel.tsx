@@ -43,6 +43,7 @@ import type {
   FileMessageContent,
   QuoteMessageContent,
   TaskStatusMessageContent,
+  TaskStatusRepositoryMapping,
 } from '@/types'
 
 const { Text } = Typography
@@ -1744,7 +1745,11 @@ function renderContent(
     case 'TASK_STATUS': {
       const c = message.content as TaskStatusMessageContent
       const steps = c.plan?.steps ?? []
-      const repositoryMappings = normalizeTaskStatusRepositoryMappings(c.repositoryMappings)
+      // 多仓库：currentRepositoryPaths 非空时只展示当前步骤实际涉及的仓库（按 workspacePath 匹配）
+      const currentPaths = c.currentRepositoryPaths
+      const repositoryMappings = normalizeTaskStatusRepositoryMappings(c.repositoryMappings).filter(
+        (mapping) => !currentPaths || currentPaths.length === 0 || currentPaths.includes(mapping.workspacePath),
+      )
       const statusKey = c.status?.toUpperCase()
       const diffReady =
         statusKey === 'WAITING_DIFF_CONFIRMATION' ||
@@ -1782,16 +1787,21 @@ function renderContent(
             </Text>
           ) : null}
           {repositoryMappings.length > 0 ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginTop: 6 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
               <Text type="secondary" style={{ fontSize: 12 }}>当前操作仓库：</Text>
               {repositoryMappings.map((mapping) => (
-                <Tag
+                <div
                   key={`${mapping.repositoryId}:${mapping.workspacePath}`}
-                  title={`项目仓库绑定 ID：${mapping.repositoryId}`}
-                  style={{ margin: 0, fontSize: 12 }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
                 >
-                  {mapping.workspacePath}
-                </Tag>
+                  {/* 展示 GitHub 实际仓库名 fullName（回退短名 name / 工作区目录） */}
+                  <Tag style={{ margin: 0, fontSize: 12 }}>
+                    {mapping.fullName ?? mapping.name ?? mapping.workspacePath}
+                  </Tag>
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    工作区目录：{mapping.workspacePath}
+                  </Text>
+                </div>
               ))}
             </div>
           ) : null}
@@ -1873,10 +1883,10 @@ function renderContent(
  */
 function normalizeTaskStatusRepositoryMappings(
   mappings: TaskStatusMessageContent['repositoryMappings'],
-) {
+): TaskStatusRepositoryMapping[] {
   if (!Array.isArray(mappings)) return []
 
-  const uniqueMappings = new Map<string, { workspacePath: string; repositoryId: string }>()
+  const uniqueMappings = new Map<string, TaskStatusRepositoryMapping>()
   for (const mapping of mappings) {
     if (!mapping || !mapping.workspacePath || !mapping.repositoryId) continue
     uniqueMappings.set(`${mapping.repositoryId}:${mapping.workspacePath}`, mapping)

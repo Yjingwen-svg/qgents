@@ -1525,9 +1525,29 @@ function MessageBubble({
   )
 }
 
+/**
+ * QUOTE 消息 content 解析：后端可能回传对象，也可能是 JSON 字符串（历史/联调兼容），
+ * 统一转成 QuoteMessageContent；解析失败返回 null。
+ */
+function parseQuoteContent(message: Message): QuoteMessageContent | null {
+  const raw = message.content
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw) as QuoteMessageContent
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as QuoteMessageContent
+  }
+  return null
+}
+
 /** 引用消息的「原消息」挂载条：气泡下方、左侧灰色竖线、灰色小字 */
 function QuoteAttachment({ message }: { message: Message }) {
-  const content = message.content as QuoteMessageContent | null
+  const content = parseQuoteContent(message)
   if (!content?.quotedText) return null
   return (
     <div
@@ -1612,8 +1632,8 @@ function renderContent(
     case 'QUOTE': {
       // 气泡内只显示回复正文；被引用的原消息由 MessageBubble 挂载在气泡下方（带竖线）。
       // §7 冻结：replyText 回显在顶层；content.replyText 兼容旧数据
-      const c = message.content as QuoteMessageContent | null
-      return message.replyText ?? c?.replyText ?? ''
+      const c = parseQuoteContent(message)
+      return message.replyText || c?.replyText || ''
     }
     case 'DIFF': {
       // 群聊内 Diff 卡片：固定高度可展开的「文件树 + 行级 diff 视图」；

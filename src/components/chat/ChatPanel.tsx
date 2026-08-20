@@ -888,8 +888,21 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         aria-label="对话内容"
       >
         {isLoading ? (
-          <div style={{ textAlign: 'center', padding: 40 }}>
-            <Text type="secondary">加载中…</Text>
+          <div
+            style={{
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <div style={{ textAlign: 'center' }}>
+              <Spin size="large" />
+              <div style={{ marginTop: 16, color: '#5b6b82', fontSize: 14 }}>
+                <MessageOutlined style={{ marginRight: 8 }} />
+                正在加载群聊消息…
+              </div>
+            </div>
           </div>
         ) : isError ? (
           <Empty description="消息加载失败" />

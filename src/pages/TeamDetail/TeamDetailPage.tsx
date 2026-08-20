@@ -218,9 +218,10 @@ export default function TeamDetailPage() {
         </div>
 
         <nav className="team-detail__nav">
+          {/* 高亮逻辑：设置是路由子视图，此时首页/通讯录不参与高亮，只有「团队设置」高亮 */}
           <button
             type="button"
-            className={`team-detail__nav-item ${activeView === 'projects' ? 'team-detail__nav-item--active' : ''}`}
+            className={`team-detail__nav-item ${!onSettings && activeView === 'projects' ? 'team-detail__nav-item--active' : ''}`}
             onClick={() => goView('projects')}
           >
             <ApartmentOutlined />
@@ -228,7 +229,7 @@ export default function TeamDetailPage() {
           </button>
           <button
             type="button"
-            className={`team-detail__nav-item ${activeView === 'members' ? 'team-detail__nav-item--active' : ''}`}
+            className={`team-detail__nav-item ${!onSettings && activeView === 'members' ? 'team-detail__nav-item--active' : ''}`}
             onClick={() => goView('members')}
           >
             <TeamOutlined />

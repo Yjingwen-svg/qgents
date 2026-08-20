@@ -272,7 +272,7 @@ describe('TaskDetailPage workbench', () => {
       ...task,
       status: 'FAILED',
       repositories: [
-        { repositoryId: 'repo-1', name: 'test01', fullName: 'CloudPlayerBaby/test01', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'develop', baseCommit: null, sourceBranch: '', headCommit: null },
+        { repositoryId: 'repo-1', name: 'test01', fullName: 'CloudPlayerBaby/test01', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'develop', baseCommit: 'string', sourceBranch: '', headCommit: null },
       ],
     }
     useTaskMock.mockReturnValue({ data: failedTask, error: null, isError: false, isLoading: false, refetch: vi.fn() })

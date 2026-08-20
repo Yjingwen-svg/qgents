@@ -9,6 +9,7 @@ import type {
   TaskRunSummary,
   TaskStep,
   TaskArtifact,
+  PreflightStatus,
 } from '@/types/task-model'
 import {
   InvalidTaskModelTransitionError,
@@ -299,13 +300,13 @@ const taskCreateListDetailHandlers: HttpHandler[] = [
 ]
 
 const taskStepListHandler: HttpHandler = http.get('*/api/projects/:projectId/tasks/:taskId/steps', ({ params, request }) => {
-    const projectId = pathParam(params, 'projectId')
-    const denied = guardProject(projectId)
-    if (denied) return denied
-    const store = getStore(projectId, request)
-    const task = findTask(store, pathParam(params, 'taskId'))
-    return task ? page(taskStepsForTask(store, task.id), request) : missing('Task')
-  })
+  const projectId = pathParam(params, 'projectId')
+  const denied = guardProject(projectId)
+  if (denied) return denied
+  const store = getStore(projectId, request)
+  const task = findTask(store, pathParam(params, 'taskId'))
+  return task ? page(taskStepsForTask(store, task.id), request) : missing('Task')
+})
 
 const taskStepMutationHandlers: HttpHandler[] = [
   http.post('*/api/projects/:projectId/tasks/:taskId/steps', async ({ params, request }) => {
@@ -342,20 +343,20 @@ const taskStepMutationHandlers: HttpHandler[] = [
 ]
 
 const taskCancelHandler: HttpHandler = http.post('*/api/projects/:projectId/tasks/:taskId/cancel', ({ params, request }) => {
-    const projectId = pathParam(params, 'projectId')
-    const denied = guardProject(projectId)
-    if (denied) return denied
-    const store = getStore(projectId, request)
-    const task = findTask(store, pathParam(params, 'taskId'))
-    if (!task) return missing('Task')
-    try {
-      task.status = transitionTaskCancel(task.status)
-      task.updatedAt = new Date().toISOString()
-      return response(task, 202)
-    } catch (error: unknown) {
-      return transitionError(error)
-    }
-  })
+  const projectId = pathParam(params, 'projectId')
+  const denied = guardProject(projectId)
+  if (denied) return denied
+  const store = getStore(projectId, request)
+  const task = findTask(store, pathParam(params, 'taskId'))
+  if (!task) return missing('Task')
+  try {
+    task.status = transitionTaskCancel(task.status)
+    task.updatedAt = new Date().toISOString()
+    return response(task, 202)
+  } catch (error: unknown) {
+    return transitionError(error)
+  }
+})
 
 export const taskModelTaskCenterHandlers: HttpHandler[] = [
   ...taskCreateListDetailHandlers,
@@ -871,6 +872,8 @@ const taskModelMergeRequestHandlers: HttpHandler[] = [
   }),
 
   http.post('*/api/projects/:projectId/merge-requests', async ({ params, request }) => {
+    // 兼容期：旧接口 POST /merge-requests 已转为「申请预检」，
+    // 不再直接创建真实 MR。新调用方请使用 POST /merge-requests/preflight。
     const projectId = pathParam(params, 'projectId')
     const denied = guardProject(projectId)
     if (denied) return denied
@@ -878,53 +881,209 @@ const taskModelMergeRequestHandlers: HttpHandler[] = [
     const body = await jsonObject(request)
     const taskId = body.taskId
     const repositoryId = body.repositoryId
-    const targetBranch = body.targetBranch
-    const title = body.title
-    if (
-      !isNonEmptyString(taskId)
-      || !isNonEmptyString(repositoryId)
-      || !isNonEmptyString(targetBranch)
-      || !isNonEmptyString(title)
-    ) {
-      return errorResponse(422, 'VALIDATION_FAILED', 'taskId, repositoryId, targetBranch and title are required')
+    if (!isNonEmptyString(taskId) || !isNonEmptyString(repositoryId)) {
+      return errorResponse(422, 'VALIDATION_FAILED', 'taskId and repositoryId are required')
     }
     const task = findTask(store, taskId)
     if (!task) return missing('Task')
     const diff = [...store.diffs.values()].find(
       (item) => item.taskId === taskId && item.repositoryId === repositoryId && item.status === 'ACCEPTED',
     )
-    if (!diff || diff.status !== 'ACCEPTED') {
-      return errorResponse(409, 'DIFF_NOT_ACCEPTED', 'Create MR requires an accepted Diff')
-    }
-    if (!diff.headCommit) {
-      return errorResponse(409, 'REMOTE_NOT_VERIFIED', 'Source commit has not been verified on the remote')
-    }
-    const existing = [...store.mergeRequests.values()].find(
-      (item) => item.repositoryId === repositoryId && item.sourceBranch === diff.sourceBranch && item.status === 'OPEN',
-    )
-    if (existing) return response(existing)
-    const number = store.mergeRequests.size + 1
-    const created: import('@/types/task-model').MergeRequestSummary = {
-      id: `mr-${projectId}-${number}`,
-      repositoryId,
-      groupIds: [],
-      provider: 'GITHUB',
-      number,
-      title,
-      description: null,
-      sourceBranch: diff.sourceBranch,
-      targetBranch,
-      status: 'OPEN',
-      headCommit: diff.headCommit,
-      webUrl: `https://github.com/mock/${projectId}/pull/${number}`,
+    const now = new Date().toISOString()
+    const preflightId = `preflight-${projectId}-${repositoryId}-${Date.now().toString(36)}`
+    const headCommit = diff?.headCommit ?? 'a1b2c3d4e5f6789012345678abcdef0123456789'
+    const targetBranch = diff?.targetBranch ?? 'main'
+    return response({
+      id: preflightId,
       taskId,
-      qualityGate: {
-        status: 'PENDING',
-        requiredChecks: ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE'],
-      },
+      repositoryId,
+      sourceBranch: diff?.sourceBranch ?? 'feat/demo',
+      headCommit,
+      targetBranch,
+      targetCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      status: 'DRY_RUN_QUEUED',
+      dryRunId: `dryrun-${projectId}-${preflightId}`,
+      blockers: ['DRY_RUN_RUNNING'],
+      failureCode: null,
+      failureReason: null,
+      coveredTaskIds: [taskId],
+      coveredDiffIds: diff ? [diff.id] : [],
+      branchLockStatus: 'UNLOCKED',
+      isBranchLevel: true,
+      mergeRequest: null,
+      createdAt: now,
+      updatedAt: now,
+    }, 202)
+  }),
+
+  // ---------- MR 预检 (Preflight) 新接口 ----------
+
+  http.post('*/api/projects/:projectId/merge-requests/preflight', async ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const store = getStore(projectId, request)
+    const body = await jsonObject(request)
+    const taskId = body.taskId
+    const repositoryId = body.repositoryId
+    if (!isNonEmptyString(taskId) || !isNonEmptyString(repositoryId)) {
+      return errorResponse(422, 'VALIDATION_FAILED', 'taskId and repositoryId are required')
     }
-    store.mergeRequests.set(created.id, created)
-    return response(created, 201)
+    const task = findTask(store, taskId)
+    if (!task) return missing('Task')
+    const diff = [...store.diffs.values()].find(
+      (item) => item.taskId === taskId && item.repositoryId === repositoryId && item.status === 'ACCEPTED',
+    )
+    // 模拟创建预检请求，返回不同状态
+    const now = new Date().toISOString()
+    const preflightId = `preflight-${projectId}-${repositoryId}-${Date.now().toString(36)}`
+
+    // 根据占位 MR 的 createMode + 仓库决定预检返回值，覆盖两种流程：
+    //  1) 自动（SYSTEM）：
+    //     - auth-service → DRY_RUN_RUNNING（预检中，模拟 Dry Run 正在跑）
+    //     - web-console  → CQ_REJECTED（预检失败）
+    //     - shared-sdk   → MR_CREATED（SYSTEM 自动建 PR 成功）
+    //  2) 人工（MANUAL）：
+    //     - 首次申请 → 返回 WAITING_CQ（Dry Run 通过，等待用户在 CQ+1 页盖章）
+    //     - 二次申请（用户已点「创建MR」按钮且 CQ 已通过） → MR_CREATED（真正创建 PR）
+    const pendingMr = [...store.mergeRequests.values()].find(
+      (item) => item.taskId === taskId && item.repositoryId === repositoryId && item.status === 'PENDING_CREATE',
+    )
+    const mode = pendingMr?.createMode ?? 'UNKNOWN'
+    let preflightStatus: PreflightStatus
+    if (mode === 'MANUAL') {
+      // MANUAL 模式：用 store 级内存判断是否为「用户再次点击创建MR」的触发
+      const dedupKey = `${taskId}::${repositoryId}`
+      const seenKey = `preflight-manual-seen::${dedupKey}`
+      if ((store as unknown as Record<string, boolean>)[seenKey]) {
+        // 第二次调用（前端已经 WAITING_CQ，现在用户点了「创建MR」）→ 创建真实 PR
+        preflightStatus = 'MR_CREATED'
+      } else {
+        // 第一次调用（用户点的是「申请MR」→ 启动预检，自动跑 Dry Run → 进入 WAITING_CQ）
+        ; (store as unknown as Record<string, boolean>)[seenKey] = true
+        preflightStatus = 'WAITING_CQ'
+      }
+    } else if (mode === 'SYSTEM') {
+      if (repositoryId === 'bound-demo-web-console') preflightStatus = 'CQ_REJECTED'
+      else if (repositoryId === 'bound-demo-auth-service') preflightStatus = 'DRY_RUN_RUNNING'
+      else preflightStatus = 'MR_CREATED'
+    } else {
+      // UNKNOWN：保守返回 WAITING_CQ
+      preflightStatus = 'WAITING_CQ'
+    }
+    const headCommit = diff?.headCommit ?? 'a1b2c3d4e5f6789012345678abcdef0123456789'
+    const targetBranch = diff?.targetBranch ?? 'main'
+
+    let mergeRequest: import('@/types/task-model').MergeRequestSummary | null = null
+    if (preflightStatus === 'MR_CREATED') {
+      // 模拟已创建真实 MR，后端在 GitHub 端建好了 PR
+      const number = Math.floor(Math.random() * 100) + 10
+      mergeRequest = {
+        id: `mr-${projectId}-${repositoryId}-created`,
+        repositoryId,
+        groupIds: [],
+        provider: 'GITHUB',
+        number,
+        title: `${diff?.sourceBranch ?? 'feat'} → ${targetBranch}`,
+        description: null,
+        sourceBranch: diff?.sourceBranch ?? 'feat/demo',
+        targetBranch,
+        status: 'OPEN',
+        headCommit,
+        webUrl: `https://github.com/mock/${projectId}/pull/${number}`,
+        taskId,
+        qualityGate: { status: 'PASSED', requiredChecks: ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE'] },
+        createMode: 'SYSTEM',
+      }
+      // 同步更新占位 MR 为真实 MR，这样刷新后列表直接显示 OPEN 状态
+      const pendingExisting = [...store.mergeRequests.values()].find(
+        (item) => item.repositoryId === repositoryId && item.status === 'PENDING_CREATE',
+      )
+      if (pendingExisting) {
+        pendingExisting.status = 'OPEN'
+        pendingExisting.number = number
+        pendingExisting.webUrl = mergeRequest.webUrl
+        pendingExisting.createMode = 'SYSTEM'
+        pendingExisting.qualityGate = mergeRequest.qualityGate
+      }
+    }
+
+    const failureMap: Partial<Record<string, { code: string; reason: string }>> = {
+      CQ_REJECTED: { code: 'CQ_REJECTED', reason: 'CQ+1 被拒绝：需要补充单元测试覆盖新代码路径' },
+      FAILED: { code: 'DRY_RUN_FAILED', reason: 'Dry Run 失败：3 个用例未通过' },
+    }
+    const failure = failureMap[preflightStatus]
+
+    return response({
+      id: preflightId,
+      taskId,
+      repositoryId,
+      sourceBranch: diff?.sourceBranch ?? 'feat/demo',
+      headCommit,
+      targetBranch,
+      targetCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      status: preflightStatus,
+      dryRunId: (preflightStatus === 'FAILED' || preflightStatus === 'CQ_REJECTED')
+        ? null
+        : `dryrun-${projectId}-${preflightId}`,
+      blockers: preflightStatus === 'DRY_RUN_RUNNING' || preflightStatus === 'DRY_RUN_QUEUED' ? ['DRY_RUN_RUNNING'] : [],
+      failureCode: failure?.code ?? null,
+      failureReason: failure?.reason ?? null,
+      coveredTaskIds: [taskId],
+      coveredDiffIds: diff ? [diff.id] : [],
+      branchLockStatus: preflightStatus === 'MR_CREATED' ? 'LOCKED' : 'UNLOCKED',
+      isBranchLevel: true,
+      mergeRequest,
+      createdAt: now,
+      updatedAt: now,
+    }, 202)
+  }),
+
+  http.get('*/api/projects/:projectId/merge-requests/preflight/:preflightId', ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const preflightId = pathParam(params, 'preflightId')
+    // 简单返回一个 WAITING_CQ 状态的预检
+    return response({
+      id: preflightId,
+      taskId: 'mock-task-001',
+      repositoryId: 'bound-demo-auth-service',
+      sourceBranch: 'feat/demo',
+      headCommit: 'a1b2c3d4e5f6789012345678abcdef0123456789',
+      targetBranch: 'main',
+      targetCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      status: 'WAITING_CQ',
+      dryRunId: `dryrun-${projectId}-${preflightId}`,
+      blockers: [],
+      failureCode: null,
+      failureReason: null,
+      coveredTaskIds: ['mock-task-001'],
+      coveredDiffIds: [],
+      branchLockStatus: 'UNLOCKED',
+      isBranchLevel: true,
+      mergeRequest: null,
+      createdAt: '2026-08-20T10:00:00Z',
+      updatedAt: '2026-08-20T10:05:00Z',
+    })
+  }),
+
+  http.get('*/api/projects/:projectId/tasks/:taskId/merge-request-preflight', ({ params, request }) => {
+    const projectId = pathParam(params, 'projectId')
+    const denied = guardProject(projectId)
+    if (denied) return denied
+    const store = getStore(projectId, request)
+    const taskId = pathParam(params, 'taskId')
+    const task = findTask(store, taskId)
+    if (!task) return missing('Task')
+    // 默认返回空列表（未启动预检）。实际环境中此接口会返回已启动的预检状态。
+    // 前端点击「创建」后会通过 POST /merge-requests/preflight 启动预检，
+    // 状态变化由前端 preflightStatusMap 跟踪，刷新后再次查询即可恢复。
+    return response({
+      taskId,
+      items: [],
+      totalCount: 0,
+    })
   }),
 
   http.get('*/api/projects/:projectId/tasks/:taskId/repositories/:repositoryId/preflight', ({ params, request }) => {
@@ -941,6 +1100,20 @@ const taskModelMergeRequestHandlers: HttpHandler[] = [
     )
     const sourceCommit = diff?.headCommit ?? 'a1b2c3d4e5f6789012345678abcdef0123456789'
     const targetCommit = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+    // 根据仓库 ID 返回不同的 CQ+1 状态：
+    // - bound-demo-auth-service (SYSTEM 预检中): CQ+1 APPROVED
+    // - bound-demo-web-console (SYSTEM 预检失败): CQ+1 REJECTED
+    // - bound-demo-shared-sdk (MANUAL): CQ+1 APPROVED（以便在前端验证：
+    //   手动申请MR → 后端返回 WAITING_CQ + CQ APPROVED → 前端派生 READY_CREATE
+    //   → 显示「创建MR」按钮 → 点击后才真正创建 PR）
+    const cqStatusMap: Record<string, 'APPROVED' | 'REJECTED' | 'PENDING'> = {
+      'bound-demo-auth-service': 'APPROVED',
+      'bound-demo-web-console': 'REJECTED',
+      'bound-demo-shared-sdk': 'APPROVED',
+    }
+    const cqStatus = cqStatusMap[repositoryId] ?? 'APPROVED'
+
     return response({
       taskId,
       repositoryId,
@@ -951,11 +1124,11 @@ const taskModelMergeRequestHandlers: HttpHandler[] = [
       blockers: [],
       dryRun: { id: `dryrun-${projectId}-preflight`, status: 'PASSED', sourceCommit, targetCommit },
       cqPlusOne: {
-        status: 'APPROVED',
-        reviewerUserId: 'mock-reviewer',
-        reviewerName: 'Mock Reviewer',
-        reason: 'looks good',
-        reviewedAt: '2026-08-15T02:10:00Z',
+        status: cqStatus,
+        reviewerUserId: cqStatus === 'PENDING' ? null : 'mock-reviewer',
+        reviewerName: cqStatus === 'PENDING' ? null : 'Mock Reviewer',
+        reason: cqStatus === 'REJECTED' ? '代码质量不达标，需要补充单元测试' : 'looks good',
+        reviewedAt: cqStatus === 'PENDING' ? null : '2026-08-15T02:10:00Z',
       },
     })
   }),

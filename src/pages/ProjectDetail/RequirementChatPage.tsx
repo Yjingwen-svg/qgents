@@ -1,4 +1,5 @@
 import { Spin } from 'antd'
+import { MessageOutlined } from '@ant-design/icons'
 import { useParams } from 'react-router-dom'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 
@@ -23,9 +24,13 @@ export default function RequirementChatPage() {
           justifyContent: 'center',
         }}
       >
-        <Spin tip="正在进入项目群聊…" size="large">
-          <div style={{ height: 80, width: 80 }} />
-        </Spin>
+        <div style={{ textAlign: 'center' }}>
+          <Spin size="large" />
+          <div style={{ marginTop: 16, color: '#5b6b82', fontSize: 14 }}>
+            <MessageOutlined style={{ marginRight: 8 }} />
+            正在进入项目群聊…
+          </div>
+        </div>
       </div>
     )
   }

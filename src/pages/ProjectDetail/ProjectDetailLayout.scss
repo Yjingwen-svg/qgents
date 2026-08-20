@@ -205,6 +205,47 @@
   transition: background 0.15s ease, color 0.15s ease;
 }
 
+/* 群聊列表项：NavLink + 置顶按钮（悬停显示） */
+.pd-nav__branch-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+
+  .pd-nav__branch {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.pd-nav__branch-pin-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--qg-text-on-dark-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+
+  &:hover {
+    color: #f59e0b;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  &.is-pinned {
+    opacity: 1;
+    color: #f59e0b;
+  }
+}
+
+.pd-nav__branch-item:hover .pd-nav__branch-pin-btn {
+  opacity: 1;
+}
+
 .pd-nav__branch:hover {
   background: rgba(255, 255, 255, 0.06);
   color: var(--qg-text-on-dark);

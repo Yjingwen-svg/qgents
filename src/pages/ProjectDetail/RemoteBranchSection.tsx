@@ -14,6 +14,8 @@ import {
   Empty,
   Spin,
   Descriptions,
+  Alert,
+  Tooltip,
 } from 'antd'
 import { PlusOutlined, SettingOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
 import { useQueryClient } from '@tanstack/react-query'
@@ -174,6 +176,21 @@ export default function RemoteBranchSection({
             ),
             children: (
               <div>
+                {/* 仓库未初始化或无远程分支时显示告警 + 禁用创建操作 */}
+                {remoteBranches.length === 0 && !isLoading ? (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    message="暂无远程分支 / 仓库未初始化"
+                    description={
+                      repo.defaultBranch
+                        ? 'GitHub 上暂时还没有任何分支。请先在 GitHub 端初始化仓库（例如添加 README 提交），创建分支操作暂不可用。'
+                        : '当前仓库尚未初始化（defaultBranch 为空），创建分支操作暂不可用。请先在 GitHub 端初始化或通过新建仓库功能重新创建。'
+                    }
+                  />
+                ) : null}
+
                 <div style={{ marginBottom: 12 }}>
                   <Space>
                     <Input.Search
@@ -183,13 +200,22 @@ export default function RemoteBranchSection({
                       onSearch={(value) => setKeyword(value)}
                     />
                     {isProjectAdmin ? (
-                      <Button
-                        type="primary"
-                        icon={<PlusOutlined />}
-                        onClick={() => setCreateModalOpen(true)}
+                      <Tooltip
+                        title={
+                          remoteBranches.length === 0
+                            ? '暂无远程分支可用作来源，无法创建分支；请先初始化仓库'
+                            : undefined
+                        }
                       >
-                        创建分支
-                      </Button>
+                        <Button
+                          type="primary"
+                          icon={<PlusOutlined />}
+                          onClick={() => setCreateModalOpen(true)}
+                          disabled={remoteBranches.length === 0}
+                        >
+                          创建分支
+                        </Button>
+                      </Tooltip>
                     ) : null}
                     <Button onClick={() => void refetch()} size="small">
                       刷新
@@ -202,7 +228,7 @@ export default function RemoteBranchSection({
                     <Spin size="small" />
                   </div>
                 ) : remoteBranches.length === 0 ? (
-                  <Empty description="暂无远程分支" />
+                  <Empty description="暂无远程分支/仓库未初始化" />
                 ) : (
                   <Table
                     rowKey="name"
@@ -271,6 +297,16 @@ function CreateBranchModal({
   async function handleOk() {
     try {
       const values = await form.validateFields()
+      // 双保险：禁止提交空 fromRef（不依赖按钮 disabled）
+      if (!values.fromRef || !values.fromRef.trim()) {
+        message.error('请选择来源分支或先初始化仓库')
+        return
+      }
+      // 双保险：source 列表为空时也不允许提交
+      if (remoteBranches.length === 0) {
+        message.error('暂无远程分支可用作来源，无法创建分支；请先初始化仓库')
+        return
+      }
       createMutation.mutate(
         { name: values.name, fromRef: values.fromRef },
         {

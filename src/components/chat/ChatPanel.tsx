@@ -633,6 +633,45 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     }
   }, [ctxMenu])
 
+  // ──── 乐观发送：先把消息插进缓存展示（带转圈），后端返回后替换为真实消息 ────
+  const messagesKey = ['groups', projectId, groupId, 'messages'] as const
+
+  function insertOptimisticMessage(msg: Message): void {
+    queryClient.setQueryData<InfiniteData<Page<Message>>>(messagesKey, (prev) => {
+      const page: Page<Message> = prev?.pages[0] ?? { data: [], page: { nextCursor: null, hasMore: false } }
+      if (!prev) {
+        return { pages: [{ ...page, data: [msg] }], pageParams: [undefined] }
+      }
+      return {
+        ...prev,
+        pages: [{ ...page, data: [msg, ...page.data] }, ...prev.pages.slice(1)],
+      }
+    })
+  }
+
+  function replaceOptimisticMessage(optimisticId: string, real: Message): void {
+    queryClient.setQueryData<InfiniteData<Page<Message>>>(messagesKey, (prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        pages: prev.pages.map((p) => ({
+          ...p,
+          data: p.data.map((m) => (m.id === optimisticId ? { ...real, pending: false } : m)),
+        })),
+      }
+    })
+  }
+
+  function removeOptimisticMessage(optimisticId: string): void {
+    queryClient.setQueryData<InfiniteData<Page<Message>>>(messagesKey, (prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        pages: prev.pages.map((p) => ({ ...p, data: p.data.filter((m) => m.id !== optimisticId) })),
+      }
+    })
+  }
+
   async function handleSend() {
     const text = draft.trim()
     // 允许纯引用（引用 DIFF 卡等）：回复目标存在时正文可为空（B3，服务端用群描述兜底）
@@ -651,6 +690,29 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     const hasAgentMention = effectiveMentions.some((mention) => mention.type === 'AGENT')
     setSending(true)
     setSendError(null)
+    // 乐观发送：先本地构造一条临时消息（pending 转圈）插入缓存，避免等待后端返回期间"卡住没反应"
+    const optimisticId = `cmsg_${Date.now()}`
+    const optimisticContent = replyTo
+      ? {
+          quotedMessageId: replyTo.id,
+          quotedText: quotePreview(replyTo),
+          quotedSenderName: replyTo.senderName ?? (replyTo.senderType === 'AGENT' ? 'Agent' : '成员'),
+          replyText: text,
+        }
+      : { text }
+    insertOptimisticMessage({
+      id: optimisticId,
+      groupId,
+      type: replyTo ? 'QUOTE' : 'TEXT',
+      content: optimisticContent,
+      senderType: 'USER',
+      senderId: user?.id,
+      senderName: user?.displayName,
+      createdAt: new Date().toISOString(),
+      replyToId: replyTo ? replyTo.id : null,
+      replyText: replyTo ? text : undefined,
+      pending: true,
+    })
     try {
       // 自己发消息 → 应当保持贴底（新消息渲染 + 历史图片继续加载时都滚到底）
       shouldStickToBottomRef.current = true
@@ -658,25 +720,18 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       pendingScrollRef.current = true
       // 回复引用：type=QUOTE，quotedText 为被引用消息的原始内容摘要，replyText 为回复正文。
       // §7 冻结：replyText 放顶层；content 内保留一份以兼容旧后端/旧数据读取
-      // 回复引用：type=QUOTE，quotedText 为被引用消息的原始内容摘要，replyText 为回复正文。
-      // §7 冻结：replyText 放顶层；content 内保留一份以兼容旧后端/旧数据读取
       const result = await groupApi.sendMessage(projectId, groupId, {
         type: replyTo ? 'QUOTE' : 'TEXT',
-        content: replyTo
-          ? {
-              quotedMessageId: replyTo.id,
-              quotedText: quotePreview(replyTo),
-              quotedSenderName: replyTo.senderName ?? (replyTo.senderType === 'AGENT' ? 'Agent' : '成员'),
-              replyText: text,
-            }
-          : { text },
+        content: optimisticContent,
         replyText: replyTo ? text : undefined,
         mentions: effectiveMentions.length > 0 ? effectiveMentions : undefined,
         replyToId: replyTo ? replyTo.id : null,
-        clientMessageId: `cmsg_${Date.now()}`,
+        clientMessageId: optimisticId,
       })
       const sentMessage = result.message
       const quotedDiff = replyTo?.type === 'DIFF'
+      // 成功：用真实消息替换乐观消息（去掉 pending 转圈）
+      replaceOptimisticMessage(optimisticId, sentMessage)
       setDraft('')
       setMentions([])
       setReplyTo(null)
@@ -724,6 +779,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       }
       return sentMessage
     } catch (error) {
+      // 失败：移除乐观消息，展示错误（原 draft 保留，可重发）
+      removeOptimisticMessage(optimisticId)
       setSendError(formatApiError(error))
       return null
     } finally {
@@ -888,8 +945,21 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         aria-label="对话内容"
       >
         {isLoading ? (
-          <div style={{ textAlign: 'center', padding: 40 }}>
-            <Text type="secondary">加载中…</Text>
+          <div
+            style={{
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <div style={{ textAlign: 'center' }}>
+              <Spin size="large" />
+              <div style={{ marginTop: 16, color: '#5b6b82', fontSize: 14 }}>
+                <MessageOutlined style={{ marginRight: 8 }} />
+                正在加载群聊消息…
+              </div>
+            </div>
           </div>
         ) : isError ? (
           <Empty description="消息加载失败" />
@@ -1104,6 +1174,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             autoSize={{ minRows: 1, maxRows: 4 }}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            // 发送中禁用输入框：防止发送期间继续输入/重复回车触发
+            disabled={sending}
             onPressEnter={(e) => {
               if (!e.shiftKey) {
                 e.preventDefault()
@@ -1117,7 +1189,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             icon={<SendOutlined />}
             onClick={handleSend}
             loading={sending}
-            disabled={!draft.trim() && !replyTo}
+            disabled={sending || (!draft.trim() && !replyTo)}
           >
             发送
           </Button>
@@ -1480,6 +1552,8 @@ function MessageBubble({
             <Text type="secondary" style={{ fontSize: 11 }}>
               {formatClock(message.createdAt)}
             </Text>
+            {/* 乐观发送中：显示转圈，后端确认后替换为真实消息 */}
+            {message.pending ? <Spin size="small" /> : null}
             {/* 自己消息昵称：用实时 selfDisplayName（改昵称后即时更新），不用后端落库的旧 senderName */}
             <Text type="secondary">
               {message.senderType === 'AGENT' ? 'Agent' : (selfDisplayName ?? message.senderName ?? '我')}
@@ -1768,12 +1842,20 @@ function renderContent(
             <Text type="secondary" style={{ fontSize: 12 }}>
               {diffReady ? '任务已产生代码变更' : '代码变更生成后在此查看'}
             </Text>
-            {/* 右下角按钮：任务运行状态框 → 查看任务（Diff 查看走专门的 DIFF 卡片） */}
-            <Link to={PATHS.projectTaskDetail(projectId, c.taskId)}>
-              <Button size="small" type="link">
-                查看任务
-              </Button>
-            </Link>
+            {/* 右下角按钮：任务完成/交付阶段 → 查看交付详情（交付中心）；未完成 → 查看任务 */}
+            {diffReady ? (
+              <Link to={`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(c.taskId)}`}>
+                <Button size="small" type="link">
+                  查看交付详情
+                </Button>
+              </Link>
+            ) : (
+              <Link to={PATHS.projectTaskDetail(projectId, c.taskId)}>
+                <Button size="small" type="link">
+                  查看任务
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       )

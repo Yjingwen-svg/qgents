@@ -106,8 +106,12 @@ export function cqPlusOneStatusColor(status: PreflightCqPlusOneStatus | null | u
 // ---------------------------------------------------------------------------
 
 /**
- * 根据 preflight 的 dryRun + cqPlusOne 组合，生成一行用户友好的描述。
+ * 根据 preflight 的 dryRun + cqPlusOne + blockers 组合，生成一行用户友好的描述。
  * 用于 TaskDetail 页的「逐仓库预检状态」列表。
+ *
+ * 优先级：blockers > dryRun 状态 > CQ+1 状态。
+ * 当存在 blockers（如 TASK_NOT_READY）时，优先展示阻塞原因，
+ * 避免用户看到"Dry Run 尚未发起"却不知道为什么。
  */
 export function preflightRepoSummary(params: {
   dryRunStatus: string | null | undefined
@@ -115,6 +119,13 @@ export function preflightRepoSummary(params: {
   blockers: Array<{ code: string }>
 }): { text: string; color: 'default' | 'processing' | 'success' | 'error' | 'warning' } {
   const { dryRunStatus, cqStatus, blockers } = params
+
+  // —— 第一优先级：检查 blockers ——
+  // TASK_NOT_READY：任务仍在 DELIVERING，commit/push 尚未完成
+  const taskNotReady = blockers.find((b) => b.code === 'TASK_NOT_READY')
+  if (taskNotReady) {
+    return { text: '任务正在交付中（commit/push 进行中），完成后将自动触发 Dry Run', color: 'processing' }
+  }
 
   // Dry Run 失败
   if (dryRunStatus === 'FAILED') {
@@ -124,12 +135,18 @@ export function preflightRepoSummary(params: {
   if (dryRunStatus === 'QUEUED' || dryRunStatus === 'RUNNING') {
     return { text: 'Dry Run 自动执行中，请等待完成', color: 'processing' }
   }
-  // Dry Run 尚未发起
+  // Dry Run 尚未发起但已有其他 blocker（如任务在 WAITING_PREFLIGHT 但 Dry Run 未创建）
   if (!dryRunStatus) {
-    return { text: 'Dry Run 尚未发起', color: 'warning' }
+    const blockerTexts = blockers
+      .filter((b) => b.code !== 'TASK_NOT_READY' && b.code !== 'DRY_RUN_MISSING' && b.code !== 'CQ_PLUS_ONE_MISSING')
+      .map((b) => preflightBlockerLabel(b.code))
+    if (blockerTexts.length > 0) {
+      return { text: blockerTexts[0], color: 'warning' }
+    }
+    return { text: 'Dry Run 尚未发起，等待系统自动触发', color: 'warning' }
   }
 
-  // Dry Run 通过，检查 CQ+1
+  // —— 第二优先级：Dry Run 状态 ——
   if (dryRunStatus === 'PASSED') {
     if (cqStatus === 'APPROVED') {
       // 检查是否还有其他 blockers（如 PREFLIGHT_CONTEXT_STALE）

@@ -44,6 +44,8 @@ export interface Group {
   unreadCount?: number
   /** 该群被 @ 我的未读消息数（后端计算，≥0）；前端据此显示「有人@我」提示 */
   mentionedUnread?: number
+  /** 当前用户对该群是否置顶（后端用户维度偏好，§群聊置顶；缺失时前端用 localStorage 兜底） */
+  pinned?: boolean
   isPinned?: boolean
   isArchived?: boolean
 }
@@ -195,6 +197,8 @@ export interface Message {
   replyText?: string
   /** @ 提及对象（后端 MessageResponse.mentions 回显；被 @ 用户据此展示「有人@我」） */
   mentions?: Mention[]
+  /** 前端乐观发送标志：消息已本地展示、等待后端确认（发送成功后替换为真实消息，不上送后端） */
+  pending?: boolean
 }
 
 export interface SendMessagePayload {

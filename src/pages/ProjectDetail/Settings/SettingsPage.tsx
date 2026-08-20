@@ -1,48 +1,31 @@
 // src/pages/ProjectDetail/sections/SettingsPage.tsx
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Tabs, Typography, Input, Switch, Spin, Tag, message, Avatar, Upload } from 'antd'
+import { Button, Typography, Input, Spin, Tag, message, Avatar, Upload } from 'antd'
 import { GithubOutlined, SaveOutlined, LockOutlined, UploadOutlined, CameraOutlined } from '@ant-design/icons'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { TabsProps } from 'antd'
 import { projectApi } from '@/api'
 import { githubApi } from '@/api/github'
-import { useTasks } from '@/hooks/task-model'
 import { useProjectAvatarUpload } from '@/hooks/useProjectAvatarUpload'
-import { TaskModelStatusTag } from '@/pages/ProjectDetail/TaskCenter/TaskModelStatusTag'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
 import type { Project } from '@/types/project'
-import type { TaskStatus } from '@/types/task-model'
 import './SettingsPage.scss'
 
 const { Title, Text } = Typography
 const { TextArea } = Input
 
-// 任务执行 Tab 的三态分类（对齐任务真实状态）
-const RUNNING_STATUSES: TaskStatus[] = ['RUNNING', 'DELIVERING']
-const PENDING_STATUSES: TaskStatus[] = ['PLANNING', 'PENDING']
-const DONE_STATUSES: TaskStatus[] = [
-  'SUCCEEDED',
-  'FAILED',
-  'CANCELLED',
-  'CANCELLING',
-  'DELIVERY_FAILED',
-  'WAITING_DIFF_CONFIRMATION',
-]
-
 /**
- * 项目设置页 —— 配置项目级别规则、流程与权限
+ * 项目设置页 —— 配置项目级别规则与权限
  *
  * 权限控制：
  * - PROJECT_ADMIN：可编辑所有配置
  * - PROJECT_MEMBER / TEAM_OWNER：只读
  *
- * Tab：基本信息 | 仓库 | 需求群规则 | 任务执行
+ * 页面：基本信息 + 仓库 合成一页（需求群规则 / 任务执行已移除）
  */
 export function SettingsPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
-  const [activeTab, setActiveTab] = useState<string>('basic')
 
   const { data: project, isLoading } = useQuery({
     queryKey: ['projects', projectId],
@@ -51,35 +34,6 @@ export function SettingsPage() {
   })
 
   const isEditable = project?.role === 'PROJECT_ADMIN'
-
-  const tabItems: TabsProps['items'] = [
-    {
-      key: 'basic',
-      label: '基本信息',
-      children: <BasicInfoTab projectId={projectId} project={project} isEditable={isEditable} />,
-    },
-    {
-      key: 'repositories',
-      label: '仓库',
-      children: (
-        <RepositoriesTab
-          projectId={projectId}
-          teamId={project?.teamId ?? ''}
-          isEditable={isEditable}
-        />
-      ),
-    },
-    {
-      key: 'group-rules',
-      label: '需求群规则',
-      children: <GroupRulesTab projectId={projectId} isEditable={isEditable} />,
-    },
-    {
-      key: 'task-execution',
-      label: '任务执行',
-      children: <TaskExecutionTab projectId={projectId} />,
-    },
-  ]
 
   if (isLoading) {
     return (
@@ -102,8 +56,24 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <div className="settings-page__tabs">
-        <Tabs activeKey={activeTab} items={tabItems} onChange={setActiveTab} className="settings-page__tabs-inner" />
+      {/* 基本信息 + 仓库 左右两栏（需求群规则 / 任务执行已移除） */}
+      <div className="settings-page__body">
+        <div className="settings-page__col">
+          <Title level={4} className="settings-page__section-title settings-page__col-title">基本信息</Title>
+          <div className="settings-page__col-body">
+            <BasicInfoTab projectId={projectId} project={project} isEditable={isEditable} />
+          </div>
+        </div>
+        <div className="settings-page__col">
+          <Title level={4} className="settings-page__section-title settings-page__col-title">仓库</Title>
+          <div className="settings-page__col-body">
+            <RepositoriesTab
+              projectId={projectId}
+              teamId={project?.teamId ?? ''}
+              isEditable={isEditable}
+            />
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -368,198 +338,6 @@ function RepositoriesTab({
             </Text>
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-// ============================================================
-// Tab 3：需求群规则
-// ============================================================
-
-function GroupRulesTab({
-  projectId,
-  isEditable,
-}: {
-  projectId: string
-  isEditable: boolean
-}) {
-  const queryClient = useQueryClient()
-  const [allowCreateGroup, setAllowCreateGroup] = useState(true)
-  const [autoArchiveGroup, setAutoArchiveGroup] = useState(false)
-  const [allowAgentTrigger, setAllowAgentTrigger] = useState(true)
-  const [autoJoinAllGroups, setAutoJoinAllGroups] = useState(false)
-
-  const { data: settings, isLoading } = useQuery({
-    queryKey: ['projects', projectId, 'settings'],
-    queryFn: () => projectApi.getSettings(projectId),
-    enabled: !!projectId,
-  })
-
-  // settings 异步加载后同步到本地 state
-  useEffect(() => {
-    if (!settings) return
-    setAllowCreateGroup(settings.allowCreateGroup)
-    setAutoArchiveGroup(settings.autoArchiveGroup)
-    setAllowAgentTrigger(settings.allowAgentTrigger)
-    setAutoJoinAllGroups(settings.autoJoinAllGroups)
-  }, [settings])
-
-  const saveMutation = useMutation({
-    mutationFn: () =>
-      projectApi.updateSettings(projectId, {
-        allowCreateGroup,
-        autoArchiveGroup,
-        allowAgentTrigger,
-        autoJoinAllGroups,
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'settings'] })
-      message.success('需求群规则已保存')
-    },
-    onError: () => {
-      message.error('保存失败，请重试')
-    },
-  })
-
-  return (
-    <div className="settings-tab">
-      <div className="settings-tab__content">
-        {isLoading ? (
-          <div className="settings-tab__repo-placeholder">
-            <Spin />
-          </div>
-        ) : (
-          <>
-            <div className="settings-tab__field settings-tab__field--switch">
-              <div className="settings-tab__switch-row">
-                <Switch checked={allowCreateGroup} onChange={setAllowCreateGroup} disabled={!isEditable} />
-                <label className="settings-tab__label">允许成员创建需求群</label>
-              </div>
-              <div className="settings-tab__hint">
-                {isEditable ? '关闭后只有 Project Admin 能创建需求群' : '当前为只读状态'}
-              </div>
-            </div>
-
-            <div className="settings-tab__field settings-tab__field--switch">
-              <div className="settings-tab__switch-row">
-                <Switch checked={autoArchiveGroup} onChange={setAutoArchiveGroup} disabled={!isEditable} />
-                <label className="settings-tab__label">任务完成后自动归档群聊</label>
-              </div>
-              <div className="settings-tab__hint">
-                {isEditable ? '开启后，关联任务完成时自动归档需求群' : '当前为只读状态'}
-              </div>
-            </div>
-
-            <div className="settings-tab__field settings-tab__field--switch">
-              <div className="settings-tab__switch-row">
-                <Switch checked={allowAgentTrigger} onChange={setAllowAgentTrigger} disabled={!isEditable} />
-                <label className="settings-tab__label">允许 @Agent 发起任务</label>
-              </div>
-              <div className="settings-tab__hint">
-                {isEditable ? '关闭后群内不显示「发起任务」按钮' : '当前为只读状态'}
-              </div>
-            </div>
-
-            <div className="settings-tab__field settings-tab__field--switch">
-              <div className="settings-tab__switch-row">
-                <Switch checked={autoJoinAllGroups} onChange={setAutoJoinAllGroups} disabled={!isEditable} />
-                <label className="settings-tab__label">新成员自动加入所有需求群</label>
-              </div>
-              <div className="settings-tab__hint">
-                {isEditable ? '开启后，新成员自动进入所有已存在的需求群' : '当前为只读状态'}
-              </div>
-            </div>
-
-            {isEditable && (
-              <div className="settings-tab__footer">
-                <Button
-                  type="primary"
-                  icon={<SaveOutlined />}
-                  loading={saveMutation.isPending}
-                  onClick={() => saveMutation.mutate()}
-                >
-                  保存需求群规则
-                </Button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ============================================================
-// Tab 4：任务执行
-// ============================================================
-
-function TaskExecutionTab({ projectId }: { projectId: string }) {
-  const navigate = useNavigate()
-  const [taskFilter, setTaskFilter] = useState<'running' | 'pending' | 'done'>('running')
-  const { data, isLoading } = useTasks(projectId)
-  const tasks = data?.data ?? []
-
-  const statusSet =
-    taskFilter === 'running' ? RUNNING_STATUSES : taskFilter === 'pending' ? PENDING_STATUSES : DONE_STATUSES
-  const filtered = tasks.filter((t) => statusSet.includes(t.status))
-
-  return (
-    <div className="settings-tab">
-      <div className="settings-tab__content">
-        <div className="settings-tab__filter-tabs">
-          <button
-            className={`settings-tab__filter-btn ${taskFilter === 'running' ? 'settings-tab__filter-btn--active' : ''}`}
-            onClick={() => setTaskFilter('running')}
-          >
-            正在执行
-          </button>
-          <button
-            className={`settings-tab__filter-btn ${taskFilter === 'pending' ? 'settings-tab__filter-btn--active' : ''}`}
-            onClick={() => setTaskFilter('pending')}
-          >
-            未执行
-          </button>
-          <button
-            className={`settings-tab__filter-btn ${taskFilter === 'done' ? 'settings-tab__filter-btn--active' : ''}`}
-            onClick={() => setTaskFilter('done')}
-          >
-            已执行
-          </button>
-        </div>
-
-        <div className="settings-tab__task-list">
-          {isLoading ? (
-            <div className="settings-tab__task-placeholder">
-              <Spin />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="settings-tab__task-placeholder">
-              <Text type="secondary">暂无任务</Text>
-            </div>
-          ) : (
-            filtered.map((task) => (
-              <div
-                key={task.id}
-                className="settings-tab__task-item"
-                onClick={() => navigate(PATHS.projectTaskDetail(projectId, task.id))}
-              >
-                <div className="settings-tab__task-item-main">
-                  <Text strong className="settings-tab__task-item-title">
-                    {task.title}
-                  </Text>
-                  <TaskModelStatusTag status={task.status} />
-                </div>
-                <div className="settings-tab__task-item-meta">
-                  <Text type="secondary">发起人：{task.createdByUser?.displayName ?? '—'}</Text>
-                  <Text type="secondary">
-                    更新于 {task.updatedAt ? new Date(task.updatedAt).toLocaleString() : '—'}
-                  </Text>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
       </div>
     </div>
   )

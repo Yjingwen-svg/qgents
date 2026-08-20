@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App, Avatar, Button, Empty, List, Modal, Popconfirm, Select, Space, Typography } from 'antd'
+import { App, Avatar, Button, Empty, List, Modal, Popconfirm, Select, Space, Tag, Typography } from 'antd'
 import { PlusOutlined, UserOutlined } from '@ant-design/icons'
 import { groupApi, projectApi, teamApi } from '@/api'
 import { formatApiError } from '@/utils/formatApiError'
@@ -15,11 +15,11 @@ interface Props {
 }
 
 /**
- * 群聊设置栏内嵌的「成员」区（创建者或 Project Admin 可管理）：
- * - 点开栏直接显示成员列表（头像 + 昵称 + 邮箱，自己带「（我）」标记）
- * - 「成员管理」开关：开启后每个 USER 成员行追加「移出群聊」，「取消」退出管理态
- * - 「邀请成员」：从项目成员中选择未入群的（真实后端项目成员接口可能缺 displayName，用团队成员接口补全）
- * 接口：GET/POST .../members、DELETE .../members/{userId}（后端补充文档见根目录接口补充）。
+ * 群聊设置栏内嵌的「成员」区（项目管理员 PROJECT_ADMIN 可管理，v2.0.6）：
+ * - 管理员可把普通成员设为管理员（设置后不可撤销，confirm 提示）；
+ * - 管理员不能移除/操作其他管理员（后端需同步校验）；
+ * - 「移出群聊」仅对普通成员；自己不可操作。
+ * 接口：GET/POST .../members、DELETE .../members/{userId}、PATCH 项目成员角色。
  */
 export function GroupMemberSettings({ projectId, group }: Props) {
   const { message } = App.useApp()
@@ -30,8 +30,6 @@ export function GroupMemberSettings({ projectId, group }: Props) {
   const [inviteIds, setInviteIds] = useState<string[]>([])
 
   const groupId = group?.id ?? ''
-
-  /** 项目头像：已迁出群聊设置栏，改由「项目设置-基本信息」与「创建项目」弹窗提供（v2.0.6） */
 
   const { data: members = [] } = useQuery({
     queryKey: ['groups', projectId, groupId, 'members'],
@@ -60,8 +58,11 @@ export function GroupMemberSettings({ projectId, group }: Props) {
     teamMemberNameById.get(userId) ||
     userId
 
-  const canManage =
-    group?.type === 'REQUIREMENT' && (group.createdBy === user?.id || project?.role === 'PROJECT_ADMIN')
+  // 权限模型（v2.0.6）：项目层面没有 owner，只有管理员 PROJECT_ADMIN 可管理群聊成员。
+  // 管理员可设管理员（不可撤销），但不能操作其他管理员。
+  const canManage = group?.type === 'REQUIREMENT' && project?.role === 'PROJECT_ADMIN'
+  const projectMemberRoleById = new Map(projectMembers.map((m) => [m.userId, m.role]))
+  const isMemberAdmin = (userId: string): boolean => projectMemberRoleById.get(userId) === 'PROJECT_ADMIN'
 
   const invalidate = (): void => {
     void queryClient.invalidateQueries({ queryKey: ['groups', projectId, groupId, 'members'] })
@@ -78,6 +79,15 @@ export function GroupMemberSettings({ projectId, group }: Props) {
   const removeMember = useMutation({
     mutationFn: (userId: string) => groupApi.removeMember(projectId, groupId, userId),
     onSuccess: invalidate,
+    onError: (error) => message.error(formatApiError(error)),
+  })
+  // 设为管理员 = 调整项目角色为 PROJECT_ADMIN（设置后不可撤销，前端不提供降级入口）
+  const updateRole = useMutation({
+    mutationFn: (userId: string) => projectApi.updateMemberRole(projectId, userId, 'PROJECT_ADMIN'),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'members'] })
+      message.success('已设置为管理员')
+    },
     onError: (error) => message.error(formatApiError(error)),
   })
 
@@ -141,57 +151,78 @@ export function GroupMemberSettings({ projectId, group }: Props) {
       <List
         dataSource={members}
         locale={{ emptyText: <Empty description="暂无成员" /> }}
-        renderItem={(member) => (
-          <List.Item
-            actions={
-              manageMode && member.memberType === 'USER' && member.id !== user?.id
-                ? [
-                    <Popconfirm
-                      key="remove"
-                      title={`确认将 ${member.displayName} 移出群聊？`}
-                      okText="移出"
-                      cancelText="取消"
-                      onConfirm={() => removeMember.mutate(member.id)}
-                    >
-                      <Button size="small" type="text" danger loading={removeMember.isPending}>
-                        移出群聊
-                      </Button>
-                    </Popconfirm>,
-                  ]
-                : undefined
-            }
-          >
-            <List.Item.Meta
-              avatar={
-                <Avatar
-                  size={32}
-                  src={member.id === user?.id ? user?.avatarUrl : member.avatarUrl}
-                  style={{ background: '#3b82f6' }}
-                  icon={<UserOutlined />}
-                >
-                  {(member.id === user?.id ? (user?.displayName ?? '我') : member.displayName).slice(0, 1)}
-                </Avatar>
-              }
-              title={
-                <Text strong>
-                  {member.id === user?.id ? user?.displayName ?? member.displayName : member.displayName}
-                  {member.id === user?.id ? <Text type="secondary">（我）</Text> : null}
-                </Text>
-              }
-              description={
-                member.email ? (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {member.email}
+        renderItem={(member) => {
+          const isSelf = member.id === user?.id
+          const memberAdmin = isMemberAdmin(member.id)
+          // 管理模式下仅对「普通 USER 成员」显示操作：设为管理员 + 移出群聊；
+          // 自己不可操作；管理员成员不可被操作（不能移除/降级其他管理员）
+          const actions =
+            manageMode && member.memberType === 'USER' && !isSelf && !memberAdmin
+              ? [
+                  <Popconfirm
+                    key="promote"
+                    title="设为管理员"
+                    description="设置后无法撤销，确定将他设置为管理员吗？"
+                    okText="设为管理员"
+                    cancelText="取消"
+                    onConfirm={() => updateRole.mutate(member.id)}
+                  >
+                    <Button size="small" type="text" loading={updateRole.isPending}>
+                      设为管理员
+                    </Button>
+                  </Popconfirm>,
+                  <Popconfirm
+                    key="remove"
+                    title={`确认将 ${member.displayName} 移出群聊？`}
+                    okText="移出"
+                    cancelText="取消"
+                    onConfirm={() => removeMember.mutate(member.id)}
+                  >
+                    <Button size="small" type="text" danger loading={removeMember.isPending}>
+                      移出群聊
+                    </Button>
+                  </Popconfirm>,
+                ]
+              : undefined
+          return (
+            <List.Item actions={actions}>
+              <List.Item.Meta
+                avatar={
+                  <Avatar
+                    size={32}
+                    src={isSelf ? user?.avatarUrl : member.avatarUrl}
+                    style={{ background: '#3b82f6' }}
+                    icon={<UserOutlined />}
+                  >
+                    {(isSelf ? (user?.displayName ?? '我') : member.displayName).slice(0, 1)}
+                  </Avatar>
+                }
+                title={
+                  <Text strong>
+                    {isSelf ? user?.displayName ?? member.displayName : member.displayName}
+                    {isSelf ? <Text type="secondary">（我）</Text> : null}
+                    {memberAdmin ? (
+                      <Tag color="blue" style={{ marginLeft: 8, fontSize: 11 }}>
+                        管理员
+                      </Tag>
+                    ) : null}
                   </Text>
-                ) : (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {member.memberType === 'AGENT' ? 'Agent' : ''}
-                  </Text>
-                )
-              }
-            />
-          </List.Item>
-        )}
+                }
+                description={
+                  member.email ? (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {member.email}
+                    </Text>
+                  ) : (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {member.memberType === 'AGENT' ? 'Agent' : ''}
+                    </Text>
+                  )
+                }
+              />
+            </List.Item>
+          )
+        }}
       />
 
       {/* 邀请成员：从项目成员中选择未入群的 */}

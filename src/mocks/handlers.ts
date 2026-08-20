@@ -890,6 +890,102 @@ function createRepoBindingHandlers() {
       return HttpResponse.json({ data: record, requestId: 'req_mock_bind_repo' })
     }),
 
+    /** POST /api/projects/:projectId/repositories/new — 项目内新建仓库并绑定（v2.0.19 §44） */
+    http.post('/api/projects/:projectId/repositories/new', async ({ params, request }) => {
+      const projectId = String(params.projectId)
+      const idempotencyKey = request.headers.get('Idempotency-Key')
+      const body = (await request.json().catch(() => ({}))) as {
+        name?: string
+        description?: string
+        private?: boolean
+        installationId?: string
+        displayName?: string
+      }
+
+      if (!body.name || !body.name.trim()) {
+        return HttpResponse.json(
+          { data: null, error: { code: 'INVALID_INPUT', message: '仓库名称不能为空' } },
+          { status: 422 },
+        )
+      }
+      if (!body.installationId) {
+        return HttpResponse.json(
+          { data: null, error: { code: 'INVALID_INPUT', message: '必须指定 GitHub Installation' } },
+          { status: 422 },
+        )
+      }
+
+      // 找到对应 Installation 以拼接 fullName / githubUrl
+      const installation = mockInstallations.find((i) => i.id === body.installationId)
+      const accountLogin = installation?.accountLogin ?? 'unknown-user'
+      const repoName = body.name.trim()
+      const now = new Date().toISOString()
+      const newRepoId = `repo-new-${Date.now()}`
+      const newBindingId = `bound-${projectId}-new-${Date.now()}`
+
+      // 同时创建绑定记录（让 listProjectRepositories 立刻能查到）
+      const bindingRecord: import('@/types/github').ProjectBoundRepository = {
+        id: newBindingId,
+        installationId: body.installationId,
+        repositoryId: newRepoId,
+        providerRepositoryId: Math.floor(Math.random() * 1_000_000),
+        fullName: `${accountLogin}/${repoName}`,
+        githubUrl: `https://github.com/${accountLogin}/${repoName}`,
+        displayName: body.displayName?.trim() || repoName,
+        defaultBranch: 'main',
+        authorizationStatus: 'AUTHORIZED',
+        metadataSyncedAt: now,
+        boundAt: now,
+      }
+      const prev = bindings.get(projectId) ?? []
+      // 防止 HMR 热重载时重复添加同一个仓库到 bindings
+      const alreadyBound = prev.some((b) => b.fullName === bindingRecord.fullName)
+      if (!alreadyBound) {
+        bindings.set(projectId, [...prev, bindingRecord])
+      }
+
+      // 同时加入授权仓库列表，方便在 TeamAuthorizedReposPage 看到
+      // 防 HMR 重复：仅当 fullName 不存在时才 push
+      const alreadyInAuthorized = mockAuthorizedRepos.some(
+        (r) => r.fullName === bindingRecord.fullName,
+      )
+      if (!alreadyInAuthorized) {
+        mockAuthorizedRepos.push({
+          id: newRepoId,
+          installationId: body.installationId,
+          providerRepositoryId: bindingRecord.providerRepositoryId,
+          fullName: bindingRecord.fullName,
+          githubUrl: bindingRecord.githubUrl,
+          defaultBranch: 'main',
+          visibility: body.private ? 'PRIVATE' : 'PUBLIC',
+          archived: false,
+          authorizationStatus: 'AUTHORIZED',
+          metadataSyncedAt: now,
+        })
+      }
+
+      return HttpResponse.json(
+        {
+          data: {
+            id: newBindingId,
+            repositoryId: newRepoId,
+            installationId: body.installationId,
+            fullName: bindingRecord.fullName,
+            githubUrl: bindingRecord.githubUrl,
+            defaultBranch: 'main',
+            displayName: body.displayName?.trim() || undefined,
+            status: 'READY',
+            failureCode: null,
+            failureReason: null,
+            createdAt: now,
+          },
+          requestId: 'req_mock_new_repo',
+          ...(idempotencyKey ? { idempotencyKey } : {}),
+        },
+        { status: 201 },
+      )
+    }),
+
     http.delete('/api/projects/:projectId/repositories/:bindingId', ({ params }) => {
       const projectId = String(params.projectId)
       const bindingId = String(params.bindingId)
@@ -1208,15 +1304,15 @@ export const handlers = [
       requestId: 'req_mock_authorized_repos',
     })
   }),
-// 来自 MSW 内部，在【拦截成功、路由匹配上之后】，MSW 自动组装、生成这个info上下文对象，再调用你的回调函数，把它塞进来。
-//info 对象;const params = info.params
-    // const request = info.request
-    // const cookies = info.cookies
-    // const requestId = info.requestId
-// 拦截,匹配路由,执行回调函数
-//匹配路由:只要是 POST 请求，并且 URL 路径符合 /api/teams/【任意值】/integrations/github/installations 这个格式，就触发后面这个回调，不要发到真实后端。
-//拦截 = MSW 在浏览器发出真实网络请求、发给后端之前，把这个请求 “半路截住”，不走真实后端，直接用你写的 mock 函数返回假数据。
-//request.url 不是对象！是字符串！
+  // 来自 MSW 内部，在【拦截成功、路由匹配上之后】，MSW 自动组装、生成这个info上下文对象，再调用你的回调函数，把它塞进来。
+  //info 对象;const params = info.params
+  // const request = info.request
+  // const cookies = info.cookies
+  // const requestId = info.requestId
+  // 拦截,匹配路由,执行回调函数
+  //匹配路由:只要是 POST 请求，并且 URL 路径符合 /api/teams/【任意值】/integrations/github/installations 这个格式，就触发后面这个回调，不要发到真实后端。
+  //拦截 = MSW 在浏览器发出真实网络请求、发给后端之前，把这个请求 “半路截住”，不走真实后端，直接用你写的 mock 函数返回假数据。
+  //request.url 不是对象！是字符串！
   http.post('/api/teams/:teamId/integrations/github/installations', ({ params, request }) => {//路径参数对象params,就是路径当中用:进行占位的都赋值给params
     const teamId = String(params.teamId)
     const idempotencyKey = request.headers.get('Idempotency-Key')
@@ -1608,16 +1704,16 @@ export const handlers = [
     list.push(message)
     const taskRecord = mentionedAgents[0]
       ? createTaskFromMessageIntent(projectId, {
-          requirementGroupId: groupId,
-          title: typeof (body.content as { text?: unknown })?.text === 'string'
-            ? (body.content as { text: string }).text.slice(0, 80)
-            : '来自群聊的任务',
-          requirement: typeof (body.content as { text?: unknown })?.text === 'string'
-            ? (body.content as { text: string }).text
-            : '',
-          messageId: message.id,
-          createdAt: message.createdAt,
-        })
+        requirementGroupId: groupId,
+        title: typeof (body.content as { text?: unknown })?.text === 'string'
+          ? (body.content as { text: string }).text.slice(0, 80)
+          : '来自群聊的任务',
+        requirement: typeof (body.content as { text?: unknown })?.text === 'string'
+          ? (body.content as { text: string }).text
+          : '',
+        messageId: message.id,
+        createdAt: message.createdAt,
+      })
       : null
     const task = taskRecord
       ? { id: taskRecord.id, displayCode: taskRecord.displayCode, status: taskRecord.status, missingFields: ['repositoryIds', 'baseRef'] }
@@ -1703,7 +1799,7 @@ export const handlers = [
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
-    ;(MOCK_MEMORIES[projectId] ??= []).push(memory)
+      ; (MOCK_MEMORIES[projectId] ??= []).push(memory)
     return HttpResponse.json({ data: memory }, { status: 201 })
   }),
 
@@ -1730,7 +1826,7 @@ export const handlers = [
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
-    ;(MOCK_MEMORIES[projectId] ??= []).push(memory)
+      ; (MOCK_MEMORIES[projectId] ??= []).push(memory)
     return HttpResponse.json({ data: memory }, { status: 201 })
   }),
 

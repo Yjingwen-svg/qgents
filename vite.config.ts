@@ -144,8 +144,12 @@ export default defineConfig(({ mode }) => {
               // target: 'https://api.qgents.dpdns.org',
               target: 'http://47.113.224.195:32500',//内网
               changeOrigin: true,
+              // 避免 Tomcat/Nginx 对 Host 校验失败导致部分 POST 请求 502
+              headers: { Host: '47.113.224.195:32500' },
               // WebSocket 实时通道（/api/v1/ws/realtime）握手升级需要转发
               ws: true,
+              timeout: 60_000,
+              proxyTimeout: 60_000,
               rewrite: (path) => path.replace(/^\/api/, '/api/v1'),
             },
           },

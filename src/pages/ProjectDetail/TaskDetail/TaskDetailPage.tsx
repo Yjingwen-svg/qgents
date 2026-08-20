@@ -634,7 +634,10 @@ function PreflightRepoQuery({
       error: query.error,
       refetch: () => { void query.refetch() },
     })
-  }, [repositoryId, repositoryName, query.data, query.isLoading, query.error, query, onResult])
+    // 注意: 不将 query 对象和 onResult 加入依赖列表
+    // query 对象在每次渲染时都有新引用，会导致 useEffect 无限触发
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repositoryId, repositoryName, query.data, query.isLoading, query.error])
 
   useEffect(() => {
     return () => { onUnmount(repositoryId) }

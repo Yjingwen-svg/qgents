@@ -76,6 +76,9 @@ export function useUpdateQualityGate(
 /**
  * 查询 MR 前预检。
  * 以 taskId + repositoryId + targetBranch 为唯一键；STALE/FAILED 都不表示可创建 MR。
+ *
+ * 当任务处于 DELIVERING → WAITING_PREFLIGHT 过渡期间，后端会在 commit/push 完成后
+ * 自动创建 Dry Run。5s 轮询兜底（SSE 不可用时），让用户无需手动刷新即可看到状态变化。
  */
 export function usePreflight(
   projectId: string,
@@ -87,6 +90,11 @@ export function usePreflight(
     queryKey: queryKeys.preflight.detail(projectId, taskId, repositoryId, targetBranch),
     queryFn: () => preflightApi.get(projectId, taskId, repositoryId, targetBranch),
     enabled: Boolean(projectId && targetBranch),
+    // 任务交付阶段（DELIVERING → WAITING_PREFLIGHT）需要自动刷新，
+    // 以便后端完成 commit/push 后前端能及时看到 Dry Run 状态变化。
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   })
 }
 

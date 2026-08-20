@@ -11,6 +11,7 @@ import {
   cqPlusOneStatusDescription,
   dryRunStatusColor,
   dryRunStatusDescription,
+  preflightBlockerLabel,
   preflightRepoSummary,
 } from './preflightDisplay'
 import type { Preflight } from '@/types/qualityGate'
@@ -182,7 +183,7 @@ export function PreflightPanel({
       {
         title: '状态描述',
         key: 'summary',
-        width: 280,
+        width: 320,
         render: (_: unknown, row) => {
           if (row.loading) return <Text type="secondary">加载中...</Text>
           if (row.error) return <Text type="danger">{formatApiError(row.error)}</Text>
@@ -193,6 +194,29 @@ export function PreflightPanel({
             blockers: row.preflight.blockers,
           })
           const tagColor = color === 'success' ? 'green' : color === 'error' ? 'red' : color === 'warning' ? 'orange' : color === 'processing' ? 'blue' : 'default'
+
+          // 展示主要描述 tag + blocker 详情 tooltip
+          const blockers = row.preflight.blockers ?? []
+          const significantBlockers = blockers.filter(
+            (b) => b.code !== 'DRY_RUN_MISSING' && b.code !== 'CQ_PLUS_ONE_MISSING',
+          )
+
+          if (significantBlockers.length > 0) {
+            const blockerList = significantBlockers
+              .map((b) => preflightBlockerLabel(b.code))
+              .join('；')
+            return (
+              <Tooltip title={<div style={{ maxWidth: 300 }}>{blockerList}</div>}>
+                <Space direction="vertical" size={4}>
+                  <Tag color={tagColor}>{text}</Tag>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    阻塞原因：{blockerList}
+                  </Text>
+                </Space>
+              </Tooltip>
+            )
+          }
+
           return <Tag color={tagColor}>{text}</Tag>
         },
       },
@@ -292,7 +316,19 @@ export function PreflightPanel({
     const errored = preflights.filter((p) => p.error)
 
     if (loaded.length === 0 && loading.length > 0) {
-      return { type: 'info' as const, message: '代码已推送，Dry Run 自动执行中', description: '请由非任务发起人完成 CQ+1，审核通过后系统将自动创建 MR。' }
+      return { type: 'info' as const, message: '正在加载预检状态...', description: '请稍候，正在获取仓库预检信息。' }
+    }
+
+    // 检查所有已加载仓库是否都有 TASK_NOT_READY blocker（任务仍在 DELIVERING）
+    const allTaskNotReady = loaded.length > 0 && loaded.every((p) =>
+      p.preflight?.blockers?.some((b) => b.code === 'TASK_NOT_READY'),
+    )
+    if (allTaskNotReady) {
+      return {
+        type: 'info' as const,
+        message: '任务正在交付中（commit/push 进行中）',
+        description: '代码推送完成后，系统将自动触发各仓库的 Dry Run。请耐心等待，页面会自动刷新。',
+      }
     }
 
     const allDryRunRunning = loaded.every((p) => {

@@ -12,6 +12,19 @@ import { ProjectActivityPanel } from './ProjectActivityPanel'
 import type { CreateGroupPayload, Group } from '@/types'
 import './ProjectDetailLayout.scss'
 
+/** 群聊置顶（本地偏好）localStorage 键 */
+const PINNED_GROUPS_KEY = 'qgents_pinned_groups'
+
+function readPinnedGroups(): string[] {
+  try {
+    const raw = localStorage.getItem(PINNED_GROUPS_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []
+  } catch {
+    return []
+  }
+}
+
 /**
  * 项目详情布局：固定左侧导航，右侧为子路由 Outlet
  *
@@ -35,6 +48,8 @@ export default function ProjectDetailLayout() {
 
   const [createOpen, setCreateOpen] = useState(false)
   const [groupSearch, setGroupSearch] = useState('')
+  // 群聊置顶（前端 localStorage 兜底，后端本轮不返回 isPinned，见接口文档 §置顶不在本轮范围）
+  const [pinnedIds, setPinnedIds] = useState<string[]>(readPinnedGroups)
   const [form] = Form.useForm<CreateGroupPayload>()
 
   // 左侧导航栏宽度（可拖拽调整）
@@ -131,9 +146,9 @@ export default function ProjectDetailLayout() {
   const archivedGroups = requirementGroups.filter((g) => g.isArchived)
   const keyword = groupSearch.trim().toLowerCase()
   const matches = (g: Group) => !keyword || g.title.toLowerCase().includes(keyword)
-  const pinnedGroups = activeRequirement.filter((g) => g.isPinned && matches(g))
+  const pinnedGroups = activeRequirement.filter((g) => pinnedIds.includes(g.id) && matches(g))
   const normalGroups = activeRequirement
-    .filter((g) => !g.isPinned && matches(g))
+    .filter((g) => !pinnedIds.includes(g.id) && matches(g))
     .sort((a, b) => (b.latestActivityAt ?? '').localeCompare(a.latestActivityAt ?? ''))
   const archivedMatches = archivedGroups.filter(matches)
 
@@ -157,6 +172,24 @@ export default function ProjectDetailLayout() {
     },
   })
 
+  // 后端群列表返回 pinned（当前用户置顶偏好）时，以后端为准覆盖本地（跨设备同步）；
+  // 后端未实现/未返回该字段时保持 localStorage 兜底（§群聊置顶后端接口需求）。
+  useEffect(() => {
+    const backendPinned = groups.filter((g) => typeof g.pinned === 'boolean').map((g) => g.id)
+    if (backendPinned.length === 0) return
+    setPinnedIds((prev) => {
+      if (prev.length === backendPinned.length && prev.every((id) => backendPinned.includes(id))) {
+        return prev
+      }
+      try {
+        localStorage.setItem(PINNED_GROUPS_KEY, JSON.stringify(backendPinned))
+      } catch {
+        // localStorage 不可用时仅本次会话生效
+      }
+      return backendPinned
+    })
+  }, [groups])
+
   // 在群聊路径但未指定具体群（/req-chat 无 groupId）时，重定向到项目总群。
   // groups 加载完成前不重定向（避免闪成空态），加载完成后自动跳主群。
   if (onReqChat && !groupId && !groupsLoading) {
@@ -165,11 +198,35 @@ export default function ProjectDetailLayout() {
     }
   }
 
+  /** 置顶/取消置顶需求群：乐观更新本地 + 后端持久化（失败回滚，localStorage 兜底） */
+  function togglePin(groupId: string) {
+    const prev = pinnedIds
+    setPinnedIds((current) => {
+      const next = current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]
+      try {
+        localStorage.setItem(PINNED_GROUPS_KEY, JSON.stringify(next))
+      } catch {
+        // localStorage 不可用时仅本次会话生效
+      }
+      return next
+    })
+    const willPin = !prev.includes(groupId)
+    groupApi.setGroupPinned(projectId, groupId, willPin).catch(() => {
+      // 接口未实现/失败：回滚本地，仍以 localStorage 兜底展示
+      setPinnedIds(prev)
+      try {
+        localStorage.setItem(PINNED_GROUPS_KEY, JSON.stringify(prev))
+      } catch {
+        // ignore
+      }
+    })
+  }
+
   // 单个群列表项：置顶标记 + 标题 + 未读数 + 最新消息摘要
   function renderBranch(g: Group, pinned = false) {
     const isMain = g.type === 'PROJECT_MAIN'
     return (
-      <li key={g.id}>
+      <li key={g.id} className="pd-nav__branch-item">
         <NavLink
           to={PATHS.projectReqChat(projectId, g.id)}
           className={() =>
@@ -219,19 +276,35 @@ export default function ProjectDetailLayout() {
             )}
           </span>
         </NavLink>
+        {/* 置顶按钮：仅需求群（主群恒在列表最前，无需置顶）；悬停显示 */}
+        {!isMain && (
+          <button
+            type="button"
+            className={`pd-nav__branch-pin-btn${pinned ? ' is-pinned' : ''}`}
+            title={pinned ? '取消置顶' : '置顶群聊'}
+            aria-label={pinned ? '取消置顶' : '置顶群聊'}
+            onClick={() => togglePin(g.id)}
+          >
+            <PushpinOutlined />
+          </button>
+        )}
       </li>
     )
   }
 
   const showActivityPanel = onReqChat && mainGroup && groupId === mainGroup.id
 
+  // 群聊视图不做响应式压缩：窗口缩小时主内容列保持最小可读宽度（720px），
+  // 超出部分由外层 Content 的 overflow:auto 出横向滚动条，而不是挤压布局。
+  const mainColumn = onReqChat ? 'minmax(720px, 1fr)' : 'minmax(0, 1fr)'
+
   return (
     <div
       className="pd"
       style={{
         gridTemplateColumns: showActivityPanel
-          ? `${sidebarWidth}px 6px minmax(0, 1fr) 6px ${activityWidth}px`
-          : `${sidebarWidth}px 6px minmax(0, 1fr)`,
+          ? `${sidebarWidth}px 6px ${mainColumn} 6px ${activityWidth}px`
+          : `${sidebarWidth}px 6px ${mainColumn}`,
       }}
     >
       <aside className="pd-nav" aria-label="项目导航">
@@ -389,6 +462,8 @@ function NavIcon({ id }: { id: string }) {
     'req-chat':
       'M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v6A2.5 2.5 0 0 1 16.5 15H10l-4 4v-4.2A2.5 2.5 0 0 1 5 12.5v-6z',
     tasks: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+    // 交付中心：包裹图标（与概览的房子区分）
+    diffs: 'M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8',
     agents:
       'M9 8a3 3 0 1 0 0-0.01M17 9a2.5 2.5 0 1 0 0-0.01M3.5 19c.8-3 2.8-4.5 5.5-4.5S14 16 14.5 19M14.5 14.5c1.6-.4 3.2.2 4.5 1.8',
     skills: 'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3z',

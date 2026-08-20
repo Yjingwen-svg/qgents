@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Avatar,
   Button,
-  ConfigProvider,
   Form,
   Input,
   Modal,
@@ -25,7 +24,6 @@ import { useAuth } from '@/context/AuthContext'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
 import { isCurrentUserTeamOwner } from '@/utils/teamOwnership'
-import { qgDarkPageTheme } from '@/theme/antdTheme'
 import type { CreateTeamPayload, Team, TeamMember, TeamInvitation, TeamRole } from '@/types'
 import type { TableProps } from 'antd'
 
@@ -58,7 +56,6 @@ export default function TeamSettingsPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [isHover, setIsHover] = useState(false)
 
   const {
     data: team,
@@ -121,49 +118,25 @@ export default function TeamSettingsPage() {
   }
 
   return (
-    <ConfigProvider theme={qgDarkPageTheme}>
-      <div style={{ padding: '24px 32px', maxWidth: 720, margin: '0 auto', minHeight: 'calc(100vh - var(--qg-banner-h))' }}>
-        {/* 顶部：标题居中，返回链接 / 操作按钮分别绝对定位到左右两侧 */}
-        <div style={{ position: 'relative', marginBottom: 24, paddingTop: 4 }}>
-          <Link
-            to={PATHS.teamDetail(teamId)}
-            onMouseEnter={() => setIsHover(true)}
-            onMouseLeave={() => setIsHover(false)}
-            style={{
-              position: 'absolute',
-              left: 0,
-              top: 0,
-              color: 'var(--qg-text-on-dark-secondary)',
-              fontSize: '13px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '4px 8px',
-              borderRadius: '6px',
-              transition: 'all 0.2s ease',
-              textDecoration: 'none',
-              border: isHover ? '1px solid rgba(255,255,255,0.16)' : '1px solid rgba(255,255,255,0.1)',
-              background: isHover ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
-            }}
-          >
-            ← 返回团队
-          </Link>
-          <Title level={3} style={{ color: 'var(--qg-text-on-dark)', textAlign: 'center', margin: '32px 0 0' }}>
-            团队设置
-          </Title>
-          <Space style={{ position: 'absolute', right: 0, top: 0 }}>
-            {isTeamOwner && (
-              <Button icon={<GithubOutlined />} onClick={() => navigate(PATHS.githubIntegration(teamId))}>
-                GitHub 集成
-              </Button>
-            )}
-            {isOwner && (
-              <Button danger loading={disbandTeam.isPending} onClick={handleDisband}>
-                解散团队
-              </Button>
-            )}
-          </Space>
-        </div>
+    <div style={{ padding: '24px 32px 40px', maxWidth: 720, margin: '0 auto', minHeight: '100%' }}>
+      {/* 顶部：标题 + 右侧操作（作为团队详情路由层子视图，返回由侧栏负责） */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <Title level={3} style={{ margin: 0 }}>
+          团队设置
+        </Title>
+        <Space>
+          {isTeamOwner && (
+            <Button icon={<GithubOutlined />} onClick={() => navigate(PATHS.githubIntegration(teamId))}>
+              GitHub 集成
+            </Button>
+          )}
+          {isOwner && (
+            <Button danger loading={disbandTeam.isPending} onClick={handleDisband}>
+              解散团队
+            </Button>
+          )}
+        </Space>
+      </div>
 
         <Tabs
           defaultActiveKey="basic"
@@ -180,8 +153,7 @@ export default function TeamSettingsPage() {
             },
           ]}
         />
-      </div>
-    </ConfigProvider>
+    </div>
   )
 }
 

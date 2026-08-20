@@ -44,6 +44,7 @@ import type {
   MergeRequestCqReview,
   MergeRequestCommitList,
   MergeRequestListFilters,
+  MergeRequestPreflight,
   MergeRequestSummary,
 } from '@/types/task-model'
 
@@ -75,6 +76,12 @@ export function useTask(projectId: string, taskId: string): UseQueryResult<Task>
     queryKey: taskModelQueryKeys.tasks.detail(projectId, taskId),
     queryFn: () => tasksApi.get(projectId, taskId),
     enabled: Boolean(projectId && taskId),
+    // 任务状态可能从 DELIVERING → WAITING_PREFLIGHT → SUCCEEDED 等转换。
+    // 当 SSE/WebSocket 不可用时，通过 5s 轻量轮询兜底刷新状态，
+    // 避免 MR_FIRST 任务完成后用户看不到预检面板和 MR 占位。
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   })
 }
 
@@ -362,12 +369,39 @@ export function useRejectDiff(projectId: string): UseMutationResult<DiffDetail, 
 
 export function useCreateMergeRequest(
   projectId: string,
-): UseMutationResult<MergeRequestSummary, Error, MergeRequestCreateInput> {
+): UseMutationResult<MergeRequestPreflight, Error, MergeRequestCreateInput> {
   return useMutation({
+    // 兼容期：底层已转发为 requestPreflight，返回预检响应而非真实 MR
     mutationFn: (input) => mergeRequestsApi.create(projectId, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.all(projectId) })
     },
+  })
+}
+
+/** 申请 MR 预检（统一创建 MR 自动预检流程） */
+export function useRequestMergeRequestPreflight(
+  projectId: string,
+): UseMutationResult<MergeRequestPreflight, Error, { taskId?: string; repositoryId?: string; idempotencyKey?: string }> {
+  return useMutation({
+    mutationFn: (input) => mergeRequestsApi.requestPreflight(projectId, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.all(projectId) })
+    },
+  })
+}
+
+/** 按 Task 查询预检状态（恢复已启动的预检进度） */
+export function useTaskMergeRequestPreflight(
+  projectId: string,
+  taskId: string | null | undefined,
+): UseQueryResult<TaskMergeRequestPreflightList> {
+  return useQuery({
+    queryKey: taskModelQueryKeys.mergeRequests.preflightByTask(projectId, taskId ?? ''),
+    queryFn: () => mergeRequestsApi.getTaskPreflight(projectId, taskId!),
+    enabled: Boolean(projectId) && Boolean(taskId),
+    staleTime: 10 * 1000,
+    refetchInterval: 30 * 1000,
   })
 }
 

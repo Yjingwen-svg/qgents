@@ -151,6 +151,22 @@ export function TaskTriggerModal({ open, projectId, groupId, initialInstruction,
 
   async function handleFinish(values: TaskTriggerFormValues) {
     if (submitLockRef.current || repositories.length === 0) return
+    // 空仓库约束（§3.4）：禁止提交 main 兜底，baseRef 必须真实存在
+    const baseRefTrimmed = values.baseRef?.trim() ?? ''
+    if (!baseRefTrimmed) {
+      message.error('请选择基准分支；仓库未初始化时无法创建任务')
+      return
+    }
+    // 选中仓库中如果存在未初始化仓库，提示并阻止提交
+    const uninitializedRepos = repositories.filter(
+      (r) => values.repositoryIds.includes(r.id) && !r.defaultBranch,
+    )
+    if (uninitializedRepos.length > 0) {
+      message.error(
+        `仓库 ${uninitializedRepos.map((r) => r.fullName).join(', ')} 尚未初始化，请先在 GitHub 端初始化并设置项目默认基准分支`,
+      )
+      return
+    }
     submitLockRef.current = true
     setIsSubmitting(true)
     const input: TaskCreateInput = {
@@ -158,7 +174,7 @@ export function TaskTriggerModal({ open, projectId, groupId, initialInstruction,
       title: values.title.trim(),
       requirement: values.requirement.trim(),
       repositoryIds: values.repositoryIds,
-      baseRef: values.baseRef.trim(),
+      baseRef: baseRefTrimmed,
     }
     try {
       const task = await mutation.mutateAsync(input)

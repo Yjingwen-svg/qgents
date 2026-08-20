@@ -219,6 +219,14 @@ export const qualityGateApi = {
       body: input,
     }).then(mapQualityGateConfig)
   },
+
+  /** 预检 (Preflight)：获取指定 task+repo 的 CQ+1 / DryRun 状态 */
+  preflight(
+    projectId: string,
+    params: { taskId: string; repositoryId: string; targetBranch: string },
+  ) {
+    return preflightApi.get(projectId, params.taskId, params.repositoryId, params.targetBranch)
+  },
 }
 
 export const preflightApi = {

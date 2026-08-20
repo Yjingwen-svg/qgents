@@ -2,11 +2,7 @@ import { useMemo, useState } from 'react'
 import { Alert, Button, Card, Collapse, Empty, Spin, Tag, Typography } from 'antd'
 import { CaretRightOutlined, FileTextOutlined } from '@ant-design/icons'
 import { useWorkspaceDiffPreview, useWorkspaceDiffPreviewFiles } from '@/hooks/workspaceDiffPreview'
-import type {
-  Task,
-  WorkspaceDiffPreviewFile,
-  WorkspaceDiffPreviewStatus,
-} from '@/types/task-model'
+import type { WorkspaceDiffPreviewFile, WorkspaceDiffPreviewStatus } from '@/types/task-model'
 import styles from './TaskDetailPage.module.scss'
 
 const { Text } = Typography
@@ -14,7 +10,6 @@ const { Text } = Typography
 interface WorkspaceDiffPreviewCardProps {
   projectId: string
   taskId: string
-  taskStatus: Task['status']
   repositoryNames: Record<string, string>
 }
 
@@ -26,10 +21,11 @@ interface WorkspaceDiffPreviewCardProps {
  * - 失败/不可用时显示「实时预览暂不可用」，不污染任务状态。
  * - 多仓库文件按 repositoryId 分组显示，路径使用 Workspace 相对路径。
  */
-export function WorkspaceDiffPreviewCard({ projectId, taskId, taskStatus, repositoryNames }: WorkspaceDiffPreviewCardProps) {
+export function WorkspaceDiffPreviewCard({ projectId, taskId, repositoryNames }: WorkspaceDiffPreviewCardProps) {
   const previewQuery = useWorkspaceDiffPreview(projectId, taskId)
   const filesQuery = useWorkspaceDiffPreviewFiles(projectId, taskId)
   const status = previewQuery.data
+  const availablePreview = status?.kind === 'available' ? status.preview : null
 
   const summary = useMemo(() => buildSummary(status, previewQuery.isLoading, filesQuery.isLoading, filesQuery.data?.length ?? 0), [
     status,
@@ -41,9 +37,6 @@ export function WorkspaceDiffPreviewCard({ projectId, taskId, taskStatus, reposi
 
   // 默认折叠：用户展开后才加载更详细的 patch。折叠状态保留 —— SSE 刷新不会"啪"地打开/关闭。
   const [expanded, setExpanded] = useState(false)
-
-  // SUCCEEDED 之后，正式交付区域会接管；卡片折叠保留，但不主动消失。
-  const isTerminal = taskStatus === 'SUCCEEDED' || taskStatus === 'FAILED' || taskStatus === 'CANCELLED'
 
   return (
     <Card className={styles.workspaceDiffPreviewCard} size="small" data-testid="workspace-diff-preview-card">
@@ -68,8 +61,6 @@ export function WorkspaceDiffPreviewCard({ projectId, taskId, taskStatus, reposi
         />
       ) : summary.kind === 'available' ? (
         <>
-          <Text type="secondary" data-testid="workspace-diff-preview-stats">{summary.detail}</Text>
-          {isTerminal ? <Text type="secondary" className={styles.workspaceDiffPreviewNote}>任务已结束，正式 Diff 区域优先展示，实时预览保留备查。</Text> : null}
           <Collapse
             ghost
             className={styles.workspaceDiffPreviewCollapse}
@@ -81,9 +72,9 @@ export function WorkspaceDiffPreviewCard({ projectId, taskId, taskStatus, reposi
               children: (<>
                 {filesQuery.isLoading ? (
                   <div className={styles.inlineState}><Spin size="small" /><Text type="secondary">正在加载文件列表</Text></div>
-                ) : filesByRepository.length === 0 ? (
+                ) : filesByRepository.length === 0 && !availablePreview?.patch ? (
                   <Empty description="暂无文件" />
-                ) : (
+                ) : filesByRepository.length > 0 ? (
                   <div className={styles.workspaceDiffPreviewFiles}>
                     {filesByRepository.map(({ repositoryId, repositoryName, files }) => (
                       <div key={repositoryId} className={styles.workspaceDiffPreviewRepo}>
@@ -101,8 +92,8 @@ export function WorkspaceDiffPreviewCard({ projectId, taskId, taskStatus, reposi
                       </div>
                     ))}
                   </div>
-                )}
-                {status.preview.patch ? <pre>{status.preview.patch}</pre> : null}
+                ) : null}
+                {availablePreview?.patch ? <PatchPreview patch={availablePreview.patch} /> : null}
               </>),
               extra: <CaretRightOutlined rotate={expanded ? 90 : 0} aria-hidden />,
             }]}
@@ -116,7 +107,6 @@ export function WorkspaceDiffPreviewCard({ projectId, taskId, taskStatus, reposi
 interface Summary {
   kind: 'loading' | 'empty' | 'unavailable' | 'available'
   headline: string
-  detail?: string
   message?: string
 }
 
@@ -146,7 +136,6 @@ function buildSummary(
   return {
     kind: 'available',
     headline: `实时预览：${preview.filesChanged} 个文件 · +${preview.additions} / -${preview.deletions} · revision ${preview.revision}`,
-    detail: `revision ${preview.revision} · workingTreeHash ${preview.workingTreeHash}`,
   }
 }
 
@@ -181,4 +170,15 @@ function groupFilesByRepository(files: WorkspaceDiffPreviewFile[], names: Record
 
 function sum(files: WorkspaceDiffPreviewFile[], key: 'additions' | 'deletions'): number {
   return files.reduce((acc, file) => acc + (key === 'additions' ? file.additions : file.deletions), 0)
+}
+
+function PatchPreview({ patch }: { patch: string }) {
+  return <pre className={styles.workspaceDiffPreviewPatch} data-testid="workspace-diff-preview-patch">{patch.split('\n').map((line, index) => <span key={`${index}:${line}`} className={styles[patchLineKind(line)]} data-testid={`workspace-diff-line-${patchLineKind(line)}`}>{line || ' '}{index < patch.split('\n').length - 1 ? '\n' : null}</span>)}</pre>
+}
+
+function patchLineKind(line: string): 'workspaceDiffPreviewPatchMeta' | 'workspaceDiffPreviewPatchAdded' | 'workspaceDiffPreviewPatchDeleted' | 'workspaceDiffPreviewPatchContext' {
+  if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('@@')) return 'workspaceDiffPreviewPatchMeta'
+  if (line.startsWith('+')) return 'workspaceDiffPreviewPatchAdded'
+  if (line.startsWith('-')) return 'workspaceDiffPreviewPatchDeleted'
+  return 'workspaceDiffPreviewPatchContext'
 }

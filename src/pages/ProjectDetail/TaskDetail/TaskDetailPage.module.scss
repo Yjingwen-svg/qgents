@@ -1206,3 +1206,372 @@
 .runLogEntry[data-entry-type='EXECUTION'] {
   opacity: 1;
 }
+
+.workspaceDiffPreviewPatch {
+  max-height: 280px;
+  margin: 8px 0 0;
+  overflow: auto;
+  border: 1px solid #e7edf3;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #26364d;
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.workspaceDiffPreviewPatch span {
+  display: block;
+  min-width: max-content;
+  padding: 0 10px;
+}
+
+.workspaceDiffPreviewPatchAdded { background: #dafbe1; color: #116329; }
+.workspaceDiffPreviewPatchDeleted { background: #ffebe9; color: #a40e26; }
+.workspaceDiffPreviewPatchMeta { background: #ddf4ff; color: #0969da; }
+.workspaceDiffPreviewPatchContext { background: transparent; }
+
+.codeDeliveryCard {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  border-color: #e4eaf2;
+  border-radius: clamp(4px, 0.1vw + 3px, 100%);
+  overflow: auto;
+}
+
+.codeDeliveryCard :global(.ant-card-body) {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  gap: clamp(6px, 0.25vw + 4px, 100%);
+  padding: clamp(6px, 0.2vw + 4px, 100%);
+}
+
+.codeChangeSection,
+.deliverySection {
+  display: grid;
+  min-width: 0;
+  gap: clamp(4px, 0.15vw + 3px, 100%);
+}
+
+.deliverySection {
+  padding-top: clamp(6px, 0.25vw + 4px, 100%);
+  border-top: 1px solid #edf1f5;
+}
+
+.deliveryReason {
+  margin-top: calc(clamp(2px, 0.1vw + 1px, 100%) * -1);
+}
+
+.codeDeliveryRepositoryRow {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: clamp(4px, 0.2vw + 3px, 100%);
+  align-items: center;
+  padding: clamp(4px, 0.15vw + 3px, 100%) clamp(5px, 0.15vw + 4px, 100%);
+  border: 1px solid #edf1f5;
+  border-radius: clamp(3px, 0.1vw + 2px, 100%);
+}
+
+.codeDeliveryRepositoryInfo {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.codeDeliveryRepositoryInfo :global(.ant-typography) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codeDeliveryActions {
+  display: flex;
+  align-items: center;
+  gap: clamp(3px, 0.1vw + 2px, 100%);
+  white-space: nowrap;
+}
+
+.codeDeliveryActions :global(.ant-btn) {
+  padding-inline: 0;
+}
+
+.codeDeliveryFailure {
+  grid-column: 1 / -1;
+}
+
+/* Task detail hierarchy refresh: identity → action → flow → history → workspace. */
+.taskHeader { padding: clamp(10px, 0.35vw + 7px, 100%) 0 clamp(9px, 0.3vw + 6px, 100%); }
+.headerIdentity { display: grid; min-width: 0; gap: 2px; }
+.taskCode { font-size: clamp(11px, 0.12vw + 9px, 100%); font-weight: 700; }
+.taskTitle { font-size: clamp(18px, 0.45vw + 14px, 100%) !important; }
+.headerMeta { display: flex; min-width: 0; flex-wrap: wrap; gap: 0 clamp(12px, 0.8vw + 6px, 100%); padding: clamp(5px, 0.2vw + 3px, 100%) 0 0; }
+.headerMetaItem { display: flex; min-width: max-content; max-width: min(42%, 340px); align-items: baseline; gap: 4px; }
+
+.attentionBanner { padding: clamp(6px, 0.25vw + 4px, 100%) 0 0; }
+.attentionCard { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #f4d58b; border-radius: 8px; background: #fffbeb; }
+.attentionCard > div:first-child { display: grid; min-width: 0; gap: 2px; }
+.attentionCard > div:first-child :global(.ant-typography) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attentionTitle { color: #7c5700; font-size: 14px; }
+.attentionActions { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
+
+.content { grid-template-rows: minmax(clamp(156px, 11vw + 12px, 100%), 0.95fr) minmax(0, 1.35fr); }
+.workbenchMain { display: flex; flex-direction: column; gap: clamp(12px, 0.6vw + 6px, 100%); overflow-y: auto; padding-right: 4px; }
+
+.recentExecutionList { display: grid; min-width: 0; gap: 2px; padding: 2px 0; }
+.recentRunItem { display: grid; width: 100%; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 10px; border: 0; border-left: 2px solid transparent; border-radius: 5px; }
+.runStatusDot { width: 7px; height: 7px; border-radius: 50%; background: #a3afc0; }
+.runStatusDot[data-status='RUNNING'] { background: #1677ff; }
+.runStatusDot[data-status='SUCCEEDED'] { background: #16a34a; }
+.runStatusDot[data-status='FAILED'], .runStatusDot[data-status='BLOCKED'], .runStatusDot[data-status='CANCELLED'] { background: #dc2626; }
+.runStatusDot[data-status='WAITING_INPUT'], .runStatusDot[data-status='WAITING_APPROVAL'] { background: #d99800; }
+
+/* 中间栏采用连续阅读流：仅任务头固定，流程、运行与交付随中间栏自然滚动。 */
+.taskWorkspaceMain {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.taskHeader {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: #fff;
+}
+
+.content {
+  display: flex;
+  min-height: auto;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: clamp(12px, 0.6vw + 6px, 100%);
+  padding-bottom: clamp(16px, 1vw + 8px, 100%);
+}
+
+.executionFlowRow {
+  height: 320px;
+  flex: 0 0 320px;
+}
+
+.workbenchMain {
+  min-height: auto;
+  overflow: visible;
+}
+
+.recentExecutionPanel {
+  height: 220px;
+  min-height: 220px;
+  overflow: auto;
+}
+
+.deliveryPanel {
+  height: 420px;
+  min-height: 420px;
+  overflow: auto;
+}
+
+.recentExecutionPanel .panelHeading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-bottom: 8px;
+  background: #fff;
+}
+
+.recentExecutionPanel .panelHeading h3,
+.deliveryPanel .panelHeading h3 {
+  font-size: 16px !important;
+}
+
+.inspectorRunTitle {
+  width: 178px;
+  margin: 0 !important;
+  overflow: hidden;
+  font-size: 16px !important;
+  line-height: 1.35 !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnosticStage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.diagnosticStage :global(.ant-tag) {
+  margin-inline-end: 0;
+}
+
+.recentExecutionPanel .panelHeading {
+  padding-top: 9.2px;
+}
+
+.deliveryPanel .panelHeading {
+  padding-top: 7.2px;
+}
+
+#execution-flow .rowHeading {
+  padding: 4px 0;
+}
+
+.taskTitle {
+  width: min(151.06px, 45vw);
+  flex: 0 1 151.06px;
+}
+
+.taskWorkspaceAside {
+  display: flex;
+  overflow: hidden;
+}
+
+.runInspectorPanel {
+  height: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  align-content: start;
+}
+
+.runInspector {
+  align-content: start;
+}
+
+.runLogsTerminal {
+  height: auto;
+  min-height: 116px;
+}
+
+.runLogsTerminalContent {
+  display: block;
+  overflow: visible;
+}
+
+.runLogsPanel {
+  height: 300px;
+  min-height: 0;
+  align-content: start;
+  overflow: auto;
+}
+
+/* 执行步骤超过可用宽度时，明确提供横向滚动条。 */
+.flowScroller {
+  scrollbar-width: thin;
+  scrollbar-color: #aab8ca transparent;
+}
+
+.flowScroller::-webkit-scrollbar {
+  display: block;
+  height: 8px;
+}
+
+.flowScroller::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #aab8ca;
+}
+
+.flowScroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 保留滚动交互，但不在任务详情工作台暴露浏览器滚动条。 */
+.page * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.page *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.recentRunItemMain { display: grid; min-width: 0; gap: 2px; }
+.recentRunItemRow { justify-content: flex-start; }
+.recentRunItemStatus { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recentRunItemSelected { border-left-color: #1269c7; background: #f0f7ff; box-shadow: none; }
+
+/* 置于全局隐藏规则之后，确保执行流程的横向拖拽条始终可见。 */
+.flowScroller {
+  overflow-x: scroll !important;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin !important;
+  scrollbar-color: #8da0b8 #edf2f7;
+}
+
+.flowScroller::-webkit-scrollbar {
+  display: block !important;
+  width: auto !important;
+  height: 8px !important;
+}
+
+.flowScroller::-webkit-scrollbar-thumb {
+  background: #8da0b8;
+}
+
+.flowScroller::-webkit-scrollbar-track {
+  background: #edf2f7;
+}
+
+/* 右栏信息不变，仅用字号、留白与分隔提升层级。 */
+.runInspectorPanel {
+  font-size: 13px;
+}
+
+.runInspector {
+  gap: 12px;
+}
+
+.inspectorSummary,
+.inspectorSection {
+  gap: 7px;
+}
+
+.runInspector > .inspectorSection {
+  padding-bottom: 10px;
+  border-bottom: 1px solid #edf1f5;
+}
+
+.runInspector > .inspectorSection:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.runInspectorFooter {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: #f7f9fc;
+  color: #52627b;
+  font-size: 12px;
+}
+
+.inspectorHeading {
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}
+
+.inspectorTimeline,
+.inspectorRequests,
+.acceptanceList {
+  gap: 6px;
+}
+
+.inspectorTimeline > div,
+.inspectorDiagnosticItem {
+  padding: 8px 10px;
+}
+
+/* 内部轨迹与日志使用一致的定高观察窗，超出时在各自区域内滚动。 */
+.inspectorTimeline {
+  height: 200px;
+  min-height: 200px;
+  overflow-y: auto;
+  align-content: start;
+}

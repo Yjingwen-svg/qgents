@@ -6,6 +6,7 @@ import {
   canUseInstallationForNewRepository,
   githubRepositoryNotAuthorizedMessage,
   newRepositoryCreateErrorMessage,
+  newRepositoryInstallationOptionLabel,
   personalRepositorySetupGuide,
   privateRepositoryAuthorizationMessage,
 } from './githubRepositoryAccess'
@@ -110,6 +111,22 @@ describe('personal repository setup guide (§49.4)', () => {
     const needInstall = personalRepositorySetupGuide(withSetup('NEED_INSTALLATION'))
     expect(needInstall?.message).toContain('安装')
     expect(needInstall?.linkToOAuth).toBeFalsy()
+  })
+})
+
+describe('new repository installation option label (§49.4)', () => {
+  it('distinguishes organization / personal / needs-bind / account-mismatch', () => {
+    expect(newRepositoryInstallationOptionLabel(organizationInstallation, undefined)).toContain('组织')
+    expect(newRepositoryInstallationOptionLabel(personalInstallation, oauth())).toContain('个人')
+    expect(newRepositoryInstallationOptionLabel(personalInstallation, oauth({ personalRepositorySetup: 'NEED_OAUTH' }))).toContain('需绑定')
+    expect(newRepositoryInstallationOptionLabel(
+      personalInstallation,
+      oauth({ personalRepositorySetup: 'ACCOUNT_MISMATCH', expectedInstallationLogin: 'alice' }),
+    )).toContain('需重新绑定')
+    expect(newRepositoryInstallationOptionLabel(
+      personalInstallation,
+      oauth({ personalRepositorySetup: 'ACCOUNT_MISMATCH' }),
+    )).not.toContain('需绑定个人 GitHub')
   })
 })
 

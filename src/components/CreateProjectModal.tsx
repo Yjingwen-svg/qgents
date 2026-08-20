@@ -13,6 +13,7 @@ import { isGithubRepoBindable } from '@/types/github'
 import {
   canUseInstallationForNewRepository,
   newRepositoryCreateErrorMessage,
+  newRepositoryInstallationOptionLabel,
   personalRepositorySetupGuide,
   privateRepositoryAuthorizationMessage,
 } from '@/utils/githubRepositoryAccess'
@@ -341,9 +342,7 @@ export function CreateProjectModal({
           {activeInstallations.length > 1 ? <Form.Item name={['newRepository', 'installationId']} label="GitHub 安装记录" rules={[{ required: true, message: '请选择用于创建仓库的 GitHub 安装记录' }]}>
             <Select options={activeInstallations.map((installation) => ({
               value: installation.id,
-              label: installation.accountType === 'USER' && !canUseInstallationForNewRepository(installation, githubOAuth)
-                ? `${installation.accountLogin}（需绑定个人 GitHub）`
-                : `${installation.accountLogin}（${installation.accountType === 'USER' ? '个人' : '组织'}）`,
+              label: newRepositoryInstallationOptionLabel(installation, githubOAuth),
               disabled: !canUseInstallationForNewRepository(installation, githubOAuth),
             }))} />
           </Form.Item> : null}

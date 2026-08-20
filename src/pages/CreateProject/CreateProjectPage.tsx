@@ -11,6 +11,7 @@ import { queryKeys } from '@/query/queryKeys'
 import {
   canUseInstallationForNewRepository,
   newRepositoryCreateErrorMessage,
+  newRepositoryInstallationOptionLabel,
   personalRepositorySetupGuide,
   privateRepositoryAuthorizationMessage,
 } from '@/utils/githubRepositoryAccess'
@@ -283,9 +284,7 @@ export default function CreateProjectPage() {
                 onChange={(installationId) => setNewRepository((value) => ({ ...value, installationId }))}
                 options={activeInstallations.map((installation) => ({
                   value: installation.id,
-                  label: installation.accountType === 'USER' && !canUseInstallationForNewRepository(installation, githubOAuth)
-                    ? `${installation.accountLogin}（需绑定个人 GitHub）`
-                    : `${installation.accountLogin}（${installation.accountType === 'USER' ? '个人' : '组织'}）`,
+                  label: newRepositoryInstallationOptionLabel(installation, githubOAuth),
                   disabled: !canUseInstallationForNewRepository(installation, githubOAuth),
                 }))}
               />

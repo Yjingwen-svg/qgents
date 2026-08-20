@@ -71,10 +71,21 @@ export function privateRepositoryAuthorizationMessage(
   if (!installation || installation.accountType === 'ORGANIZATION') return null
   if (!oauth?.authorized) return '个人账号建仓需要先绑定个人 GitHub 授权。'
   if (!oauth.githubLogin || oauth.githubLogin.toLowerCase() !== installation.accountLogin.toLowerCase()) {
-    return `当前授权账号与安装账号 ${installation.accountLogin} 不一致。`
+    return `当前授权账号与安装账号 ${installation.accountLogin} 不一致，请用与安装一致的 GitHub 账号重新绑定（无需重装 App）。`
   }
   if (!oauth.canCreatePrivatePersonalRepository) return '当前 GitHub 授权不足以创建私有个人仓库，请切换为公开仓库，或重新授权以获取 repo 范围。'
   return null
+}
+
+/** 自动建仓安装下拉选项文案：区分「需绑定 OAuth」「账号不一致需重新绑定」（§49.4） */
+export function newRepositoryInstallationOptionLabel(
+  installation: GithubInstallation,
+  oauth: GithubOAuthStatus | undefined,
+): string {
+  if (installation.accountType === 'ORGANIZATION') return `${installation.accountLogin}（组织）`
+  if (oauth?.personalRepositorySetup === 'ACCOUNT_MISMATCH') return `${installation.accountLogin}（账号不一致，需重新绑定）`
+  if (!canUseInstallationForNewRepository(installation, oauth)) return `${installation.accountLogin}（需绑定个人 GitHub）`
+  return `${installation.accountLogin}（个人）`
 }
 
 /** 后端在 OAuth 建仓成功但 GitHub App 暂不可见新仓库时返回的 403 错误码（§49 个人 GitHub OAuth） */

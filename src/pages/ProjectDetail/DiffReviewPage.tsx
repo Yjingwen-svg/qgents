@@ -21,7 +21,7 @@ import {
 } from '@ant-design/icons'
 import { projectApi } from '@/api/project'
 import { formatApiError } from '@/utils/formatApiError'
-import { commentAuthorName, HUNK_UNAVAILABLE_HINT } from './commentAuthor'
+import { commentAuthorAvatar, commentAuthorName, HUNK_UNAVAILABLE_HINT } from './commentAuthor'
 import {
   useDiff,
   useDiffComments,
@@ -329,7 +329,7 @@ function ReviewAside({
   onSubmit,
 }: {
   comments: DiffComment[]
-  members: Array<{ userId: string; displayName?: string }>
+  members: Array<{ userId: string; displayName?: string; avatarUrl?: string | null }>
   fileLookup: Map<string, string>
   draft: string
   submitting: boolean
@@ -389,13 +389,14 @@ function CommentCard({
   fileLabel,
 }: {
   comment: DiffComment
-  members: Array<{ userId: string; displayName?: string }>
+  members: Array<{ userId: string; displayName?: string; avatarUrl?: string | null }>
   fileLabel?: string
 }) {
   const name = commentAuthorName(comment, members)
+  const avatar = commentAuthorAvatar(comment, members)
   return (
     <article className="diff-review__comment">
-      <Avatar size={28}>{name.slice(0, 1)}</Avatar>
+      <Avatar size={28} src={avatar}>{name.slice(0, 1)}</Avatar>
       <div className="diff-review__comment-body">
         <strong>{name}</strong>
         {fileLabel ? (

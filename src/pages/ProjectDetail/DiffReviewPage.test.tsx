@@ -96,6 +96,7 @@ const comment: DiffComment = {
   body: '密码有做哈希吗？',
   authorUserId: 'user-002',
   authorName: null,
+  authorAvatarUrl: 'https://cdn.example.com/avatars/user-002.png',
   createdAt: '2026-05-16T11:20:00Z',
 }
 
@@ -183,7 +184,7 @@ beforeEach(() => {
 
 describe('DiffReviewPage', () => {
   it('loads Diff detail, files and comments through the documented hooks', async () => {
-    renderPage()
+    const { container } = renderPage()
     expect(useDiffMock).toHaveBeenCalledWith('project-1', 'diff-1')
     expect(useDiffFilesMock).toHaveBeenCalledWith('project-1', 'diff-1', { limit: 100 })
     expect(useDiffCommentsMock).toHaveBeenCalledWith('project-1', 'diff-1', { limit: 100 })
@@ -193,6 +194,29 @@ describe('DiffReviewPage', () => {
     expect(screen.getByText(/loginByEmail/)).toBeInTheDocument()
     expect(screen.getAllByText('密码有做哈希吗？').length).toBeGreaterThan(0)
     expect(screen.getByRole('heading', { name: '历史评论' })).toBeInTheDocument()
+    // 评论作者头像：有 avatarUrl 时渲染 <img>，而非名字首字符占位
+    const avatarImg = container.querySelector('.diff-review__comment img')
+    expect(avatarImg).not.toBeNull()
+    expect(avatarImg).toHaveAttribute('src', 'https://cdn.example.com/avatars/user-002.png')
+  })
+
+  it('falls back to initial character when comment author has no avatar', async () => {
+    useDiffCommentsMock.mockReturnValue({
+      data: {
+        data: [
+          { ...comment, id: 'comment-2', authorAvatarUrl: null, authorName: '李同学' },
+        ],
+        page: { nextCursor: null, hasMore: false },
+        requestId: 'r3',
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    })
+    const { container } = renderPage()
+    expect(await screen.findByText('密码有做哈希吗？')).toBeInTheDocument()
+    // 无头像时回退到名字首字符占位（不渲染 img）
+    expect(container.querySelector('.diff-review__comment img')).toBeNull()
   })
 
   it('opens the file from the file query string', async () => {

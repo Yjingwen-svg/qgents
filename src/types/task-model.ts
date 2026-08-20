@@ -434,6 +434,7 @@ export interface DiffComment {
   body: string
   authorUserId?: string | null
   authorName?: string | null
+  authorAvatarUrl?: string | null
   createdAt?: string | null
 }
 

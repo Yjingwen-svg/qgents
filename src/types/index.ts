@@ -17,6 +17,8 @@ export type {
   MeResponse,
   AvatarCredential,
   UpdateMePayload,
+  GithubOAuthStartResponse,
+  GithubOAuthStatus,
 } from './auth'
 export type {
   Team,

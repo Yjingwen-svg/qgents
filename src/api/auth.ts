@@ -7,6 +7,8 @@ import type {
   RefreshResponse,
   MeResponse,
   UpdateMePayload,
+  GithubOAuthStartResponse,
+  GithubOAuthStatus,
 } from '@/types'
 
 /**
@@ -109,12 +111,22 @@ export const authApi = {
     })
   },
 
-  /**
-   * GitHub OAuth 跳转地址
-   * 接口文档标注：不属于本期必需能力，仅预留
-   */
-  getGithubOAuthUrl() {
-    return `${import.meta.env.VITE_API_BASE_URL ?? '/api'}/auth/oauth/github`
+  /** POST /me/integrations/github/oauth/start — 生成个人 GitHub 授权地址（§49.2） */
+  startGithubOAuth(client: 'WEB' | 'MOBILE' = 'WEB') {
+    return request<GithubOAuthStartResponse>(
+      `/me/integrations/github/oauth/start?client=${encodeURIComponent(client)}`,
+      { method: 'POST', body: {} },
+    )
+  },
+
+  /** GET /me/integrations/github/oauth — 查询当前用户的个人 GitHub 授权状态（§49.4） */
+  getGithubOAuthStatus() {
+    return request<GithubOAuthStatus>('/me/integrations/github/oauth')
+  },
+
+  /** DELETE /me/integrations/github/oauth — 撤销当前用户的个人 GitHub 授权（§49.5） */
+  revokeGithubOAuth() {
+    return request<void>('/me/integrations/github/oauth', { method: 'DELETE' })
   },
 }
 

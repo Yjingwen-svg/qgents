@@ -71,6 +71,27 @@ export interface UpdateMePayload {
   avatarUrl?: string
 }
 
+/** POST /me/integrations/github/oauth/start 响应（接口文档 §49.2） */
+export interface GithubOAuthStartResponse {
+  authorizationUrl: string
+  expiresAt: string
+}
+
+/** GET /me/integrations/github/oauth 响应（接口文档 §49.4） */
+export interface GithubOAuthStatus {
+  authorized: boolean
+  provider: 'GITHUB' | null
+  githubUserId: number | null
+  githubLogin: string | null
+  scopes: string[]
+  authorizedAt: string | null
+  lastValidatedAt: string | null
+  /** 是否可用个人 OAuth 创建公开仓库（后端按授权 scope 计算；前端不得自行解析 scopes） */
+  canCreatePublicPersonalRepository: boolean
+  /** 是否可用个人 OAuth 创建私有仓库（后端按授权 scope 计算；前端不得自行解析 scopes） */
+  canCreatePrivatePersonalRepository: boolean
+}
+
 /** GET /me 响应（data 层为聚合结构：user + teams + projects） */
 export interface MeResponse {
   user: User

@@ -6,6 +6,13 @@ import { useAuth } from '@/context/AuthContext'
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi, githubApi } from '@/api'
 import { isGithubRepoBindable } from '@/types/github'
+import { authApi } from '@/api/auth'
+import { queryKeys } from '@/query/queryKeys'
+import {
+  canUseInstallationForNewRepository,
+  newRepositoryCreateErrorMessage,
+  privateRepositoryAuthorizationMessage,
+} from '@/utils/githubRepositoryAccess'
 import './CreateProjectPage.css'
 
 /**
@@ -46,10 +53,27 @@ export default function CreateProjectPage() {
     queryFn: () => githubApi.listInstallations(teamId),
     enabled: !!teamId,
   })
+  const { data: githubOAuth } = useQuery({
+    queryKey: queryKeys.githubOAuth,
+    queryFn: authApi.getGithubOAuthStatus,
+    enabled: !!teamId,
+    // §49.4：绑定返回后必须重新请求本接口决定是否解除置灰，不依赖本地缓存/回跳参数
+    staleTime: 0,
+  })
   const bindableRepos = teamRepos.filter((r) =>
     isGithubRepoBindable(r, installations.find((i) => i.id === r.installationId)),
   )
   const activeInstallations = installations.filter((installation) => installation.status === 'ACTIVE')
+  const newRepositoryInstallations = activeInstallations.filter((installation) =>
+    canUseInstallationForNewRepository(installation, githubOAuth),
+  )
+  const canCreateNewRepository = newRepositoryInstallations.length > 0
+  const selectedInstallation = activeInstallations.length === 1
+    ? activeInstallations[0]
+    : activeInstallations.find((installation) => installation.id === newRepository.installationId)
+  const privateRepositoryError = newRepository.isPrivate
+    ? privateRepositoryAuthorizationMessage(selectedInstallation, githubOAuth)
+    : null
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -66,8 +90,16 @@ export default function CreateProjectPage() {
       setError('当前团队没有可用的 GitHub App 安装记录，无法自动创建仓库')
       return
     }
+    if (repositoryMode === 'new' && !canCreateNewRepository) {
+      setError('当前没有可用的自动建仓授权，请先绑定个人 GitHub，或让团队管理员完成组织 GitHub App 授权')
+      return
+    }
     if (repositoryMode === 'new' && activeInstallations.length > 1 && !newRepository.installationId) {
       setError('请选择用于创建仓库的 GitHub 安装记录')
+      return
+    }
+    if (repositoryMode === 'new' && privateRepositoryError) {
+      setError(privateRepositoryError)
       return
     }
     setError(null)
@@ -93,7 +125,10 @@ export default function CreateProjectPage() {
       // 创建成功后跳转到项目需求群聊
       navigate(PATHS.projectDetail(project.id), { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建项目失败，请重试')
+      setError(
+        newRepositoryCreateErrorMessage(err) ??
+          (err instanceof Error ? err.message : '创建项目失败，请重试'),
+      )
     } finally {
       setSubmitting(false)
     }
@@ -168,8 +203,18 @@ export default function CreateProjectPage() {
               setRepositoryMode(mode)
               if (mode === 'new') setRepositoryIds([])
             }}
-            options={[{ value: 'existing', label: '绑定已有仓库' }, { value: 'new', label: '自动新建仓库' }]}
+            options={[
+              { value: 'existing', label: '绑定已有仓库' },
+              { value: 'new', label: '自动新建仓库', disabled: !canCreateNewRepository },
+            ]}
           />
+          {!canCreateNewRepository ? (
+            <p className="create-project__hint" style={{ fontSize: 12, color: '#b45309', margin: '8px 0 0' }}>
+              自动建仓当前不可用。个人账号需要先
+              <Link to={PATHS.GITHUB_OAUTH}>绑定个人 GitHub</Link>
+              ；组织账号需要团队 GitHub App 授权。
+            </p>
+          ) : null}
         </div>
         {/* GitHub 仓库 —— 创建时必选，一并绑定 */}
         {repositoryMode === 'existing' ? (
@@ -212,9 +257,20 @@ export default function CreateProjectPage() {
             </div>
             {activeInstallations.length > 1 ? <div className="create-project__field">
               <span>GitHub 安装记录 *</span>
-              <Select value={newRepository.installationId || undefined} onChange={(installationId) => setNewRepository((value) => ({ ...value, installationId }))} options={activeInstallations.map((installation) => ({ value: installation.id, label: installation.accountLogin }))} />
+              <Select
+                value={newRepository.installationId || undefined}
+                onChange={(installationId) => setNewRepository((value) => ({ ...value, installationId }))}
+                options={activeInstallations.map((installation) => ({
+                  value: installation.id,
+                  label: installation.accountType === 'USER' && !canUseInstallationForNewRepository(installation, githubOAuth)
+                    ? `${installation.accountLogin}（需绑定个人 GitHub）`
+                    : `${installation.accountLogin}（${installation.accountType === 'USER' ? '个人' : '组织'}）`,
+                  disabled: !canUseInstallationForNewRepository(installation, githubOAuth),
+                }))}
+              />
             </div> : null}
             {activeInstallations.length === 0 ? <p className="create-project__error">当前团队没有可用的 GitHub App 安装记录，无法自动创建仓库。</p> : null}
+            {privateRepositoryError ? <p className="create-project__hint" style={{ fontSize: 12, color: '#b45309' }}>{privateRepositoryError}</p> : null}
           </>
         )}
 
@@ -228,7 +284,7 @@ export default function CreateProjectPage() {
           <button
             type="submit"
             className="create-project__btn create-project__btn--primary"
-            disabled={submitting || !name.trim() || (repositoryMode === 'existing' ? repositoryIds.length === 0 : !newRepository.name.trim() || activeInstallations.length === 0 || (activeInstallations.length > 1 && !newRepository.installationId))}
+            disabled={submitting || !name.trim() || (repositoryMode === 'existing' ? repositoryIds.length === 0 : !newRepository.name.trim() || !canCreateNewRepository || (activeInstallations.length > 1 && !newRepository.installationId) || Boolean(privateRepositoryError))}
           >
             {submitting ? '创建中…' : '创建项目'}
           </button>

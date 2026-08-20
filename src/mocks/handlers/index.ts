@@ -2,6 +2,7 @@
 import { taskModelHandlers } from '../task-model/handlers'
 import { agentHandlers } from '../agent/handlers'
 import { testsetHandlers } from '../testset/handlers'
+import type { GithubOAuthStatus } from '@/types/auth'
 
 // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 // Mock 鏁版嵁
@@ -12,6 +13,18 @@ const MOCK_USER = {
   email: 'demo@qgents.dev',
   displayName: 'Demo User',
   avatarChar: 'D',
+}
+
+let MOCK_GITHUB_OAUTH_STATUS: GithubOAuthStatus = {
+  authorized: false,
+  provider: null,
+  githubUserId: null,
+  githubLogin: null,
+  scopes: [],
+  authorizedAt: null,
+  lastValidatedAt: null,
+  canCreatePublicPersonalRepository: false,
+  canCreatePrivatePersonalRepository: false,
 }
 
 const MOCK_TEAMS = [
@@ -99,6 +112,55 @@ const handlers: ReturnType<typeof http.get>[] = [
 
   http.get('/api/me', () => HttpResponse.json({ data: MOCK_USER })),
 
+  // ── 个人 GitHub OAuth（§49）──
+  http.post('/api/me/integrations/github/oauth/start', () =>
+    HttpResponse.json({
+      data: {
+        authorizationUrl: 'https://github.com/login/oauth/authorize?client_id=mock&scope=repo&state=mock-state',
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      },
+      requestId: 'mock-github-oauth-start',
+    }),
+  ),
+
+  http.get('/api/integrations/github/oauth/callback', ({ request }) => {
+    const url = new URL(request.url)
+    if (url.searchParams.get('error')) {
+      return HttpResponse.redirect('/app/settings/integrations/github?githubOAuth=failed&code=GITHUB_OAUTH_CALLBACK_DENIED')
+    }
+    MOCK_GITHUB_OAUTH_STATUS = {
+      authorized: true,
+      provider: 'GITHUB',
+      githubUserId: 12345678,
+      githubLogin: 'qgents-demo',
+      scopes: ['repo'],
+      authorizedAt: new Date().toISOString(),
+      lastValidatedAt: new Date().toISOString(),
+      canCreatePublicPersonalRepository: true,
+      canCreatePrivatePersonalRepository: true,
+    }
+    return HttpResponse.redirect('/app/settings/integrations/github?githubOAuth=authorized')
+  }),
+
+  http.get('/api/me/integrations/github/oauth', () =>
+    HttpResponse.json({ data: MOCK_GITHUB_OAUTH_STATUS, requestId: 'mock-github-oauth-status' }),
+  ),
+
+  http.delete('/api/me/integrations/github/oauth', () => {
+    MOCK_GITHUB_OAUTH_STATUS = {
+      authorized: false,
+      provider: null,
+      githubUserId: null,
+      githubLogin: null,
+      scopes: [],
+      authorizedAt: null,
+      lastValidatedAt: null,
+      canCreatePublicPersonalRepository: false,
+      canCreatePrivatePersonalRepository: false,
+    }
+    return new HttpResponse(null, { status: 204 })
+  }),
+
   http.post('/api/auth/logout', () => HttpResponse.json({ data: null })),
 
   // 鈹€鈹€ Teams 鈹€鈹€
@@ -170,7 +232,31 @@ const handlers: ReturnType<typeof http.get>[] = [
 
   /** POST /api/teams/:teamId/projects */
   http.post('/api/teams/:teamId/projects', async ({ params, request }) => {
-    const body = (await request.json()) as { name?: string; description?: string }
+    const body = (await request.json()) as { name?: string; description?: string; newRepository?: { name?: string } }
+    // 演示后端 §49.7 稳定错误码：OAuth 建仓成功但 GitHub App 暂不可见该仓库
+    if (body.newRepository?.name?.includes('__unauthorized__')) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: 'GITHUB_REPOSITORY_NOT_AUTHORIZED',
+            message: 'Repository created but not visible to the GitHub App',
+          },
+        },
+        { status: 403 },
+      )
+    }
+    // 演示 OAuth scope 不足（§49.7 GITHUB_OAUTH_SCOPE_INSUFFICIENT）
+    if (body.newRepository?.name?.includes('__scope__')) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: 'GITHUB_OAUTH_SCOPE_INSUFFICIENT',
+            message: 'Insufficient OAuth scope for the requested repository type',
+          },
+        },
+        { status: 403 },
+      )
+    }
     const newProject = {
       id: 'proj-new-' + nextProjectId++,
       teamId: params.teamId as string,

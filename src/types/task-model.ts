@@ -45,7 +45,7 @@ export interface TaskRequirementGroupSummary { id: string; name: string; status:
 export interface TaskUserSummary { id: string; displayName: string; avatarUrl: string | null }
 export interface TaskRepositorySummary { repositoryId: string; name: string; fullName: string; provider: string; defaultBranch: string; baseRef: string; baseCommit: string; sourceBranch: string; headCommit: string | null }
 export interface TaskExecutionSummary { totalSteps: number; pendingSteps: number; runningSteps: number; waitingSteps: number; blockedSteps: number; succeededSteps: number; failedSteps: number; currentStage: TaskStepRole | null; currentStageTitle: string | null; requiresUserAction: boolean }
-export type TaskAttentionKind = 'INPUT_REQUIRED' | 'APPROVAL_REQUIRED' | 'BLOCKED' | 'EXECUTION_FAILED' | 'DIFF_CONFIRMATION_REQUIRED' | 'DELIVERY_FAILED'
+export type TaskAttentionKind = 'INPUT_REQUIRED' | 'APPROVAL_REQUIRED' | 'BLOCKED' | 'EXECUTION_FAILED' | 'DIFF_CONFIRMATION_REQUIRED' | 'PREFLIGHT_REQUIRED' | 'DELIVERY_FAILED'
 export interface TaskAttention {
   kind: TaskAttentionKind
   title: string

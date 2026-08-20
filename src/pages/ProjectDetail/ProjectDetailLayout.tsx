@@ -172,6 +172,24 @@ export default function ProjectDetailLayout() {
     },
   })
 
+  // 后端群列表返回 pinned（当前用户置顶偏好）时，以后端为准覆盖本地（跨设备同步）；
+  // 后端未实现/未返回该字段时保持 localStorage 兜底（§群聊置顶后端接口需求）。
+  useEffect(() => {
+    const backendPinned = groups.filter((g) => typeof g.pinned === 'boolean').map((g) => g.id)
+    if (backendPinned.length === 0) return
+    setPinnedIds((prev) => {
+      if (prev.length === backendPinned.length && prev.every((id) => backendPinned.includes(id))) {
+        return prev
+      }
+      try {
+        localStorage.setItem(PINNED_GROUPS_KEY, JSON.stringify(backendPinned))
+      } catch {
+        // localStorage 不可用时仅本次会话生效
+      }
+      return backendPinned
+    })
+  }, [groups])
+
   // 在群聊路径但未指定具体群（/req-chat 无 groupId）时，重定向到项目总群。
   // groups 加载完成前不重定向（避免闪成空态），加载完成后自动跳主群。
   if (onReqChat && !groupId && !groupsLoading) {
@@ -180,16 +198,27 @@ export default function ProjectDetailLayout() {
     }
   }
 
-  /** 置顶/取消置顶需求群（本地偏好，localStorage 持久化） */
+  /** 置顶/取消置顶需求群：乐观更新本地 + 后端持久化（失败回滚，localStorage 兜底） */
   function togglePin(groupId: string) {
-    setPinnedIds((prev) => {
-      const next = prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId]
+    const prev = pinnedIds
+    setPinnedIds((current) => {
+      const next = current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]
       try {
         localStorage.setItem(PINNED_GROUPS_KEY, JSON.stringify(next))
       } catch {
         // localStorage 不可用时仅本次会话生效
       }
       return next
+    })
+    const willPin = !prev.includes(groupId)
+    groupApi.setGroupPinned(projectId, groupId, willPin).catch(() => {
+      // 接口未实现/失败：回滚本地，仍以 localStorage 兜底展示
+      setPinnedIds(prev)
+      try {
+        localStorage.setItem(PINNED_GROUPS_KEY, JSON.stringify(prev))
+      } catch {
+        // ignore
+      }
     })
   }
 

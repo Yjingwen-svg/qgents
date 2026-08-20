@@ -86,6 +86,13 @@ export const groupApi = {
   getMessage(projectId: string, groupId: string, messageId: string) {
     return request<Message>(`/projects/${projectId}/groups/${groupId}/messages/${messageId}`)
   },
+  /** PUT /projects/{projectId}/groups/{groupId}/pin — 置顶/取消置顶（当前用户维度，§群聊置顶后端接口需求） */
+  setGroupPinned(projectId: string, groupId: string, pinned: boolean) {
+    return request<void>(`/projects/${projectId}/groups/${groupId}/pin`, {
+      method: 'PUT',
+      body: { pinned },
+    })
+  },
   sendMessage(projectId: string, groupId: string, payload: SendMessagePayload) {
     return request<Message | SendMessageResult>(`/projects/${projectId}/groups/${groupId}/messages`, {
       method: 'POST',

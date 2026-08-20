@@ -44,6 +44,8 @@ export interface Group {
   unreadCount?: number
   /** 该群被 @ 我的未读消息数（后端计算，≥0）；前端据此显示「有人@我」提示 */
   mentionedUnread?: number
+  /** 当前用户对该群是否置顶（后端用户维度偏好，§群聊置顶；缺失时前端用 localStorage 兜底） */
+  pinned?: boolean
   isPinned?: boolean
   isArchived?: boolean
 }

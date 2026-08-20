@@ -1104,6 +1104,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             autoSize={{ minRows: 1, maxRows: 4 }}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            // 发送中禁用输入框：防止发送期间继续输入/重复回车触发
+            disabled={sending}
             onPressEnter={(e) => {
               if (!e.shiftKey) {
                 e.preventDefault()
@@ -1117,7 +1119,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             icon={<SendOutlined />}
             onClick={handleSend}
             loading={sending}
-            disabled={!draft.trim() && !replyTo}
+            disabled={sending || (!draft.trim() && !replyTo)}
           >
             发送
           </Button>

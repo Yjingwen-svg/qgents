@@ -3,6 +3,7 @@ import {
   mapDiffComment,
   mapDiffCommentPage,
   mapDiffFilePage,
+  mapDiffPreview,
   mapMergeRequest,
   mapMergeRequestChecks,
   mapMergeRequestCqReviews,
@@ -20,10 +21,12 @@ import type {
   InputRequestAnswer,
   InputRequestDecision,
   Task,
+  TaskDiagnostics,
   TaskListItem,
   TaskCreateInput,
   TaskListFilters,
   TaskRunDetail,
+  TaskRunDiagnostics,
   TaskRunListFilters,
   TaskRunLog,
   TaskRunSummary,
@@ -57,6 +60,10 @@ export const tasksApi = {
 
   get(projectId: string, taskId: string) {
     return requestModelData<Task>(taskPath(projectId, taskId))
+  },
+
+  diagnostics(projectId: string, taskId: string) {
+    return requestModelData<TaskDiagnostics>(`${taskPath(projectId, taskId)}/diagnostics`)
   },
 
   artifacts(projectId: string, taskId: string) {
@@ -131,6 +138,10 @@ export const taskRunsApi = {
     return requestModelData<TaskRunDetail>(taskRunPath(projectId, taskRunId))
   },
 
+  diagnostics(projectId: string, taskRunId: string) {
+    return requestModelData<TaskRunDiagnostics>(`${taskRunPath(projectId, taskRunId)}/diagnostics`)
+  },
+
   retry(projectId: string, taskRunId: string) {
     return requestModelData<TaskRunDetail>(`${taskRunPath(projectId, taskRunId)}/retry`, {
       method: 'POST',
@@ -194,6 +205,20 @@ export const diffsApi = {
   files(projectId: string, diffId: string, filters: PageFilters = {}) {
     return requestModelPage<unknown>(withModelQuery(`${diffPath(projectId, diffId)}/files`, filters)).then(
       mapDiffFilePage,
+    )
+  },
+
+  /**
+   * §16 群聊 Diff 卡预览：GET /diffs/{diffId}/preview?fileId=…
+   * 只允许 Task 级最终 Diff；普通/中间 Diff 返回 422（DIFF_PREVIEW_FINAL_ONLY / CONTEXT_INVALID），
+   * 超文件上限 422 DIFF_PREVIEW_FILE_LIMIT，文件不属于该 Diff 404 DIFF_FILE_NOT_FOUND。
+   * fileId 省略时选顺序最早的文件；切文件时带响应 files[].fileId 重请求。
+   */
+  preview(projectId: string, diffId: string, fileId?: string) {
+    const query: Record<string, string> = {}
+    if (fileId) query.fileId = fileId
+    return requestModelData<unknown>(withModelQuery(`${diffPath(projectId, diffId)}/preview`, query)).then(
+      mapDiffPreview,
     )
   },
 

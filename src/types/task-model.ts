@@ -89,6 +89,14 @@ export interface TaskDiffReviewSummary { available: boolean; /** Representative 
 export interface TaskSourceMessage { id: string; sender: TaskUserSummary; textExcerpt: string; createdAt: string }
 export interface Task extends TaskListItem { requirement: string; acceptanceCriteria: TaskAcceptanceCriterion[]; workspace: TaskWorkspace | null; capabilities: TaskCapabilities; artifactSummary: TaskArtifactSummary; diffReviewSummary: TaskDiffReviewSummary; sourceMessage: TaskSourceMessage | null; triggerMessageId: string | null }
 
+export interface TaskDiagnostics {
+  taskId: string
+  status: TaskStatus
+  stage: string
+  failure: TaskRunStatusReason | null
+  latestFailedRun: TaskRunDiagnostics | null
+}
+
 export interface TaskArtifact {
   id: string
   taskId: string
@@ -160,7 +168,7 @@ export interface ReplaceTaskStepAgentInput {
 }
 
 export interface TaskRunAgentSummary { id: string; name: string; role: TaskStepRole; avatarUrl: string | null }
-export interface TaskRunStatusReason { code: 'INPUT_REQUIRED' | 'APPROVAL_REQUIRED' | 'BLOCKED' | 'EXECUTION_FAILED' | 'CANCELLED'; title: string; summary: string; retryable: boolean; occurredAt: string }
+export interface TaskRunStatusReason { code: 'INPUT_REQUIRED' | 'APPROVAL_REQUIRED' | 'BLOCKED' | 'EXECUTION_FAILED' | 'STARTUP_FAILED' | 'DELIVERY_FAILED' | 'CANCELLED'; failureCode?: string | null; title: string; summary: string; retryable: boolean; occurredAt: string | null }
 export interface TaskRunArtifactSummary { total: number; diffCount: number }
 export interface TaskRunSummary { id: string; taskId: string; taskStepId: string; taskStepTitle: string; agent: TaskRunAgentSummary | null; role: TaskStepRole; status: TaskRunStatus; retryOfTaskRunId: string | null; statusSummary: string | null; statusReason: TaskRunStatusReason | null; startedAt: string | null; finishedAt: string | null; durationMs: number | null; artifactSummary: TaskRunArtifactSummary; createdAt: string; updatedAt: string }
 
@@ -174,6 +182,26 @@ export interface TaskRunStep {
 }
 
 export interface TaskRunDetail extends TaskRunSummary { steps?: TaskRunStep[] }
+
+export interface WorkerExecutionDiagnostic {
+  executionId: string
+  tool: string | null
+  status: string | null
+  exitCode: number | null
+  failureCode: string | null
+  failureSummary: string | null
+  createdAt: string | null
+  finishedAt: string | null
+}
+
+export interface TaskRunDiagnostics {
+  taskRunId: string
+  taskId: string
+  status: TaskRunStatus
+  stage: string
+  failure: TaskRunStatusReason | null
+  workerExecutions: WorkerExecutionDiagnostic[]
+}
 
 export type TaskRun = TaskRunSummary | TaskRunDetail
 
@@ -199,6 +227,8 @@ export interface TaskRunLog {
  */
 export interface TaskStatusReason {
   code: string
+  /** 失败原因稳定码（如 GIT_BRANCH_NOT_FOUND）；仅失败时返回，供前端选择可读提示与重试入口 */
+  failureCode?: string | null
   title: string
   summary: string
   retryable: boolean
@@ -215,6 +245,42 @@ export interface ExecutionContext {
   startedAt: string | null
   expiresAt: string | null
 }
+
+export type WorkspaceDiffPreviewChangeType = 'ADDED' | 'MODIFIED' | 'DELETED' | 'RENAMED'
+
+/**
+ * Coding 过程中的累计工作树预览，不是正式 Diff，也不代表已交付。
+ * GET /projects/{projectId}/tasks/{taskId}/workspace-diff-preview
+ */
+export interface WorkspaceDiffPreview {
+  projectId: string
+  taskId: string
+  taskRunId: string | null
+  workspaceId: string
+  revision: number
+  baseCommit: string | null
+  workingTreeHash: string
+  filesChanged: number
+  additions: number
+  deletions: number
+  patch: string
+  createdAt: string
+}
+
+/** GET .../workspace-diff-preview/files 的 Workspace 相对路径摘要。 */
+export interface WorkspaceDiffPreviewFile {
+  repositoryId: string
+  repositoryPath: string
+  path: string
+  changeType: WorkspaceDiffPreviewChangeType
+  additions: number
+  deletions: number
+  binary: boolean
+}
+
+export type WorkspaceDiffPreviewStatus =
+  | { kind: 'available'; preview: WorkspaceDiffPreview }
+  | { kind: 'unavailable'; reason: 'NOT_FOUND' | 'WORKER_UNAVAILABLE' | 'UNKNOWN'; message: string }
 
 export interface InputRequestOption {
   value: string
@@ -299,6 +365,48 @@ export interface DiffFile {
   deletions: number
   binary: boolean
   hunks: DiffHunk[]
+}
+
+/** §16 群聊 Diff 卡预览（GET /diffs/{diffId}/preview，只允许 Task 级最终 Diff） */
+export type DiffPreviewLineType = 'CONTEXT' | 'DELETE' | 'ADD'
+
+/** 预览文件标签（最多 100 项；filesTruncated=true 时未返回的文件不展示） */
+export interface DiffPreviewFile {
+  fileId: string
+  sequence: number
+  path: string
+  fileName: string
+  extension?: string
+  changeType: DiffFileStatus
+  additions: number
+  deletions: number
+  binary: boolean
+}
+
+/** 预览行：content 不带 unified diff 的 + - 前缀，按 type 渲染 */
+export interface DiffPreviewLine {
+  type: DiffPreviewLineType
+  oldLineNo: number | null
+  newLineNo: number | null
+  content: string
+  contentTruncated: boolean
+}
+
+/** §16.1 预览响应 data */
+export interface DiffPreview {
+  diffId: string
+  /** 前端路由 /app/projects/{projectId}/code/diff/{diffId}（“查看详情”跳转目标） */
+  detailPath: string
+  previewLineLimit: number
+  totalFileCount: number
+  filesTruncated: boolean
+  files: DiffPreviewFile[]
+  selectedFileId: string
+  totalLineCount: number
+  lines: DiffPreviewLine[]
+  truncated: boolean
+  /** viewDetailsRequired = truncated || filesTruncated || lines[].contentTruncated */
+  viewDetailsRequired: boolean
 }
 
 export interface DiffComment {

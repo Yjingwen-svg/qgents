@@ -1,14 +1,12 @@
 import { requestModelData } from './modelClient'
-import type { WorkspaceDiffPreview, WorkspaceDiffPreviewFile, WorkspaceDiffPreviewChangeType } from '@/types/task-model'
+import type { WorkspaceDiffPreview, WorkspaceDiffPreviewFile, WorkspaceDiffPreviewChangeType, WorkspaceDiffPreviewStatus } from '@/types/task-model'
 
 /**
  * Preview 的可恢复状态：后端可能在写入触发前、Worker 不可用、Preview 被清理时返回。
  * - `unavailable`：预览未就绪（404、503 等可恢复），UI 应展示"实时预览暂不可用"，不视为错误。
  * - `available`：携带完整数据。
  */
-export type WorkspaceDiffPreviewStatus =
-  | { kind: 'available'; preview: WorkspaceDiffPreview }
-  | { kind: 'unavailable'; reason: 'NOT_FOUND' | 'WORKER_UNAVAILABLE' | 'UNKNOWN'; message: string }
+export type { WorkspaceDiffPreviewStatus } from '@/types/task-model'
 
 const PREVIEW_PATH = (projectId: string, taskId: string) =>
   `/projects/${projectId}/tasks/${taskId}/workspace-diff-preview`

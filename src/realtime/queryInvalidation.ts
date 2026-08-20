@@ -82,13 +82,13 @@ export function queryKeysForProjectTaskEvent(
       if (!taskId || !taskStepId) return []
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.taskSteps.all(projectId, taskId))
-      addKey(keys, taskModelQueryKeys.taskRuns.list(projectId, taskId))
+      addKey(keys, taskModelQueryKeys.taskRuns.all(projectId, taskId))
       break
     case 'task-run.created':
     case 'task-run.updated':
       if (!taskId || !taskRunId) return []
       addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
-      addKey(keys, taskModelQueryKeys.taskRuns.list(projectId, taskId))
+      addKey(keys, taskModelQueryKeys.taskRuns.all(projectId, taskId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
       addAgentQueries()
       break
@@ -101,6 +101,12 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.taskRuns.logs(projectId, taskRunId))
       break
     }
+    case 'workspace.diff-preview.updated':
+      if (!taskId || !taskRunId) return []
+      addKey(keys, taskModelQueryKeys.workspaceDiffPreview.all(projectId, taskId))
+      addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
+      break
     case 'input-required':
     case 'approval-required':
       if (!taskId || !taskRunId || !stringId(payload, 'inputRequestId')) return []

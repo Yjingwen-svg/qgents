@@ -6,6 +6,7 @@ export const taskModelQueryKeys = {
     list: (projectId: string, filters: TaskListFilters = {}) => ['qgents', 'projects', projectId, 'tasks', 'list', filters] as const,
     infinite: (projectId: string, filters: Omit<TaskListFilters, 'cursor'> = {}) => ['qgents', 'projects', projectId, 'tasks', 'infinite', filters] as const,
     detail: (projectId: string, taskId: string) => ['qgents', 'projects', projectId, 'tasks', taskId] as const,
+    diagnostics: (projectId: string, taskId: string) => ['qgents', 'projects', projectId, 'tasks', taskId, 'diagnostics'] as const,
   },
   taskArtifacts: {
     root: (projectId: string) => ['qgents', 'projects', projectId, 'task-artifacts'] as const,
@@ -14,6 +15,11 @@ export const taskModelQueryKeys = {
   taskDiffReview: {
     root: (projectId: string) => ['qgents', 'projects', projectId, 'task-diff-review'] as const,
     detail: (projectId: string, taskId: string) => ['qgents', 'projects', projectId, 'task-diff-review', taskId] as const,
+  },
+  workspaceDiffPreview: {
+    all: (projectId: string, taskId: string) => ['qgents', 'projects', projectId, 'tasks', taskId, 'workspace-diff-preview'] as const,
+    detail: (projectId: string, taskId: string, revision?: number) => ['qgents', 'projects', projectId, 'tasks', taskId, 'workspace-diff-preview', 'detail', revision ?? 'latest'] as const,
+    files: (projectId: string, taskId: string, revision?: number) => ['qgents', 'projects', projectId, 'tasks', taskId, 'workspace-diff-preview', 'files', revision ?? 'latest'] as const,
   },
   taskSteps: {
     root: (projectId: string) => ['qgents', 'projects', projectId, 'task-steps'] as const,
@@ -27,6 +33,7 @@ export const taskModelQueryKeys = {
     list: (projectId: string, taskId: string, filters: TaskRunListFilters = {}) => ['qgents', 'projects', projectId, 'tasks', taskId, 'task-runs', 'list', filters] as const,
     infinite: (projectId: string, taskId: string, filters: Omit<TaskRunListFilters, 'cursor'> = {}) => ['qgents', 'projects', projectId, 'tasks', taskId, 'task-runs', 'infinite', filters] as const,
     detail: (projectId: string, taskRunId: string) => ['qgents', 'projects', projectId, 'task-runs', taskRunId] as const,
+    diagnostics: (projectId: string, taskRunId: string) => ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'diagnostics'] as const,
     logs: (projectId: string, taskRunId: string, filters: PageFilters = {}) => ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'logs', filters] as const,
     executionContext: (projectId: string, taskRunId: string) => ['qgents', 'projects', projectId, 'task-runs', taskRunId, 'execution-context'] as const,
     inputRequests: {
@@ -41,6 +48,9 @@ export const taskModelQueryKeys = {
     detail: (projectId: string, diffId: string) => ['qgents', 'projects', projectId, 'diffs', diffId] as const,
     files: (projectId: string, diffId: string, filters: PageFilters = {}) => ['qgents', 'projects', projectId, 'diffs', diffId, 'files', filters] as const,
     comments: (projectId: string, diffId: string, filters: PageFilters = {}) => ['qgents', 'projects', projectId, 'diffs', diffId, 'comments', filters] as const,
+    /** §16 群聊 Diff 卡预览（fileId 为空 = 未选文件，取顺序最早文件） */
+    preview: (projectId: string, diffId: string, fileId?: string) =>
+      ['qgents', 'projects', projectId, 'diffs', diffId, 'preview', fileId ?? ''] as const,
   },
   mergeRequests: {
     all: (projectId: string) => ['qgents', 'projects', projectId, 'merge-requests'] as const,

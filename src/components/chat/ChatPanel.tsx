@@ -10,7 +10,6 @@ import {
   FilePdfOutlined,
   CodeOutlined,
   MessageOutlined,
-  BranchesOutlined,
   InboxOutlined,
   PaperClipOutlined,
   CloseOutlined,
@@ -22,6 +21,7 @@ import { formatApiError } from '@/utils/formatApiError'
 import { ApiError, groupApi, projectApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
 import { resolvePreviewUrl } from '@/api/attachment'
 import { AttachmentPreviewModal } from '@/components/chat/AttachmentPreviewModal'
+import { ChatDiffCard } from '@/components/chat/ChatDiffCard'
 import { getApiBaseUrl } from '@/api/client'
 import { useAuth } from '@/context/AuthContext'
 import { useAgents } from '@/hooks/agents'
@@ -42,7 +42,6 @@ import type {
   ImageMessageContent,
   FileMessageContent,
   QuoteMessageContent,
-  DiffMessageContent,
   TaskStatusMessageContent,
 } from '@/types'
 
@@ -171,7 +170,9 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     const key = ['groups', projectId, groupId, 'messages'] as const
 
     const currentSequence = (): number => {
-      const rows = queryClient.getQueryData<{ data?: Message[] }>(key)?.data ?? []
+      // useInfiniteQuery 缓存结构为 { pages, pageParams }：取全部页的消息算最大 sequence
+      const cached = queryClient.getQueryData<InfiniteData<Page<Message>>>(key)
+      const rows = cached?.pages.flatMap((p) => p.data) ?? []
       return rows.reduce((max, item) => Math.max(max, item.sequence ?? 0), 0)
     }
     const sync = async (): Promise<void> => {
@@ -184,8 +185,11 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       try {
         let afterSequence = currentSequence()
         const received: Message[] = []
+        let lastPage: Page<Message> | undefined
         while (!stopped) {
-          const result = await groupApi.listMessagesAfter(projectId, groupId, afterSequence)
+          // 后端接口为 /messages/incremental?afterSequence=N（listMessagesIncremental）
+          const result = await groupApi.listMessagesIncremental(projectId, groupId, afterSequence)
+          lastPage = result
           received.push(...result.data)
           if (!result.page.hasMore || !result.page.nextCursor) break
           const nextSequence = Number(result.page.nextCursor)
@@ -193,10 +197,17 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           afterSequence = nextSequence
         }
         if (stopped || received.length === 0) return
-        queryClient.setQueryData(key, (old: { data?: Message[]; page?: unknown } | undefined) => {
-          const merged = new Map<string, Message>((old?.data ?? []).map((item) => [item.id, item]))
-          for (const item of received) merged.set(item.id, item)
-          return { data: [...merged.values()].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0)), page: old?.page }
+        queryClient.setQueryData<InfiniteData<Page<Message>>>(key, (old) => {
+          if (!old || !lastPage) {
+            return { pages: [{ ...(lastPage as Page<Message>), data: received }], pageParams: [undefined] }
+          }
+          const [first, ...rest] = old.pages
+          const known = new Set(first.data.map((m) => m.id))
+          const merged = [...first.data, ...received.filter((m) => !known.has(m.id))]
+          return {
+            ...old,
+            pages: [{ ...first, data: merged }, ...rest],
+          }
         })
       } catch {
         // REST 是可靠来源；短暂网络失败交由下一次 SSE/WS 信号或重连再次补偿。
@@ -1605,79 +1616,9 @@ function renderContent(
       return message.replyText ?? c?.replyText ?? ''
     }
     case 'DIFF': {
-      const c = message.content as DiffMessageContent
-      const rich = Boolean(c.displayCode || c.repositoryName || c.files)
-      const displayTitle = c.displayCode
-        ? `${c.displayCode}${c.repositoryName ? ` · ${c.repositoryName}` : ''}${c.sourceBranch ? ` / ${c.sourceBranch}` : ''}`
-        : (c.title ?? '代码交付')
-      return (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-            padding: '10px 12px',
-            border: '1px solid rgba(59, 130, 246, 0.35)',
-            borderRadius: 8,
-            background: 'rgba(59, 130, 246, 0.06)',
-            minWidth: 220,
-          }}
-        >
-          {/* 头部：Diff 码 · 仓库 / 源分支 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <BranchesOutlined style={{ fontSize: 16, color: '#3b82f6' }} />
-            <Text strong style={{ fontSize: 14 }}>{displayTitle}</Text>
-          </div>
-          {/* 目标分支与变更统计 */}
-          {rich ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {c.repositoryName && c.targetBranch ? (
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  -{c.repositoryName}/{c.targetBranch}
-                </Text>
-              ) : null}
-              {c.additions != null ? (
-                <Text style={{ fontSize: 12, color: '#16a34a' }}>+{c.additions}</Text>
-              ) : null}
-              {c.deletions != null ? (
-                <Text style={{ fontSize: 12, color: '#dc2626' }}>-{c.deletions}</Text>
-              ) : null}
-            </div>
-          ) : (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {c.additions != null || c.deletions != null ? (
-                <>
-                  <span style={{ color: '#16a34a' }}>+{c.additions ?? 0}</span>{' '}
-                  <span style={{ color: '#dc2626' }}>-{c.deletions ?? 0}</span>
-                </>
-              ) : (
-                '点击查看 Diff'
-              )}
-            </Text>
-          )}
-          {/* 变更文件列表 */}
-          {c.files && c.files.length > 0 ? (
-            <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
-              {c.files.map((file) => (
-                <div key={file} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {file}
-                </div>
-              ))}
-            </div>
-          ) : null}
-          {/* 操作：查看 Diff + 引用继续修改 */}
-          <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
-            <Link to={PATHS.projectDiff(projectId, c.diffId)}>
-              <Button size="small" type="link" icon={<BranchesOutlined />}>查看 Diff</Button>
-            </Link>
-            {onReply ? (
-              <Button size="small" type="link" onClick={() => onReply(message)}>
-                引用继续修改
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      )
+      // 群聊内 Diff 卡片：固定高度可展开的「文件树 + 行级 diff 视图」；
+      // 「查看 Diff」跳转代码提交 diff 详情 /app/projects/:projectId/code/diff/:diffId
+      return <ChatDiffCard message={message} projectId={projectId} onReply={onReply} />
     }
     case 'TASK_STATUS': {
       const c = message.content as TaskStatusMessageContent
@@ -1765,28 +1706,40 @@ function renderContent(
             <Text type="secondary" style={{ fontSize: 12 }}>
               {diffReady ? '任务已产生代码变更' : '代码变更生成后在此查看'}
             </Text>
-            {diffReady ? (
-              <Link to={`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(c.taskId)}`}>
-                <Button size="small" type="link" icon={<BranchesOutlined />}>
-                  查看 Diff
-                </Button>
-              </Link>
-            ) : (
-              <Link to={PATHS.projectTaskDetail(projectId, c.taskId)}>
-                <Button size="small" type="link">
-                  查看任务
-                </Button>
-              </Link>
-            )}
+            {/* 右下角按钮：任务运行状态框 → 查看任务（Diff 查看走专门的 DIFF 卡片） */}
+            <Link to={PATHS.projectTaskDetail(projectId, c.taskId)}>
+              <Button size="small" type="link">
+                查看任务
+              </Button>
+            </Link>
           </div>
         </div>
       )
     }
     default: {
       const c = message.content as TextMessageContent
-      return c.text ?? ''
+      return renderTextWithAtMentions(c.text ?? '')
     }
   }
+}
+
+/**
+ * TEXT/QUOTE 文本渲染：把形如 {@code @名字} 的 @ 提及高亮显示（编排助手回群的
+ * 「@发起者 您创建的任务已开始」提示与用户手动 @ 均受益），其余文本原样输出。
+ */
+function renderTextWithAtMentions(text: string): React.ReactNode {
+  if (!text) return ''
+  const parts = text.split(/(@[^\s@，。；：！？,.!?]+)/g)
+  if (parts.length <= 1) return text
+  return parts.map((part, index) =>
+    part.startsWith('@') ? (
+      <span key={index} style={{ color: '#1677ff', fontWeight: 600 }}>
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  )
 }
 
 /** 文件大小格式化（字节 → 可读） */

@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentAssignmentSummary, AgentDetail, AgentTaskRunSummary } from '@/types'
 
-const hooks = vi.hoisted(() => ({ useAgents: vi.fn(), useAgent: vi.fn(), useAgentRuntime: vi.fn(), useAgentSkillBindings: vi.fn(), useAgentAssignments: vi.fn(), useAgentTaskRuns: vi.fn(), useCreateAgent: vi.fn(), useUpdateAgent: vi.fn(), usePublishAgent: vi.fn(), useUnpublishAgent: vi.fn(), useArchiveAgent: vi.fn() }))
+const hooks = vi.hoisted(() => ({ useAgents: vi.fn(), useAgent: vi.fn(), useAgentRuntime: vi.fn(), useAgentSkillBindings: vi.fn(), useAgentAssignments: vi.fn(), useAgentTaskRuns: vi.fn(), useCreateAgent: vi.fn(), useUpdateAgent: vi.fn(), usePublishAgent: vi.fn(), useArchiveAgent: vi.fn() }))
 const projectGet = vi.hoisted(() => vi.fn())
 vi.mock('@/hooks', () => hooks)
 vi.mock('@/api', () => ({ projectApi: { getById: projectGet } }))
@@ -27,7 +27,7 @@ beforeEach(() => {
   hooks.useAgentSkillBindings.mockReturnValue({ data: { agentId: agent.id, skillIds: ['skill-one'], skills: [{ id: 'skill-one', name: 'TypeScript', visibility: 'PROJECT_SHARED', status: 'PUBLISHED' }], updatedAt: '2026-08-13T00:00:00Z' }, isError: false, isLoading: false })
   hooks.useAgentAssignments.mockReturnValue({ data: { data: [assignment], page: { nextCursor: null, hasMore: false } }, isError: false, isLoading: false })
   hooks.useAgentTaskRuns.mockReturnValue({ data: { data: [run], page: { nextCursor: null, hasMore: false } }, isError: false, isLoading: false })
-  hooks.useCreateAgent.mockReturnValue(mutation); hooks.useUpdateAgent.mockReturnValue(mutation); hooks.usePublishAgent.mockReturnValue(mutation); hooks.useUnpublishAgent.mockReturnValue(mutation); hooks.useArchiveAgent.mockReturnValue(mutation)
+  hooks.useCreateAgent.mockReturnValue(mutation); hooks.useUpdateAgent.mockReturnValue(mutation); hooks.usePublishAgent.mockReturnValue(mutation); hooks.useArchiveAgent.mockReturnValue(mutation)
 })
 
 describe('AgentTeamPage', () => {
@@ -50,6 +50,16 @@ describe('AgentTeamPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '运行记录' }))
     expect(screen.getByText('TASK-1')).toBeInTheDocument()
     expect(screen.getByText('TASK-1')).toBeInTheDocument()
+  })
+
+  it('does not expose unpublish or workflow assignment UI', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getAllByText('Agent One').length).toBeGreaterThan(0))
+    expect(screen.queryByRole('button', { name: '取消发布' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Workflow 分配')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '分配详情' }))
+    expect(screen.queryByText('已分配 Workflow')).not.toBeInTheDocument()
+    expect(hooks.useAgentAssignments).toHaveBeenLastCalledWith('project-one', 'agent-one', { type: 'REQUIREMENT_GROUP' }, true)
   })
 
   it('keeps assignment errors independent', async () => {

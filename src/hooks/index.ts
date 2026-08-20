@@ -39,3 +39,4 @@ export {
 export { useWorkBranches } from './workBranch'
 export { useCreateRemoteBranch, useRemoteBranches } from './remoteBranch'
 export { useDebouncedValue } from './useDebouncedValue'
+export { useWorkspaceDiffPreview, useWorkspaceDiffPreviewFiles } from './workspaceDiffPreview'

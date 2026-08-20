@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Alert, Button, Card, Input, Spin, Tag, Typography } from 'antd'
 import { CheckCircleOutlined, ClockCircleOutlined, CodeOutlined, EnvironmentOutlined, FileTextOutlined } from '@ant-design/icons'
 import { ApiError } from '@/api'
-import { useApproveTaskRunInputRequest, useCancelTaskRunModel, useInfiniteTaskRunLogs, useRejectTaskRunInputRequest, useReplyTaskRunInputRequest, useRetryTaskRunModel, useTaskRun, useTaskRunExecutionContext, useTaskRunInputRequests } from '@/hooks/task-model'
+import { useApproveTaskRunInputRequest, useCancelTaskRunModel, useInfiniteTaskRunLogs, useRejectTaskRunInputRequest, useReplyTaskRunInputRequest, useRetryTaskRunModel, useTaskRun, useTaskRunDiagnostics, useTaskRunExecutionContext, useTaskRunInputRequests } from '@/hooks/task-model'
 import type { InputRequest, Task, TaskRunDetail } from '@/types/task-model'
 import styles from './TaskDetailPage.module.scss'
 
@@ -19,6 +19,7 @@ interface Props {
 export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, onRunChange }: Props) {
   const runQuery = useTaskRun(projectId, taskRunId ?? '')
   const logsQuery = useInfiniteTaskRunLogs(projectId, taskRunId ?? '', { limit: 100 })
+  const diagnosticsQuery = useTaskRunDiagnostics(projectId, taskRunId ?? '')
   const contextQuery = useTaskRunExecutionContext(projectId, taskRunId ?? '')
   const requestsQuery = useTaskRunInputRequests(projectId, taskRunId ?? '', { limit: 100 })
   const retry = useRetryTaskRunModel(projectId)
@@ -46,18 +47,29 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, onRu
 
   const canRetry = run ? ['FAILED', 'CANCELLED', 'BLOCKED'].includes(run.status) : false
   const canCancel = run ? ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED', 'CANCELLING'].includes(run.status) : false
-  return <section className={styles.runInspectorPanel} data-testid="run-inspector-panel"><div className={styles.runInspectorPanelHeading}><div><Text type="secondary">单次运行</Text><Title level={4}>本次执行</Title></div><div>{canRetry ? <Button size="small" onClick={retryRun} loading={retry.isPending} disabled={pending}>重试</Button> : null}{canCancel ? <Button size="small" danger onClick={cancelRun} loading={cancel.isPending} disabled={pending}>取消</Button> : null}</div></div>{!taskRunId ? <InspectorState text="选择一条执行记录查看详情" /> : runQuery.isLoading ? <InspectorState loading /> : runQuery.isError ? <InspectorError error={runQuery.error} resource="执行详情" /> : !run || run.taskId !== taskId ? <InspectorState text="执行记录不存在或不属于当前任务" /> : <RunInspectorContent run={run} task={task} logsQuery={logsQuery} contextQuery={contextQuery} requestsQuery={requestsQuery} projectId={projectId} />}<AcceptanceOverview task={task} /></section>
+  return <section className={styles.runInspectorPanel} data-testid="run-inspector-panel"><div className={styles.runInspectorPanelHeading}><div><Text type="secondary">单次运行</Text><Title level={4}>本次执行</Title></div><div>{canRetry ? <Button size="small" onClick={retryRun} loading={retry.isPending} disabled={pending}>重试</Button> : null}{canCancel ? <Button size="small" danger onClick={cancelRun} loading={cancel.isPending} disabled={pending}>取消</Button> : null}</div></div>{!taskRunId ? <InspectorState text="选择一条执行记录查看详情" /> : runQuery.isLoading ? <InspectorState loading /> : runQuery.isError ? <InspectorError error={runQuery.error} resource="执行详情" /> : !run || run.taskId !== taskId ? <InspectorState text="执行记录不存在或不属于当前任务" /> : <RunInspectorContent run={run} task={task} logsQuery={logsQuery} diagnosticsQuery={diagnosticsQuery} contextQuery={contextQuery} requestsQuery={requestsQuery} projectId={projectId} />}<AcceptanceOverview task={task} /></section>
 }
 
-function RunInspectorContent({ run, task, logsQuery, contextQuery, requestsQuery, projectId }: { run: TaskRunDetail; task: Task; logsQuery: ReturnType<typeof useInfiniteTaskRunLogs>; contextQuery: ReturnType<typeof useTaskRunExecutionContext>; requestsQuery: ReturnType<typeof useTaskRunInputRequests>; projectId: string }) {
+function RunInspectorContent({ run, task, logsQuery, diagnosticsQuery, contextQuery, requestsQuery, projectId }: { run: TaskRunDetail; task: Task; logsQuery: ReturnType<typeof useInfiniteTaskRunLogs>; diagnosticsQuery: ReturnType<typeof useTaskRunDiagnostics>; contextQuery: ReturnType<typeof useTaskRunExecutionContext>; requestsQuery: ReturnType<typeof useTaskRunInputRequests>; projectId: string }) {
   return <div className={styles.runInspector}>
     <section className={styles.inspectorSummary}><div><Title level={4}>{run.taskStepTitle || roleLabel(run.role)}</Title><Tag color={statusColor(run.status)}>{run.status}</Tag></div><Text type="secondary">{run.agent?.name ?? '未分配 Agent'} · {formatDuration(run.durationMs)}</Text>{run.statusSummary ? <Text>{run.statusSummary}</Text> : null}{run.statusReason ? <Alert type="warning" showIcon title={run.statusReason.title} description={run.statusReason.summary} /> : null}</section>
+    <DiagnosticSection query={diagnosticsQuery} />
     <InspectorSection title="内部轨迹" icon={<ClockCircleOutlined />}>{run.steps?.length ? <div className={styles.inspectorTimeline}>{run.steps.map((step, index) => <div key={`${step.node}-${step.startedAt ?? index}`}><Tag color={statusColor(step.status)}>{index + 1}</Tag><Text strong>{step.node}</Text><Text type="secondary">{formatDuration(step.durationMs)}</Text>{step.errorCode ? <Text type="danger">{step.errorCode}</Text> : null}</div>)}</div> : <Text type="secondary">当前执行器未返回内部步骤</Text>}</InspectorSection>
     <InspectorSection title="待处理请求" icon={<FileTextOutlined />}><DrawerInputRequests projectId={projectId} taskRunId={run.id} query={requestsQuery} /></InspectorSection>
     <InspectorSection title="运行日志" icon={<CodeOutlined />}><RunLogsPanel query={logsQuery} runStatus={run.status} /></InspectorSection>
     <InspectorSection title="执行环境" icon={<EnvironmentOutlined />}>{contextQuery.isLoading ? <InspectorState loading /> : contextQuery.isError ? <InspectorError error={contextQuery.error} resource="执行环境" /> : contextQuery.data?.repositoryId ? <div className={styles.inspectorContext}><Text ellipsis>仓库：{repositoryLabel(task, contextQuery.data.repositoryId)}</Text></div> : <Text type="secondary">暂无仓库信息</Text>}</InspectorSection>
     <InspectorSection title="本次产出" icon={<CodeOutlined />}><Text>产物 {run.artifactSummary?.total ?? 0} 个 · Diff {run.artifactSummary?.diffCount ?? 0} 个</Text></InspectorSection>
   </div>
+}
+
+function DiagnosticSection({ query }: { query: ReturnType<typeof useTaskRunDiagnostics> }) {
+  if (query.isLoading) return <InspectorSection title="失败诊断" icon={<CodeOutlined />}><InspectorState loading /></InspectorSection>
+  if (query.isError) return <InspectorSection title="失败诊断" icon={<CodeOutlined />}><InspectorError error={query.error} resource="失败诊断" /></InspectorSection>
+  const diagnostic = query.data
+  if (!diagnostic) return null
+  const failure = diagnostic.failure
+  const workerExecutions = diagnostic.workerExecutions
+  return <InspectorSection title="失败诊断" icon={<CodeOutlined />}><div className={styles.inspectorDiagnostic}><Text type="secondary">阶段：{diagnostic.stage}</Text>{failure ? <Alert type="error" showIcon title={failure.failureCode ?? failure.title} description={failure.summary} /> : <Text type="secondary">当前运行没有失败归因</Text>}{workerExecutions.length ? <div><Text strong>Worker 工具执行</Text>{workerExecutions.map((execution) => <div className={styles.inspectorDiagnosticItem} key={execution.executionId}><Text code>{execution.executionId}</Text><Text>{execution.tool ?? '未知工具'} · {execution.status ?? '未知状态'}</Text>{execution.failureCode ? <Text type="danger">{execution.failureCode}: {execution.failureSummary ?? '无摘要'}</Text> : null}</div>)}</div> : <Text type="secondary">本次运行未调用 Sandbox Worker</Text>}</div></InspectorSection>
 }
 
 function AcceptanceOverview({ task }: { task: Task }) {

@@ -234,6 +234,45 @@ export function MergeRequestTab({
     })
   }, [query.data?.data])
 
+  // 将 DELIVERING 任务的仓库作为前端合成的「待创建」占位行注入 MR 列表。
+  // 这样用户在点击「确认交付」后，MR 列表会立即出现对应条目，
+  // 不需要等到 commit/push 完成（WAITING_PREFLIGHT）后端生成真实占位记录。
+  // 当后端返回真实占位记录后（ID 格式不同），真实记录会覆盖合成行。
+  const itemsWithDeliveringPlaceholders = useMemo(() => {
+    if (mrFirstDeliveringTasks.length === 0) return items
+    const existingKeys = new Set(
+      items.map((m) => `${m.repositoryId}|${m.sourceBranch}`),
+    )
+    const syntheticRows: MergeRequestSummary[] = []
+    for (const task of mrFirstDeliveringTasks) {
+      for (const repo of task.repositories ?? []) {
+        // 如果仓库+分支已在真实 items 中存在（后端已生成占位），则不再添加合成行
+        const key = `${repo.repositoryId}|${repo.sourceBranch || ''}`
+        if (existingKeys.has(key)) continue
+        // 仓库未初始化或项目默认分支为空时，targetBranch 不回退 'main'，
+        // 让 PENDING_CREATE 行显示「待创建」+ 不可申请预检的 tooltip 提示
+        const targetBranchValue = repo.baseRef || repo.defaultBranch || ''
+        syntheticRows.push({
+          id: `fe-delivering-${task.id}-${repo.repositoryId}`,
+          repositoryId: repo.repositoryId,
+          groupIds: [],
+          provider: 'GITHUB',
+          number: 0,
+          title: task.title,
+          sourceBranch: repo.sourceBranch || `feat/task-${task.id}`,
+          targetBranch: targetBranchValue,
+          status: 'PENDING_CREATE' as const,
+          headCommit: repo.headCommit,
+          taskId: task.id,
+          createMode: 'UNKNOWN' as const,
+        })
+      }
+    }
+    if (syntheticRows.length === 0) return items
+    // 合成行放在列表最前面，加上真实 items
+    return [...syntheticRows, ...items]
+  }, [items, mrFirstDeliveringTasks])
+
   // ========== 每行的 CQ+1 状态：useQueries 按 (projectId+taskId+repoId+targetBranch) 查 Preflight =====
   // taskId 为空或未关联任务的 MR（如纯手动 GitHub 创建）不查，直接显示 "—"
   const cqQueries = useQueries({

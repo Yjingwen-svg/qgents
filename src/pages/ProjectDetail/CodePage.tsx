@@ -16,15 +16,19 @@ import {
   Select,
   App,
   theme,
+  Tooltip,
   // Tabs,  // 暂时注释：MR tab 先不展示
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
   GithubOutlined,
   MoreOutlined,
+  PlusOutlined,
+  LinkOutlined,
 } from '@ant-design/icons'
 import { githubApi, groupApi, projectApi } from '@/api'
 import { useWorkBranches } from '@/hooks/workBranch'
+import { useGithubInstallations } from '@/hooks/useGithubInstall'
 import { queryKeys } from '@/query/queryKeys'
 import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
@@ -32,6 +36,7 @@ import type { ProjectBoundRepository, WorkBranch } from '@/types/github'
 import { toEmptyBranchDiffId } from './emptyBranchDiff'
 // import { MergeRequestTab } from './MergeRequestTab'  // 暂时注释：MR tab 先不展示
 import RemoteBranchSection from './RemoteBranchSection'
+import CreateNewRepositoryModal from './CreateNewRepositoryModal'
 
 const { Title, Paragraph, Text } = Typography
 /**
@@ -61,6 +66,7 @@ export function CodePage() {
     repo: ProjectBoundRepository
     branch: WorkBranch
   } | null>(null)
+  const [createRepoOpen, setCreateRepoOpen] = useState(false)
 
   // 项目信息（含当前用户角色）
   const { data: project } = useQuery({
@@ -69,6 +75,16 @@ export function CodePage() {
     enabled: Boolean(projectId),
   })
   const isProjectAdmin = project?.role === 'PROJECT_ADMIN'
+  const teamId = project?.teamId ?? ''
+
+  // 团队 GitHub Installation 列表（用于新建仓库弹窗选择目标 Installation）
+  const installationsQuery = useGithubInstallations(teamId, Boolean(teamId))
+  const activeInstallations = (installationsQuery.data ?? []).filter((it) => it.status === 'ACTIVE')
+
+  // 建仓权限信号：后端契约第一版要求 TEAM_OWNER；
+  // 后端 Project 查询当前未直接返回 team-role，先用 isProjectAdmin 兜底（Project Admin 也能见到按钮），
+  // 真实 Team Owner 由后端 403 兜底提示。后端补齐 teamRole 字段后可直接替换。
+  const canCreateRepository = isProjectAdmin
 
   // 项目绑定仓库列表
   const reposQuery = useQuery({
@@ -159,19 +175,46 @@ export function CodePage() {
         <MergeRequestTab projectId={projectId} repositories={reposQuery.data ?? []} />
       ) : ( */}
       {/* ===== 分支 tab 内容（保留直接展示） ===== */}
-      <Space wrap style={{ marginBottom: 16 }}>
-        <Text type="secondary">需求过滤</Text>
-        <Select
-          allowClear
-          placeholder="全部需求"
-          style={{ minWidth: 180 }}
-          value={requirementGroupId}
-          onChange={(value) => setRequirementGroupId(value)}
-          options={requirementGroups.map((g) => ({
-            value: g.id,
-            label: g.title,
-          }))}
-        />
+      <Space wrap style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }}>
+        <Space wrap>
+          <Text type="secondary">需求过滤</Text>
+          <Select
+            allowClear
+            placeholder="全部需求"
+            style={{ minWidth: 180 }}
+            value={requirementGroupId}
+            onChange={(value) => setRequirementGroupId(value)}
+            options={requirementGroups.map((g) => ({
+              value: g.id,
+              label: g.title,
+            }))}
+          />
+        </Space>
+        <Space>
+          {canCreateRepository ? (
+            <Tooltip title="跳转到团队授权仓库列表，绑定已存在的 GitHub 仓库">
+              <Button icon={<LinkOutlined />} onClick={() => window.open(`/app/teams/${teamId}/github/repos`, '_blank')}>
+                绑定已有仓库
+              </Button>
+            </Tooltip>
+          ) : null}
+          <Tooltip
+            title={
+              canCreateRepository
+                ? '在当前项目内新建一个 GitHub 仓库并自动绑定'
+                : '新建仓库需要 TEAM_OWNER 权限（由后端兜底校验）'
+            }
+          >
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setCreateRepoOpen(true)}
+              disabled={!canCreateRepository}
+            >
+              新建仓库并绑定
+            </Button>
+          </Tooltip>
+        </Space>
       </Space>
 
       <Alert
@@ -246,6 +289,20 @@ export function CodePage() {
           />
         ) : null}
       </Drawer>
+
+      {/* 项目内新建仓库并绑定弹窗 */}
+      <CreateNewRepositoryModal
+        open={createRepoOpen}
+        projectId={projectId}
+        installations={activeInstallations}
+        installationsLoading={installationsQuery.isLoading}
+        onClose={() => setCreateRepoOpen(false)}
+        onSuccess={() => {
+          // 成功后刷新项目仓库列表，新仓会在下一帧自动出现在卡片列表
+          void queryClient.invalidateQueries({ queryKey: queryKeys.projectRepositories(projectId) })
+        }}
+      />
+
       {/* 暂时注释：MR tab 先不展示（原分支 tab 内容外层条件分支的闭合端）
     </>
       )} */}
@@ -363,9 +420,9 @@ function RepoBranchCard({
       }
       extra={
         <Space>
-          {repo.defaultBranch ? (
-            <Tag color="blue">默认: {repo.defaultBranch}</Tag>
-          ) : null}
+          <Tooltip title="Qgents 项目使用的默认基准分支，可通过 RemoteBranchSection 修改；不会影响 GitHub 全局默认分支">
+            <Tag color="blue">项目默认: {repo.defaultBranch || '未设置'}</Tag>
+          </Tooltip>
           <a href={repo.githubUrl} target="_blank" rel="noopener noreferrer">
             {repo.fullName}
           </a>

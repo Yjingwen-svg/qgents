@@ -151,6 +151,16 @@ export default function DryRunCreateModal({
   const handleOk = useCallback(async () => {
     try {
       const values = await form.validateFields()
+      // 空仓库约束（§3.4）：仓库未初始化/无远程分支时禁止提交
+      const boundRepo = repositories.find((r) => r.id === values.repositoryId)
+      if (boundRepo && !boundRepo.defaultBranch) {
+        message.error('仓库尚未初始化（defaultBranch 为空），请先初始化仓库并设置项目默认基准分支')
+        return
+      }
+      if (remoteBranches.length === 0) {
+        message.error('当前仓库暂无远程分支，无法选择 Dry Run 目标分支；请先初始化仓库')
+        return
+      }
       const payload: CreateDryRunPayload = {
         repositoryId: values.repositoryId,
         sourceRef: values.sourceRef,
@@ -176,7 +186,7 @@ export default function DryRunCreateModal({
     } catch {
       // 表单验证失败
     }
-  }, [form, createMutation, message, onCreated])
+  }, [form, createMutation, message, onCreated, repositories, remoteBranches])
 
   function handleClose() {
     form.resetFields()

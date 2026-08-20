@@ -11,7 +11,10 @@ import type {
   GithubInstallationStatus,
   GithubAuthorizedRepository,
   GithubRepoVisibility,
+  NewRepositoryStatus,
   ProjectBoundRepository,
+  ProjectRepositoryCreateNewInput,
+  ProjectRepositoryCreateNewResponse,
   RemoteBranch,
   RemoteBranchListFilters,
   UpdateProjectRepositoryPayload,
@@ -115,6 +118,41 @@ function mapProjectBoundRepository(raw: unknown): ProjectBoundRepository {
     authorizationStatus: mapAuthorizationStatus(row.authorizationStatus),
     metadataSyncedAt: readString(row, 'metadataSyncedAt'),
     boundAt: readString(row, 'boundAt'),
+  }
+}
+
+function mapNewRepositoryStatus(value: unknown): NewRepositoryStatus {
+  if (value === 'CREATING' || value === 'READY' || value === 'FAILED') return value
+  return 'CREATING'
+}
+
+/**
+ * POST /projects/{projectId}/repositories/new 响应映射
+ * 兼容字段：
+ * - repositoryId 可能叫 githubRepositoryId（v2.0.19 §44 待联调）
+ * - defaultBranch CREATING 阶段可能为 null
+ * - failureCode/failureReason 仅 FAILED 时有值，否则 null
+ */
+function mapNewProjectRepository(raw: unknown): ProjectRepositoryCreateNewResponse {
+  const row = isRecord(raw) ? raw : {}
+  const defaultBranchRaw = row.defaultBranch
+  const defaultBranch =
+    typeof defaultBranchRaw === 'string' && defaultBranchRaw.trim()
+      ? defaultBranchRaw
+      : null
+  const repoId = readString(row, 'repositoryId') || readString(row, 'githubRepositoryId')
+  return {
+    id: readString(row, 'id'),
+    repositoryId: repoId,
+    installationId: readString(row, 'installationId'),
+    fullName: readString(row, 'fullName'),
+    githubUrl: readString(row, 'githubUrl'),
+    defaultBranch,
+    displayName: readString(row, 'displayName') || undefined,
+    status: mapNewRepositoryStatus(row.status),
+    failureCode: typeof row.failureCode === 'string' ? row.failureCode : null,
+    failureReason: typeof row.failureReason === 'string' ? row.failureReason : null,
+    createdAt: readString(row, 'createdAt'),
   }
 }
 
@@ -344,6 +382,39 @@ export const githubApi = {
       method: 'DELETE',
       headers: idempotencyHeaders(),
     })
+  },
+
+  /**
+   * POST /projects/{projectId}/repositories/new —— 项目内"新建仓库并绑定"
+   * 接口文档 v2.0.19 §44
+   *
+   * 【权限】TEAM_OWNER（项目管理员不可建仓，只能绑定已有仓库）
+   * 【幂等】每次"新建操作"生成一次 UUID 作为 Idempotency-Key，
+   *       弹窗打开时生成、多次提交沿用同一 key、关闭时清空，
+   *       防止用户连点或网络重试时 GitHub 端创建多个仓库。
+   * 【响应】后端可能返回 201（READY，已建好）或 202（CREATING，需轮询/SSE）。
+   *
+   * @param idempotencyKey 由调用方稳定持有的 UUID；调用方不要每次自己生成新值
+   */
+  createNewProjectRepository(
+    projectId: string,
+    input: ProjectRepositoryCreateNewInput,
+    idempotencyKey: string,
+  ): Promise<ProjectRepositoryCreateNewResponse> {
+    const body: ProjectRepositoryCreateNewInput = {
+      name: input.name,
+      installationId: input.installationId,
+    }
+    if (input.description !== undefined) body.description = input.description
+    if (input.private !== undefined) body.private = input.private
+    if (input.displayName !== undefined) body.displayName = input.displayName
+
+    return request<ApiEnvelope<unknown>>(`/projects/${projectId}/repositories/new`, {
+      method: 'POST',
+      unwrapData: false,
+      body,
+      headers: { 'Idempotency-Key': idempotencyKey },
+    }).then((res) => mapNewProjectRepository(res.data))
   },
 
   /**

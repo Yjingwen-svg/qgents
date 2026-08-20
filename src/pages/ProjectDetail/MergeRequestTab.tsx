@@ -50,7 +50,7 @@ function statusColor(status: MergeRequestStatus): string {
 function qualityGateLabel(status: string | undefined): string {
   if (status === 'PASSED') return '门禁通过'
   if (status === 'FAILED') return '门禁未过'
-  if (status === 'PENDING') return '门禁检查中'
+  if (status === 'PENDING') return '等待预检结果'
   return '门禁未知'
 }
 
@@ -84,7 +84,8 @@ function cqColor(preflight: Preflight | undefined, isLoading: boolean, isError: 
 /**
  * MANUAL 模式派生的前端子状态（用于区分 WAITING_CQ 下 CQ 是否已人工盖章）：
  *  - 'IDLE'        未申请预检
- *  - 'PREFLIGHTING' 预检中 / Dry Run / 等待 CQ+1 人工盖章
+ *  - 'PREFLIGHTING' 预检申请已受理，等待 Dry Run 开始
+ *  - 'WAITING_CQ'   Dry Run 已通过，等待 CQ+1 人工盖章
  *  - 'READY_CREATE' DryRun + CQ+1 都通过，等待人工点「创建MR」（仅 MANUAL）
  *  - 'CREATING'    用户点了创建MR，后端正在建 PR
  *  - 'MR_CREATED'  MR 已创建
@@ -94,6 +95,7 @@ function cqColor(preflight: Preflight | undefined, isLoading: boolean, isError: 
 type EffectiveState =
   | 'IDLE'
   | 'PREFLIGHTING'
+  | 'WAITING_CQ'
   | 'READY_CREATE'
   | 'CREATING'
   | 'MR_CREATED'
@@ -114,7 +116,7 @@ function deriveEffectiveState(
       return 'PREFLIGHTING'
     case 'WAITING_CQ':
       if (createMode === 'MANUAL' && cqApproved) return 'READY_CREATE'
-      return 'PREFLIGHTING'
+      return 'WAITING_CQ'
     case 'CREATING_MR':
       return 'CREATING'
     case 'CQ_REJECTED':
@@ -136,6 +138,8 @@ function preflightButtonLabel(
       return { text: '申请MR', loading: false, disabled: false, failed: false, clickable: true }
     case 'PREFLIGHTING':
       return { text: '预检中', loading: true, disabled: true, failed: false, clickable: false }
+    case 'WAITING_CQ':
+      return { text: '等待 CQ+1', loading: false, disabled: true, failed: false, clickable: false }
     case 'READY_CREATE':
       // 人工模式：CQ+1通过后，需要用户再点「创建MR」
       return { text: '创建MR', loading: false, disabled: false, failed: false, clickable: true }
@@ -152,6 +156,7 @@ function preflightTagText(eff: EffectiveState): string {
   switch (eff) {
     case 'IDLE': return '待创建'
     case 'PREFLIGHTING': return '预检中'
+    case 'WAITING_CQ': return '等待 CQ+1'
     case 'READY_CREATE': return '待创建MR'
     case 'CREATING': return '创建MR'
     case 'MR_CREATED': return '进行中'
@@ -163,6 +168,7 @@ function preflightTagColor(eff: EffectiveState): string {
   switch (eff) {
     case 'IDLE': return 'cyan'
     case 'PREFLIGHTING': return 'processing'
+    case 'WAITING_CQ': return 'warning'
     case 'READY_CREATE': return 'warning'
     case 'CREATING': return 'processing'
     case 'MR_CREATED': return 'blue'
@@ -439,7 +445,9 @@ export function MergeRequestTab({
     const currentStatus = preflightStatusMap[record.id]
     if (currentStatus && !['FAILED', 'STALE', 'CQ_REJECTED'].includes(currentStatus)) {
       // 预检进行中或已在等待 CQ，只允许「重新预检」的场景
-      const label = preflightButtonLabel(currentStatus)
+      const label = preflightButtonLabel(
+        deriveEffectiveState(currentStatus, record.createMode, false),
+      )
       if (label.loading || currentStatus === 'WAITING_CQ' || currentStatus === 'MR_CREATED') {
         message.info(`当前状态：${label.text}，无需重复操作`)
         return

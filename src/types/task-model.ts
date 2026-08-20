@@ -490,6 +490,8 @@ export interface MergeRequestSummary {
   sourceBranch: string
   targetBranch: string
   status: MergeRequestStatus
+  /** 合并操作状态；异步合并受理后为 RUNNING，完成后为 COMPLETED/FAILED。 */
+  mergeOperationStatus?: 'RUNNING' | 'COMPLETED' | 'FAILED' | null
   headCommit: string | null
   webUrl?: string | null
   taskId?: string | null

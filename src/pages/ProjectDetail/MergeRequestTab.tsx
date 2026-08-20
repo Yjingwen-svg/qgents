@@ -186,6 +186,10 @@ function repoLabel(repositories: ProjectBoundRepository[], repositoryId: string)
   return repo?.displayName || repo?.fullName || repositoryId
 }
 
+function isSyntheticDeliveringRow(record: MergeRequestSummary): boolean {
+  return record.id.startsWith('fe-delivering-')
+}
+
 export function MergeRequestTab({
   projectId,
   repositories,
@@ -245,13 +249,17 @@ export function MergeRequestTab({
   // 不需要等到 commit/push 完成（WAITING_PREFLIGHT）后端生成真实占位记录。
   // 当后端返回真实占位记录后（ID 格式不同），真实记录会覆盖合成行。
   const itemsWithDeliveringPlaceholders = useMemo(() => {
-    if (mrFirstDeliveringTasks.length === 0) return items
+    if (
+      mrFirstDeliveringTasks.length === 0
+      || (status !== undefined && status !== 'PENDING_CREATE')
+    ) return items
     const existingKeys = new Set(
       items.map((m) => `${m.repositoryId}|${m.sourceBranch}`),
     )
     const syntheticRows: MergeRequestSummary[] = []
     for (const task of mrFirstDeliveringTasks) {
       for (const repo of task.repositories ?? []) {
+        if (repositoryId && repo.repositoryId !== repositoryId) continue
         // 如果仓库+分支已在真实 items 中存在（后端已生成占位），则不再添加合成行
         const key = `${repo.repositoryId}|${repo.sourceBranch || ''}`
         if (existingKeys.has(key)) continue
@@ -277,13 +285,20 @@ export function MergeRequestTab({
     if (syntheticRows.length === 0) return items
     // 合成行放在列表最前面，加上真实 items
     return [...syntheticRows, ...items]
-  }, [items, mrFirstDeliveringTasks])
+  }, [items, mrFirstDeliveringTasks, repositoryId, status])
+
+  // 表格、CQ 查询和操作列必须使用同一份数据。否则占位行插入列表后，
+  // 仍按原始 items 的下标取 CQ 结果，会把一个仓库的状态显示到另一个仓库上。
+  const displayItems = itemsWithDeliveringPlaceholders
 
   // ========== 每行的 CQ+1 状态：useQueries 按 (projectId+taskId+repoId+targetBranch) 查 Preflight =====
   // taskId 为空或未关联任务的 MR（如纯手动 GitHub 创建）不查，直接显示 "—"
   const cqQueries = useQueries({
-    queries: items.map((mr) => {
-      const enabled = Boolean(mr.taskId) && Boolean(mr.repositoryId) && Boolean(mr.targetBranch)
+    queries: displayItems.map((mr) => {
+      const enabled = !isSyntheticDeliveringRow(mr)
+        && Boolean(mr.taskId)
+        && Boolean(mr.repositoryId)
+        && Boolean(mr.targetBranch)
       return {
         queryKey: ['preflight', 'mr-row', projectId, mr.taskId || '', mr.repositoryId || '', mr.targetBranch || ''],
         enabled,
@@ -312,17 +327,14 @@ export function MergeRequestTab({
   const [creatingId, setCreatingId] = useState<string | null>(null)
   // 记录每行的预检状态（前端跟踪，真实环境由 SSE/后端返回）
   const [preflightStatusMap, setPreflightStatusMap] = useState<Record<string, PreflightStatus>>({})
-  const restoredRef = useRef(false)
 
-  // 页面加载时一次性查询预检状态，恢复已启动的进度
+  // 页面加载和真实占位行替换时恢复已启动的预检状态。
   useEffect(() => {
-    if (restoredRef.current) return
-    if (items.length === 0) return // 等待 MR 列表加载完成
+    if (displayItems.length === 0) return // 等待 MR 列表或交付中占位行加载完成
     const taskIds = new Set<string>()
-    items.forEach((mr) => {
-      if (mr.status === 'PENDING_CREATE' && mr.taskId) taskIds.add(mr.taskId)
+    displayItems.forEach((mr) => {
+      if (mr.status === 'PENDING_CREATE' && mr.taskId && !isSyntheticDeliveringRow(mr)) taskIds.add(mr.taskId)
     })
-    restoredRef.current = true
     if (taskIds.size === 0) return
       ; (async () => {
         try {
@@ -330,7 +342,7 @@ export function MergeRequestTab({
           for (const taskId of taskIds) {
             const res = await mergeRequestsApi.getTaskPreflight(projectId, taskId)
             if (res?.items?.length) {
-              const taskMrRows = items.filter((mr) => mr.taskId === taskId && mr.status === 'PENDING_CREATE')
+              const taskMrRows = displayItems.filter((mr) => mr.taskId === taskId && mr.status === 'PENDING_CREATE')
               taskMrRows.forEach((mr) => {
                 const repoStatus = res.items.find((it) => it.repositoryId === mr.repositoryId)
                 if (repoStatus?.dryRunStatus) {
@@ -349,23 +361,21 @@ export function MergeRequestTab({
               })
             }
           }
-          if (Object.keys(newMap).length > 0) {
-            setPreflightStatusMap((prev) => ({ ...prev, ...newMap }))
-          }
+          if (Object.keys(newMap).length > 0) setPreflightStatusMap((prev) => ({ ...prev, ...newMap }))
         } catch {
           // 静默失败，不影响页面展示
         }
       })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, items.length])
+  }, [projectId, displayItems])
 
   // ============== 自动模式（createMode = SYSTEM）：页面加载完自动触发申请预检 ==============
   // 后端返回占位 MR 时已经标记好 SYSTEM，前端就不需要用户再手动点「申请MR」。
   const autoStartRef = useRef<Set<string>>(new Set())
   const autoStartTriedCountRef = useRef(0)
   useEffect(() => {
-    if (items.length === 0) return
-    const systemRows = items.filter((mr) =>
+    if (displayItems.length === 0) return
+    const systemRows = displayItems.filter((mr) =>
       mr.status === 'PENDING_CREATE'
       && mr.taskId
       && mr.createMode === 'SYSTEM'
@@ -412,7 +422,7 @@ export function MergeRequestTab({
         })()
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, preflightStatusMap, creatingId, requestPreflight])
+  }, [displayItems, preflightStatusMap, creatingId, requestPreflight])
 
   function handleMerge(record: MergeRequestSummary) {
     modal.confirm({
@@ -423,11 +433,35 @@ export function MergeRequestTab({
       okButtonProps: { loading: mergingId === record.id },
       onOk: async () => {
         setMergingId(record.id)
+        const progressKey = `merge-request-${record.id}`
+        message.open({
+          key: progressKey,
+          type: 'loading',
+          content: '正在请求 GitHub 合并，请稍候…',
+          duration: 0,
+        })
         try {
-          await mergeMr.mutateAsync(record.id)
-          message.success('MR 已合并')
+          const result = await mergeMr.mutateAsync(record.id)
+          setItems((prevItems) => prevItems.map((item) =>
+            item.id === record.id
+              ? { ...item, mergeOperationStatus: result.mergeOperationStatus ?? item.mergeOperationStatus,
+                  status: result.status, }
+              : item,
+          ))
+          if (result.mergeOperationStatus === 'RUNNING') {
+            message.open({
+              key: progressKey,
+              type: 'info',
+              content: '合并请求已受理，GitHub 正在处理，页面会自动刷新结果。',
+              duration: 4,
+            })
+          } else if (result.status === 'MERGED') {
+            message.open({ key: progressKey, type: 'success', content: 'MR 已合并', duration: 3 })
+          } else {
+            message.open({ key: progressKey, type: 'warning', content: '合并尚未完成，请稍后查看 MR 状态。', duration: 4 })
+          }
         } catch (error) {
-          message.error(formatApiError(error))
+          message.open({ key: progressKey, type: 'error', content: formatApiError(error), duration: 5 })
         } finally {
           setMergingId(null)
         }
@@ -653,6 +687,7 @@ export function MergeRequestTab({
         key: 'status',
         width: 120,
         render: (value: MergeRequestStatus, record, index: number) => {
+          if (isSyntheticDeliveringRow(record)) return <Tag color="processing">交付中</Tag>
           if (record.status === 'PENDING_CREATE') {
             const cq = cqQueries[index]
             // 轮询接口返回的是最新事实；本地 map 只作为首次请求/接口暂未返回时的回退。
@@ -673,6 +708,7 @@ export function MergeRequestTab({
           const q = cqQueries[index]
           const enabled = Boolean(record.taskId)
           if (!enabled) return <Text type="secondary">—</Text>
+          if (isSyntheticDeliveringRow(record)) return <Text type="secondary">等待推送</Text>
           return (
             <Tooltip title="点击跳转到 CQ+1 大印章审查页">
               <Button
@@ -706,11 +742,13 @@ export function MergeRequestTab({
         title: '质量门禁',
         key: 'qualityGate',
         width: 120,
-        render: (_value, record) => (
-          <Tag color={qualityGateColor(record.qualityGate?.status)}>
-            {qualityGateLabel(record.qualityGate?.status)}
-          </Tag>
-        ),
+        render: (_value, record) => isSyntheticDeliveringRow(record)
+          ? <Tag color="processing">等待推送</Tag>
+          : (
+            <Tag color={qualityGateColor(record.qualityGate?.status)}>
+              {qualityGateLabel(record.qualityGate?.status)}
+            </Tag>
+          ),
       },
       {
         title: 'HEAD',
@@ -726,6 +764,7 @@ export function MergeRequestTab({
         render: (_value, record, index: number) => {
           // ============== PENDING_CREATE：占位 MR，预检流程阶段 ==============
           if (record.status === 'PENDING_CREATE') {
+            if (isSyntheticDeliveringRow(record)) return <Text type="secondary">代码推送中</Text>
             const cq = cqQueries[index]
             const currentStatus = cq?.data?.status ?? preflightStatusMap[record.id]
             const cqApproved = cq?.data?.cqPlusOne?.status === 'APPROVED'
@@ -756,13 +795,14 @@ export function MergeRequestTab({
                     <Button
                       size="small"
                       type="primary"
-                      loading={mergingId === record.id}
+                      loading={mergingId === record.id || record.mergeOperationStatus === 'RUNNING'}
+                      disabled={record.mergeOperationStatus === 'RUNNING'}
                       onClick={(event) => {
                         event.stopPropagation()
                         handleMerge(record)
                       }}
                     >
-                      合并MR
+                      {record.mergeOperationStatus === 'RUNNING' ? '合并中' : '合并MR'}
                     </Button>
                   ) : null}
                   {!href && !isAdmin ? <Text type="secondary">—</Text> : null}
@@ -817,7 +857,8 @@ export function MergeRequestTab({
           const canMerge =
             isAdmin &&
             record.status === 'OPEN' &&
-            record.qualityGate?.status === 'PASSED'
+            record.qualityGate?.status === 'PASSED' &&
+            record.mergeOperationStatus !== 'RUNNING'
           const children: JSX.Element[] = []
           if (href) {
             children.push(
@@ -839,13 +880,13 @@ export function MergeRequestTab({
                 key="merge"
                 size="small"
                 type="primary"
-                loading={mergingId === record.id}
+                loading={mergingId === record.id || record.mergeOperationStatus === 'RUNNING'}
                 onClick={(event) => {
                   event.stopPropagation()
                   handleMerge(record)
                 }}
               >
-                合并MR
+                {record.mergeOperationStatus === 'RUNNING' ? '合并中' : '合并MR'}
               </Button>,
             )
           }
@@ -1009,7 +1050,7 @@ export function MergeRequestTab({
             </Button>
           }
         />
-      ) : items.length === 0 ? (
+      ) : displayItems.length === 0 ? (
         <Empty description={
           mrFirstDeliveringTasks.length > 0
             ? 'MR_FIRST 任务正在自动交付中，代码推送完成后将自动在此生成 MR 占位记录。'
@@ -1021,7 +1062,7 @@ export function MergeRequestTab({
           size="middle"
           pagination={false}
           columns={columns}
-          dataSource={items}
+          dataSource={displayItems}
           scroll={{ x: 1120 }}
         />
       )}

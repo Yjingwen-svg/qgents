@@ -412,6 +412,10 @@ export function mapMergeRequest(raw: unknown): MergeRequestSummary {
     sourceBranch: readString(row, 'sourceBranch'),
     targetBranch: readString(row, 'targetBranch'),
     status: effectiveStatus,
+    mergeOperationStatus:
+      row.mergeOperationStatus === 'RUNNING' || row.mergeOperationStatus === 'COMPLETED' || row.mergeOperationStatus === 'FAILED'
+        ? row.mergeOperationStatus
+        : null,
     headCommit: typeof row.headCommit === 'string' ? row.headCommit : null,
     webUrl: rawWebUrl,
     taskId: rawTaskId,

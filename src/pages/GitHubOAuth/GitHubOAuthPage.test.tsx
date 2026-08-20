@@ -102,18 +102,16 @@ describe('GitHubOAuthPage', () => {
     await waitFor(() => expect(screen.getByTestId('query-string').textContent).toBe(''))
   })
 
-  it('prompts to install the App first when there is no USER installation', async () => {
+  it('blocks starting OAuth when there is no USER installation', async () => {
     const user = userEvent.setup()
     statusMock.mockResolvedValue({ ...unauthorized, personalRepositorySetup: 'NEED_INSTALLATION' })
     renderPage()
 
-    // 未授权且没有 USER 安装时，先展示“先装 App”的提示
+    // 未授权且没有 USER 安装时，展示“先装 App”的提示，且按钮禁用、不跳转 GitHub
     expect(await screen.findByText(/请先用你的个人 GitHub 账号安装/)).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: /关联个人 GitHub/ }))
-    // 未确认前不应直接跳转 GitHub 授权
+    const bindButton = screen.getByRole('button', { name: /关联个人 GitHub/ })
+    expect(bindButton).toBeDisabled()
+    await user.click(bindButton)
     expect(startMock).not.toHaveBeenCalled()
-    await user.click(await screen.findByRole('button', { name: /仍要授权/ }))
-    await waitFor(() => expect(startMock).toHaveBeenCalledWith('WEB'))
   })
 })

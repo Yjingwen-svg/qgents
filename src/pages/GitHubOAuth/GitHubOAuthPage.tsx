@@ -17,6 +17,11 @@ const callbackErrorMessages: Record<string, string> = {
   GITHUB_OAUTH_CALLBACK_DENIED: '你取消了 GitHub 授权。',
   GITHUB_OAUTH_CODE_EXCHANGE_FAILED: 'GitHub 授权换取凭证失败，请稍后重试。',
   GITHUB_OAUTH_ACCOUNT_LOOKUP_FAILED: '无法确认 GitHub 账号，请稍后重试。',
+  GITHUB_OAUTH_ACCOUNT_MISMATCH: '该 GitHub 账号与团队安装账号不一致，或已被其他 Qgents 用户绑定，请确认后重新发起授权。',
+  GITHUB_OAUTH_CALLBACK_CONFLICT: '授权状态冲突，请重新发起授权。',
+  GITHUB_OAUTH_NOT_CONFIGURED: '服务端未配置 GitHub OAuth，请联系管理员。',
+  GITHUB_OAUTH_REVOKED: '该授权已撤销，请重新发起授权。',
+  GITHUB_OAUTH_UPSTREAM_UNAVAILABLE: 'GitHub 服务暂不可用，请稍后重试。',
 }
 
 function formatDate(value: string | null): string {
@@ -82,23 +87,13 @@ export function GitHubOAuthPage() {
 
   const status = statusQuery.data
   const setupGuide = personalRepositorySetupGuide(status)
+  // §49.4：没有 USER 安装 / 非 Owner 时禁止发起授权，避免跳转 GitHub 后被后端回调以失败收场
+  const setupBlocked =
+    status?.personalRepositorySetup === 'NEED_INSTALLATION' ||
+    status?.personalRepositorySetup === 'NOT_OWNER'
 
-  // §49.4：没有 USER 安装 / 非 Owner 时，先提醒用户处理前置条件再放行去 GitHub 授权
   function handleBind() {
-    const setup = status?.personalRepositorySetup
-    if (setup === 'NEED_INSTALLATION' || setup === 'NOT_OWNER') {
-      modal.confirm({
-        title: setup === 'NEED_INSTALLATION' ? '请先安装 Qgents GitHub App' : '个人建仓需要团队 Owner 权限',
-        content:
-          setup === 'NEED_INSTALLATION'
-            ? '你的团队还没有安装 Qgents GitHub App。建议先用个人 GitHub 账号安装 App，再回来绑定 GitHub；否则即使绑定成功，也无法创建个人仓库。'
-            : '你当前不是任何团队的 Owner，无法创建个人仓库。仍要前往 GitHub 授权吗？',
-        okText: '仍要授权',
-        cancelText: '取消',
-        onOk: () => startMutation.mutate(),
-      })
-      return
-    }
+    if (setupBlocked) return
     startMutation.mutate()
   }
 
@@ -199,6 +194,7 @@ export function GitHubOAuthPage() {
                   icon={<LinkOutlined />}
                   loading={startMutation.isPending}
                   onClick={handleBind}
+                  disabled={setupBlocked}
                 >
                   关联个人 GitHub
                 </Button>

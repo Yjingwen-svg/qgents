@@ -19,6 +19,7 @@ export type {
   UpdateMePayload,
   GithubOAuthStartResponse,
   GithubOAuthStatus,
+  GithubPersonalRepositorySetup,
 } from './auth'
 export type {
   Team,

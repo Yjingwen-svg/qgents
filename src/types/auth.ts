@@ -77,6 +77,22 @@ export interface GithubOAuthStartResponse {
   expiresAt: string
 }
 
+/**
+ * 个人仓库开通前置状态（接口文档 §49.4）。
+ * 决定创建项目页「自动建仓」入口的展示与引导：
+ * - NOT_OWNER：不是任何团队 Owner，隐藏自动建仓
+ * - NEED_INSTALLATION：缺少 USER 类型 GitHub App 安装，先装 App
+ * - NEED_OAUTH：已有 USER 安装但未绑定 OAuth
+ * - ACCOUNT_MISMATCH：OAuth 账号与 USER 安装账号不一致（配合 expectedInstallationLogin）
+ * - READY：账号一致且授权可用，允许自动建仓
+ */
+export type GithubPersonalRepositorySetup =
+  | 'NOT_OWNER'
+  | 'NEED_INSTALLATION'
+  | 'NEED_OAUTH'
+  | 'ACCOUNT_MISMATCH'
+  | 'READY'
+
 /** GET /me/integrations/github/oauth 响应（接口文档 §49.4） */
 export interface GithubOAuthStatus {
   authorized: boolean
@@ -90,6 +106,10 @@ export interface GithubOAuthStatus {
   canCreatePublicPersonalRepository: boolean
   /** 是否可用个人 OAuth 创建私有仓库（后端按授权 scope 计算；前端不得自行解析 scopes） */
   canCreatePrivatePersonalRepository: boolean
+  /** 个人仓库开通前置状态；字段缺失时前端退回按 authorized+账号一致性判断 */
+  personalRepositorySetup: GithubPersonalRepositorySetup | null
+  /** 仅 ACCOUNT_MISMATCH 时有值：应绑定的 GitHub 账号 login；只用于前端引导，不是安全边界 */
+  expectedInstallationLogin: string | null
 }
 
 /** GET /me 响应（data 层为聚合结构：user + teams + projects） */

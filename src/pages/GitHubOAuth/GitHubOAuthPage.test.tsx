@@ -29,6 +29,8 @@ const unauthorized: GithubOAuthStatus = {
   lastValidatedAt: null,
   canCreatePublicPersonalRepository: false,
   canCreatePrivatePersonalRepository: false,
+  personalRepositorySetup: 'NEED_OAUTH',
+  expectedInstallationLogin: null,
 }
 
 function renderPage(search = '') {
@@ -82,6 +84,8 @@ describe('GitHubOAuthPage', () => {
       scopes: ['public_repo'],
       canCreatePublicPersonalRepository: true,
       canCreatePrivatePersonalRepository: false,
+      personalRepositorySetup: 'READY',
+      expectedInstallationLogin: null,
     } satisfies GithubOAuthStatus)
     renderPage()
 

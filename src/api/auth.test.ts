@@ -48,6 +48,8 @@ describe('GitHub OAuth API', () => {
         lastValidatedAt: null,
         canCreatePublicPersonalRepository: true,
         canCreatePrivatePersonalRepository: true,
+        personalRepositorySetup: 'READY',
+        expectedInstallationLogin: null,
       },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
 

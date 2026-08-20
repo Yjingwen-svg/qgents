@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Radio, Select, Switch } from 'antd'
 import { useQuery } from '@tanstack/react-query'
@@ -11,6 +11,7 @@ import { queryKeys } from '@/query/queryKeys'
 import {
   canUseInstallationForNewRepository,
   newRepositoryCreateErrorMessage,
+  personalRepositorySetupGuide,
   privateRepositoryAuthorizationMessage,
 } from '@/utils/githubRepositoryAccess'
 import './CreateProjectPage.css'
@@ -74,6 +75,12 @@ export default function CreateProjectPage() {
   const privateRepositoryError = newRepository.isPrivate
     ? privateRepositoryAuthorizationMessage(selectedInstallation, githubOAuth)
     : null
+  // §49.4：按后端 personalRepositorySetup 展示自动建仓引导（NOT_OWNER 时隐藏入口）
+  const setupGuide = personalRepositorySetupGuide(githubOAuth)
+  const hideAutoCreate = githubOAuth?.personalRepositorySetup === 'NOT_OWNER'
+  useEffect(() => {
+    if (hideAutoCreate && repositoryMode === 'new') setRepositoryMode('existing')
+  }, [hideAutoCreate, repositoryMode])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -205,14 +212,28 @@ export default function CreateProjectPage() {
             }}
             options={[
               { value: 'existing', label: '绑定已有仓库' },
-              { value: 'new', label: '自动新建仓库', disabled: !canCreateNewRepository },
+              ...(hideAutoCreate
+                ? []
+                : [{ value: 'new', label: '自动新建仓库', disabled: !canCreateNewRepository }]),
             ]}
           />
           {!canCreateNewRepository ? (
             <p className="create-project__hint" style={{ fontSize: 12, color: '#b45309', margin: '8px 0 0' }}>
-              自动建仓当前不可用。个人账号需要先
-              <Link to={PATHS.GITHUB_OAUTH}>绑定个人 GitHub</Link>
-              ；组织账号需要团队 GitHub App 授权。
+              {setupGuide
+                ? <>
+                    {setupGuide.message}
+                    {setupGuide.linkToOAuth ? (
+                      <>
+                        {' '}
+                        <Link to={PATHS.GITHUB_OAUTH}>去绑定 GitHub</Link>
+                      </>
+                    ) : null}
+                  </>
+                : activeInstallations.length === 0
+                  ? '当前团队没有可用的 GitHub App 安装记录，无法自动创建仓库。'
+                  : <>自动建仓当前不可用。个人账号需要先
+                      <Link to={PATHS.GITHUB_OAUTH}>绑定个人 GitHub</Link>
+                      ；组织账号需要团队 GitHub App 授权。</>}
             </p>
           ) : null}
         </div>

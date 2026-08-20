@@ -13,6 +13,7 @@ import { isGithubRepoBindable } from '@/types/github'
 import {
   canUseInstallationForNewRepository,
   newRepositoryCreateErrorMessage,
+  personalRepositorySetupGuide,
   privateRepositoryAuthorizationMessage,
 } from '@/utils/githubRepositoryAccess'
 import { formatApiError } from '@/utils/formatApiError'
@@ -102,6 +103,12 @@ export function CreateProjectModal({
   const privateRepositoryError = newRepositoryIsPrivate
     ? privateRepositoryAuthorizationMessage(selectedInstallation, githubOAuth)
     : null
+  // §49.4：按后端 personalRepositorySetup 展示自动建仓引导（NOT_OWNER 时隐藏入口）
+  const setupGuide = personalRepositorySetupGuide(githubOAuth)
+  const hideAutoCreate = githubOAuth?.personalRepositorySetup === 'NOT_OWNER'
+  useEffect(() => {
+    if (hideAutoCreate && repositoryMode === 'new') setRepositoryMode('existing')
+  }, [hideAutoCreate, repositoryMode])
 
   const createProject = useMutation({
     mutationFn: (payload: CreateProjectPayload) => projectApi.create(payload),
@@ -262,14 +269,28 @@ export function CreateProjectModal({
             }}
             options={[
               { value: 'existing', label: '绑定已有仓库' },
-              { value: 'new', label: '自动新建仓库', disabled: !canCreateNewRepository },
+              ...(hideAutoCreate
+                ? []
+                : [{ value: 'new', label: '自动新建仓库', disabled: !canCreateNewRepository }]),
             ]}
           />
           {!canCreateNewRepository ? (
             <Text type="warning" style={{ display: 'block', marginTop: 8 }}>
-              自动建仓当前不可用。个人账号需要先
-              <TextLink onClick={() => { onClose(); navigate(PATHS.GITHUB_OAUTH) }}>绑定个人 GitHub</TextLink>
-              ；组织账号需要团队 GitHub App 授权。
+              {setupGuide
+                ? <>
+                    {setupGuide.message}
+                    {setupGuide.linkToOAuth ? (
+                      <>
+                        {' '}
+                        <TextLink onClick={() => { onClose(); navigate(PATHS.GITHUB_OAUTH) }}>去绑定 GitHub</TextLink>
+                      </>
+                    ) : null}
+                  </>
+                : activeInstallations.length === 0
+                  ? '当前团队没有可用的 GitHub App 安装记录，无法自动创建仓库。'
+                  : <>自动建仓当前不可用。个人账号需要先
+                      <TextLink onClick={() => { onClose(); navigate(PATHS.GITHUB_OAUTH) }}>绑定个人 GitHub</TextLink>
+                      ；组织账号需要团队 GitHub App 授权。</>}
             </Text>
           ) : null}
         </Form.Item>

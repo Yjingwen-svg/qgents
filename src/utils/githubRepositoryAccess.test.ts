@@ -6,6 +6,7 @@ import {
   canUseInstallationForNewRepository,
   githubRepositoryNotAuthorizedMessage,
   newRepositoryCreateErrorMessage,
+  personalRepositorySetupGuide,
   privateRepositoryAuthorizationMessage,
 } from './githubRepositoryAccess'
 
@@ -36,6 +37,8 @@ const oauth = (overrides: Partial<GithubOAuthStatus> = {}): GithubOAuthStatus =>
   lastValidatedAt: '2026-08-20T00:00:00Z',
   canCreatePublicPersonalRepository: true,
   canCreatePrivatePersonalRepository: true,
+  personalRepositorySetup: 'READY',
+  expectedInstallationLogin: null,
   ...overrides,
 })
 
@@ -75,6 +78,50 @@ describe('new repository create error mapping (§49.7)', () => {
   it('returns null for unrelated errors', () => {
     expect(newRepositoryCreateErrorMessage(apiError('FORBIDDEN'))).toBeNull()
     expect(newRepositoryCreateErrorMessage(new Error('boom'))).toBeNull()
+  })
+})
+
+describe('personal repository setup guide (§49.4)', () => {
+  const withSetup = (setup: GithubOAuthStatus['personalRepositorySetup'], extra: Partial<GithubOAuthStatus> = {}) =>
+    oauth({ personalRepositorySetup: setup, expectedInstallationLogin: null, ...extra })
+
+  it('returns no guide for READY or a missing field', () => {
+    expect(personalRepositorySetupGuide(withSetup('READY'))).toBeNull()
+    expect(personalRepositorySetupGuide(undefined)).toBeNull()
+  })
+
+  it('guides NEED_OAUTH to bind with the OAuth link', () => {
+    const guide = personalRepositorySetupGuide(withSetup('NEED_OAUTH'))
+    expect(guide?.message).toContain('绑定 GitHub')
+    expect(guide?.linkToOAuth).toBe(true)
+  })
+
+  it('uses expectedInstallationLogin for ACCOUNT_MISMATCH and does not push a re-install', () => {
+    const guide = personalRepositorySetupGuide(withSetup('ACCOUNT_MISMATCH', { expectedInstallationLogin: 'alice' }))
+    expect(guide?.message).toContain('alice')
+    expect(guide?.message).toContain('无需重装 App')
+    expect(guide?.linkToOAuth).toBe(true)
+  })
+
+  it('guides NOT_OWNER and NEED_INSTALLATION without an OAuth link', () => {
+    const notOwner = personalRepositorySetupGuide(withSetup('NOT_OWNER'))
+    expect(notOwner?.message).toContain('Owner')
+    expect(notOwner?.linkToOAuth).toBeFalsy()
+    const needInstall = personalRepositorySetupGuide(withSetup('NEED_INSTALLATION'))
+    expect(needInstall?.message).toContain('安装')
+    expect(needInstall?.linkToOAuth).toBeFalsy()
+  })
+})
+
+describe('installation availability respects personalRepositorySetup', () => {
+  const withSetup = (setup: GithubOAuthStatus['personalRepositorySetup']) =>
+    oauth({ personalRepositorySetup: setup })
+
+  it('blocks a personal installation unless setup is READY, organization is unaffected', () => {
+    expect(canUseInstallationForNewRepository(personalInstallation, withSetup('NEED_OAUTH'))).toBe(false)
+    expect(canUseInstallationForNewRepository(personalInstallation, withSetup('ACCOUNT_MISMATCH'))).toBe(false)
+    expect(canUseInstallationForNewRepository(personalInstallation, withSetup('READY'))).toBe(true)
+    expect(canUseInstallationForNewRepository(organizationInstallation, withSetup('NEED_OAUTH'))).toBe(true)
   })
 })
 

@@ -5,8 +5,8 @@ import type { GithubInstallation } from '@/types/github'
 /**
  * 判断某个 GitHub App Installation 是否可以作为项目自动建仓的目标。
  * 组织 Installation 继续走 GitHub App，不需要当前用户的 OAuth；
- * 个人 Installation 必须绑定同一个 GitHub 账号的 OAuth。
- * 建仓能力（公开/私有）不在这里判断，由仓库类型层（privateRepositoryAuthorizationMessage）按能力字段约束。
+ * 个人 Installation 以后端 personalRepositorySetup 为准（READY 才可用），字段缺失时退回
+ * authorized + 账号一致性判断。建仓能力（公开/私有）不在这里判断，由仓库类型层按能力字段约束。
  */
 export function canUseInstallationForNewRepository(
   installation: GithubInstallation,
@@ -14,11 +14,50 @@ export function canUseInstallationForNewRepository(
 ): boolean {
   if (installation.status !== 'ACTIVE') return false
   if (installation.accountType === 'ORGANIZATION') return true
-  return Boolean(
-    oauth?.authorized &&
-    oauth.githubLogin &&
+  // §49.6：无论后端 setup 状态如何，个人 Installation 都必须校验 OAuth 账号与该安装账号一致
+  const loginMatches = Boolean(
+    oauth?.githubLogin &&
     oauth.githubLogin.toLowerCase() === installation.accountLogin.toLowerCase(),
   )
+  // setup 是全局引导状态，缺失时退回 authorized + 账号一致
+  if (oauth?.personalRepositorySetup) return oauth.personalRepositorySetup === 'READY' && loginMatches
+  return Boolean(oauth?.authorized && loginMatches)
+}
+
+/** 个人仓库开通前置状态的引导文案（接口文档 §49.4 状态表） */
+export interface PersonalRepositorySetupGuide {
+  message: string
+  /** 是否展示「去绑定 GitHub」跳转（个人 OAuth 授权页） */
+  linkToOAuth?: boolean
+}
+
+/**
+ * 根据后端 personalRepositorySetup 生成自动建仓引导。
+ * READY 或字段缺失返回 null（缺字段时由调用方退回原有逻辑）。
+ */
+export function personalRepositorySetupGuide(
+  oauth: GithubOAuthStatus | undefined,
+): PersonalRepositorySetupGuide | null {
+  const setup = oauth?.personalRepositorySetup
+  switch (setup) {
+    case 'NOT_OWNER':
+      return { message: '个人建仓需要团队 Owner 权限，请联系团队管理员开启后再使用。' }
+    case 'NEED_INSTALLATION':
+      return { message: '请先用你的个人 GitHub 账号安装 Qgents GitHub App，再回来绑定 GitHub 授权。' }
+    case 'NEED_OAUTH':
+      return { message: '请绑定 GitHub（请使用与安装记录一致的账号）。', linkToOAuth: true }
+    case 'ACCOUNT_MISMATCH': {
+      const login = oauth?.expectedInstallationLogin
+      return {
+        message: login
+          ? `GitHub 账号不一致，请用 ${login} 重新绑定 GitHub（无需重装 App）。`
+          : 'GitHub 账号不一致，请使用与安装记录一致的账号重新绑定 GitHub（无需重装 App）。',
+        linkToOAuth: true,
+      }
+    }
+    default:
+      return null
+  }
 }
 
 /**

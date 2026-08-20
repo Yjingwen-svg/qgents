@@ -25,6 +25,8 @@ let MOCK_GITHUB_OAUTH_STATUS: GithubOAuthStatus = {
   lastValidatedAt: null,
   canCreatePublicPersonalRepository: false,
   canCreatePrivatePersonalRepository: false,
+  personalRepositorySetup: 'NEED_OAUTH',
+  expectedInstallationLogin: null,
 }
 
 const MOCK_TEAMS = [
@@ -138,6 +140,8 @@ const handlers: ReturnType<typeof http.get>[] = [
       lastValidatedAt: new Date().toISOString(),
       canCreatePublicPersonalRepository: true,
       canCreatePrivatePersonalRepository: true,
+      personalRepositorySetup: 'READY',
+      expectedInstallationLogin: null,
     }
     return HttpResponse.redirect('/app/settings/integrations/github?githubOAuth=authorized')
   }),
@@ -157,6 +161,8 @@ const handlers: ReturnType<typeof http.get>[] = [
       lastValidatedAt: null,
       canCreatePublicPersonalRepository: false,
       canCreatePrivatePersonalRepository: false,
+      personalRepositorySetup: 'NEED_OAUTH',
+      expectedInstallationLogin: null,
     }
     return new HttpResponse(null, { status: 204 })
   }),

@@ -689,8 +689,13 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       if (result.task) {
         message.success(`${result.task.displayCode} 已创建，当前状态：${result.task.status}`)
       } else if (quotedDiff && sentMessage) {
-        // 引用 DIFF 卡续作：优先走续作（复用源 Workspace，不得传 repositoryIds），后端未自动建任务时显式触发
-        triggerFromMessage.mutate(sentMessage.id)
+        // 引用 DIFF 卡续作：优先走续作（复用源 Workspace，不得传 repositoryIds），后端未自动建任务时显式触发。
+        // 传入发送时的正文作为任务标题/需求（此时 draft 已清空，不能读组件状态）
+        triggerFromMessage.mutate({
+          messageId: sentMessage.id,
+          title: taskTitleFromMessage(text),
+          requirement: text,
+        })
       } else if (hasAgentMention && canOpenTaskTrigger) {
         try {
           const repositories = await githubApi.listProjectRepositories(projectId)
@@ -724,12 +729,13 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     }
   }
 
-  // 显式触发任务（§7 从消息触发任务；续作引用时不得传 repositoryIds，C1/C2）
+  // 显式触发任务（§7 从消息触发任务；续作引用时不得传 repositoryIds，C1/C2）。
+  // 触发参数由调用方传入：handleSend 里 draft 会在触发前清空，不能闭包读 draft（否则 title/requirement 恒空）。
   const triggerFromMessage = useMutation({
-    mutationFn: (messageId: string) =>
-      groupApi.triggerTask(projectId, groupId, messageId, {
-        title: draft.trim() || '来自群聊的任务',
-        requirement: draft.trim() || undefined,
+    mutationFn: (input: { messageId: string; title: string; requirement?: string }) =>
+      groupApi.triggerTask(projectId, groupId, input.messageId, {
+        title: input.title,
+        requirement: input.requirement,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })

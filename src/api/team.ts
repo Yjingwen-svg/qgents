@@ -12,7 +12,7 @@ import type {
 } from '@/types'
 
 function isTeamRole(value: unknown): value is TeamRole {
-  return value === 'TEAM_OWNER' || value === 'TEAM_MEMBER'
+  return value === 'TEAM_OWNER' || value === 'TEAM_ADMIN' || value === 'TEAM_MEMBER'
 }
 
 /** 兼容后端返回 role，或旧字段 myRole；两个字段都补齐，页面读哪个都能工作 */

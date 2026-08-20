@@ -33,11 +33,14 @@ const { Title, Text } = Typography
 
 const ROLE_OPTIONS: { value: TeamRole; label: string }[] = [
   { value: 'TEAM_OWNER', label: 'Owner' },
+  { value: 'TEAM_ADMIN', label: '管理员' },
   { value: 'TEAM_MEMBER', label: 'Member' },
 ]
 
 function getRoleLabel(role: TeamRole): string {
-  return role === 'TEAM_OWNER' ? 'Owner' : 'Member'
+  if (role === 'TEAM_OWNER') return 'Owner'
+  if (role === 'TEAM_ADMIN') return '管理员'
+  return 'Member'
 }
 
 function formatCreatedAt(iso?: string): string {
@@ -176,7 +179,14 @@ export default function TeamSettingsPage() {
             {
               key: 'members',
               label: '成员管理',
-              children: <MembersTab teamId={teamId} members={members} isOwner={isOwner} />,
+              children: (
+                <MembersTab
+                  teamId={teamId}
+                  members={members}
+                  isOwner={isOwner}
+                  isAdmin={!isOwner && team?.role === 'TEAM_ADMIN'}
+                />
+              ),
             },
           ]}
         />
@@ -280,7 +290,18 @@ function BasicInfoTab({ team, teamId, isOwner }: { team: Team; teamId: string; i
 }
 
 /** ──── Tab 2：成员管理 ──── */
-function MembersTab({ teamId, members, isOwner }: { teamId: string; members: TeamMember[]; isOwner: boolean }) {
+function MembersTab({
+  teamId,
+  members,
+  isOwner,
+  isAdmin,
+}: {
+  teamId: string
+  members: TeamMember[]
+  isOwner: boolean
+  /** 当前用户是团队管理员（TEAM_ADMIN，非 Owner）—— 只能移出普通成员 */
+  isAdmin: boolean
+}) {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const [inviteEmail, setInviteEmail] = useState('')
@@ -322,6 +343,17 @@ function MembersTab({ teamId, members, isOwner }: { teamId: string; members: Tea
     onError: (err) => message.error(formatApiError(err)),
   })
 
+  // 设/撤管理员 = 调整团队角色（仅 Owner；TEAM_ADMIN ↔ TEAM_MEMBER）
+  const updateRoleMutation = useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: TeamRole }) =>
+      teamApi.updateMemberRole(teamId, userId, role),
+    onSuccess: () => {
+      message.success('团队角色已更新')
+      queryClient.invalidateQueries({ queryKey: ['teams', teamId, 'members'] })
+    },
+    onError: (err) => message.error(formatApiError(err)),
+  })
+
   function confirmRemove(member: TeamMember) {
     const name = member.displayName || member.userId
     Modal.confirm({
@@ -331,6 +363,20 @@ function MembersTab({ teamId, members, isOwner }: { teamId: string; members: Tea
       okType: 'danger',
       cancelText: '取消',
       onOk: () => removeMutation.mutate(member.userId),
+    })
+  }
+
+  function confirmRoleChange(member: TeamMember, nextRole: 'TEAM_ADMIN' | 'TEAM_MEMBER') {
+    const name = member.displayName || member.userId
+    const promote = nextRole === 'TEAM_ADMIN'
+    Modal.confirm({
+      title: promote ? '设为管理员' : '移除管理员',
+      content: promote
+        ? `确定将「${name}」设为团队管理员？管理员可创建项目并管理普通成员。`
+        : `确定移除「${name}」的管理员身份？移除后降为普通成员。`,
+      okText: promote ? '设为管理员' : '移除管理员',
+      cancelText: '取消',
+      onOk: () => updateRoleMutation.mutate({ userId: member.userId, role: nextRole }),
     })
   }
 
@@ -348,10 +394,12 @@ function MembersTab({ teamId, members, isOwner }: { teamId: string; members: Tea
     {
       title: '角色',
       key: 'role',
-      width: 160,
+      width: 180,
       render: (_, m) => (
         <Space size={4}>
-          <Tag color={m.role === 'TEAM_OWNER' ? 'gold' : 'default'}>{getRoleLabel(m.role)}</Tag>
+          <Tag color={m.role === 'TEAM_OWNER' ? 'gold' : m.role === 'TEAM_ADMIN' ? 'blue' : 'default'}>
+            {getRoleLabel(m.role)}
+          </Tag>
           {m.role === 'TEAM_OWNER' ? (
             <Text type="secondary" style={{ fontSize: 12 }}>
               （不可降级）
@@ -360,27 +408,66 @@ function MembersTab({ teamId, members, isOwner }: { teamId: string; members: Tea
         </Space>
       ),
     },
-    ...(isOwner
+    ...(isOwner || isAdmin
       ? [
           {
             title: '操作',
             key: 'action',
-            width: 120,
+            width: 200,
             render: (_: unknown, m: TeamMember) => {
               const isSelf = m.userId === user?.id
-              // 角色不可在页面直接调整（Owner 不可降级自己；成员角色由邀请/移除管理），
-              // 这里只保留「移除成员」操作；自己不可移除。
-              return !isSelf ? (
-                <Button
-                  size="small"
-                  danger
-                  type="link"
-                  loading={removeMutation.isPending}
-                  onClick={() => confirmRemove(m)}
-                >
-                  移除
-                </Button>
-              ) : (
+              const isMemberOwner = m.role === 'TEAM_OWNER'
+              const isMemberAdmin = m.role === 'TEAM_ADMIN'
+              if (isSelf || isMemberOwner) {
+                // 自己不可操作；Owner 唯一且不可被操作
+                return (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    —
+                  </Text>
+                )
+              }
+              const actions: React.ReactNode[] = []
+              if (isOwner) {
+                // Owner：可设/撤管理员 + 移除所有人（含管理员）
+                actions.push(
+                  <Button
+                    key="role"
+                    size="small"
+                    type="link"
+                    loading={updateRoleMutation.isPending}
+                    onClick={() => confirmRoleChange(m, isMemberAdmin ? 'TEAM_MEMBER' : 'TEAM_ADMIN')}
+                  >
+                    {isMemberAdmin ? '移除管理员' : '设为管理员'}
+                  </Button>,
+                )
+                actions.push(
+                  <Button
+                    key="remove"
+                    size="small"
+                    danger
+                    type="link"
+                    loading={removeMutation.isPending}
+                    onClick={() => confirmRemove(m)}
+                  >
+                    移除
+                  </Button>,
+                )
+              } else if (isAdmin && !isMemberAdmin) {
+                // 管理员：只能移除普通成员（owner / 其他管理员不可动）
+                actions.push(
+                  <Button
+                    key="remove"
+                    size="small"
+                    danger
+                    type="link"
+                    loading={removeMutation.isPending}
+                    onClick={() => confirmRemove(m)}
+                  >
+                    移除
+                  </Button>,
+                )
+              }
+              return actions.length > 0 ? <Space size={4}>{actions}</Space> : (
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   —
                 </Text>

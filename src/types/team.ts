@@ -2,8 +2,8 @@
  * 团队相关类型 —— 对齐接口文档 v1.1.4 §3.1 §5.1
  */
 
-/** 团队角色 */
-export type TeamRole = 'TEAM_OWNER' | 'TEAM_MEMBER'
+/** 团队角色（v2.0.6 新增 TEAM_ADMIN：管理员与 Owner 一样可创建项目/管理普通成员，但不能操作其他管理员） */
+export type TeamRole = 'TEAM_OWNER' | 'TEAM_ADMIN' | 'TEAM_MEMBER'
 
 export interface Team {
   id: string

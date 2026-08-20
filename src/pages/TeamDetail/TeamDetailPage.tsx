@@ -136,7 +136,9 @@ export default function TeamDetailPage() {
     queryFn: () => teamApi.getById(teamId),
     enabled: !!teamId,
   })
-  const isOwner=team?.role==='TEAM_OWNER';
+  // 创建项目入口：Team Owner 与团队管理员（TEAM_ADMIN）均可（v2.0.6 权限分层）
+  const isOwner = team?.role === 'TEAM_OWNER'
+  const canCreateProject = isOwner || team?.role === 'TEAM_ADMIN'
 
   // 团队资料加载后，把角色同步进 store，供 Banner「团队首页」跳转时带 as=owner
   useEffect(() => {
@@ -241,7 +243,7 @@ export default function TeamDetailPage() {
             <p>从个人中心切换团队或项目，进入项目总群继续协作。</p>
           </div>
           <Space>
-            {isOwner&&(
+            {canCreateProject && (
               <Button
                 type="primary"
                 icon={<PlusOutlined />}

@@ -332,22 +332,24 @@ function PlanningSkeletonCard({ index }: { index: number }) {
 function ExecutionFlowRow({ task, query, steps, onOpenRun }: { task: Task; query: ReturnType<typeof useTaskSteps>; steps: TaskStep[]; onOpenRun: (taskRunId: string) => void }) {
   const ordered = steps.slice().sort((left, right) => left.sequenceNo - right.sequenceNo)
   const isPlanning = task.status === 'PLANNING'
+  const isWaitingForSteps = ordered.length === 0 && (isPlanning || task.status === 'RUNNING')
+  const flowMeta = ordered.length > 0 ? `${ordered.length} 个步骤` : isPlanning ? '规划中' : isWaitingForSteps ? '正在生成执行步骤' : undefined
   return (
     <section className={styles.executionFlowRow} id="execution-flow" data-testid="execution-flow-row">
       <RowHeading
         title="执行流程"
-        meta={ordered.length > 0 ? `${ordered.length} 个步骤` : isPlanning ? '规划中' : undefined}
+        meta={flowMeta}
       />
-      {query.isLoading ? (
-        <InlineState loading />
-      ) : query.isError ? (
+      {query.isError ? (
         <SectionError resource="TaskStep" error={query.error} />
-      ) : isPlanning ? (
+      ) : isWaitingForSteps ? (
         <div className={styles.flowScroller}>
           <div className={styles.flowPlanningState}>
             {[0, 1, 2].map((i) => <PlanningSkeletonCard key={i} index={i} />)}
           </div>
         </div>
+      ) : query.isLoading ? (
+        <InlineState loading />
       ) : ordered.length === 0 ? (
         <div className={styles.flowEmptyState} data-testid="execution-flow-empty">
           <Text type="secondary">暂无执行步骤</Text>
@@ -416,7 +418,12 @@ function DeliveryPanel({ projectId, taskId, task, diffsQuery, diffReviewQuery, r
   // 只有任务离开执行态、进入正式 Diff/交付路径后，才由下方合并卡接管展示。
   const showWorkspacePreview = !completedWithoutCode && (task.status === 'RUNNING' || task.status === 'FAILED')
   const batch = diffReviewQuery.data?.taskId === task.id ? diffReviewQuery.data : null
-  return <section className={styles.deliveryPanel} id="output-delivery" data-testid="delivery-panel"><div className={styles.panelHeading}><Title level={3}>代码工作区</Title>{showWorkspacePreview ? null : <Button type="link" size="small" onClick={() => navigate(`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(taskId)}`)}>查看全部变更</Button>}</div>{showWorkspacePreview ? <WorkspaceDiffPreviewCard projectId={projectId} taskId={taskId} repositoryNames={repositoryNames} /> : <Card className={styles.codeDeliveryCard} size="small" data-testid="code-delivery-card"><CodeChangeCard projectId={projectId} taskId={taskId} task={task} query={diffsQuery} completedWithoutCode={completedWithoutCode} batch={batch} /><DeliveryCard projectId={projectId} task={task} query={diffReviewQuery} enabled={reviewEnabled} completedWithoutCode={completedWithoutCode} onRefresh={onRefresh} /></Card>}</section>
+  const generatingDelivery = !showWorkspacePreview && reviewEnabled && diffReviewQuery.isLoading && !batch
+  return <section className={styles.deliveryPanel} id="output-delivery" data-testid="delivery-panel"><div className={styles.panelHeading}><Title level={3}>代码工作区</Title>{showWorkspacePreview ? null : <Button type="link" size="small" onClick={() => navigate(`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(taskId)}`)}>查看全部变更</Button>}</div>{showWorkspacePreview ? <WorkspaceDiffPreviewCard projectId={projectId} taskId={taskId} repositoryNames={repositoryNames} /> : generatingDelivery ? <DeliveryGenerationPlaceholder /> : <Card className={styles.codeDeliveryCard} size="small" data-testid="code-delivery-card"><CodeChangeCard projectId={projectId} taskId={taskId} task={task} query={diffsQuery} completedWithoutCode={completedWithoutCode} batch={batch} /><DeliveryCard projectId={projectId} task={task} query={diffReviewQuery} enabled={reviewEnabled} completedWithoutCode={completedWithoutCode} onRefresh={onRefresh} /></Card>}</section>
+}
+
+function DeliveryGenerationPlaceholder() {
+  return <Card className={`${styles.codeDeliveryCard} ${styles.deliveryGenerationPlaceholder}`} size="small" data-testid="delivery-generation-placeholder"><div className={styles.deliveryGenerationLines} aria-hidden><span /><span /><span /></div><Text type="secondary">正在生成正式 Diff 与交付信息</Text></Card>
 }
 
 function CodeChangeCard({ projectId, taskId, task, query, completedWithoutCode, batch }: { projectId: string; taskId: string; task: Task; query: ReturnType<typeof useDiffs>; completedWithoutCode: boolean; batch: DiffReviewBatch | null }) {

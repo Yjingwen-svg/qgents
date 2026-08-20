@@ -1233,6 +1233,52 @@
 .workspaceDiffPreviewPatchMeta { background: #ddf4ff; color: #0969da; }
 .workspaceDiffPreviewPatchContext { background: transparent; }
 
+.previewLoadingState,
+.deliveryGenerationPlaceholder :global(.ant-card-body) {
+  display: grid;
+  gap: 10px;
+  align-content: center;
+}
+
+.previewLoadingState {
+  min-height: 112px;
+}
+
+.previewLoadingLines,
+.deliveryGenerationLines {
+  display: grid;
+  gap: 8px;
+}
+
+.previewLoadingLines span,
+.deliveryGenerationLines span {
+  display: block;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #edf1f5 25%, #f8fafc 37%, #edf1f5 63%);
+  background-size: 400% 100%;
+  animation: taskDetailLoadingShimmer 1.35s ease-in-out infinite;
+}
+
+.previewLoadingLines span:nth-child(2),
+.deliveryGenerationLines span:nth-child(2) { width: 76%; }
+.previewLoadingLines span:nth-child(3),
+.deliveryGenerationLines span:nth-child(3) { width: 54%; }
+
+.deliveryGenerationPlaceholder :global(.ant-card-body) {
+  min-height: 118px;
+}
+
+@keyframes taskDetailLoadingShimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .previewLoadingLines span,
+  .deliveryGenerationLines span { animation: none; }
+}
+
 .codeDeliveryCard {
   min-width: 0;
   min-height: 0;

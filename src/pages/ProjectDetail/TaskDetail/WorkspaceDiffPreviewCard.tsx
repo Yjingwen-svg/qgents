@@ -45,7 +45,7 @@ export function WorkspaceDiffPreviewCard({ projectId, taskId, repositoryNames }:
         <Text type="secondary" data-testid="workspace-diff-preview-summary">{summary.headline}</Text>
       </div>
       {summary.kind === 'loading' ? (
-        <div className={styles.inlineState}><Spin size="small" /><Text type="secondary">正在加载实时预览</Text></div>
+        <PreviewLoadingState />
       ) : summary.kind === 'empty' ? (
         <Text type="secondary" className={styles.compactEmpty}>Coding 尚未产生可预览的工作树变更</Text>
       ) : summary.kind === 'unavailable' ? (
@@ -102,6 +102,17 @@ export function WorkspaceDiffPreviewCard({ projectId, taskId, repositoryNames }:
       ) : null}
     </Card>
   )
+}
+
+function PreviewLoadingState() {
+  return <div className={styles.previewLoadingState} role="status">
+    <div className={styles.previewLoadingLines} aria-hidden>
+      <span />
+      <span />
+      <span />
+    </div>
+    <Text type="secondary">正在汇集工作区变更</Text>
+  </div>
 }
 
 interface Summary {

@@ -101,4 +101,19 @@ describe('GitHubOAuthPage', () => {
     expect(await screen.findByText('授权链接已过期，请重新发起授权。')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByTestId('query-string').textContent).toBe(''))
   })
+
+  it('prompts to install the App first when there is no USER installation', async () => {
+    const user = userEvent.setup()
+    statusMock.mockResolvedValue({ ...unauthorized, personalRepositorySetup: 'NEED_INSTALLATION' })
+    renderPage()
+
+    // 未授权且没有 USER 安装时，先展示“先装 App”的提示
+    expect(await screen.findByText(/请先用你的个人 GitHub 账号安装/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /关联个人 GitHub/ }))
+    // 未确认前不应直接跳转 GitHub 授权
+    expect(startMock).not.toHaveBeenCalled()
+    await user.click(await screen.findByRole('button', { name: /仍要授权/ }))
+    await waitFor(() => expect(startMock).toHaveBeenCalledWith('WEB'))
+  })
 })

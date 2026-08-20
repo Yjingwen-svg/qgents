@@ -6,6 +6,7 @@ import { GithubOutlined, LinkOutlined, DisconnectOutlined } from '@ant-design/ic
 import { authApi } from '@/api'
 import { queryKeys } from '@/query/queryKeys'
 import { formatApiError } from '@/utils/formatApiError'
+import { personalRepositorySetupGuide } from '@/utils/githubRepositoryAccess'
 
 const { Title, Paragraph, Text } = Typography
 
@@ -80,6 +81,26 @@ export function GitHubOAuthPage() {
   }, [message, queryClient, searchParams, setSearchParams])
 
   const status = statusQuery.data
+  const setupGuide = personalRepositorySetupGuide(status)
+
+  // §49.4：没有 USER 安装 / 非 Owner 时，先提醒用户处理前置条件再放行去 GitHub 授权
+  function handleBind() {
+    const setup = status?.personalRepositorySetup
+    if (setup === 'NEED_INSTALLATION' || setup === 'NOT_OWNER') {
+      modal.confirm({
+        title: setup === 'NEED_INSTALLATION' ? '请先安装 Qgents GitHub App' : '个人建仓需要团队 Owner 权限',
+        content:
+          setup === 'NEED_INSTALLATION'
+            ? '你的团队还没有安装 Qgents GitHub App。建议先用个人 GitHub 账号安装 App，再回来绑定 GitHub；否则即使绑定成功，也无法创建个人仓库。'
+            : '你当前不是任何团队的 Owner，无法创建个人仓库。仍要前往 GitHub 授权吗？',
+        okText: '仍要授权',
+        cancelText: '取消',
+        onOk: () => startMutation.mutate(),
+      })
+      return
+    }
+    startMutation.mutate()
+  }
 
   function confirmRevoke() {
     modal.confirm({
@@ -150,6 +171,9 @@ export function GitHubOAuthPage() {
                   description="请重新授权并确认 GitHub 授权范围满足后端要求。"
                 />
               ) : null}
+              {setupGuide ? (
+                <Alert type="warning" showIcon style={{ marginTop: 16 }} message={setupGuide.message} />
+              ) : null}
               <Button
                 danger
                 icon={<DisconnectOutlined />}
@@ -161,20 +185,25 @@ export function GitHubOAuthPage() {
               </Button>
             </>
           ) : (
-            <Empty
-              image={<GithubOutlined style={{ fontSize: 48, color: '#8c8c8c' }} />}
-              styles={{ image: { height: 56 } }}
-              description="尚未关联个人 GitHub"
-            >
-              <Button
-                type="primary"
-                icon={<LinkOutlined />}
-                loading={startMutation.isPending}
-                onClick={() => startMutation.mutate()}
+            <>
+              {setupGuide ? (
+                <Alert type="info" showIcon style={{ marginBottom: 16 }} message={setupGuide.message} />
+              ) : null}
+              <Empty
+                image={<GithubOutlined style={{ fontSize: 48, color: '#8c8c8c' }} />}
+                styles={{ image: { height: 56 } }}
+                description="尚未关联个人 GitHub"
               >
-                关联个人 GitHub
-              </Button>
-            </Empty>
+                <Button
+                  type="primary"
+                  icon={<LinkOutlined />}
+                  loading={startMutation.isPending}
+                  onClick={handleBind}
+                >
+                  关联个人 GitHub
+                </Button>
+              </Empty>
+            </>
           )}
         </Card>
 

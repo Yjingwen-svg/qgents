@@ -658,6 +658,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       pendingScrollRef.current = true
       // 回复引用：type=QUOTE，quotedText 为被引用消息的原始内容摘要，replyText 为回复正文。
       // §7 冻结：replyText 放顶层；content 内保留一份以兼容旧后端/旧数据读取
+      // 回复引用：type=QUOTE，quotedText 为被引用消息的原始内容摘要，replyText 为回复正文。
+      // §7 冻结：replyText 放顶层；content 内保留一份以兼容旧后端/旧数据读取
       const result = await groupApi.sendMessage(projectId, groupId, {
         type: replyTo ? 'QUOTE' : 'TEXT',
         content: replyTo
@@ -689,8 +691,13 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       if (result.task) {
         message.success(`${result.task.displayCode} 已创建，当前状态：${result.task.status}`)
       } else if (quotedDiff && sentMessage) {
-        // 引用 DIFF 卡续作：优先走续作（复用源 Workspace，不得传 repositoryIds），后端未自动建任务时显式触发
-        triggerFromMessage.mutate(sentMessage.id)
+        // 引用 DIFF 卡续作：优先走续作（复用源 Workspace，不得传 repositoryIds），后端未自动建任务时显式触发。
+        // 传入发送时的正文作为任务标题/需求（此时 draft 已清空，不能读组件状态）
+        triggerFromMessage.mutate({
+          messageId: sentMessage.id,
+          title: taskTitleFromMessage(text),
+          requirement: text,
+        })
       } else if (hasAgentMention && canOpenTaskTrigger) {
         try {
           const repositories = await githubApi.listProjectRepositories(projectId)
@@ -724,12 +731,13 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     }
   }
 
-  // 显式触发任务（§7 从消息触发任务；续作引用时不得传 repositoryIds，C1/C2）
+  // 显式触发任务（§7 从消息触发任务；续作引用时不得传 repositoryIds，C1/C2）。
+  // 触发参数由调用方传入：handleSend 里 draft 会在触发前清空，不能闭包读 draft（否则 title/requirement 恒空）。
   const triggerFromMessage = useMutation({
-    mutationFn: (messageId: string) =>
-      groupApi.triggerTask(projectId, groupId, messageId, {
-        title: draft.trim() || '来自群聊的任务',
-        requirement: draft.trim() || undefined,
+    mutationFn: (input: { messageId: string; title: string; requirement?: string }) =>
+      groupApi.triggerTask(projectId, groupId, input.messageId, {
+        title: input.title,
+        requirement: input.requirement,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
@@ -1403,6 +1411,11 @@ function MessageBubble({
 }) {
   const { token } = theme.useToken()
 
+  // 临时防御（后端修复后可移除）：后端在「引用消息触发任务」链路可能错误插入一条
+  // content 序列化的 TEXT 复制消息（形如 "@编排助手 {…quotedMessageId…}"），整条隐藏，
+  // 避免在正常 QUOTE 消息旁再显示一串乱码。正常用户文本不会命中该特征。
+  if (isMalformedQuoteCopy(message)) return null
+
   // SYSTEM 消息居中弱化展示
   if (message.senderType === 'SYSTEM') {
     return (
@@ -1525,9 +1538,43 @@ function MessageBubble({
   )
 }
 
+/**
+ * QUOTE 消息 content 解析：后端可能回传对象，也可能是 JSON 字符串（历史/联调兼容），
+ * 统一转成 QuoteMessageContent；解析失败返回 null。
+ */
+function parseQuoteContent(message: Message): QuoteMessageContent | null {
+  const raw = message.content
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw) as QuoteMessageContent
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as QuoteMessageContent
+  }
+  return null
+}
+
+/**
+ * 判定「后端错误插入的引用复制消息」：type=TEXT 且文本形如
+ * "@某Agent {…含 quotedMessageId 的引用协议 JSON…}"（后端在引用消息触发任务时
+ * 把存储后的 QUOTE content 序列化成文本插入，sender 伪装成原用户）。
+ * 前端整条隐藏，避免与正常 QUOTE 消息重复显示乱码；后端修复后此特征自然消失。
+ */
+function isMalformedQuoteCopy(message: Message): boolean {
+  if (message.type !== 'TEXT') return false
+  const content = message.content as TextMessageContent | null
+  const text = typeof content?.text === 'string' ? content.text : ''
+  if (!text) return false
+  return /^@\S+\s*\{[\s\S]*"quotedMessageId"[\s\S]*\}/.test(text)
+}
+
 /** 引用消息的「原消息」挂载条：气泡下方、左侧灰色竖线、灰色小字 */
 function QuoteAttachment({ message }: { message: Message }) {
-  const content = message.content as QuoteMessageContent | null
+  const content = parseQuoteContent(message)
   if (!content?.quotedText) return null
   return (
     <div
@@ -1612,8 +1659,8 @@ function renderContent(
     case 'QUOTE': {
       // 气泡内只显示回复正文；被引用的原消息由 MessageBubble 挂载在气泡下方（带竖线）。
       // §7 冻结：replyText 回显在顶层；content.replyText 兼容旧数据
-      const c = message.content as QuoteMessageContent | null
-      return message.replyText ?? c?.replyText ?? ''
+      const c = parseQuoteContent(message)
+      return message.replyText || c?.replyText || ''
     }
     case 'DIFF': {
       // 群聊内 Diff 卡片：固定高度可展开的「文件树 + 行级 diff 视图」；

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Button, Empty, Input, Spin, Typography } from 'antd'
+import { App, Button, Empty, Input, Popconfirm, Spin, Typography } from 'antd'
 import { BranchesOutlined, DownOutlined, SearchOutlined, UpOutlined } from '@ant-design/icons'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, diffsApi } from '@/api'
+import { formatApiError } from '@/utils/formatApiError'
 import { taskModelQueryKeys } from '@/query/taskModelKeys'
 import { diffFileStatusLabel } from '@/types/diff'
 import { PATHS } from '@/routes/paths'
@@ -36,12 +37,28 @@ interface Props {
  * - 「查看 Diff」跳转 /app/projects/:projectId/code/diff/:diffId（代码提交 diff 视图）
  */
 export function ChatDiffCard({ message, projectId, onReply }: Props) {
+  const { message: messageApi } = App.useApp()
+  const queryClient = useQueryClient()
   const c = message.content as DiffMessageContent
   const diffId = c.diffId ?? ''
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
+
+  // 确认交付：POST /diffs/{diffId}/accept（与 Diff 评审页同一接口）
+  const acceptMutation = useMutation({
+    mutationFn: () => diffsApi.accept(projectId, diffId),
+    onSuccess: () => {
+      messageApi.success('已确认交付')
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.diffs.detail(projectId, diffId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.diffs.files(projectId, diffId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.diffs.preview(projectId, diffId) })
+      // 群消息 TASK_STATUS / DIFF 卡可能随交付状态更新
+      void queryClient.invalidateQueries({ queryKey: ['groups', projectId] })
+    },
+    onError: (error) => messageApi.error(formatApiError(error)),
+  })
 
   // §16.2 卡片折叠时不请求预览；展开 / 切换文件时才调用本接口
   const previewQuery = useQuery({
@@ -343,11 +360,25 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
                   </span>
                   <Text type="success" style={{ fontSize: 12 }}>+{selectedFile.additions}</Text>
                   <Text type="danger" style={{ fontSize: 12 }}>-{selectedFile.deletions}</Text>
-                  {preview.viewDetailsRequired ? (
-                    <Link to={detailPath} style={{ marginLeft: 'auto' }}>
-                      <Button size="small" type="link">查看详情</Button>
-                    </Link>
-                  ) : null}
+                  <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {preview.viewDetailsRequired ? (
+                      <Link to={detailPath}>
+                        <Button size="small" type="link">查看详情</Button>
+                      </Link>
+                    ) : null}
+                    {/* 右上角：确认交付 —— 看完 Diff 直接交付（POST /diffs/{diffId}/accept） */}
+                    <Popconfirm
+                      title="确认交付"
+                      description="确认该 Diff 已审查通过并交付？"
+                      okText="确认交付"
+                      cancelText="取消"
+                      onConfirm={() => acceptMutation.mutate()}
+                    >
+                      <Button size="small" type="primary" loading={acceptMutation.isPending}>
+                        确认交付
+                      </Button>
+                    </Popconfirm>
+                  </span>
                 </div>
                 {selectedFile.binary ? (
                   <div style={{ padding: 36, textAlign: 'center', color: '#5b6b82' }}>

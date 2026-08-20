@@ -248,7 +248,7 @@ function BasicInfoTab({
           </div>
         )}
 
-        
+
       </div>
     </div>
   )
@@ -274,12 +274,33 @@ function RepositoriesTab({
     enabled: Boolean(projectId),
   })
 
+  /** 查询团队已安装的 GitHub App，用于直接跳转到「查看仓库」页 */
+  const installationsQuery = useQuery({
+    queryKey: queryKeys.githubInstallations(teamId),
+    queryFn: () => githubApi.listInstallations(teamId),
+    enabled: Boolean(teamId),
+  })
+  const installations = installationsQuery.data ?? []
+  // 过滤掉已删除的安装，只统计活跃的
+  const activeInstallations = installations.filter((i) => i.status !== 'DELETED')
+
   function handleBindClick() {
     if (!teamId) {
       message.warning('缺少团队信息，无法跳转绑定页')
       return
     }
-    navigate(PATHS.teamAuthorizedRepos(teamId))
+    // 等待 installations 加载完成后再跳转
+    if (installationsQuery.isLoading) {
+      message.info('正在加载安装信息，请稍候')
+      return
+    }
+    // 如果只有一个活跃的 GitHub App 安装，直接跳转到「查看仓库」页
+    if (activeInstallations.length === 1) {
+      navigate(PATHS.githubInstallationRepos(teamId, activeInstallations[0].id))
+      return
+    }
+    // 多个或零个活跃安装 → 跳到 GitHub 集成页，让用户选择安装或先安装
+    navigate(PATHS.githubIntegration(teamId))
   }
 
   return (

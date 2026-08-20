@@ -101,10 +101,6 @@ export default function QualityGateReviewPage() {
     navigate(PATHS.projectTestset(projectId))
   }
 
-  function goToTestsetPage() {
-    navigate(PATHS.projectTestsetsManage(projectId))
-  }
-
   // MR 查询仅在有 mergeRequestId 时启用；页面核心功能不依赖 MR
   const isMrError = !!mergeRequestId && mrQuery.isError
 
@@ -142,13 +138,10 @@ export default function QualityGateReviewPage() {
               ) : null}
             </Title>
             <Paragraph className={styles.subtitle}>
-              {mergeRequestId && !mr ? '正在加载 MR…' : '发起测试或 Dry-run；测试配方在「管理测试集」中维护'}
+              {mergeRequestId && !mr ? '正在加载 MR…' : '发起测试或 Dry-run'}
             </Paragraph>
           </div>
           <Space>
-            <Button onClick={goToTestsetPage}>
-              管理测试集
-            </Button>
             <Button onClick={() => setTestRunModalOpen(true)} disabled={repositories.length === 0}>
               运行测试
             </Button>
@@ -293,7 +286,9 @@ function CurrentRunCard({ projectId, localRuns, selectedRunId }: CurrentRunCardP
 
   const testRunStatusColor = useMemo(() => {
     if (!testRunData) return 'default'
-    switch (testRunData.status) {
+    // 类型定义滞后于后端实际状态值（文档允许 CONFLICT 等扩展值，此处先兼容）
+    const status: string = testRunData.status as string
+    switch (status) {
       case 'PASSED': return 'success'
       case 'FAILED': return 'error'
       case 'CANCELLED': return 'default'
@@ -519,7 +514,7 @@ function CurrentRunCard({ projectId, localRuns, selectedRunId }: CurrentRunCardP
       {localRuns.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="尚未发起或选择运行。用右上角发起测试 / Dry-run；测试配方请到「管理测试集」。"
+          description="尚未发起或选择运行。用右上角发起测试 / Dry-run。"
         />
       ) : current && isDryRun ? (
         <div>

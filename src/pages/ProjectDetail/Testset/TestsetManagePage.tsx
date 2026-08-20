@@ -16,7 +16,7 @@ import {
   Popconfirm,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { PlusOutlined, EditOutlined, DeleteOutlined, PoweroffOutlined, PlayCircleOutlined } from '@ant-design/icons'
+import { LeftOutlined, PlusOutlined, EditOutlined, DeleteOutlined, PoweroffOutlined, PlayCircleOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { githubApi, projectApi } from '@/api'
 import {
@@ -51,7 +51,7 @@ const pageTheme = {
 
 /**
  * 测试集管理页 —— 列表展示 + CRUD
- * 入口：质量门禁页 → "管理测试集" 按钮
+ * 入口：质量门禁和MR页面 → "Testset 管理" 卡片
  */
 export default function TestsetManagePage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
@@ -180,6 +180,10 @@ export default function TestsetManagePage() {
     },
     [navigate, projectId],
   )
+
+  function goBack() {
+    navigate(PATHS.projectTestset(projectId))
+  }
 
   const columns: ColumnsType<Testset> = useMemo(
     () => [
@@ -316,6 +320,21 @@ export default function TestsetManagePage() {
   return (
     <ConfigProvider theme={pageTheme}>
       <div style={{ padding: 24 }}>
+        <button
+          type="button"
+          style={{
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#0d9b9b',
+            padding: 0,
+            marginBottom: 12,
+            fontSize: 14,
+          }}
+          onClick={goBack}
+        >
+          <LeftOutlined /> 返回质量门禁和MR
+        </button>
         <Title level={2} style={{ marginTop: 0, marginBottom: 8 }}>
           测试集管理
         </Title>

@@ -100,6 +100,15 @@ export default function AgentTeamPage() {
     form.setFieldsValue({ name: detail.data.name, avatar: detail.data.avatar ?? undefined, role: detail.data.role, description: detail.data.description ?? '', prompt: detail.data.prompt ?? '' })
     setOpen(true)
   }
+  async function publishAgent(): Promise<void> {
+    if (!current) return
+    try {
+      const result = await publish.mutateAsync({ agentId: current.id })
+      message.success(result.visibility === 'TEAM' ? 'Agent 已发布为团队可用' : 'Agent 已提交发布审核')
+    } catch {
+      void detail.refetch()
+    }
+  }
 
   return <div className={styles.page}>
     <header className={styles.header}><div className={styles.titleRow}><div><Title level={2} className={styles.title}>Agent 团队</Title><Text className={styles.subtitle}>管理团队可见的 Agent，并查看项目内的运行与分配情况。</Text></div></div><div className={styles.headerActions}><Button className={styles.addButton} type="primary" onClick={() => { setEditing(null); form.resetFields(); form.setFieldsValue({ role: 'GENERAL', description: '', prompt: '' }); setOpen(true) }}>添加 Agent</Button></div></header>
@@ -109,7 +118,7 @@ export default function AgentTeamPage() {
       <main className={styles.listPane} aria-label="Agent 列表">
         {agents.length === 0 ? <div className={styles.empty}>暂无 Agent</div> : <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Agent</th><th>类型/角色</th><th>实时状态</th><th>并发上限</th><th>需求群分配</th></tr></thead><tbody>{agents.map((agent) => <AgentRuntimeRow key={agent.id} projectId={projectId} agent={agent} selected={agent.id === selected?.id} onSelect={() => navigate(`?agentId=${encodeURIComponent(agent.id)}`)} />)}</tbody></table></div>}
       </main>
-      {current ? <AgentDetailPanel projectId={projectId} agent={current} detail={detail.data} onEdit={beginEdit} canEdit={isCreator && canPerformAgentAction(current, 'edit')} canPublish={isCreator && canPerformAgentAction(current, 'publish')} canArchive={isCreator && canPerformAgentAction(current, 'archive')} onPublish={() => publish.mutate({ agentId: current.id }, { onError: () => void detail.refetch() })} onArchive={() => archive.mutate({ agentId: current.id }, { onError: () => void detail.refetch() })} /> : <aside className={styles.detailPane}><div className={styles.empty}>{agents.length ? '请选择一个 Agent' : '暂无 Agent'}</div></aside>}
+      {current ? <AgentDetailPanel projectId={projectId} agent={current} detail={detail.data} onEdit={beginEdit} canEdit={isCreator && canPerformAgentAction(current, 'edit')} canPublish={isCreator && canPerformAgentAction(current, 'publish')} canArchive={isCreator && canPerformAgentAction(current, 'archive')} onPublish={() => void publishAgent()} onArchive={() => archive.mutate({ agentId: current.id }, { onError: () => void detail.refetch() })} /> : <aside className={styles.detailPane}><div className={styles.empty}>{agents.length ? '请选择一个 Agent' : '暂无 Agent'}</div></aside>}
     </div>
     <Modal open={open} title={editing ? '编辑 Agent' : '添加 Agent'} onCancel={() => setOpen(false)} onOk={() => form.submit()} cancelText="取消" okText={editing ? '保存' : '创建'} confirmLoading={create.isPending || update.isPending}>
       <Form form={form} layout="vertical" onFinish={save}>

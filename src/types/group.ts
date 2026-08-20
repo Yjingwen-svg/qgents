@@ -197,6 +197,8 @@ export interface Message {
   replyText?: string
   /** @ 提及对象（后端 MessageResponse.mentions 回显；被 @ 用户据此展示「有人@我」） */
   mentions?: Mention[]
+  /** 前端乐观发送标志：消息已本地展示、等待后端确认（发送成功后替换为真实消息，不上送后端） */
+  pending?: boolean
 }
 
 export interface SendMessagePayload {

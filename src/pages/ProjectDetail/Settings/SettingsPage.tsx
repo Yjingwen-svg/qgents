@@ -59,16 +59,20 @@ export function SettingsPage() {
       {/* 基本信息 + 仓库 左右两栏（需求群规则 / 任务执行已移除） */}
       <div className="settings-page__body">
         <div className="settings-page__col">
-          <Title level={4} className="settings-page__section-title">基本信息</Title>
-          <BasicInfoTab projectId={projectId} project={project} isEditable={isEditable} />
+          <Title level={4} className="settings-page__section-title settings-page__col-title">基本信息</Title>
+          <div className="settings-page__col-body">
+            <BasicInfoTab projectId={projectId} project={project} isEditable={isEditable} />
+          </div>
         </div>
         <div className="settings-page__col">
-          <Title level={4} className="settings-page__section-title">仓库</Title>
-          <RepositoriesTab
-            projectId={projectId}
-            teamId={project?.teamId ?? ''}
-            isEditable={isEditable}
-          />
+          <Title level={4} className="settings-page__section-title settings-page__col-title">仓库</Title>
+          <div className="settings-page__col-body">
+            <RepositoriesTab
+              projectId={projectId}
+              teamId={project?.teamId ?? ''}
+              isEditable={isEditable}
+            />
+          </div>
         </div>
       </div>
     </div>

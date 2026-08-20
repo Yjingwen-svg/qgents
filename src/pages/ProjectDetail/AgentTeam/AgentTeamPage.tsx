@@ -5,7 +5,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { agentApi, projectApi } from '@/api'
 import { useAuth } from '@/context/AuthContext'
-import { useAgent, useAgentRuntime, useAgents, useArchiveAgent, useCreateAgent, usePublishAgent, useUnpublishAgent, useUpdateAgent } from '@/hooks'
+import { useAgent, useAgentRuntime, useAgents, useArchiveAgent, useCreateAgent, usePublishAgent, useUpdateAgent } from '@/hooks'
 import type { AgentDetail, AgentRole, AgentSummary, CreateAgentPayload } from '@/types'
 import { canPerformAgentAction } from '@/utils/agentActions'
 import { AgentDetailPanel } from './AgentDetailPanel'
@@ -46,7 +46,6 @@ export default function AgentTeamPage() {
   const create = useCreateAgent(projectId, teamId)
   const update = useUpdateAgent(projectId, teamId)
   const publish = usePublishAgent(projectId, teamId)
-  const unpublish = useUnpublishAgent(projectId, teamId)
   const archive = useArchiveAgent(projectId, teamId)
 
   useEffect(() => {
@@ -110,7 +109,7 @@ export default function AgentTeamPage() {
       <main className={styles.listPane} aria-label="Agent 列表">
         {agents.length === 0 ? <div className={styles.empty}>暂无 Agent</div> : <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Agent</th><th>类型/角色</th><th>实时状态</th><th>并发上限</th><th>需求群分配</th></tr></thead><tbody>{agents.map((agent) => <AgentRuntimeRow key={agent.id} projectId={projectId} agent={agent} selected={agent.id === selected?.id} onSelect={() => navigate(`?agentId=${encodeURIComponent(agent.id)}`)} />)}</tbody></table></div>}
       </main>
-      {current ? <AgentDetailPanel projectId={projectId} agent={current} detail={detail.data} onEdit={beginEdit} canEdit={isCreator && canPerformAgentAction(current, 'edit')} canPublish={isCreator && canPerformAgentAction(current, 'publish')} canUnpublish={isCreator && canPerformAgentAction(current, 'unpublish')} canArchive={isCreator && canPerformAgentAction(current, 'archive')} onPublish={() => publish.mutate({ agentId: current.id }, { onError: () => void detail.refetch() })} onUnpublish={() => unpublish.mutate({ agentId: current.id }, { onError: () => void detail.refetch() })} onArchive={() => archive.mutate({ agentId: current.id }, { onError: () => void detail.refetch() })} /> : <aside className={styles.detailPane}><div className={styles.empty}>{agents.length ? '请选择一个 Agent' : '暂无 Agent'}</div></aside>}
+      {current ? <AgentDetailPanel projectId={projectId} agent={current} detail={detail.data} onEdit={beginEdit} canEdit={isCreator && canPerformAgentAction(current, 'edit')} canPublish={isCreator && canPerformAgentAction(current, 'publish')} canArchive={isCreator && canPerformAgentAction(current, 'archive')} onPublish={() => publish.mutate({ agentId: current.id }, { onError: () => void detail.refetch() })} onArchive={() => archive.mutate({ agentId: current.id }, { onError: () => void detail.refetch() })} /> : <aside className={styles.detailPane}><div className={styles.empty}>{agents.length ? '请选择一个 Agent' : '暂无 Agent'}</div></aside>}
     </div>
     <Modal open={open} title={editing ? '编辑 Agent' : '添加 Agent'} onCancel={() => setOpen(false)} onOk={() => form.submit()} cancelText="取消" okText={editing ? '保存' : '创建'} confirmLoading={create.isPending || update.isPending}>
       <Form form={form} layout="vertical" onFinish={save}>

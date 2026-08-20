@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Alert, Avatar, Button, Empty, Spin, Tag, Tooltip, Typography } from 'antd'
-import { CloudUploadOutlined, EditOutlined, InboxOutlined, RollbackOutlined } from '@ant-design/icons'
+import { CloudUploadOutlined, EditOutlined, InboxOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useAgentAssignments, useAgentRuntime, useAgentTaskRuns } from '@/hooks'
 import type { AgentAssignmentSummary, AgentDetail, AgentDetailTab, AgentRuntimeSummary, AgentSummary, AgentTaskRunSummary } from '@/types'
@@ -23,19 +23,16 @@ interface AgentDetailPanelProps {
   onEdit: () => void
   canEdit: boolean
   onPublish: () => void
-  onUnpublish: () => void
   onArchive: () => void
   canPublish: boolean
-  canUnpublish: boolean
   canArchive: boolean
 }
 
-export function AgentDetailPanel({ projectId, agent, detail, onEdit, canEdit, onPublish, onUnpublish, onArchive, canPublish, canUnpublish, canArchive }: AgentDetailPanelProps) {
+export function AgentDetailPanel({ projectId, agent, detail, onEdit, canEdit, onPublish, onArchive, canPublish, canArchive }: AgentDetailPanelProps) {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<AgentDetailTab>('overview')
   const current = detail ?? agent
   const assignmentsGroups = useAgentAssignments(projectId, current.id, { type: 'REQUIREMENT_GROUP' }, activeTab === 'assignments')
-  const assignmentsWorkflows = useAgentAssignments(projectId, current.id, { type: 'WORKFLOW' }, activeTab === 'assignments')
   const runs = useAgentTaskRuns(projectId, current.id, undefined, activeTab === 'overview' || activeTab === 'runs')
   const runtimeQuery = useAgentRuntime(projectId, current.id, activeTab === 'overview')
   const task = runs.data?.data.find((item) => ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED', 'CANCELLING'].includes(item.status))
@@ -46,14 +43,14 @@ export function AgentDetailPanel({ projectId, agent, detail, onEdit, canEdit, on
         <Avatar className={styles.avatar} src={current.avatar ?? undefined}>{current.name.slice(0, 2)}</Avatar>
         <div className={styles.identityText}><Title level={4} className={styles.name}>{current.name}</Title><Text type="secondary">{current.role}</Text></div>
       </div>
-      <div className={styles.actions}>{canEdit ? <Tooltip title="编辑"><Button size="small" type="text" icon={<EditOutlined />} aria-label="编辑" onClick={onEdit} /></Tooltip> : null}{canPublish ? <Tooltip title="发布为 TEAM"><Button size="small" type="text" icon={<CloudUploadOutlined />} aria-label="发布为 TEAM" onClick={onPublish} /></Tooltip> : null}{canUnpublish ? <Tooltip title="取消发布"><Button size="small" type="text" icon={<RollbackOutlined />} aria-label="取消发布" onClick={onUnpublish} /></Tooltip> : null}{canArchive ? <Tooltip title="归档"><Button size="small" type="text" danger icon={<InboxOutlined />} aria-label="归档" onClick={onArchive} /></Tooltip> : null}</div>
+      <div className={styles.actions}>{canEdit ? <Tooltip title="编辑"><Button size="small" type="text" icon={<EditOutlined />} aria-label="编辑" onClick={onEdit} /></Tooltip> : null}{canPublish ? <Tooltip title="发布为 TEAM"><Button size="small" type="text" icon={<CloudUploadOutlined />} aria-label="发布为 TEAM" onClick={onPublish} /></Tooltip> : null}{canArchive ? <Tooltip title="归档"><Button size="small" type="text" danger icon={<InboxOutlined />} aria-label="归档" onClick={onArchive} /></Tooltip> : null}</div>
     </header>
     <nav className={styles.tabs} aria-label="Agent 详情 Tab">
       {tabs.map((tab) => <button type="button" key={tab.key} className={`${styles.tab} ${activeTab === tab.key ? styles.tabActive : ''}`} onClick={() => setActiveTab(tab.key)}>{tab.label}</button>)}
     </nav>
     <div className={styles.body}>
       {activeTab === 'overview' ? <Overview agent={current} runtime={runtimeQuery} task={task} /> : null}
-      {activeTab === 'assignments' ? <Assignments groups={assignmentsGroups} workflows={assignmentsWorkflows} /> : null}
+      {activeTab === 'assignments' ? <Assignments groups={assignmentsGroups} /> : null}
       {activeTab === 'config' ? <Config agent={current} /> : null}
       {activeTab === 'runs' ? <Runs projectId={projectId} query={runs} navigate={navigate} /> : null}
     </div>
@@ -70,7 +67,6 @@ function Overview({ agent, runtime, task }: { agent: AgentDetail | AgentSummary;
       <Usage label="实时状态" value={data.status} />
       <Usage label="并发使用量" value={`${data.activeRunCount}/${data.concurrencyLimit ?? '暂无'}`} />
       <Usage label="需求群分配" value={`${data.assignmentUsage.requirementGroups.assignedCount}/${data.assignmentUsage.requirementGroups.assignableCount}`} />
-      <Usage label="Workflow 分配" value={`${data.assignmentUsage.workflows.assignedCount}/${data.assignmentUsage.workflows.assignableCount}`} />
     </section>
     <section className={styles.section}><Title level={5}>当前正在执行的 TaskRun</Title>{task ? <TaskRunSummaryCard run={task} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有正在执行的 TaskRun" />}</section>
   </div>
@@ -78,8 +74,8 @@ function Overview({ agent, runtime, task }: { agent: AgentDetail | AgentSummary;
 
 function Usage({ label, value }: { label: string; value: string }) { return <div className={styles.usage}><Text type="secondary">{label}</Text><strong>{value}</strong></div> }
 
-function Assignments({ groups, workflows }: { groups: ReturnType<typeof useAgentAssignments>; workflows: ReturnType<typeof useAgentAssignments> }) {
-  return <div className={styles.assignmentColumns}><AssignmentList title="已分配需求群" query={groups} /><AssignmentList title="已分配 Workflow" query={workflows} /></div>
+function Assignments({ groups }: { groups: ReturnType<typeof useAgentAssignments> }) {
+  return <div className={styles.assignmentColumns}><AssignmentList title="已分配需求群" query={groups} /></div>
 }
 
 function AssignmentList({ title, query }: { title: string; query: ReturnType<typeof useAgentAssignments> }) {

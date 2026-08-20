@@ -250,7 +250,7 @@ export function invalidateProjectTaskEvent(projectId: string, event: ProjectTask
     const sequence = typeof event.payload.sequence === 'number' ? event.payload.sequence : null
     if (groupId && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('qgents:message-event', {
-        detail: { projectId, groupId, sequence },
+        detail: { projectId, groupId, sequence, eventType: event.type },
       }))
     }
   }

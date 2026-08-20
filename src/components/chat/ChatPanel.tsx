@@ -18,7 +18,7 @@ import {
 } from '@ant-design/icons'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
-import { ApiError, groupApi, projectApi, attachmentApi, githubApi, uploadAttachment, memoryApi } from '@/api'
+import { ApiError, groupApi, projectApi, attachmentApi, githubApi, uploadAttachment, memoryApi, tasksApi } from '@/api'
 import { resolvePreviewUrl } from '@/api/attachment'
 import { AttachmentPreviewModal } from '@/components/chat/AttachmentPreviewModal'
 import { ChatDiffCard } from '@/components/chat/ChatDiffCard'
@@ -31,6 +31,7 @@ import { TaskTriggerModal } from '@/components/task-domain'
 import { GroupMemberSettings } from '@/pages/ProjectDetail/GroupMemberSettings'
 import { AuthedImage } from '@/components/AuthedImage'
 import { PATHS } from '@/routes/paths'
+import { taskModelQueryKeys } from '@/query'
 import type {
   Group,
   Message,
@@ -128,6 +129,13 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     queryFn: () => projectApi.getById(projectId),
     enabled: !!projectId,
   })
+  const { data: taskPage } = useQuery({
+    queryKey: taskModelQueryKeys.tasks.list(projectId, { limit: 100 }),
+    queryFn: () => tasksApi.list(projectId, { limit: 100 }),
+    enabled: !!projectId,
+    refetchInterval: 5_000,
+  })
+  const taskStatusById = new Map((taskPage?.data ?? []).map((task) => [task.id, task.status]))
   const teamId = project?.teamId
   // @ Agent 候选：走 useAgents hook（queryKeys.agents.list 前缀），
   // 与 AgentTeamPage 的 create/publish/archive mutation invalidate 的 queryKeys.agents.all 对齐，
@@ -203,8 +211,10 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             return { pages: [{ ...(lastPage as Page<Message>), data: received }], pageParams: [undefined] }
           }
           const [first, ...rest] = old.pages
+          const updates = new Map(received.map((m) => [m.id, m]))
+          const merged = first.data.map((m) => updates.get(m.id) ?? m)
           const known = new Set(first.data.map((m) => m.id))
-          const merged = [...first.data, ...received.filter((m) => !known.has(m.id))]
+          merged.push(...received.filter((m) => !known.has(m.id)))
           return {
             ...old,
             pages: [{ ...first, data: merged }, ...rest],
@@ -222,8 +232,19 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     }
     incrementalSyncRef.current = () => { void sync() }
     const onMessageEvent = (event: Event) => {
-      const detail = (event as CustomEvent<{ projectId?: string; groupId?: string }>).detail
-      if (detail?.projectId === projectId && detail.groupId === groupId) void sync()
+      const detail = (event as CustomEvent<{
+        projectId?: string
+        groupId?: string
+        eventType?: string
+      }>).detail
+      if (detail?.projectId !== projectId || detail.groupId !== groupId) return
+      // message.updated 复用原消息的 sequence，增量接口按 sequence 查询时不会返回它。
+      // 失效整页查询，确保 TASK_STATUS 卡片用更新后的 content 替换旧的 PLANNING。
+      if (detail.eventType === 'message.updated') {
+        void queryClient.invalidateQueries({ queryKey: ['groups', projectId, groupId, 'messages'] })
+        return
+      }
+      void sync()
     }
     const onReconnect = () => void sync()
     window.addEventListener('qgents:message-event', onMessageEvent)
@@ -447,8 +468,10 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             }
           }
           const [first, ...rest] = prev.pages
+          const updates = new Map(incremental.data.map((m) => [m.id, m]))
+          const merged = first.data.map((m) => updates.get(m.id) ?? m)
           const known = new Set(first.data.map((m) => m.id))
-          const merged = [...first.data, ...incremental.data.filter((m) => !known.has(m.id))]
+          merged.push(...incremental.data.filter((m) => !known.has(m.id)))
           return {
             ...prev,
             pages: [{ ...first, data: merged }, ...rest],
@@ -1029,6 +1052,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                       isSelf={isSelf}
                       selfDisplayName={user?.displayName ?? '我'}
                       projectId={projectId}
+                      taskStatusById={taskStatusById}
                       onReply={setReplyTo}
                       onOpenFile={openFile}
                       onImageLoad={handleImageLoad}
@@ -1469,6 +1493,7 @@ function MessageBubble({
   onReply,
   onOpenFile,
   onImageLoad,
+  taskStatusById,
 }: {
   message: Message
   isSelf: boolean
@@ -1481,6 +1506,7 @@ function MessageBubble({
   onOpenFile?: (m: Message) => void
   /** 图片真正加载完成回调（透传给 AuthedImage，供 ChatPanel 保持贴底） */
   onImageLoad?: () => void
+  taskStatusById: ReadonlyMap<string, string>
 }) {
   const { token } = theme.useToken()
 
@@ -1491,10 +1517,13 @@ function MessageBubble({
 
   // SYSTEM 消息居中弱化展示
   if (message.senderType === 'SYSTEM') {
+    const taskStatus = message.type === 'TASK_STATUS'
+      ? taskStatusById.get((message.content as TaskStatusMessageContent).taskId)
+      : undefined
     return (
       <div style={{ textAlign: 'center' }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          {renderContent(message, projectId, onOpenFile, onImageLoad, onReply)}
+          {renderContent(message, projectId, onOpenFile, onImageLoad, onReply, false, taskStatus)}
         </Text>
       </div>
     )
@@ -1507,6 +1536,9 @@ function MessageBubble({
   const isCode = message.type === 'CODE'
   // 图片消息：气泡不设 padding/背景，直接展示图片本体
   const isImage = message.type === 'IMAGE'
+  const taskStatus = message.type === 'TASK_STATUS'
+    ? taskStatusById.get((message.content as TaskStatusMessageContent).taskId)
+    : undefined
 
   return (
     <div
@@ -1603,7 +1635,7 @@ function MessageBubble({
           overflow: 'hidden',
         }}
       >
-        {renderContent(message, projectId, onOpenFile, onImageLoad, onReply)}
+        {renderContent(message, projectId, onOpenFile, onImageLoad, onReply, isSelf, taskStatus)}
       </div>
       {/* QUOTE 引用消息：被引用的原消息挂载在气泡下方（带竖线），类似微信「当前消息 + 引用原消息」 */}
       {message.type === 'QUOTE' ? (
@@ -1681,6 +1713,8 @@ function renderContent(
   onOpenFile?: (m: Message) => void,
   onImageLoad?: () => void,
   onReply?: (m: Message) => void,
+  isSelf = false,
+  taskStatus?: string,
 ): React.ReactNode {
   switch (message.type) {
     case 'CODE': {
@@ -1751,6 +1785,7 @@ function renderContent(
         (mapping) => !currentPaths || currentPaths.length === 0 || currentPaths.includes(mapping.workspacePath),
       )
       const statusKey = c.status?.toUpperCase()
+      const displayStatus = taskStatus ?? c.status
       const diffReady =
         statusKey === 'WAITING_DIFF_CONFIRMATION' ||
         statusKey === 'DELIVERING' ||
@@ -1770,8 +1805,8 @@ function renderContent(
             <div style={{ fontWeight: 600, fontSize: 14 }}>
               {c.phase ? `${c.phase} · ` : ''}任务运行状态
             </div>
-            <Tag color={taskStatusColor(c.status)} style={{ margin: 0 }}>
-              {taskStatusLabel(c.status)}
+            <Tag color={taskStatusColor(displayStatus)} style={{ margin: 0 }}>
+              {taskStatusLabel(displayStatus)}
             </Tag>
           </div>
           {c.message ? <Text style={{ display: 'block', marginTop: 2 }}>{c.message}</Text> : null}
@@ -1872,7 +1907,7 @@ function renderContent(
     }
     default: {
       const c = message.content as TextMessageContent
-      return renderTextWithAtMentions(c.text ?? '')
+      return renderTextWithAtMentions(c.text ?? '', isSelf)
     }
   }
 }
@@ -1898,13 +1933,22 @@ function normalizeTaskStatusRepositoryMappings(
  * TEXT/QUOTE 文本渲染：把形如 {@code @名字} 的 @ 提及高亮显示（编排助手回群的
  * 「@发起者 您创建的任务已开始」提示与用户手动 @ 均受益），其余文本原样输出。
  */
-function renderTextWithAtMentions(text: string): React.ReactNode {
+function renderTextWithAtMentions(text: string, isSelf: boolean): React.ReactNode {
   if (!text) return ''
   const parts = text.split(/(@[^\s@，。；：！？,.!?]+)/g)
   if (parts.length <= 1) return text
   return parts.map((part, index) =>
     part.startsWith('@') ? (
-      <span key={index} style={{ color: '#1677ff', fontWeight: 600 }}>
+      <span
+        key={index}
+        style={{
+          color: isSelf ? '#fef08a' : '#1677ff',
+          background: isSelf ? 'rgba(255, 255, 255, 0.14)' : 'rgba(22, 119, 255, 0.1)',
+          borderRadius: 3,
+          fontWeight: 700,
+          padding: '0 2px',
+        }}
+      >
         {part}
       </span>
     ) : (

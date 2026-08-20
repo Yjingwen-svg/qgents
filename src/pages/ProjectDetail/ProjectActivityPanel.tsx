@@ -1,10 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Typography, Tag } from 'antd'
 import {
+  ApartmentOutlined,
+  BranchesOutlined,
   CheckCircleFilled,
-  SyncOutlined,
+  CheckSquareOutlined,
   ClockCircleOutlined,
   ExclamationCircleFilled,
+  SyncOutlined,
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { groupApi, mergeRequestsApi, tasksApi } from '@/api'
@@ -59,9 +62,9 @@ const UNKNOWN_TASK_STATUS_META = { label: '未知', color: 'default' }
 function groupProgress(tasks: TaskListItem[], groupId: string): GroupProgressKey {
   const ts = tasks.filter((t) => t.requirementGroup?.id === groupId)
   if (ts.length === 0) return 'todo'
+  if (ts.some((t) => FAILED_STATUSES.includes(t.status))) return 'failed'
   if (ts.some((t) => RUNNING_STATUSES.includes(t.status))) return 'running'
   if (ts.some((t) => t.status === 'SUCCEEDED')) return 'done'
-  if (ts.some((t) => FAILED_STATUSES.includes(t.status))) return 'failed'
   return 'todo'
 }
 
@@ -84,6 +87,7 @@ export function ProjectActivityPanel({ projectId }: { projectId: string }) {
     queryKey: taskModelQueryKeys.tasks.list(projectId, { limit: 100 }),
     queryFn: () => tasksApi.list(projectId, { limit: 100 }),
     enabled: !!projectId,
+    refetchInterval: 5_000,
   })
   const tasks = taskPage?.data ?? []
 
@@ -94,107 +98,79 @@ export function ProjectActivityPanel({ projectId }: { projectId: string }) {
   })
   const mrs = mrPage?.data ?? []
 
+  const hasActivity = requirementGroups.length > 0 || tasks.length > 0 || mrs.length > 0
+
   return (
     <aside className="pd-activity" aria-label="项目动态">
-      {/* 📋 需求群进度 */}
-      <section className="pd-activity__section">
-        <h3 className="pd-activity__title">📋 需求群进度</h3>
-        {requirementGroups.length === 0 ? (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            暂无需求群
-          </Text>
-        ) : (
+      <div className="pd-activity__header">
+        <div>
+          <h2 className="pd-activity__heading">项目动态</h2>
+          <Text type="secondary" className="pd-activity__subtitle">实时查看项目进展</Text>
+        </div>
+      </div>
+
+      {!hasActivity ? <div className="pd-activity__empty">完成需求群或任务后，相关进展会显示在这里</div> : null}
+
+      {requirementGroups.length > 0 ? (
+        <section className="pd-activity__section">
+          <h3 className="pd-activity__title"><ApartmentOutlined /> 需求群进度</h3>
           <ul className="pd-activity__list">
             {requirementGroups.map((g) => {
               const meta = PROGRESS_META[groupProgress(tasks, g.id)]
               return (
                 <li key={g.id} className="pd-activity__row">
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span className="pd-activity__row-label">
                     {meta.icon}
-                    <span style={{ fontSize: 13 }}>{g.title}</span>
+                    <span className="pd-activity__row-text">{g.title}</span>
                   </span>
-                  <span style={{ color: meta.color, fontSize: 12 }}>{meta.label}</span>
+                  <span className="pd-activity__status" style={{ color: meta.color }}>{meta.label}</span>
                 </li>
               )
             })}
           </ul>
-        )}
-      </section>
+        </section>
+      ) : null}
 
-      {/* ✅ 任务动态 */}
-      <section className="pd-activity__section">
-        <h3 className="pd-activity__title">✅ 任务动态</h3>
-        {tasks.length === 0 ? (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            暂无任务
-          </Text>
-        ) : (
+      {tasks.length > 0 ? (
+        <section className="pd-activity__section">
+          <h3 className="pd-activity__title"><CheckSquareOutlined /> 任务动态</h3>
           <ul className="pd-activity__list">
             {tasks.slice(0, 8).map((t) => {
               const meta = TASK_STATUS_META[t.status] ?? UNKNOWN_TASK_STATUS_META
               const batchId = t.attention?.diffReviewBatchId
               return (
-                <li
-                  key={t.id}
-                  className="pd-activity__row"
-                  title="查看任务详情"
-                  style={{ cursor: 'pointer' }}
-                  onClick={() =>
-                    navigate(
-                      PATHS.projectTaskDetail(projectId, t.id) +
-                        (batchId ? `?diffReviewBatchId=${encodeURIComponent(batchId)}` : ''),
-                    )
-                  }
-                >
-                  <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
-                    {t.title}
-                  </span>
-                  <Tag color={meta.color} style={{ margin: 0, fontSize: 11 }}>
-                    {meta.label}
-                  </Tag>
+                <li key={t.id} className="pd-activity__row">
+                  <button
+                    type="button"
+                    className="pd-activity__row-button"
+                    title="查看任务详情"
+                    onClick={() => navigate(PATHS.projectTaskDetail(projectId, t.id) + (batchId ? `?diffReviewBatchId=${encodeURIComponent(batchId)}` : ''))}
+                  >
+                    <span className="pd-activity__row-text">{t.title}</span>
+                    <Tag color={meta.color} className="pd-activity__tag">{meta.label}</Tag>
+                  </button>
                 </li>
               )
             })}
           </ul>
-        )}
-      </section>
+        </section>
+      ) : null}
 
-      {/* 🔀 MR 待处理 */}
-      <section className="pd-activity__section">
-        <h3 className="pd-activity__title">🔀 MR 待处理</h3>
-        {mrs.length === 0 ? (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            暂无待处理 MR
-          </Text>
-        ) : (
+      {mrs.length > 0 ? (
+        <section className="pd-activity__section">
+          <h3 className="pd-activity__title"><BranchesOutlined /> 待处理 MR</h3>
           <ul className="pd-activity__list">
             {mrs.slice(0, 8).map((mr) => (
-              <li
-                key={mr.id}
-                className="pd-activity__row"
-                title="查看 MR 详情"
-                style={{ cursor: 'pointer' }}
-                onClick={() => navigate(PATHS.projectCodeMr(projectId, mr.id))}
-              >
-                <span
-                  style={{
-                    fontSize: 13,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    maxWidth: 150,
-                  }}
-                >
-                  #{mr.number} {mr.title || 'MR'}
-                </span>
-                <Tag color="orange" style={{ margin: 0, fontSize: 11 }}>
-                  待处理
-                </Tag>
+              <li key={mr.id} className="pd-activity__row">
+                <button type="button" className="pd-activity__row-button" title="查看 MR 详情" onClick={() => navigate(PATHS.projectCodeMr(projectId, mr.id))}>
+                  <span className="pd-activity__row-text">#{mr.number} {mr.title || 'MR'}</span>
+                  <Tag color="orange" className="pd-activity__tag">待处理</Tag>
+                </button>
               </li>
             ))}
           </ul>
-        )}
-      </section>
+        </section>
+      ) : null}
     </aside>
   )
 }

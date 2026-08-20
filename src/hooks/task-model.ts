@@ -76,6 +76,12 @@ export function useTask(projectId: string, taskId: string): UseQueryResult<Task>
     queryKey: taskModelQueryKeys.tasks.detail(projectId, taskId),
     queryFn: () => tasksApi.get(projectId, taskId),
     enabled: Boolean(projectId && taskId),
+    // 任务状态可能从 DELIVERING → WAITING_PREFLIGHT → SUCCEEDED 等转换。
+    // 当 SSE/WebSocket 不可用时，通过 5s 轻量轮询兜底刷新状态，
+    // 避免 MR_FIRST 任务完成后用户看不到预检面板和 MR 占位。
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   })
 }
 

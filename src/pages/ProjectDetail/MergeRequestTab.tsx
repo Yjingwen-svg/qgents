@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Alert, App, Button, Empty, Select, Space, Spin, Table, Tag, Typography, Tooltip } from 'antd'
+import { Alert, App, Button, Card, Empty, Progress, Select, Space, Spin, Table, Tag, Typography, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useQueries } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
@@ -10,6 +10,7 @@ import {
   useMergeMergeRequest,
   useMergeRequests,
   useRequestMergeRequestPreflight,
+  useTasks,
 } from '@/hooks/task-model'
 import { formatApiError } from '@/utils/formatApiError'
 import type { ProjectBoundRepository } from '@/types/github'
@@ -200,6 +201,16 @@ export function MergeRequestTab({
     status,
     limit: 50,
   })
+  // 获取 MR_FIRST 模式下正在交付（DELIVERING）的任务，用于展示交付进度卡片。
+  // 这些任务的 MR 占位记录只有在代码推送完成（WAITING_PREFLIGHT）后才会出现在列表中，
+  // 因此需要独立拉取 DELIVERING 状态的任务，避免用户在等待 commit/push 时看到空列表。
+  const deliveringTasksQuery = useTasks(projectId, { status: 'DELIVERING', limit: 20 })
+  // 过滤出 MR_FIRST 模式的任务：这些任务由系统自动完成 commit/push，
+  // 完成后会自动进入 WAITING_PREFLIGHT 并在 MR 列表中生成占位记录。
+  const mrFirstDeliveringTasks = useMemo(() => {
+    const data = deliveringTasksQuery.data?.data ?? []
+    return data.filter((task) => task.deliveryMode === 'MR_FIRST')
+  }, [deliveringTasksQuery.data])
   // 使用本地 state 包裹，允许预检 MR_CREATED 时乐观回写 webUrl/number
   const [items, setItems] = useState<MergeRequestSummary[]>(query.data?.data ?? [])
   const lastDataRef = useRef(query.data?.data)
@@ -233,6 +244,10 @@ export function MergeRequestTab({
         enabled,
         staleTime: 30 * 1000,
         gcTime: 2 * 60 * 1000,
+        // 预检期间（Dry Run → CQ+1 → MR 创建）状态变化频繁，10s 轮询自动刷新，
+        // 避免用户在 MR 列表页看到过期的 Dry Run/CQ 状态。
+        refetchInterval: 10000,
+        refetchIntervalInBackground: false,
         queryFn: async (): Promise<Preflight | null> => {
           if (!enabled) return null
           const res = await qualityGateApi.preflight(projectId, {
@@ -863,6 +878,73 @@ export function MergeRequestTab({
         }
         description="预检通过后自动在 GitHub 创建 PR。Project Admin 可在操作列看到 GitHub 跳转 + 合并MR 按钮，普通成员仅看到 GitHub 跳转。CQ+1 或质量门禁任一未过则显示申请失败。"
       />
+      {/* MR_FIRST 交付进度卡片：展示正在 commit/push 的任务，让用户在等待期间能看到进度 */}
+      {mrFirstDeliveringTasks.length > 0 && !deliveringTasksQuery.isLoading ? (
+        <Card
+          size="small"
+          style={{ marginBottom: 12, background: '#f6ffed', border: '1px solid #b7eb8f' }}
+          bodyStyle={{ padding: '12px 16px' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Tag color="processing">MR_FIRST 交付中</Tag>
+            <Text strong style={{ fontSize: 14 }}>
+              {mrFirstDeliveringTasks.length} 个任务正在自动交付（commit/push 进行中）
+            </Text>
+            <Button
+              size="small"
+              type="link"
+              onClick={() => void deliveringTasksQuery.refetch()}
+            >
+              刷新
+            </Button>
+          </div>
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {mrFirstDeliveringTasks.map((task) => {
+              // 计算等待时间
+              const updatedAt = new Date(task.updatedAt)
+              const elapsedMin = Math.floor((Date.now() - updatedAt.getTime()) / 60000)
+              const isStuck = elapsedMin >= 5
+              return (
+                <div key={task.id} style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '6px 0', borderTop: '1px solid #f0f0f0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <Button
+                      type="link"
+                      size="small"
+                      style={{ padding: 0, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      onClick={() => navigate(PATHS.projectTaskDetail(projectId, task.id))}
+                    >
+                      {task.title}
+                    </Button>
+                    <Tag color={isStuck ? 'warning' : 'processing'} style={{ margin: 0 }}>
+                      {isStuck ? `DELIVERING · ${elapsedMin}min` : 'DELIVERING'}
+                    </Tag>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {task.repositories.length} 个仓库
+                    </Text>
+                  </div>
+                  <Progress
+                    percent={isStuck ? 20 : 10}
+                    status={isStuck ? 'warning' : 'active'}
+                    size="small"
+                    showInfo={false}
+                    style={{ width: 500 }}
+                  />
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    {isStuck
+                      ? `已等待 ${elapsedMin} 分钟，如长时间无变化请前往任务详情查看`
+                      : '代码推送完成后自动创建 MR占位记录'
+                    }
+                  </Text>
+                </div>
+              )
+            })}
+          </div>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+            <strong>交付流程：</strong> Diff 批次 → commit/push → Dry Run → CQ+1 → 创建 MR
+            。代码推送完成后任务会自动转为「等待预检」状态，届时 MR 占位记录将自动出现在下方列表中。
+          </Text>
+        </Card>
+      ) : null}
       {query.isLoading ? (
         <div style={{ textAlign: 'center', padding: 48 }}>
           <Spin />
@@ -879,7 +961,11 @@ export function MergeRequestTab({
           }
         />
       ) : items.length === 0 ? (
-        <Empty description="当前筛选下没有 MR。任务完成后系统会自动插入占位记录。" />
+        <Empty description={
+          mrFirstDeliveringTasks.length > 0
+            ? 'MR_FIRST 任务正在自动交付中，代码推送完成后将自动在此生成 MR 占位记录。'
+            : '当前筛选下没有 MR。任务完成后系统会自动插入占位记录。'
+        } />
       ) : (
         <Table
           rowKey="id"

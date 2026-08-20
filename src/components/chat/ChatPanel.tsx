@@ -658,6 +658,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       pendingScrollRef.current = true
       // 回复引用：type=QUOTE，quotedText 为被引用消息的原始内容摘要，replyText 为回复正文。
       // §7 冻结：replyText 放顶层；content 内保留一份以兼容旧后端/旧数据读取
+      // 回复引用：type=QUOTE，quotedText 为被引用消息的原始内容摘要，replyText 为回复正文。
+      // §7 冻结：replyText 放顶层；content 内保留一份以兼容旧后端/旧数据读取
       const result = await groupApi.sendMessage(projectId, groupId, {
         type: replyTo ? 'QUOTE' : 'TEXT',
         content: replyTo
@@ -1409,6 +1411,11 @@ function MessageBubble({
 }) {
   const { token } = theme.useToken()
 
+  // 临时防御（后端修复后可移除）：后端在「引用消息触发任务」链路可能错误插入一条
+  // content 序列化的 TEXT 复制消息（形如 "@编排助手 {…quotedMessageId…}"），整条隐藏，
+  // 避免在正常 QUOTE 消息旁再显示一串乱码。正常用户文本不会命中该特征。
+  if (isMalformedQuoteCopy(message)) return null
+
   // SYSTEM 消息居中弱化展示
   if (message.senderType === 'SYSTEM') {
     return (
@@ -1549,6 +1556,20 @@ function parseQuoteContent(message: Message): QuoteMessageContent | null {
     return raw as QuoteMessageContent
   }
   return null
+}
+
+/**
+ * 判定「后端错误插入的引用复制消息」：type=TEXT 且文本形如
+ * "@某Agent {…含 quotedMessageId 的引用协议 JSON…}"（后端在引用消息触发任务时
+ * 把存储后的 QUOTE content 序列化成文本插入，sender 伪装成原用户）。
+ * 前端整条隐藏，避免与正常 QUOTE 消息重复显示乱码；后端修复后此特征自然消失。
+ */
+function isMalformedQuoteCopy(message: Message): boolean {
+  if (message.type !== 'TEXT') return false
+  const content = message.content as TextMessageContent | null
+  const text = typeof content?.text === 'string' ? content.text : ''
+  if (!text) return false
+  return /^@\S+\s*\{[\s\S]*"quotedMessageId"[\s\S]*\}/.test(text)
 }
 
 /** 引用消息的「原消息」挂载条：气泡下方、左侧灰色竖线、灰色小字 */

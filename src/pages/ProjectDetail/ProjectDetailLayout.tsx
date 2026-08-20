@@ -12,6 +12,19 @@ import { ProjectActivityPanel } from './ProjectActivityPanel'
 import type { CreateGroupPayload, Group } from '@/types'
 import './ProjectDetailLayout.scss'
 
+/** 群聊置顶（本地偏好）localStorage 键 */
+const PINNED_GROUPS_KEY = 'qgents_pinned_groups'
+
+function readPinnedGroups(): string[] {
+  try {
+    const raw = localStorage.getItem(PINNED_GROUPS_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []
+  } catch {
+    return []
+  }
+}
+
 /**
  * 项目详情布局：固定左侧导航，右侧为子路由 Outlet
  *
@@ -35,6 +48,8 @@ export default function ProjectDetailLayout() {
 
   const [createOpen, setCreateOpen] = useState(false)
   const [groupSearch, setGroupSearch] = useState('')
+  // 群聊置顶（前端 localStorage 兜底，后端本轮不返回 isPinned，见接口文档 §置顶不在本轮范围）
+  const [pinnedIds, setPinnedIds] = useState<string[]>(readPinnedGroups)
   const [form] = Form.useForm<CreateGroupPayload>()
 
   // 左侧导航栏宽度（可拖拽调整）
@@ -131,9 +146,9 @@ export default function ProjectDetailLayout() {
   const archivedGroups = requirementGroups.filter((g) => g.isArchived)
   const keyword = groupSearch.trim().toLowerCase()
   const matches = (g: Group) => !keyword || g.title.toLowerCase().includes(keyword)
-  const pinnedGroups = activeRequirement.filter((g) => g.isPinned && matches(g))
+  const pinnedGroups = activeRequirement.filter((g) => pinnedIds.includes(g.id) && matches(g))
   const normalGroups = activeRequirement
-    .filter((g) => !g.isPinned && matches(g))
+    .filter((g) => !pinnedIds.includes(g.id) && matches(g))
     .sort((a, b) => (b.latestActivityAt ?? '').localeCompare(a.latestActivityAt ?? ''))
   const archivedMatches = archivedGroups.filter(matches)
 
@@ -165,11 +180,24 @@ export default function ProjectDetailLayout() {
     }
   }
 
+  /** 置顶/取消置顶需求群（本地偏好，localStorage 持久化） */
+  function togglePin(groupId: string) {
+    setPinnedIds((prev) => {
+      const next = prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId]
+      try {
+        localStorage.setItem(PINNED_GROUPS_KEY, JSON.stringify(next))
+      } catch {
+        // localStorage 不可用时仅本次会话生效
+      }
+      return next
+    })
+  }
+
   // 单个群列表项：置顶标记 + 标题 + 未读数 + 最新消息摘要
   function renderBranch(g: Group, pinned = false) {
     const isMain = g.type === 'PROJECT_MAIN'
     return (
-      <li key={g.id}>
+      <li key={g.id} className="pd-nav__branch-item">
         <NavLink
           to={PATHS.projectReqChat(projectId, g.id)}
           className={() =>
@@ -219,6 +247,18 @@ export default function ProjectDetailLayout() {
             )}
           </span>
         </NavLink>
+        {/* 置顶按钮：仅需求群（主群恒在列表最前，无需置顶）；悬停显示 */}
+        {!isMain && (
+          <button
+            type="button"
+            className={`pd-nav__branch-pin-btn${pinned ? ' is-pinned' : ''}`}
+            title={pinned ? '取消置顶' : '置顶群聊'}
+            aria-label={pinned ? '取消置顶' : '置顶群聊'}
+            onClick={() => togglePin(g.id)}
+          >
+            <PushpinOutlined />
+          </button>
+        )}
       </li>
     )
   }

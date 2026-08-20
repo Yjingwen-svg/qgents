@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Modal, Form, Input, Select, Empty, Radio, Switch, Typography, Upload, Avatar, Button } from 'antd'
+import { Modal, Form, Input, Select, Empty, Radio, Switch, Typography, Upload, Avatar, Button, Space } from 'antd'
 import { CameraOutlined, UploadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { projectApi, teamApi, githubApi } from '@/api'
@@ -188,8 +188,20 @@ export function CreateProjectModal({
               .map((m) => ({
                 value: m.userId,
                 label: m.displayName || m.userId,
+                avatarUrl: m.avatarUrl,
               }))}
             optionFilterProp="label"
+            optionRender={(option) => {
+              const item = option.data as { value: string; label: string; avatarUrl?: string }
+              return (
+                <Space size={6}>
+                  <Avatar size={20} src={item.avatarUrl} style={{ background: '#3b82f6' }}>
+                    {(item.label || '?').slice(0, 1)}
+                  </Avatar>
+                  {item.label}
+                </Space>
+              )
+            }}
             allowClear
           />
         </Form.Item>

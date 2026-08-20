@@ -85,7 +85,7 @@ export default function TaskCenterPage() {
   const tasks = useMemo(() => {
     const seen = new Map<string, TaskListItem>()
     query.data?.pages.flatMap((page) => page.data).forEach((task) => seen.set(task.id, task))
-    return [...seen.values()]
+    return [...seen.values()].sort(compareTasksByLatestActivity)
   }, [query.data])
   const groupOptions = useMemo(() => uniqueOptions(tasks.map((task) => ({ label: task.requirementGroup?.name || '暂无', value: task.requirementGroup?.id ?? '' }))), [tasks])
   const repositoryOptions = useMemo(() => uniqueOptions(tasks.flatMap((task) => taskRepositories(task).map((repository) => ({ label: repository.name, value: repository.repositoryId })))), [tasks])
@@ -198,6 +198,23 @@ function parseStatus(value: string | null): TaskCenterStatusFilter {
 
 function uniqueOptions(options: Array<{ label: string; value: string }>) {
   return [...new Map(options.map((option) => [option.value, option])).values()]
+}
+
+function compareTasksByLatestActivity(left: TaskListItem, right: TaskListItem) {
+  const rightUpdatedAt = timestampOf(right.updatedAt)
+  const leftUpdatedAt = timestampOf(left.updatedAt)
+  if (rightUpdatedAt !== leftUpdatedAt) return rightUpdatedAt - leftUpdatedAt
+
+  const rightCreatedAt = timestampOf(right.createdAt)
+  const leftCreatedAt = timestampOf(left.createdAt)
+  if (rightCreatedAt !== leftCreatedAt) return rightCreatedAt - leftCreatedAt
+
+  return left.id.localeCompare(right.id)
+}
+
+function timestampOf(value: string) {
+  const timestamp = Date.parse(value)
+  return Number.isNaN(timestamp) ? 0 : timestamp
 }
 
 function useTaskBoardLayout(mainRef: RefObject<HTMLElement | null>) {

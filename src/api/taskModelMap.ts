@@ -15,8 +15,12 @@ import type {
   MergeRequestCqReview,
   MergeRequestCommit,
   MergeRequestCommitList,
+  MergeRequestPreflight,
   MergeRequestStatus,
   MergeRequestSummary,
+  PreflightRepositoryStatus,
+  PreflightStatus,
+  TaskMergeRequestPreflightList,
   TaskModelPage,
 } from '@/types/task-model'
 
@@ -424,4 +428,80 @@ export function mapMergeRequest(raw: unknown): MergeRequestSummary {
 export function mapMergeRequestPage(page: TaskModelPage<unknown>): TaskModelPage<MergeRequestSummary> {
   const data = Array.isArray(page.data) ? page.data.map(mapMergeRequest) : []
   return { ...page, data }
+}
+
+// ---------------------------------------------------------------------------
+// MR 预检 (Preflight) 映射
+// ---------------------------------------------------------------------------
+
+function isPreflightStatus(value: unknown): value is PreflightStatus {
+  const valid: PreflightStatus[] = [
+    'REQUESTED',
+    'DRY_RUN_QUEUED',
+    'DRY_RUN_RUNNING',
+    'WAITING_CQ',
+    'CQ_REJECTED',
+    'CREATING_MR',
+    'MR_CREATED',
+    'FAILED',
+    'STALE',
+  ]
+  return typeof value === 'string' && valid.includes(value as PreflightStatus)
+}
+
+function mapPreflightRepositoryStatus(raw: Record<string, unknown>): PreflightRepositoryStatus {
+  return {
+    repositoryId: typeof raw.repositoryId === 'string' ? raw.repositoryId : '',
+    repositoryName: typeof raw.repositoryName === 'string' ? raw.repositoryName : '',
+    sourceBranch: typeof raw.sourceBranch === 'string' ? raw.sourceBranch : '',
+    targetBranch: typeof raw.targetBranch === 'string' ? raw.targetBranch : '',
+    headCommit: typeof raw.headCommit === 'string' ? raw.headCommit : null,
+    targetCommit: typeof raw.targetCommit === 'string' ? raw.targetCommit : null,
+    dryRunId: typeof raw.dryRunId === 'string' ? raw.dryRunId : null,
+    dryRunStatus: typeof raw.dryRunStatus === 'string' ? raw.dryRunStatus : null,
+    dryRunSummary: isRecord(raw.dryRunSummary) ? raw.dryRunSummary : null,
+    cqStatus: raw.cqStatus === 'APPROVED' || raw.cqStatus === 'REJECTED' || raw.cqStatus === 'PENDING' || raw.cqStatus === 'MISSING' ? raw.cqStatus : 'MISSING',
+    cqReviewerName: typeof raw.cqReviewerName === 'string' ? raw.cqReviewerName : null,
+    cqReviewReason: typeof raw.cqReviewReason === 'string' ? raw.cqReviewReason : null,
+    cqReviewedAt: typeof raw.cqReviewedAt === 'string' ? raw.cqReviewedAt : null,
+    failureCode: typeof raw.failureCode === 'string' ? raw.failureCode : null,
+    failureReason: typeof raw.failureReason === 'string' ? raw.failureReason : null,
+    retryable: typeof raw.retryable === 'boolean' ? raw.retryable : false,
+    mergeRequest: isRecord(raw.mergeRequest) ? mapMergeRequest(raw.mergeRequest) : null,
+  }
+}
+
+export function mapPreflightResponse(raw: Record<string, unknown>): MergeRequestPreflight {
+  return {
+    id: typeof raw.id === 'string' ? raw.id : '',
+    taskId: typeof raw.taskId === 'string' ? raw.taskId : null,
+    repositoryId: typeof raw.repositoryId === 'string' ? raw.repositoryId : '',
+    sourceBranch: typeof raw.sourceBranch === 'string' ? raw.sourceBranch : '',
+    headCommit: typeof raw.headCommit === 'string' ? raw.headCommit : null,
+    targetBranch: typeof raw.targetBranch === 'string' ? raw.targetBranch : '',
+    targetCommit: typeof raw.targetCommit === 'string' ? raw.targetCommit : null,
+    status: isPreflightStatus(raw.status) ? raw.status : 'REQUESTED',
+    dryRunId: typeof raw.dryRunId === 'string' ? raw.dryRunId : null,
+    blockers: Array.isArray(raw.blockers) ? raw.blockers.filter((b): b is string => typeof b === 'string') : [],
+    failureCode: typeof raw.failureCode === 'string' ? raw.failureCode : null,
+    failureReason: typeof raw.failureReason === 'string' ? raw.failureReason : null,
+    coveredTaskIds: Array.isArray(raw.coveredTaskIds) ? raw.coveredTaskIds.filter((t): t is string => typeof t === 'string') : [],
+    coveredDiffIds: Array.isArray(raw.coveredDiffIds) ? raw.coveredDiffIds.filter((d): d is string => typeof d === 'string') : [],
+    branchLockStatus: raw.branchLockStatus === 'UNLOCKED' || raw.branchLockStatus === 'LOCKED' ? raw.branchLockStatus : null,
+    isBranchLevel: typeof raw.isBranchLevel === 'boolean' ? raw.isBranchLevel : false,
+    mergeRequest: isRecord(raw.mergeRequest) ? mapMergeRequest(raw.mergeRequest) : null,
+    createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : '',
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : '',
+  }
+}
+
+export function mapTaskPreflightList(raw: Record<string, unknown>): TaskMergeRequestPreflightList {
+  const items = Array.isArray(raw.items)
+    ? raw.items.filter(isRecord).map(mapPreflightRepositoryStatus)
+    : []
+  return {
+    taskId: typeof raw.taskId === 'string' ? raw.taskId : '',
+    items,
+    totalCount: items.length,
+  }
 }

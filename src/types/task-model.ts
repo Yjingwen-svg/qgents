@@ -552,3 +552,88 @@ export interface DiffReviewBatch {
   diffs: DiffListItem[]
   repositoryDeliveries: Array<{ repositoryId: string; repositoryName: string; diffId: string; deliveryStatus: 'NOT_STARTED' | 'COMMITTED' | 'MR_CREATED' | 'FAILED'; failureCode: string | null; failureReason: string | null; mergeRequest: { id: string; number: number; title: string; status: string; webUrl: string | null } | null; updatedAt: string }>
 }
+
+// ---------------------------------------------------------------------------
+// MR 预检 (Preflight) 类型 — 统一创建 MR 自动预检流程
+// ---------------------------------------------------------------------------
+
+/**
+ * 预检状态机：
+ * REQUESTED → DRY_RUN_QUEUED → DRY_RUN_RUNNING → WAITING_CQ → CREATING_MR → MR_CREATED
+ *                                                   ↘ CQ_REJECTED
+ *                                                   ↘ FAILED
+ *                                                   ↘ STALE
+ */
+export type PreflightStatus =
+  | 'REQUESTED'
+  | 'DRY_RUN_QUEUED'
+  | 'DRY_RUN_RUNNING'
+  | 'WAITING_CQ'
+  | 'CQ_REJECTED'
+  | 'CREATING_MR'
+  | 'MR_CREATED'
+  | 'FAILED'
+  | 'STALE'
+
+export type PreflightFailureCode =
+  | 'BRANCH_NOT_PUSHED'
+  | 'MR_BRANCH_LOCKED'
+  | 'PREFLIGHT_CONTEXT_STALE'
+  | 'DRY_RUN_FAILED'
+  | 'DRY_RUN_CONFLICT'
+  | 'CQ_REJECTED'
+  | 'GIT_STORE_SYNC_FAILED'
+  | 'WORKER_UNAVAILABLE'
+  | 'MR_CREATE_FAILED'
+  | string
+
+/** 单个仓库的预检状态摘要 */
+export interface PreflightRepositoryStatus {
+  repositoryId: string
+  repositoryName: string
+  sourceBranch: string
+  targetBranch: string
+  headCommit: string | null
+  targetCommit: string | null
+  dryRunId: string | null
+  dryRunStatus: string | null
+  dryRunSummary?: Record<string, unknown> | null
+  cqStatus: 'APPROVED' | 'REJECTED' | 'PENDING' | 'MISSING'
+  cqReviewerName: string | null
+  cqReviewReason: string | null
+  cqReviewedAt: string | null
+  failureCode: PreflightFailureCode | null
+  failureReason: string | null
+  retryable: boolean
+  mergeRequest: MergeRequestSummary | null
+}
+
+/** 预检申请响应（POST /merge-requests/preflight 或 GET 查询） */
+export interface MergeRequestPreflight {
+  id: string
+  taskId: string | null
+  repositoryId: string
+  sourceBranch: string
+  headCommit: string | null
+  targetBranch: string
+  targetCommit: string | null
+  status: PreflightStatus
+  dryRunId: string | null
+  blockers: string[]
+  failureCode: PreflightFailureCode | null
+  failureReason: string | null
+  coveredTaskIds: string[]
+  coveredDiffIds: string[]
+  branchLockStatus: 'UNLOCKED' | 'LOCKED' | null
+  isBranchLevel: boolean
+  mergeRequest: MergeRequestSummary | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** 按 Task 查询多个仓库预检响应 */
+export interface TaskMergeRequestPreflightList {
+  taskId: string
+  items: PreflightRepositoryStatus[]
+  totalCount: number
+}

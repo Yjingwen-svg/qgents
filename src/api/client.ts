@@ -171,7 +171,7 @@ async function rawRequest(path: string, options: RequestOptions = {}): Promise<u
   if (res.status === 401 && !skipAuth) {
     const newToken = await refreshAccessToken()
     if (newToken) {
-      ;({ res, json } = await doFetch(path, options, idempotencyKey))
+      ; ({ res, json } = await doFetch(path, options, idempotencyKey))
     } else {
       // 刷新也失败 → 清 token，派发事件让 AuthContext 踢回登录页
       localStorage.removeItem(ACCESS_TOKEN_KEY)

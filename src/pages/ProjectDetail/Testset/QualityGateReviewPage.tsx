@@ -10,7 +10,6 @@ import { githubApi } from '@/api'
 import { queryKeys } from '@/query'
 import { PATHS } from '@/routes/paths'
 import { readRunHistory, pushRunHistory, removeRunHistory } from './runHistory'
-import DryRunCreateModal from './DryRunCreateModal'
 import TestRunCreateModal from './TestRunCreateModal'
 import styles from './QualityGateReviewPage.module.scss'
 
@@ -45,7 +44,6 @@ export default function QualityGateReviewPage() {
   const mergeRequestId = searchParams.get('mr')?.trim() || undefined
 
   // 弹窗状态
-  const [dryRunModalOpen, setDryRunModalOpen] = useState(false)
   const [testRunModalOpen, setTestRunModalOpen] = useState(false)
 
   // 本地运行历史（从 localStorage 读取）
@@ -81,6 +79,8 @@ export default function QualityGateReviewPage() {
   }, [projectId, message])
 
   const handleDryRunCreated = useCallback((report: DryRunReport) => {
+    // 仅用于保留 localStorage 回写签名（Dry Run 现在只由后端预检自动触发，
+    // 前端不再提供手动新建入口。若有回推需要仍可写入历史）
     const item: LocalRunHistoryItem = {
       kind: 'DRY_RUN',
       id: report.id,
@@ -89,8 +89,7 @@ export default function QualityGateReviewPage() {
       label: `Dry-run · ${report.status}`,
     }
     setLocalRuns(pushRunHistory(projectId, item))
-    message.success('Dry Run 已创建')
-  }, [projectId, message])
+  }, [projectId])
 
   // 删除本地历史项
   const handleDeleteRun = useCallback((runId: string) => {
@@ -138,19 +137,12 @@ export default function QualityGateReviewPage() {
               ) : null}
             </Title>
             <Paragraph className={styles.subtitle}>
-              {mergeRequestId && !mr ? '正在加载 MR…' : '发起测试或 Dry-run'}
+              {mergeRequestId && !mr ? '正在加载 MR…' : 'Dry Run 由后端预检流程自动触发；此处可手动发起测试运行。'}
             </Paragraph>
           </div>
           <Space>
             <Button onClick={() => setTestRunModalOpen(true)} disabled={repositories.length === 0}>
               运行测试
-            </Button>
-            <Button
-              type="primary"
-              onClick={() => setDryRunModalOpen(true)}
-              disabled={repositories.length === 0}
-            >
-              新建 Dry-run
             </Button>
           </Space>
         </header>
@@ -172,15 +164,6 @@ export default function QualityGateReviewPage() {
             />
           </div>
         </div>
-
-        {/* Dry Run 创建弹窗 */}
-        <DryRunCreateModal
-          open={dryRunModalOpen}
-          projectId={projectId}
-          repositories={repositories}
-          onClose={() => setDryRunModalOpen(false)}
-          onCreated={handleDryRunCreated}
-        />
 
         {/* Test Run 创建弹窗 */}
         <TestRunCreateModal
@@ -245,13 +228,18 @@ function CurrentRunCard({ projectId, localRuns, selectedRunId }: CurrentRunCardP
   // --- Dry Run 计算 ---
   const dryRunDurationText = useMemo(() => {
     if (!report) return '—'
+    const terminalStatuses = ['PASSED', 'FAILED', 'CANCELLED']
+    const isTerminal = terminalStatuses.includes(report.status as string)
     if (report.durationSeconds != null) {
       return `${report.durationSeconds}s`
     }
     if (report.startedAt && report.finishedAt) {
       const ms = new Date(report.finishedAt).getTime() - new Date(report.startedAt).getTime()
-      return `${Math.round(ms / 1000)}s`
+      if (Number.isFinite(ms) && ms > 0) return `${Math.round(ms / 1000)}s`
+      if (isTerminal) return '0s'
+      return '进行中…'
     }
+    if (isTerminal) return '0s'
     if (report.startedAt) {
       return '进行中…'
     }
@@ -273,11 +261,17 @@ function CurrentRunCard({ projectId, localRuns, selectedRunId }: CurrentRunCardP
   // --- TestRun 计算 ---
   const testRunDurationText = useMemo(() => {
     if (!testRunData) return '—'
+    const terminalStatuses = ['PASSED', 'FAILED', 'CANCELLED']
+    const isTerminal = terminalStatuses.includes(testRunData.status as string)
     if (testRunData.startedAt && testRunData.finishedAt) {
       const ms = new Date(testRunData.finishedAt).getTime() - new Date(testRunData.startedAt).getTime()
       if (Number.isFinite(ms) && ms > 0) return `${Math.round(ms / 1000)}s`
+      // 终态但时间差为 0 或负值，显示 0s 而不是"进行中"
+      if (isTerminal) return '0s'
       return '进行中…'
     }
+    // 终态但缺少 finishedAt，退化为显示 0s
+    if (isTerminal) return '0s'
     if (testRunData.startedAt) {
       return '进行中…'
     }

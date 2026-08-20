@@ -64,5 +64,7 @@ export const taskModelQueryKeys = {
       ['qgents', 'projects', projectId, 'merge-requests', mergeRequestId, 'reviews'] as const,
     commits: (projectId: string, mergeRequestId: string, limit = 3) =>
       ['qgents', 'projects', projectId, 'merge-requests', mergeRequestId, 'commits', limit] as const,
+    preflightByTask: (projectId: string, taskId: string) =>
+      ['qgents', 'projects', projectId, 'tasks', taskId, 'merge-request-preflight'] as const,
   },
 } as const

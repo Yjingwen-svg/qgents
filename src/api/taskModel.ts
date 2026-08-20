@@ -9,6 +9,8 @@ import {
   mapMergeRequestCqReviews,
   mapMergeRequestCommitList,
   mapMergeRequestPage,
+  mapPreflightResponse,
+  mapTaskPreflightList,
 } from './taskModelMap'
 import type {
   DiffCommentInput,
@@ -20,11 +22,19 @@ import type {
   InputRequest,
   InputRequestAnswer,
   InputRequestDecision,
+  MergeRequestPreflight,
+  MergeRequestCreateInput,
+  MergeRequestCqInput,
+  MergeRequestListFilters,
+  MergeRequestSummary,
+  PageFilters,
   Task,
-  TaskDiagnostics,
-  TaskListItem,
+  TaskArtifact,
   TaskCreateInput,
+  TaskDiagnostics,
   TaskListFilters,
+  TaskListItem,
+  TaskMergeRequestPreflightList,
   TaskRunDetail,
   TaskRunDiagnostics,
   TaskRunListFilters,
@@ -33,12 +43,7 @@ import type {
   TaskStep,
   TaskStepCreateInput,
   ReplaceTaskStepAgentInput,
-  PageFilters,
-  TaskArtifact,
   DiffReviewBatch,
-  MergeRequestCreateInput,
-  MergeRequestCqInput,
-  MergeRequestListFilters,
 } from '@/types/task-model'
 
 const taskPath = (projectId: string, taskId: string) => `/projects/${projectId}/tasks/${taskId}`
@@ -285,11 +290,39 @@ export const mergeRequestsApi = {
   },
 
   create(projectId: string, input: MergeRequestCreateInput) {
-    return requestModelData<unknown>(`/projects/${projectId}/merge-requests`, {
+    // 兼容期：旧接口 POST /merge-requests 语义已转为「申请预检」。
+    // 保留此方法仅供旧调用方迁移，新调用方请使用 requestPreflight。
+    return this.requestPreflight(projectId, {
+      taskId: input.taskId,
+      repositoryId: input.repositoryId,
+      idempotencyKey: input.idempotencyKey,
+    })
+  },
+
+  /** 申请 MR 预检（统一创建 MR 自动预检流程） */
+  requestPreflight(
+    projectId: string,
+    input: { taskId?: string; repositoryId?: string; idempotencyKey?: string },
+  ): Promise<MergeRequestPreflight> {
+    return requestModelData<unknown>(`/projects/${projectId}/merge-requests/preflight`, {
       method: 'POST',
       headers: writeModelHeaders(),
       body: input,
-    }).then(mapMergeRequest)
+    }).then(mapPreflightResponse)
+  },
+
+  /** 查询单个预检状态 */
+  getPreflight(projectId: string, preflightId: string): Promise<MergeRequestPreflight> {
+    return requestModelData<unknown>(
+      `/projects/${projectId}/merge-requests/preflight/${preflightId}`,
+    ).then(mapPreflightResponse)
+  },
+
+  /** 按 Task 查询全部仓库预检状态 */
+  getTaskPreflight(projectId: string, taskId: string): Promise<TaskMergeRequestPreflightList> {
+    return requestModelData<unknown>(
+      `/projects/${projectId}/tasks/${taskId}/merge-request-preflight`,
+    ).then(mapTaskPreflightList)
   },
 
   merge(projectId: string, mergeRequestId: string) {

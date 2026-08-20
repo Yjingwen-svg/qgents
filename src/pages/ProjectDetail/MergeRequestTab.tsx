@@ -1,14 +1,23 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Alert, App, Button, Empty, Select, Space, Spin, Table, Tag, Typography, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useQueries } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
 import { qualityGateApi } from '@/api/qualityGate'
-import { useCreateMergeRequest, useMergeMergeRequest, useMergeRequests } from '@/hooks/task-model'
+import { mergeRequestsApi } from '@/api/taskModel'
+import {
+  useMergeMergeRequest,
+  useMergeRequests,
+  useRequestMergeRequestPreflight,
+} from '@/hooks/task-model'
 import { formatApiError } from '@/utils/formatApiError'
 import type { ProjectBoundRepository } from '@/types/github'
-import type { MergeRequestStatus, MergeRequestSummary } from '@/types/task-model'
+import type {
+  MergeRequestStatus,
+  MergeRequestSummary,
+  PreflightStatus,
+} from '@/types/task-model'
 import type { Preflight } from '@/types/qualityGate'
 import { githubPullRequestUrl } from './mergeRequestDisplay'
 
@@ -71,6 +80,95 @@ function cqColor(preflight: Preflight | undefined, isLoading: boolean, isError: 
   return 'warning'
 }
 
+/**
+ * MANUAL 模式派生的前端子状态（用于区分 WAITING_CQ 下 CQ 是否已人工盖章）：
+ *  - 'IDLE'        未申请预检
+ *  - 'PREFLIGHTING' 预检中 / Dry Run / 等待 CQ+1 人工盖章
+ *  - 'READY_CREATE' DryRun + CQ+1 都通过，等待人工点「创建MR」（仅 MANUAL）
+ *  - 'CREATING'    用户点了创建MR，后端正在建 PR
+ *  - 'MR_CREATED'  MR 已创建
+ *  - 'FAILED'      申请失败
+ *  - 'AUTO_PENDING_DONE' 自动模式等待后端完成后续动作（预检中 → 自动创建）
+ */
+type EffectiveState =
+  | 'IDLE'
+  | 'PREFLIGHTING'
+  | 'READY_CREATE'
+  | 'CREATING'
+  | 'MR_CREATED'
+  | 'FAILED'
+
+function deriveEffectiveState(
+  status: PreflightStatus | null | undefined,
+  createMode: 'MANUAL' | 'SYSTEM' | 'UNKNOWN' | undefined,
+  cqApproved: boolean,
+): EffectiveState {
+  switch (status) {
+    case null:
+    case undefined:
+      return 'IDLE'
+    case 'REQUESTED':
+    case 'DRY_RUN_QUEUED':
+    case 'DRY_RUN_RUNNING':
+      return 'PREFLIGHTING'
+    case 'WAITING_CQ':
+      if (createMode === 'MANUAL' && cqApproved) return 'READY_CREATE'
+      return 'PREFLIGHTING'
+    case 'CREATING_MR':
+      return 'CREATING'
+    case 'CQ_REJECTED':
+    case 'FAILED':
+    case 'STALE':
+      return 'FAILED'
+    case 'MR_CREATED':
+      return 'MR_CREATED'
+    default:
+      return 'IDLE'
+  }
+}
+
+function preflightButtonLabel(
+  eff: EffectiveState,
+): { text: string; loading: boolean; disabled: boolean; failed: boolean; clickable: boolean } {
+  switch (eff) {
+    case 'IDLE':
+      return { text: '申请MR', loading: false, disabled: false, failed: false, clickable: true }
+    case 'PREFLIGHTING':
+      return { text: '预检中', loading: true, disabled: true, failed: false, clickable: false }
+    case 'READY_CREATE':
+      // 人工模式：CQ+1通过后，需要用户再点「创建MR」
+      return { text: '创建MR', loading: false, disabled: false, failed: false, clickable: true }
+    case 'CREATING':
+      return { text: '创建MR', loading: true, disabled: true, failed: false, clickable: false }
+    case 'MR_CREATED':
+      return { text: '', loading: false, disabled: true, failed: false, clickable: false }
+    case 'FAILED':
+      return { text: '申请失败', loading: false, disabled: true, failed: true, clickable: false }
+  }
+}
+
+function preflightTagText(eff: EffectiveState): string {
+  switch (eff) {
+    case 'IDLE': return '待创建'
+    case 'PREFLIGHTING': return '预检中'
+    case 'READY_CREATE': return '待创建MR'
+    case 'CREATING': return '创建MR'
+    case 'MR_CREATED': return '进行中'
+    case 'FAILED': return '申请失败'
+  }
+}
+
+function preflightTagColor(eff: EffectiveState): string {
+  switch (eff) {
+    case 'IDLE': return 'cyan'
+    case 'PREFLIGHTING': return 'processing'
+    case 'READY_CREATE': return 'warning'
+    case 'CREATING': return 'processing'
+    case 'MR_CREATED': return 'blue'
+    case 'FAILED': return 'error'
+  }
+}
+
 function shortSha(value: string | null): string {
   if (!value) return '—'
   return value.slice(0, 7)
@@ -102,7 +200,28 @@ export function MergeRequestTab({
     status,
     limit: 50,
   })
-  const items = query.data?.data ?? []
+  // 使用本地 state 包裹，允许预检 MR_CREATED 时乐观回写 webUrl/number
+  const [items, setItems] = useState<MergeRequestSummary[]>(query.data?.data ?? [])
+  const lastDataRef = useRef(query.data?.data)
+  useEffect(() => {
+    const latest = query.data?.data ?? []
+    if (lastDataRef.current === query.data?.data) return // query data 引用未更新，跳过
+    lastDataRef.current = query.data?.data
+    setItems((prev) => {
+      const latestIds = latest.map((m) => m.id).join('|')
+      const prevIds = prev.map((m) => m.id).join('|')
+      if (latestIds !== prevIds) return latest
+      return latest.map((m) => {
+        const local = prev.find((p) => p.id === m.id)
+        if (!local) return m
+        return {
+          ...m,
+          webUrl: m.webUrl ?? local.webUrl,
+          number: m.number ?? local.number,
+        }
+      })
+    })
+  }, [query.data?.data])
 
   // ========== 每行的 CQ+1 状态：useQueries 按 (projectId+taskId+repoId+targetBranch) 查 Preflight =====
   // taskId 为空或未关联任务的 MR（如纯手动 GitHub 创建）不查，直接显示 "—"
@@ -128,9 +247,112 @@ export function MergeRequestTab({
   })
 
   const mergeMr = useMergeMergeRequest(projectId)
-  const createMr = useCreateMergeRequest(projectId)
+  const requestPreflight = useRequestMergeRequestPreflight(projectId)
   const [mergingId, setMergingId] = useState<string | null>(null)
   const [creatingId, setCreatingId] = useState<string | null>(null)
+  // 记录每行的预检状态（前端跟踪，真实环境由 SSE/后端返回）
+  const [preflightStatusMap, setPreflightStatusMap] = useState<Record<string, PreflightStatus>>({})
+  const restoredRef = useRef(false)
+
+  // 页面加载时一次性查询预检状态，恢复已启动的进度
+  useEffect(() => {
+    if (restoredRef.current) return
+    if (items.length === 0) return // 等待 MR 列表加载完成
+    const taskIds = new Set<string>()
+    items.forEach((mr) => {
+      if (mr.status === 'PENDING_CREATE' && mr.taskId) taskIds.add(mr.taskId)
+    })
+    restoredRef.current = true
+    if (taskIds.size === 0) return
+      ; (async () => {
+        try {
+          const newMap: Record<string, PreflightStatus> = {}
+          for (const taskId of taskIds) {
+            const res = await mergeRequestsApi.getTaskPreflight(projectId, taskId)
+            if (res?.items?.length) {
+              const taskMrRows = items.filter((mr) => mr.taskId === taskId && mr.status === 'PENDING_CREATE')
+              taskMrRows.forEach((mr) => {
+                const repoStatus = res.items.find((it) => it.repositoryId === mr.repositoryId)
+                if (repoStatus?.dryRunStatus) {
+                  if (repoStatus.cqStatus === 'APPROVED') {
+                    newMap[mr.id] = 'MR_CREATED'
+                  } else if (repoStatus.cqStatus === 'REJECTED') {
+                    newMap[mr.id] = 'CQ_REJECTED'
+                  } else if (repoStatus.dryRunStatus === 'PASSED') {
+                    newMap[mr.id] = 'WAITING_CQ'
+                  } else if (repoStatus.dryRunStatus === 'FAILED') {
+                    newMap[mr.id] = 'FAILED'
+                  } else {
+                    newMap[mr.id] = 'DRY_RUN_RUNNING'
+                  }
+                }
+              })
+            }
+          }
+          if (Object.keys(newMap).length > 0) {
+            setPreflightStatusMap((prev) => ({ ...prev, ...newMap }))
+          }
+        } catch {
+          // 静默失败，不影响页面展示
+        }
+      })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, items.length])
+
+  // ============== 自动模式（createMode = SYSTEM）：页面加载完自动触发申请预检 ==============
+  // 后端返回占位 MR 时已经标记好 SYSTEM，前端就不需要用户再手动点「申请MR」。
+  const autoStartRef = useRef<Set<string>>(new Set())
+  const autoStartTriedCountRef = useRef(0)
+  useEffect(() => {
+    if (items.length === 0) return
+    const systemRows = items.filter((mr) =>
+      mr.status === 'PENDING_CREATE'
+      && mr.taskId
+      && mr.createMode === 'SYSTEM'
+      && !preflightStatusMap[mr.id]
+      && !autoStartRef.current.has(mr.id),
+    )
+    if (systemRows.length === 0) {
+      autoStartTriedCountRef.current += 1
+      return
+    }
+    systemRows.forEach((mr) => {
+      autoStartRef.current.add(mr.id)
+      // 先乐观设置为 REQUESTED
+      setPreflightStatusMap((prev) => (prev[mr.id] ? prev : { ...prev, [mr.id]: 'REQUESTED' }))
+      const __mr = mr
+        ; (async () => {
+          try {
+            const res = await requestPreflight.mutateAsync({
+              taskId: __mr.taskId!,
+              repositoryId: __mr.repositoryId,
+            })
+            setPreflightStatusMap((prev) => ({ ...prev, [__mr.id]: res.status }))
+            if (res.mergeRequest && res.status === 'MR_CREATED') {
+              setItems((prevItems) =>
+                prevItems.map((item) =>
+                  item.id === __mr.id
+                    ? {
+                      ...item,
+                      webUrl: res.mergeRequest!.webUrl,
+                      number: res.mergeRequest!.number,
+                      qualityGate: res.mergeRequest!.qualityGate ?? item.qualityGate,
+                    }
+                    : item,
+                ),
+              )
+            }
+          } catch {
+            setPreflightStatusMap((prev) =>
+              prev[__mr.id] === 'REQUESTED'
+                ? { ...prev, [__mr.id]: 'FAILED' }
+                : prev,
+            )
+          }
+        })()
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, preflightStatusMap, creatingId, requestPreflight])
 
   function handleMerge(record: MergeRequestSummary) {
     modal.confirm({
@@ -156,38 +378,139 @@ export function MergeRequestTab({
   function handleCreate(record: MergeRequestSummary) {
     const taskId = record.taskId
     if (!taskId) {
-      message.warning('该 MR 未关联任务，无法从列表直接创建 GitHub PR')
+      message.warning('该 MR 未关联任务，无法从列表直接申请预检')
       return
     }
+    // 如果已在预检流程中，根据当前状态决定是否允许重新申请
+    const currentStatus = preflightStatusMap[record.id]
+    if (currentStatus && !['FAILED', 'STALE', 'CQ_REJECTED'].includes(currentStatus)) {
+      // 预检进行中或已在等待 CQ，只允许「重新预检」的场景
+      const label = preflightButtonLabel(currentStatus)
+      if (label.loading || currentStatus === 'WAITING_CQ' || currentStatus === 'MR_CREATED') {
+        message.info(`当前状态：${label.text}，无需重复操作`)
+        return
+      }
+    }
     modal.confirm({
-      title: '确认创建 GitHub PR？',
+      title: '申请MR？',
       content: (
         <div style={{ fontSize: 13, lineHeight: 1.8 }}>
           <p>
             将在仓库 <code>{repoLabel(repositories, record.repositoryId)}</code>
-            基于 <code>{record.sourceBranch} → {record.targetBranch}</code> 真的创建 GitHub PR。
+            基于 <code>{record.sourceBranch} → {record.targetBranch}</code> 启动统一预检流程。
           </p>
           <p style={{ color: '#6d7d95', margin: 0 }}>
-            ⚠️ 操作前请确保 <strong>质量门禁 = 通过</strong> 且
-            <strong> CQ+1 = 通过</strong>。
-            按钮在前置条件未满足时仍可点击，但 GitHub 端可能会被分支策略阻止合并。
+            顺序：先执行 <strong>Dry Run</strong> → <strong>CQ+1</strong> 审查。
+            <br />
+            两项均通过后，由后端自动在 GitHub 端创建真实 PR，前端不绕过门禁直接创建。
           </p>
         </div>
       ),
-      okText: '立即创建',
+      okText: '申请MR',
       cancelText: '取消',
       okButtonProps: { loading: creatingId === record.id },
       onOk: async () => {
         setCreatingId(record.id)
+        // 先乐观设置状态为预检中
+        setPreflightStatusMap((prev) => ({ ...prev, [record.id]: 'REQUESTED' }))
         try {
-          await createMr.mutateAsync({
+          const res = await requestPreflight.mutateAsync({
             taskId,
             repositoryId: record.repositoryId,
-            targetBranch: record.targetBranch,
-            title: record.title?.trim() || `${record.sourceBranch} → ${record.targetBranch}`,
           })
-          message.success('已创建 GitHub PR，列表稍后自动刷新')
+          // 根据返回的预检状态更新 UI
+          setPreflightStatusMap((prev) => ({ ...prev, [record.id]: res.status }))
+          // MR_CREATED：后端已建 PR，回写 webUrl/number 让 GitHub 跳转按钮生效
+          if (res.mergeRequest && res.status === 'MR_CREATED') {
+            // 更新缓存中对应的占位 MR
+            setItems((prevItems) =>
+              prevItems.map((item) =>
+                item.id === record.id
+                  ? {
+                    ...item,
+                    webUrl: res.mergeRequest!.webUrl,
+                    number: res.mergeRequest!.number,
+                    qualityGate: res.mergeRequest!.qualityGate ?? item.qualityGate,
+                  }
+                  : item,
+              ),
+            )
+          }
+          if (res.status === 'FAILED' || res.status === 'STALE' || res.status === 'CQ_REJECTED') {
+            message.error(res.failureReason || '申请失败')
+          } else if (res.status === 'MR_CREATED') {
+            message.success('MR 已创建，点击 GitHub 按钮可跳转')
+          } else {
+            message.success('已申请 MR，正在预检（Dry Run → CQ+1）')
+          }
         } catch (error) {
+          setPreflightStatusMap((prev) => ({ ...prev, [record.id]: 'FAILED' }))
+          message.error(formatApiError(error))
+        } finally {
+          setCreatingId(null)
+        }
+      },
+    })
+  }
+
+  /**
+   * MANUAL 模式专属：Dry Run + CQ+1 通过后，用户点击「创建MR」，
+   * 才让后端真正在 GitHub 创建 PR。
+   */
+  function handleCreateFromManualReady(record: MergeRequestSummary) {
+    const taskId = record.taskId
+    if (!taskId) {
+      message.warning('该 MR 未关联任务')
+      return
+    }
+    modal.confirm({
+      title: '创建 MR？',
+      content: (
+        <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+          <p>
+            Dry Run 与 CQ+1 均已通过。确认后将由后端在 GitHub 端基于{' '}
+            <code>{record.sourceBranch} → {record.targetBranch}</code> 创建 PR。
+          </p>
+        </div>
+      ),
+      okText: '创建MR',
+      cancelText: '取消',
+      okButtonProps: { loading: creatingId === record.id },
+      onOk: async () => {
+        setCreatingId(record.id)
+        setPreflightStatusMap((prev) => ({ ...prev, [record.id]: 'CREATING_MR' }))
+        try {
+          // 此时 MANUAL 模式需再发一次「触发后端真正创建 MR」的请求。
+          // 统一使用 preflight 接口（后端在 WAITING_CQ+CQ_APPROVED 时会进入创建 MR 流程）。
+          const res = await requestPreflight.mutateAsync({
+            taskId,
+            repositoryId: record.repositoryId,
+          })
+          // 如果后端一次就返回了 MR_CREATED，则直接回写
+          // 否则保守地把状态推进到 CREATING_MR，等待下次刷新
+          const status = res.status === 'MR_CREATED' ? 'MR_CREATED' : 'CREATING_MR'
+          setPreflightStatusMap((prev) => ({ ...prev, [record.id]: status }))
+          if (res.mergeRequest) {
+            setItems((prevItems) =>
+              prevItems.map((item) =>
+                item.id === record.id
+                  ? {
+                    ...item,
+                    webUrl: res.mergeRequest!.webUrl,
+                    number: res.mergeRequest!.number,
+                    qualityGate: res.mergeRequest!.qualityGate ?? item.qualityGate,
+                  }
+                  : item,
+              ),
+            )
+            message.success('MR 已创建，点击 GitHub 按钮可跳转')
+          } else if (res.status === 'FAILED' || res.status === 'STALE' || res.status === 'CQ_REJECTED') {
+            message.error(res.failureReason || '创建 MR 失败')
+          } else {
+            message.success('正在创建 MR，稍后会显示 GitHub 跳转')
+          }
+        } catch (error) {
+          setPreflightStatusMap((prev) => ({ ...prev, [record.id]: 'FAILED' }))
           message.error(formatApiError(error))
         } finally {
           setCreatingId(null)
@@ -218,7 +541,7 @@ export function MergeRequestTab({
         width: 88,
         render: (_value, record) => (
           record.status === 'PENDING_CREATE' ? (
-            <Tooltip title="大任务识别后自动插入的占位记录，尚未在 GitHub 创建 PR。点击操作列的「创建」按钮才会真的创建 PR。">
+            <Tooltip title="大任务识别后自动插入的占位记录，尚未在 GitHub 创建 PR。自动模式会自动发起预检；人工模式需点击「申请MR」。">
               <Text type="secondary" style={{ cursor: 'help' }}>待创建</Text>
             </Tooltip>
           ) : <Text strong>#{record.number}</Text>
@@ -266,8 +589,17 @@ export function MergeRequestTab({
         title: '状态',
         dataIndex: 'status',
         key: 'status',
-        width: 100,
-        render: (value: MergeRequestStatus) => <Tag color={statusColor(value)}>{statusLabel(value)}</Tag>,
+        width: 120,
+        render: (value: MergeRequestStatus, record, index: number) => {
+          if (record.status === 'PENDING_CREATE') {
+            const currentStatus = preflightStatusMap[record.id]
+            const cq = cqQueries[index]
+            const cqApproved = cq?.data?.cqPlusOne?.status === 'APPROVED'
+            const eff = deriveEffectiveState(currentStatus, record.createMode, cqApproved)
+            return <Tag color={preflightTagColor(eff)}>{preflightTagText(eff)}</Tag>
+          }
+          return <Tag color={statusColor(value)}>{statusLabel(value)}</Tag>
+        },
       },
       {
         title: 'CQ+1',
@@ -325,43 +657,122 @@ export function MergeRequestTab({
       {
         title: '操作',
         key: 'action',
-        width: 156,
+        width: 220,
         align: 'right',
-        render: (_value, record) => {
+        render: (_value, record, index: number) => {
+          // ============== PENDING_CREATE：占位 MR，预检流程阶段 ==============
           if (record.status === 'PENDING_CREATE') {
-            const gatePassed = record.qualityGate?.status === 'PASSED'
-            // CQ 通过 = 查 preflight 里是否 APPROVED，使用 cqQueries[index].data.cqPlusOne.status === 'APPROVED'
-            // 若 CQ 查询还没回来，默认把按钮做成「可点但提示」；如果门禁/CQ未过，tooltip 提示原因
-            const rowIndex = items.findIndex((it) => it.id === record.id)
-            const cq = cqQueries[rowIndex]
+            const currentStatus = preflightStatusMap[record.id]
+            const cq = cqQueries[index]
             const cqApproved = cq?.data?.cqPlusOne?.status === 'APPROVED'
+            const eff = deriveEffectiveState(currentStatus, record.createMode, cqApproved)
+            const { text, loading, disabled, failed, clickable } = preflightButtonLabel(eff)
+
+            // MR_CREATED：后端已在 GitHub 成功创建 PR → 操作列：GitHub + Admin合并MR
+            if (eff === 'MR_CREATED') {
+              const href = githubPullRequestUrl(
+                record.webUrl,
+                record.number,
+                repositories.find((item) => item.id === record.repositoryId),
+              )
+              return (
+                <Space size={8} wrap>
+                  {href ? (
+                    <Button
+                      size="small"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        window.open(href, '_blank')
+                      }}
+                    >
+                      GitHub
+                    </Button>
+                  ) : null}
+                  {isAdmin && record.qualityGate?.status === 'PASSED' ? (
+                    <Button
+                      size="small"
+                      type="primary"
+                      loading={mergingId === record.id}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handleMerge(record)
+                      }}
+                    >
+                      合并MR
+                    </Button>
+                  ) : null}
+                  {!href && !isAdmin ? <Text type="secondary">—</Text> : null}
+                </Space>
+              )
+            }
+
+            // 申请失败：显示 tooltip 原因
             let tip: string | null = null
-            if (!gatePassed) tip = '需要质量门禁 = 通过'
-            else if (cq?.isLoading) tip = 'CQ+1 状态查询中…'
-            else if (!cqApproved) tip = '需要 CQ+1 = 通过'
+            if (eff === 'FAILED') {
+              if (currentStatus === 'CQ_REJECTED') tip = 'CQ+1 未通过，申请失败'
+              else if (currentStatus === 'FAILED') tip = 'Dry Run 或质量门禁失败'
+              else tip = '预检上下文过期，请刷新重试'
+            } else if (eff === 'IDLE') {
+              const gatePassed = record.qualityGate?.status === 'PASSED'
+              if (!gatePassed) tip = '申请前请确保质量门禁 = 通过'
+            } else if (eff === 'READY_CREATE') {
+              tip = 'Dry Run + CQ+1 已通过，点击创建 MR 后由后端在 GitHub 端创建真实 PR'
+            }
+
             const btn = (
               <Button
                 size="small"
-                type="primary"
-                ghost
-                loading={creatingId === record.id}
+                type={failed ? 'default' : 'primary'}
+                danger={failed}
+                ghost={!loading && !failed}
+                loading={creatingId === record.id || loading}
+                disabled={disabled || (!clickable && !failed)}
                 onClick={(event) => {
                   event.stopPropagation()
-                  handleCreate(record)
+                  if (eff === 'READY_CREATE') {
+                    // MANUAL 模式：用户点「创建MR」→ 触发真正的 MR 创建
+                    handleCreateFromManualReady(record)
+                  } else {
+                    handleCreate(record)
+                  }
                 }}
               >
-                创建
+                {text}
               </Button>
             )
             return tip ? <Tooltip title={tip}>{btn}</Tooltip> : btn
           }
+
+          // ============== OPEN / MERGED / CLOSED：真实 MR 已存在 ==============
+          // 真实 MR 存在时，操作列独立渲染 GitHub + Admin 合并MR（与GitHub列重复但符合用户需求）
+          const href = githubPullRequestUrl(
+            record.webUrl,
+            record.number,
+            repositories.find((item) => item.id === record.repositoryId),
+          )
           const canMerge =
             isAdmin &&
             record.status === 'OPEN' &&
             record.qualityGate?.status === 'PASSED'
-          if (canMerge) {
-            return (
+          const children: JSX.Element[] = []
+          if (href) {
+            children.push(
               <Button
+                key="gh"
+                size="small"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  window.open(href!, '_blank')
+                }}
+              >
+                GitHub
+              </Button>,
+            )
+          }
+          if (canMerge) {
+            children.push(
+              <Button
+                key="merge"
                 size="small"
                 type="primary"
                 loading={mergingId === record.id}
@@ -370,17 +781,17 @@ export function MergeRequestTab({
                   handleMerge(record)
                 }}
               >
-                合并
-              </Button>
+                合并MR
+              </Button>,
             )
           }
           if (record.status === 'OPEN' && record.qualityGate?.status !== 'PASSED') {
             return <Text type="secondary">门禁未过</Text>
           }
           if (record.status === 'MERGED' || record.status === 'CLOSED') {
-            return <Text type="secondary">—</Text>
+            return href ? children[0] ?? <Text type="secondary">—</Text> : <Text type="secondary">—</Text>
           }
-          return <Text type="secondary">—</Text>
+          return children.length > 0 ? <Space size={8}>{children}</Space> : <Text type="secondary">—</Text>
         },
       },
       {
@@ -409,7 +820,7 @@ export function MergeRequestTab({
         },
       },
     ],
-    [projectId, repositories, isAdmin, mergingId, creatingId, items, cqQueries, navigate, handleMerge, handleCreate],
+    [projectId, repositories, isAdmin, mergingId, creatingId, items, cqQueries, preflightStatusMap, navigate, handleMerge, handleCreate],
   )
 
   return (
@@ -442,13 +853,15 @@ export function MergeRequestTab({
         showIcon
         message={
           <Space>
-            <span>大任务完成后系统会先在此列表插入占位记录（状态「待创建」），质量门禁与 CQ+1 都通过后，</span>
+            <span>大任务完成后系统会在列表中插入占位记录。点击操作列的</span>
+            <Tag color="cyan" style={{ margin: 0 }}>申请MR</Tag>
+            <span>按钮启动统一预检：Dry Run → CQ+1 → 后端自动创建 GitHub PR。</span>
             <Button size="small" type="link" style={{ padding: 0, margin: 0 }} onClick={() => void query.refetch()}>
               手动刷新
             </Button>
           </Space>
         }
-        description="在操作列点击「创建」才会真的去 GitHub 端创建 PR。合并仍需 Project Admin 执行，并必须质量门禁通过。"
+        description="预检通过后自动在 GitHub 创建 PR。Project Admin 可在操作列看到 GitHub 跳转 + 合并MR 按钮，普通成员仅看到 GitHub 跳转。CQ+1 或质量门禁任一未过则显示申请失败。"
       />
       {query.isLoading ? (
         <div style={{ textAlign: 'center', padding: 48 }}>

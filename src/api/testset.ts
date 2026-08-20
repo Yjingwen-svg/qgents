@@ -271,11 +271,23 @@ export function mapTestRun(raw: unknown): TestRun {
   const testsetIds = readStringArray(row.testsetIds)
   const fromResults = executionSummary?.results.map((item) => item.testsetId) ?? []
 
-  // 时间字段：兼容 startedAt/finishedAt 与 createdAt/updatedAt
   const createdAt = readString(row, 'createdAt')
   const updatedAt = readString(row, 'updatedAt')
-  const startedAt = readString(row, 'startedAt') || createdAt || null
-  const finishedAt = readString(row, 'finishedAt') || updatedAt || null
+
+  // 后端 TestRunResponse 当前不返回 startedAt/finishedAt/updatedAt，
+  // 前端用 available 字段做合理兜底，保证终态时能展示时间
+  const rawStartedAt = readString(row, 'startedAt')
+  const rawFinishedAt = readString(row, 'finishedAt')
+
+  // 优先使用后端显式返回的 startedAt
+  let startedAt: string | null = rawStartedAt || null
+  // finishedAt 优先使用后端显式返回，其次用 updatedAt（如果存在）
+  let finishedAt: string | null = rawFinishedAt || updatedAt || null
+
+  // 如果有 updatedAt 但没有 startedAt，用 createdAt 作为开始时间
+  if (!startedAt && updatedAt) {
+    startedAt = createdAt || null
+  }
 
   return {
     id: readString(row, 'id'),

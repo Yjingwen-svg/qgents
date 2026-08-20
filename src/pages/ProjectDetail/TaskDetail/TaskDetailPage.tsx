@@ -139,11 +139,13 @@ export default function TaskDetailPage() {
 
   const task = taskQuery.data
   const recentRuns = taskRunsQuery.data?.data ?? []
-  // 重试请求已发送但新 TaskRun 尚未返回时，也必须进入过渡态；不能继续把旧失败运行当作当前状态。
-  const retryPending = retryRequestedRunId !== null || (retryingRunId !== null && !recentRuns.some((run) => run.id === retryingRunId))
+  // retryingRunId 记的是「被重试的源 run id」；真正的新 run 是 retryOfTaskRunId === retryingRunId 的那条。
+  // 重试请求已发送但新 TaskRun 尚未返回时进入过渡态，不能继续把旧失败运行当作当前状态。
+  const retryPending = retryRequestedRunId !== null
+    || (retryingRunId !== null && !recentRuns.some((run) => run.retryOfTaskRunId === retryingRunId))
 
   useEffect(() => {
-    if (!retryingRunId || recentRuns.some((run) => run.id === retryingRunId)) setRetryingRunId(null)
+    if (!retryingRunId || recentRuns.some((run) => run.retryOfTaskRunId === retryingRunId)) setRetryingRunId(null)
   }, [recentRuns, retryingRunId])
 
   // SSE 是主更新通道；活动任务额外每 3 秒刷新一次读取模型，覆盖事件延迟、断线和后端异步建 Run 的窗口。
@@ -252,7 +254,7 @@ export default function TaskDetailPage() {
           </main>
         </div>
         <aside className={styles.taskWorkspaceAside}>
-          <TaskRunInspectorPanel projectId={projectId} task={currentTask} taskId={currentTask.id} taskRunId={inspectedRunId} onRunChange={openRun} onRetryRequested={setRetryRequestedRunId} onRetryStarted={(nextRunId) => { setRetryRequestedRunId(null); setRetryingRunId(nextRunId) }} onRetryRequestError={() => setRetryRequestedRunId(null)} focusRequest={runInspectorFocusRequest} />
+          <TaskRunInspectorPanel projectId={projectId} task={currentTask} taskId={currentTask.id} taskRunId={inspectedRunId} onRunChange={openRun} onRetryRequested={setRetryRequestedRunId} onRetryStarted={(sourceRunId) => { setRetryRequestedRunId(null); setRetryingRunId(sourceRunId) }} onRetryRequestError={() => setRetryRequestedRunId(null)} focusRequest={runInspectorFocusRequest} />
         </aside>
       </div>
     </div>

@@ -48,10 +48,11 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, onRu
     setRetrySubmitted(true)
     onRetryRequested?.(run.id)
     retry.mutate(run.id, {
-      onSuccess: (next) => {
-        // 新 run 是服务端已受理后返回的实体；立即切换右栏，并通知主区进入等待编排的过渡态。
-        onRunChange(next.id)
-        onRetryStarted?.(next.id)
+      onSuccess: () => {
+        // 后端 retry 是 202 异步受理，返回的是「源 run」自身（toSummary(source)），新 run 尚未创建。
+        // 不能把 next.id（= 源 run id）当成新 run 去 onRunChange 跳转，否则选中会跳到旧卡片；
+        // 改为以源 run id 标记「等待其重试的新 run」，由 retryOfTaskRunId 匹配真正的新 run。
+        onRetryStarted?.(run.id)
       },
       onError: (error) => {
         onRetryRequestError?.()

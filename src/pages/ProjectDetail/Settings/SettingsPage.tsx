@@ -1,7 +1,7 @@
 // src/pages/ProjectDetail/sections/SettingsPage.tsx
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Divider, Typography, Input, Spin, Tag, message, Avatar, Upload } from 'antd'
+import { Button, Typography, Input, Spin, Tag, message, Avatar, Upload } from 'antd'
 import { GithubOutlined, SaveOutlined, LockOutlined, UploadOutlined, CameraOutlined } from '@ant-design/icons'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { projectApi } from '@/api'
@@ -56,19 +56,20 @@ export function SettingsPage() {
         </div>
       </div>
 
-      {/* 基本信息 + 仓库 合成一页（需求群规则 / 任务执行已移除） */}
-      <div className="settings-page__section">
-        <Title level={4} className="settings-page__section-title">基本信息</Title>
-        <BasicInfoTab projectId={projectId} project={project} isEditable={isEditable} />
-      </div>
-      <Divider className="settings-page__divider" />
-      <div className="settings-page__section">
-        <Title level={4} className="settings-page__section-title">仓库</Title>
-        <RepositoriesTab
-          projectId={projectId}
-          teamId={project?.teamId ?? ''}
-          isEditable={isEditable}
-        />
+      {/* 基本信息 + 仓库 左右两栏（需求群规则 / 任务执行已移除） */}
+      <div className="settings-page__body">
+        <div className="settings-page__col">
+          <Title level={4} className="settings-page__section-title">基本信息</Title>
+          <BasicInfoTab projectId={projectId} project={project} isEditable={isEditable} />
+        </div>
+        <div className="settings-page__col">
+          <Title level={4} className="settings-page__section-title">仓库</Title>
+          <RepositoriesTab
+            projectId={projectId}
+            teamId={project?.teamId ?? ''}
+            isEditable={isEditable}
+          />
+        </div>
       </div>
     </div>
   )

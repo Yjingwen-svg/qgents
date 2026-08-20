@@ -48,11 +48,19 @@
     padding-top: 4px;
   }
 
-  // 基本信息 + 仓库 合成一页（需求群规则 / 任务执行已移除）
-  &__section {
-    padding: 24px 32px 8px;
+  // 基本信息 + 仓库 左右两栏（需求群规则 / 任务执行已移除）
+  &__body {
+    flex: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: 32px;
+    padding: 24px 32px 40px;
     background: #fff;
-    flex-shrink: 0;
+  }
+
+  &__col {
+    flex: 1;
+    min-width: 0;
   }
 
   &__section-title {
@@ -60,10 +68,6 @@
     font-size: 16px !important;
     font-weight: 600 !important;
     color: #1a2332 !important;
-  }
-
-  &__divider {
-    margin: 0 !important;
   }
 
   &__tabs {

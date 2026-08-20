@@ -9,7 +9,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons'
 import { Button, Space, Spin } from 'antd'
-import { Link, Navigate, NavLink, Outlet, useLocation, useParams } from 'react-router-dom'
+import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi } from '@/api'
@@ -116,11 +116,18 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
 export default function TeamDetailPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
   const location = useLocation()
+  const navigate = useNavigate()
   // 团队设置是团队详情的路由层子视图（/teams/:teamId/settings）：命中时渲染 Outlet，不跳转新页面
   const onSettings = location.pathname.endsWith('/settings')
   const [activeView, setActiveView] = useState<TeamDetailView>('projects')
   const [createOpen, setCreateOpen] = useState(false)
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
+
+  // 从「团队设置」切回首页/通讯录：设置是路由子视图，必须先把 URL 切回团队详情，否则 main 仍渲染设置页
+  function goView(view: TeamDetailView) {
+    setActiveView(view)
+    if (onSettings) navigate(PATHS.teamDetail(teamId))
+  }
 
   // 团队级 SSE：被拉进项目 / 成员变更 / 动态产生时实时刷新
   useTeamEvents(teamId || undefined)
@@ -214,7 +221,7 @@ export default function TeamDetailPage() {
           <button
             type="button"
             className={`team-detail__nav-item ${activeView === 'projects' ? 'team-detail__nav-item--active' : ''}`}
-            onClick={() => setActiveView('projects')}
+            onClick={() => goView('projects')}
           >
             <ApartmentOutlined />
             团队首页
@@ -222,7 +229,7 @@ export default function TeamDetailPage() {
           <button
             type="button"
             className={`team-detail__nav-item ${activeView === 'members' ? 'team-detail__nav-item--active' : ''}`}
-            onClick={() => setActiveView('members')}
+            onClick={() => goView('members')}
           >
             <TeamOutlined />
             团队通讯录

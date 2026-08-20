@@ -4,6 +4,7 @@ import { type ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '@/api'
+import { queryClient, taskModelQueryKeys } from '@/query'
 import { useCancelTask, useConfirmTaskDiffReview, useDiffs, useRejectTaskDiffReview, useRetryTaskDiffReviewDelivery, useTask, useTaskDiagnostics, useTaskDiffReview, useTaskRuns, useTaskSteps } from '@/hooks/task-model'
 import { usePreflight } from '@/hooks/qualityGate'
 import type { DiffReviewBatch, Task, TaskRunSummary, TaskStep } from '@/types/task-model'
@@ -159,6 +160,9 @@ export default function TaskDetailPage() {
       void taskRunsQuery.refetch?.()
       void diffsQuery.refetch?.()
       if (reviewEnabled) void diffReviewQuery.refetch?.()
+      // 实时预览依赖 SSE workspace.diff-preview.updated 失效；SSE 断线/漏事件时用轮询兜底，
+      // 否则 Coding 已写入但事件未到达时预览卡会一直停留在旧数据或「暂不可用」。
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.workspaceDiffPreview.all(projectId, taskId) })
     }
     refresh()
     const timer = window.setInterval(refresh, 3_000)
@@ -173,7 +177,6 @@ export default function TaskDetailPage() {
   const inspectedRunId = hasClearedRunSelection ? null : selectedRunId ?? recentRuns[0]?.id ?? null
 
   function handleCancel() {
-    if (!window.confirm('确认取消此任务？服务端将按安全检查点停止执行。')) return
     cancelMutation.mutate(currentTask.id, { onError: (error) => { if (error instanceof ApiError && error.status === 409) void taskQuery.refetch() } })
   }
 
@@ -254,7 +257,7 @@ export default function TaskDetailPage() {
           </main>
         </div>
         <aside className={styles.taskWorkspaceAside}>
-          <TaskRunInspectorPanel projectId={projectId} task={currentTask} taskId={currentTask.id} taskRunId={inspectedRunId} onRunChange={openRun} onRetryRequested={setRetryRequestedRunId} onRetryStarted={(sourceRunId) => { setRetryRequestedRunId(null); setRetryingRunId(sourceRunId) }} onRetryRequestError={() => setRetryRequestedRunId(null)} focusRequest={runInspectorFocusRequest} />
+          <TaskRunInspectorPanel projectId={projectId} task={currentTask} taskId={currentTask.id} taskRunId={inspectedRunId} onRunChange={openRun} onRetryRequested={setRetryRequestedRunId} onRetryStarted={(sourceRunId) => { setRetryRequestedRunId(null); setRetryingRunId(sourceRunId) }} onRetryRequestError={() => setRetryRequestedRunId(null)} retryPending={retryPending} focusRequest={runInspectorFocusRequest} />
         </aside>
       </div>
     </div>

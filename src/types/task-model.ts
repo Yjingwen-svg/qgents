@@ -227,6 +227,8 @@ export interface TaskRunLog {
  */
 export interface TaskStatusReason {
   code: string
+  /** 失败原因稳定码（如 GIT_BRANCH_NOT_FOUND）；仅失败时返回，供前端选择可读提示与重试入口 */
+  failureCode?: string | null
   title: string
   summary: string
   retryable: boolean

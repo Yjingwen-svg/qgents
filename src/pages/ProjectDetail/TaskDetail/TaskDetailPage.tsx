@@ -229,7 +229,7 @@ function CompactTaskHeader({ task, projectId, onCancel, cancelPending, completed
   const navigate = useNavigate()
   return (
     <header className={styles.taskHeader} data-testid="task-summary">
-      {task.statusReason ? <TaskStartupFailureAlert statusReason={task.statusReason} /> : null}
+      {task.statusReason ? <TaskStartupFailureAlert task={task} projectId={projectId} statusReason={task.statusReason} /> : null}
       <div className={styles.headerPrimary}>
         <div className={styles.headerTitleLine}>
           <Title level={2} className={styles.taskTitle}>{display(task.title)}</Title>
@@ -469,16 +469,41 @@ function errorCode(error: Error | null): string | undefined { if (!(error instan
 function diffReviewError(error: Error): string { const code = errorCode(error); if (code === 'DIFF_REVIEW_FORBIDDEN') return '暂无 Diff 验收权限'; if (code === 'DIFF_REVIEW_NOT_FOUND') return '最终 Diff 尚未生成'; if (code === 'DIFF_REVIEW_NOT_DECIDABLE') return 'Diff 状态已变化，请刷新后重试'; if (code === 'DIFF_DELIVERY_NOT_RETRYABLE') return '当前交付状态不可重试'; return 'Diff 操作失败' }
 function display(value: string | null | undefined): string { return value?.trim() || '暂无' }
 function formatDate(value: string | null | undefined): string { if (!value) return '暂无'; const date = new Date(value); return Number.isNaN(date.getTime()) ? display(value) : new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date) }
-function TaskStartupFailureAlert({ statusReason }: { statusReason: TaskStatusReason | null }) {
+function TaskStartupFailureAlert({ task, projectId, statusReason }: { task: Task; projectId: string; statusReason: TaskStatusReason | null }) {
   if (!statusReason) return null
+  const isBranchMissing = statusReason.failureCode === 'GIT_BRANCH_NOT_FOUND'
+  // 基线分支不存在时从任务仓库元数据还原「仓库 + 基线分支」：summary 已含后端拼好的
+  // 可读文案（含仓库与分支名），结构化字段供前端精确展示与跳转。
+  const failedRepository = isBranchMissing
+    ? task.repositories?.find((repo) => repo.baseRef && !repo.fullName.startsWith('未')) ?? task.repositories?.[0]
+    : undefined
+  const action = isBranchMissing ? (
+    <Button type="link" size="small" onClick={() => {
+      const groupId = task.requirementGroup?.id
+      if (groupId) window.location.href = PATHS.projectReqChat(projectId, groupId)
+    }}>
+      重新发起任务
+    </Button>
+  ) : statusReason.retryable ? <Tag color="orange">可重试</Tag> : undefined
   return (
     <Alert
       type="error"
       showIcon
       className={styles.taskStartupFailureAlert}
-      title={statusReason.title}
-      description={statusReason.summary}
-      action={statusReason.retryable ? <Tag color="orange">可重试</Tag> : undefined}
+      title={isBranchMissing ? '任务无法启动' : statusReason.title}
+      description={
+        isBranchMissing ? (
+          <>
+            <div>仓库：{failedRepository?.fullName ?? '未知仓库'}</div>
+            <div>基线分支：{failedRepository?.baseRef ?? '未知'}</div>
+            <div>原因：{statusReason.summary}</div>
+            <div>请修改基线分支后重新发起任务。</div>
+          </>
+        ) : (
+          statusReason.summary
+        )
+      }
+      action={action}
     />
   )
 }

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Alert,
@@ -105,14 +105,22 @@ export default function MergeRequestDetailPage() {
     mergeRequestId: string
   }>()
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const viewParam = searchParams.get('view')
   const view: DetailView = isDetailView(viewParam) ? viewParam : 'gate'
   const [fileIndex, setFileIndex] = useState(0)
   const [draft, setDraft] = useState('')
   const cqRef = useRef<HTMLDivElement>(null)
 
-  function scrollToCq() {
-    cqRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  /**
+   * 点击流程图 CQ+1 节点：跳转到独立的大印章审查页（CqReviewPage）。
+   * 按产品新约定：MR 详情页、MR 列表条目都不再作为大印章页入口，
+   * 只允许从流程图的 CQ+1 节点进入审查页。
+   */
+  function navigateToCqReview(): void {
+    if (!mr) return
+    const to = `${PATHS.projectCqReview(projectId)}?mr=${encodeURIComponent(mr.id)}`
+    navigate(to)
   }
 
   function handleCreateMr() {
@@ -164,10 +172,10 @@ export default function MergeRequestDetailPage() {
   const repoName = repoLabel(reposQuery.data ?? [], mr?.repositoryId ?? '')
   const githubUrl = mr
     ? githubPullRequestUrl(
-        mr.webUrl,
-        mr.number,
-        reposQuery.data?.find((item) => item.id === mr.repositoryId),
-      )
+      mr.webUrl,
+      mr.number,
+      reposQuery.data?.find((item) => item.id === mr.repositoryId),
+    )
     : null
   const showMerge = canShowMergeButton(project?.role, mr)
 
@@ -367,11 +375,12 @@ export default function MergeRequestDetailPage() {
           cq: cqStatus === 'PASSED' ? 'approved' : cqStatus === 'FAILED' ? 'rejected' : 'pending',
           createMr: gatePassed && cqStatus === 'PASSED',
         }}
+        mrCreated={Boolean(mr)}
         onClickGate={() => {
           const mrParam = `?mr=${encodeURIComponent(mr.id)}`
           window.location.href = `${PATHS.projectQualityGate(projectId)}${mrParam}`
         }}
-        onClickCq={scrollToCq}
+        onClickCq={navigateToCqReview}
         onClickCreateMr={handleCreateMr}
       />
 

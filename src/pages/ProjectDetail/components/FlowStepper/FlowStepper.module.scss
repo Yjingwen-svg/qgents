@@ -165,3 +165,51 @@
     font-size: 11px;
   }
 }
+
+/* ============== 紧凑模式（仅当父级传 compact=true 时启用，默认不影响其它页面） ============== */
+.stepperCompact {
+  padding: 10px 18px 8px;
+  border-radius: 8px;
+}
+
+.nodeCompact {
+  gap: 4px;
+  min-width: 88px;
+  padding: 6px 8px 6px;
+}
+
+.nodeCircleCompact {
+  width: 34px;
+  height: 34px;
+  font-size: 15px;
+}
+
+.nodeLabelCompact {
+  font-size: 13px;
+}
+
+.nodeDescCompact {
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+@media (max-width: 640px) {
+  .stepperCompact {
+    padding: 8px 6px 6px;
+  }
+  .nodeCompact {
+    min-width: 64px;
+    padding: 4px 2px;
+  }
+  .nodeCircleCompact {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+  .nodeLabelCompact {
+    font-size: 11px;
+  }
+  .nodeDescCompact {
+    font-size: 10px;
+  }
+}

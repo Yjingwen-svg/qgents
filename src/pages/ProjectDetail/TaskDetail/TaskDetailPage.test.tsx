@@ -27,6 +27,8 @@ const useCancelTaskRunModelMock = vi.hoisted(() => vi.fn())
 const useReplyTaskRunInputRequestMock = vi.hoisted(() => vi.fn())
 const useApproveTaskRunInputRequestMock = vi.hoisted(() => vi.fn())
 const useRejectTaskRunInputRequestMock = vi.hoisted(() => vi.fn())
+const useWorkspaceDiffPreviewMock = vi.hoisted(() => vi.fn())
+const useWorkspaceDiffPreviewFilesMock = vi.hoisted(() => vi.fn())
 
 const usePreflightMock = vi.hoisted(() => vi.fn())
 
@@ -56,6 +58,10 @@ vi.mock('@/hooks/task-model', () => ({
 
 vi.mock('@/hooks/qualityGate', () => ({
   usePreflight: usePreflightMock,
+}))
+vi.mock('@/hooks/workspaceDiffPreview', () => ({
+  useWorkspaceDiffPreview: useWorkspaceDiffPreviewMock,
+  useWorkspaceDiffPreviewFiles: useWorkspaceDiffPreviewFilesMock,
 }))
 
 import TaskDetailPage from './TaskDetailPage'
@@ -102,6 +108,8 @@ beforeEach(() => {
   useReplyTaskRunInputRequestMock.mockReturnValue(idleMutation)
   useApproveTaskRunInputRequestMock.mockReturnValue(idleMutation)
   useRejectTaskRunInputRequestMock.mockReturnValue(idleMutation)
+  useWorkspaceDiffPreviewMock.mockReturnValue({ data: { kind: 'unavailable', reason: 'NOT_FOUND', message: 'Preview 尚未生成' }, isLoading: false, isError: false, refetch: vi.fn() })
+  useWorkspaceDiffPreviewFilesMock.mockReturnValue({ data: [], isLoading: false, isError: false, refetch: vi.fn() })
 })
 
 describe('TaskDetailPage workbench', () => {
@@ -166,6 +174,13 @@ describe('TaskDetailPage workbench', () => {
     expect(screen.queryByRole('button', { name: '查看完整需求' })).not.toBeInTheDocument()
   })
 
+  it('keeps workspace preview separate from formal Diff counts', () => {
+    useWorkspaceDiffPreviewMock.mockReturnValue({ data: { kind: 'available', preview: { projectId: task.projectId, taskId: task.id, taskRunId: run.id, workspaceId: 'workspace-1', revision: 2, baseCommit: 'base-1', workingTreeHash: 'sha256:preview', filesChanged: 2, additions: 8, deletions: 3, patch: 'diff --git a/a.txt b/a.txt', createdAt: run.createdAt } }, isLoading: false, isError: false, refetch: vi.fn() })
+    renderPage()
+    expect(screen.getByTestId('workspace-diff-preview-summary')).toHaveTextContent('实时预览：2 个文件 · +8 / -3 · revision 2')
+    expect(screen.getByText('产物 0 · Diff 0')).toBeInTheDocument()
+  })
+
   it('keeps delivery confirmation actions in the delivery panel', async () => {
     const user = userEvent.setup()
     const batch: DiffReviewBatch = { id: 'batch-1', taskId: task.id, reviewStatus: 'PENDING_CONFIRMATION', confirmationSource: 'USER', deliveryStatus: 'NOT_STARTED', aggregateHash: 'hash', reviewReason: null, diffs: [], repositoryDeliveries: [] }
@@ -214,5 +229,30 @@ describe('TaskDetailPage workbench', () => {
     renderPage()
     await user.click(screen.getByRole('button', { name: '取消任务' }))
     expect(refetch).toHaveBeenCalled()
+  })
+
+  it('renders branch-missing startup failure with repository context and retry entry', () => {
+    const failedTask: Task = {
+      ...task,
+      status: 'FAILED',
+      statusReason: {
+        code: 'STARTUP_FAILED',
+        failureCode: 'GIT_BRANCH_NOT_FOUND',
+        title: '基线分支不存在',
+        summary: '仓库 CloudPlayerBaby/test01 不存在基线分支 develop，请在项目仓库配置中选择真实存在的分支后重试',
+        retryable: true,
+        occurredAt: task.createdAt,
+      },
+      repositories: [
+        { repositoryId: 'repo-1', name: 'test01', fullName: 'CloudPlayerBaby/test01', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'develop', baseCommit: null, sourceBranch: '', headCommit: null },
+      ],
+    }
+    useTaskMock.mockReturnValue({ data: failedTask, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    renderPage()
+    expect(screen.getByText('任务无法启动')).toBeInTheDocument()
+    expect(screen.getByText('仓库：CloudPlayerBaby/test01')).toBeInTheDocument()
+    expect(screen.getByText('基线分支：develop')).toBeInTheDocument()
+    expect(screen.getByText('请修改基线分支后重新发起任务。')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '重新发起任务' })).toBeInTheDocument()
   })
 })

@@ -87,6 +87,11 @@ function mapQualityGateConfig(raw: unknown): QualityGateConfig {
 // ---------------------------------------------------------------------------
 
 function mapPreflightBlocker(raw: unknown): PreflightBlocker | null {
+  // 后端真实契约：blockers 为 List<String>，每项为 blocker code（如 DRY_RUN_MISSING / CQ_PLUS_ONE_MISSING）
+  // 兼容旧对象形式 {code, message}，确保未来扩展不被直接丢弃。
+  if (typeof raw === 'string' && raw.length > 0) {
+    return { code: raw, message: '' }
+  }
   if (!isRecord(raw)) return null
   const code = readString(raw, 'code')
   const message = readString(raw, 'message')
@@ -101,6 +106,7 @@ function mapPreflightDryRun(raw: unknown): PreflightDryRun | null {
     status: readString(raw, 'status'),
     sourceCommit: readNullableString(raw, 'sourceCommit'),
     targetCommit: readNullableString(raw, 'targetCommit'),
+    completedAt: readNullableString(raw, 'completedAt'),
   }
 }
 
@@ -141,17 +147,41 @@ export function mapPreflight(raw: unknown): Preflight {
   }
 }
 
+/**
+ * 后端 CQ 审批（approve/reject）真实返回 PreflightGateResponse（预检全量对象），
+ * decision 信息在嵌套的 cqPlusOne 里（dryRun.id / reviewedAt / reason 等也在其中）。
+ * 这里从预检响应结构中抽出 DryRunCqResult，兼容将来若改为直接返回审查结果。
+ */
 function mapDryRunCqResult(raw: unknown): DryRunCqResult {
   const row = isRecord(raw) ? raw : {}
-  const decisionRaw = readString(row, 'decision')
-  const decision: DryRunCqDecision = decisionRaw === 'REJECTED' ? 'REJECTED' : 'APPROVED'
+  // 优先从 cqPlusOne 嵌套字段取（PreflightGateResponse 结构）
+  const nestedCq = isRecord(row.cqPlusOne) ? row.cqPlusOne : null
+  const nestedDryRun = isRecord(row.dryRun) ? row.dryRun : null
+  const statusRaw = nestedCq
+    ? readString(nestedCq, 'status')
+    : readString(row, 'decision')
+  const decision: DryRunCqDecision = statusRaw === 'REJECTED' ? 'REJECTED' : 'APPROVED'
+  const reviewerUserId = nestedCq
+    ? readNullableString(nestedCq, 'reviewerUserId')
+    : readNullableString(row, 'reviewerUserId')
+  const reason = nestedCq
+    ? readNullableString(nestedCq, 'reason')
+    : readNullableString(row, 'reason')
+  const reviewedAt = nestedCq
+    ? readNullableString(nestedCq, 'reviewedAt')
+    : readNullableString(row, 'reviewedAt')
+  // reviewerName 后端当前不回传，保持 null
+  const reviewerName = readNullableString(row, 'reviewerName')
+  const dryRunId = nestedDryRun
+    ? readNullableString(nestedDryRun, 'id') ?? readNullableString(nestedDryRun, 'dryRunId')
+    : readNullableString(row, 'dryRunId') || readNullableString(row, 'id')
   return {
-    dryRunId: readString(row, 'dryRunId') || readString(row, 'id'),
+    dryRunId: dryRunId ?? '',
     decision,
-    reviewerUserId: readNullableString(row, 'reviewerUserId'),
-    reviewerName: readNullableString(row, 'reviewerName'),
-    reason: readNullableString(row, 'reason'),
-    reviewedAt: readNullableString(row, 'reviewedAt'),
+    reviewerUserId,
+    reviewerName,
+    reason,
+    reviewedAt,
   }
 }
 

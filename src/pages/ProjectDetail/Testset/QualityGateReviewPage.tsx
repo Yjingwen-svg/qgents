@@ -293,7 +293,9 @@ function CurrentRunCard({ projectId, localRuns, selectedRunId }: CurrentRunCardP
 
   const testRunStatusColor = useMemo(() => {
     if (!testRunData) return 'default'
-    switch (testRunData.status) {
+    // 类型定义滞后于后端实际状态值（文档允许 CONFLICT 等扩展值，此处先兼容）
+    const status: string = testRunData.status as string
+    switch (status) {
       case 'PASSED': return 'success'
       case 'FAILED': return 'error'
       case 'CANCELLED': return 'default'

@@ -15,6 +15,8 @@ describe('project SSE event parsing', () => {
         ? { dryRunId: 'dry-run-1' }
         : eventType === 'preflight.updated'
           ? { taskId: 'task-1', repositoryId: 'repo-1', targetBranch: 'main' }
+          : eventType === 'workspace.diff-preview.updated'
+            ? { taskId: 'task-1', taskRunId: 'run-1', workspaceId: 'workspace-1', previewRevision: 1, filesChanged: 2, additions: 8, deletions: 3, eventVersion: 1 }
     : eventType === 'task-run.step.progress'
       ? { taskId: 'task-1', stepId: 'step-1', taskRunId: 'run-1' }
       : eventType === 'task.updated'
@@ -123,5 +125,10 @@ describe('project SSE event parsing', () => {
 
   it('requires a supported delivery mode for delivery.started', () => {
     expect(parseProjectTaskEvent({ id: 'evt-delivery', event: 'delivery.started', data: JSON.stringify({ projectId: 'project-1', taskId: 'task-1', reviewBatchId: 'batch-1', deliveryMode: 'UNKNOWN', operationId: 'operation-1' }) })).toBeNull()
+  })
+
+  it('rejects malformed workspace preview events', () => {
+    expect(parseProjectTaskEvent({ id: 'evt-preview', event: 'workspace.diff-preview.updated', data: JSON.stringify({ projectId: 'project-1', taskId: 'task-1', taskRunId: 'run-1', workspaceId: 'workspace-1', previewRevision: -1, filesChanged: 2, additions: 8, deletions: 3, eventVersion: 1 }) })).toBeNull()
+    expect(parseProjectTaskEvent({ id: 'evt-preview', event: 'workspace.diff-preview.updated', data: JSON.stringify({ projectId: 'project-1', taskId: 'task-1', taskRunId: 'run-1', workspaceId: 'workspace-1', previewRevision: 1, filesChanged: 2, additions: 8, deletions: 3, eventVersion: 2 }) })).toBeNull()
   })
 })

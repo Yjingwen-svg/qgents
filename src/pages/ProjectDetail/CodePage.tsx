@@ -16,7 +16,7 @@ import {
   Select,
   App,
   theme,
-  Tabs,
+  // Tabs,  // 暂时注释：MR tab 先不展示
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
@@ -30,7 +30,7 @@ import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
 import type { ProjectBoundRepository, WorkBranch } from '@/types/github'
 import { toEmptyBranchDiffId } from './emptyBranchDiff'
-import { MergeRequestTab } from './MergeRequestTab'
+// import { MergeRequestTab } from './MergeRequestTab'  // 暂时注释：MR tab 先不展示
 import RemoteBranchSection from './RemoteBranchSection'
 
 const { Title, Paragraph, Text } = Typography
@@ -50,8 +50,11 @@ export function CodePage() {
   const { message } = App.useApp()
   const queryClient = useQueryClient()
   const { projectId = 'demo-project' } = useParams<{ projectId: string }>()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const tab = searchParams.get('tab') ?? 'branches'
+  // 暂时注释：MR tab 先不展示，tab 与 setTab 暂不启用
+  // const [searchParams, setSearchParams] = useSearchParams()
+  // const tab = searchParams.get('tab') ?? 'branches'
+  const [searchParams] = useSearchParams()  // 保留 searchParams 以防其它功能使用
+  void searchParams
 
   const [requirementGroupId, setRequirementGroupId] = useState<string | undefined>()
   const [drawer, setDrawer] = useState<{
@@ -111,18 +114,26 @@ export function CodePage() {
   }
 
   async function handleSetDefaultBranch(repoId: string, branchName: string) {
-    await githubApi.updateProjectRepository(projectId, repoId, { defaultBranch: branchName })
+    // 后端 GitHubRepositoryService.updateProjectRepository 当前实现
+    //  setDisplayName(request.getDisplayName()) 会把 null 写入 DB，
+    //  所以在只调整默认分支时也必须把原 displayName 带上，避免显示名被清空。
+    const repo = (reposQuery.data ?? []).find((r) => r.id === repoId)
+    await githubApi.updateProjectRepository(projectId, repoId, {
+      defaultBranch: branchName,
+      ...(repo?.displayName ? { displayName: repo.displayName } : {}),
+    })
     // 刷新仓库列表
     void queryClient.invalidateQueries({ queryKey: queryKeys.projectRepositories(projectId) })
     void queryClient.invalidateQueries({ queryKey: queryKeys.remoteBranches.all(projectId, repoId) })
   }
 
-  function setTab(next: string) {
-    const nextParams = new URLSearchParams()
-    if (next === 'mr') nextParams.set('tab', 'mr')
-    else nextParams.delete('tab')
-    setSearchParams(nextParams, { replace: true })
-  }
+  // 暂时注释：MR tab 先不展示，相关 tab 切换函数注释保留
+  // function setTab(next: string) {
+  //   const nextParams = new URLSearchParams()
+  //   if (next === 'mr') nextParams.set('tab', 'mr')
+  //   else nextParams.delete('tab')
+  //   setSearchParams(nextParams, { replace: true })
+  // }
 
   return (
     <div style={{ padding: 24 }}>
@@ -133,7 +144,8 @@ export function CodePage() {
         projectId: <Text code>{projectId}</Text>
       </Paragraph>
 
-      <Tabs
+      {/* 暂时注释：MR tab 先不展示，Tabs 切换栏移除 */}
+      {/* <Tabs
         activeKey={tab}
         onChange={setTab}
         items={[
@@ -145,97 +157,98 @@ export function CodePage() {
 
       {tab === 'mr' ? (
         <MergeRequestTab projectId={projectId} repositories={reposQuery.data ?? []} />
-      ) : (
-        <>
-          <Space wrap style={{ marginBottom: 16 }}>
-            <Text type="secondary">需求过滤</Text>
-            <Select
-              allowClear
-              placeholder="全部需求"
-              style={{ minWidth: 180 }}
-              value={requirementGroupId}
-              onChange={(value) => setRequirementGroupId(value)}
-              options={requirementGroups.map((g) => ({
-                value: g.id,
-                label: g.title,
-              }))}
-            />
-          </Space>
+      ) : ( */}
+      {/* ===== 分支 tab 内容（保留直接展示） ===== */}
+      <Space wrap style={{ marginBottom: 16 }}>
+        <Text type="secondary">需求过滤</Text>
+        <Select
+          allowClear
+          placeholder="全部需求"
+          style={{ minWidth: 180 }}
+          value={requirementGroupId}
+          onChange={(value) => setRequirementGroupId(value)}
+          options={requirementGroups.map((g) => ({
+            value: g.id,
+            label: g.title,
+          }))}
+        />
+      </Space>
 
-          <Alert
-            type="info"
-            showIcon
-            style={{ marginBottom: 16 }}
-            message="分支由需求任务在受控 Workspace 中产生，不代表 Git 上的任意远程分支。"
-            description="分支行来自项目工作分支视图（GET /work-branches）；Diff 列取该分支最近的 Diff 快照（与群内 Agent 产出的 diffId / changeStats 同步），无快照时显示空状态。"
-          />
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="分支由需求任务在受控 Workspace 中产生，不代表 Git 上的任意远程分支。"
+        description="分支行来自项目工作分支视图（GET /work-branches）；Diff 列取该分支最近的 Diff 快照（与群内 Agent 产出的 diffId / changeStats 同步），无快照时显示空状态。"
+      />
 
-          {workBranchesQuery.isLoading || reposQuery.isLoading ? (
-            <div style={{ textAlign: 'center', padding: 48 }}>
-              <Spin />
-            </div>
-          ) : workBranchesQuery.isError ? (
-            <Alert
-              type="error"
-              showIcon
-              message={formatApiError(workBranchesQuery.error)}
-              action={
-                <Button size="small" onClick={() => void workBranchesQuery.refetch()}>
-                  重试
-                </Button>
-              }
-            />
-          ) : visibleCards.length === 0 ? (
-            <Card>
-              <Empty
-                description={
-                  requirementGroupId ? '没有匹配该需求的分支' : '当前项目尚未绑定仓库或暂无工作分支'
-                }
-              />
-            </Card>
-          ) : (
-            <Space direction="vertical" size={16} style={{ width: '100%' }}>
-              {visibleCards.map(({ repo, branches }) => (
-                <RepoBranchCard
-                  key={repo.id}
-                  projectId={projectId}
-                  repo={repo}
-                  branches={branches}
-                  tokenColorBorder={token.colorBorder}
-                  isProjectAdmin={isProjectAdmin}
-                  onSetDefaultBranch={handleSetDefaultBranch}
-                  onOpenDrawer={(branch) => setDrawer({ repo, branch })}
-                />
-              ))}
-            </Space>
-          )}
-
-          <Drawer
-            title="Branch 详情"
-            width={420}
-            open={Boolean(drawer)}
-            onClose={() => setDrawer(null)}
-            destroyOnHidden
-            footer={
-              drawer ? (
-                <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-                  <Button onClick={() => void copyBranchName(drawer.branch.name)}>
-                    复制 Branch 名称
-                  </Button>
-                </Space>
-              ) : null
+      {workBranchesQuery.isLoading || reposQuery.isLoading ? (
+        <div style={{ textAlign: 'center', padding: 48 }}>
+          <Spin />
+        </div>
+      ) : workBranchesQuery.isError ? (
+        <Alert
+          type="error"
+          showIcon
+          message={formatApiError(workBranchesQuery.error)}
+          action={
+            <Button size="small" onClick={() => void workBranchesQuery.refetch()}>
+              重试
+            </Button>
+          }
+        />
+      ) : visibleCards.length === 0 ? (
+        <Card>
+          <Empty
+            description={
+              requirementGroupId ? '没有匹配该需求的分支' : '当前项目尚未绑定仓库或暂无工作分支'
             }
-          >
-            {drawer ? (
-              <BranchDetailBody
-                repo={drawer.repo}
-                branch={drawer.branch}
-                projectId={projectId}
-              />
-            ) : null}
-          </Drawer>
-        </>
+          />
+        </Card>
+      ) : (
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          {visibleCards.map(({ repo, branches }) => (
+            <RepoBranchCard
+              key={repo.id}
+              projectId={projectId}
+              repo={repo}
+              branches={branches}
+              tokenColorBorder={token.colorBorder}
+              isProjectAdmin={isProjectAdmin}
+              onSetDefaultBranch={handleSetDefaultBranch}
+              onOpenDrawer={(branch) => setDrawer({ repo, branch })}
+            />
+          ))}
+        </Space>
       )}
+
+      <Drawer
+        title="Branch 详情"
+        width={420}
+        open={Boolean(drawer)}
+        onClose={() => setDrawer(null)}
+        destroyOnHidden
+        footer={
+          drawer ? (
+            <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+              <Button onClick={() => void copyBranchName(drawer.branch.name)}>
+                复制 Branch 名称
+              </Button>
+            </Space>
+          ) : null
+        }
+      >
+        {drawer ? (
+          <BranchDetailBody
+            repo={drawer.repo}
+            branch={drawer.branch}
+            projectId={projectId}
+          />
+        ) : null}
+      </Drawer>
+      {/* 暂时注释：MR tab 先不展示（原分支 tab 内容外层条件分支的闭合端）
+    </>
+      )} */}
     </div>
   )
 }

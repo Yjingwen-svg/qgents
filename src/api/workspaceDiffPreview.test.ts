@@ -68,10 +68,10 @@ describe('workspace Diff Preview mapping', () => {
     expect(mapWorkspaceDiffPreviewFile({ path: 'x' })).toBeNull()
   })
 
-  it('maps 404 to unavailable / NOT_FOUND', async () => {
-    const status = await fetchWorkspaceDiffPreview('project-1', 'task-1').catch(() => null)
-    // 真实 fetch 在 jsdom 下不会走 MSW；这里直接校验：throw 一个 404 ApiError 会被降级成 unavailable。
-    expect(status).toBeNull()
+  it('does not throw when Preview is unavailable', async () => {
+    const status = await fetchWorkspaceDiffPreview('project-1', 'task-1')
+    // jsdom 的相对 URL fetch 失败也必须降级为可展示的 unavailable 状态。
+    expect(status.kind).toBe('unavailable')
   })
 
   it('does not leak 404 as a thrown ApiError from fetchWorkspaceDiffPreview', async () => {

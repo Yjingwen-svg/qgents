@@ -50,10 +50,6 @@ export function TasksPage() {
   return <ProjectSectionPage section="tasks" title="任务中心" todos={['TODO: B - 任务看板列与状态卡片']} />
 }
 
-export function WorkflowPage() {
-  return <ProjectSectionPage section="workflow" title="工作流编排" todos={['TODO: B - Planner → Developer → Tester → Reviewer 画布']} />
-}
-
 export function AgentsPage() {
   return <ProjectSectionPage section="agents" title="Agent 团队" todos={['TODO: B - Agent 身份卡与团队管理']} />
 }

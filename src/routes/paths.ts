@@ -81,7 +81,6 @@ export const PATHS = {
   projectTaskDetail: (projectId: string, taskId: string) => `/app/projects/${projectId}/tasks/${taskId}`,
   projectTaskRunDetail: (projectId: string, taskId: string, taskRunId: string) =>
     `/app/projects/${projectId}/tasks/${taskId}/executions/${taskRunId}`,
-  projectWorkflow: (projectId: string) => `/app/projects/${projectId}/workflow`,
   projectAgents: (projectId: string) => `/app/projects/${projectId}/agents`,
   projectSkills: (projectId: string) => `/app/projects/${projectId}/skills`,
   projectMemory: (projectId: string) => `/app/projects/${projectId}/memory`,
@@ -137,7 +136,6 @@ export const PROJECT_NAV = [
   { path: 'overview', label: '概览', to: PATHS.projectOverview },
   { path: 'tasks', label: '任务中心', to: PATHS.projectTasks },
   { path: 'diffs', label: '交付中心', to: PATHS.projectDiffs },
-  { path: 'workflow', label: '工作流编排', to: PATHS.projectWorkflow },
   { path: 'agents', label: 'Agent 团队', to: PATHS.projectAgents },
   { path: 'skills', label: '共享 Skill', to: PATHS.projectSkills },
   { path: 'memory', label: '共享 Memory', to: PATHS.projectMemory },

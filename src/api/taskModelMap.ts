@@ -358,8 +358,18 @@ export function mapMergeRequestCommitList(raw: unknown): MergeRequestCommitList 
   return { totalCount, items }
 }
 
-function mapMrStatus(value: unknown): MergeRequestStatus {
-  if (value === 'OPEN' || value === 'MERGED' || value === 'CLOSED') return value
+function mapMrStatus(value: unknown, raw?: Record<string, unknown>): MergeRequestStatus {
+  if (value === 'OPEN' || value === 'MERGED' || value === 'CLOSED' || value === 'PENDING_CREATE') return value
+  if (value === 'WAITING_CREATE' || value === 'TO_BE_CREATED') return 'PENDING_CREATE'
+  // 兼容占位 MR：后端尚未在 GitHub 端创建 PR 时，可能还没同步 providerNumber / webUrl。
+  // 仅当 row 存在显式 taskId 绑定（说明这不是 GitHub 镜像的空壳 MR）时，才按 number/webUrl 兜底为 PENDING_CREATE。
+  if (value !== 'MERGED' && value !== 'CLOSED') {
+    const number = typeof raw?.number === 'number' ? raw.number : null
+    const webUrl = typeof raw?.webUrl === 'string' ? raw.webUrl : ''
+    const hasTask = typeof (raw as { taskId?: unknown })?.taskId === 'string'
+      && Boolean((raw as { taskId?: unknown }).taskId as string)
+    if (hasTask && (number === null || number <= 0) && !webUrl) return 'PENDING_CREATE'
+  }
   return 'OPEN'
 }
 
@@ -372,26 +382,42 @@ export function mapMergeRequest(raw: unknown): MergeRequestSummary {
   const groupIds = Array.isArray(row.groupIds)
     ? row.groupIds.filter((item): item is string => typeof item === 'string')
     : []
+  const createModeRaw = typeof row.createMode === 'string' ? row.createMode.toUpperCase() : null
+  const createMode: MergeRequestSummary['createMode'] =
+    createModeRaw === 'MANUAL' ? 'MANUAL'
+      : createModeRaw === 'SYSTEM' || createModeRaw === 'AUTOMATIC' ? 'SYSTEM'
+        : 'UNKNOWN'
+  const rawNumber = readNumber(row, 'number')
+  const rawWebUrl = typeof row.webUrl === 'string' && row.webUrl ? row.webUrl : null
+  const rawTaskId = typeof row.taskId === 'string' && row.taskId.trim() ? row.taskId : null
+  const rawStatus = typeof row.status === 'string' ? row.status : undefined
+  const effectiveStatus: MergeRequestStatus = mapMrStatus(rawStatus, {
+    ...row,
+    number: rawNumber,
+    webUrl: rawWebUrl,
+    taskId: rawTaskId,
+  })
   return {
     id: readString(row, 'id'),
     repositoryId: readString(row, 'repositoryId') || readString(row, 'projectRepositoryId'),
     groupIds,
     provider: readString(row, 'provider') || 'GITHUB',
-    number: readNumber(row, 'number'),
+    number: rawNumber,
     title: typeof row.title === 'string' ? row.title : null,
     description: typeof row.description === 'string' ? row.description : null,
     sourceBranch: readString(row, 'sourceBranch'),
     targetBranch: readString(row, 'targetBranch'),
-    status: mapMrStatus(row.status),
+    status: effectiveStatus,
     headCommit: typeof row.headCommit === 'string' ? row.headCommit : null,
-    webUrl: typeof row.webUrl === 'string' ? row.webUrl : null,
-    taskId: typeof row.taskId === 'string' ? row.taskId : null,
+    webUrl: rawWebUrl,
+    taskId: rawTaskId,
     qualityGate: qualityGate
       ? {
-          status: typeof qualityGate.status === 'string' ? qualityGate.status : 'PENDING',
-          requiredChecks,
-        }
+        status: typeof qualityGate.status === 'string' ? qualityGate.status : 'PENDING',
+        requiredChecks,
+      }
       : undefined,
+    createMode,
   }
 }
 

@@ -95,9 +95,6 @@ const DiffCenterPage = lazy(
 const DeliveryCenterPage = lazy(
   () => import("@/pages/ProjectDetail/DeliveryCenter/DeliveryCenterPage"),
 );
-const WorkflowViewerPage = lazy(
-  () => import("@/pages/ProjectDetail/Workflow/WorkflowViewerPage"),
-);
 const AgentTeamPage = lazy(
   () => import("@/pages/ProjectDetail/AgentTeam/AgentTeamPage"),
 );
@@ -187,7 +184,7 @@ export function AppRouter() {
                   <Route path="tasks/:taskId" element={<TaskDetailPage />} />
                   <Route path="diffs" element={<DeliveryCenterPage />} />
                   <Route path="diffs/:diffId" element={<DiffCenterPage />} />
-                  <Route path="workflow" element={<WorkflowViewerPage />} />
+                  <Route path="workflow" element={<Navigate to="tasks" replace />} />
                   <Route path="agents" element={<AgentTeamPage />} />
 
                   <Route path="skills" element={<SkillsPage />} />

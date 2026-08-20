@@ -174,6 +174,13 @@ export interface WorkBranchListFilters {
  * - RemoteBranch 来自 GitHub 真实远程分支
  * - WorkBranch 来自 Qgents Task/Workspace 工作分支视图
  * - main/develop 可以是 RemoteBranch 但不是 WorkBranch
+ *
+ * 【字段说明 · 映射自真实后端 RemoteBranchResponse】
+ *  name            ← 后端 name
+ *  headCommit      ← 后端 commitSha（前端历史别名）
+ *  isProjectDefault ← 后端 projectDefault（前端历史别名）
+ *  isGithubDefault  ← 后端 githubDefault（前端历史别名）
+ *  canCreateTaskFrom / canDelete：后端首期未返回，映射层按语义补默认值
  */
 export interface RemoteBranch {
   name: string
@@ -187,10 +194,15 @@ export interface RemoteBranch {
 /** 创建远程分支请求 */
 export interface CreateRemoteBranchPayload {
   name: string
+  /** 来源分支名或完整 commit SHA；后端会先解析为真实 SHA 再创建 refs/heads */
   fromRef: string
 }
 
-/** 远程分支列表筛选参数 */
+/**
+ * 远程分支列表筛选参数
+ * 注意：后端（GitHubRepositoryController.listRemoteBranches）首期暂不支持 keyword/cursor/limit/includeSha，
+ *       传参将被忽略；保留该类型以兼容未来分页扩展，调用方不要依赖过滤行为。
+ */
 export interface RemoteBranchListFilters {
   keyword?: string
   cursor?: string
@@ -205,6 +217,20 @@ export interface RemoteBranchListFilters {
 export interface BindProjectRepositoryPayload {
   installationId: string
   repositoryId: string
+  displayName?: string
+}
+
+/**
+ * PATCH /projects/{projectId}/repositories/{projectRepositoryId} 请求体
+ *
+ * 【后端真实契约（UpdateProjectRepositoryRequest.java）】
+ * - defaultBranch 加了 @NotBlank，强制必填；如果只想修改 displayName，也必须把当前 defaultBranch
+ *   一起带上，否则 400。服务端 service 会先调用 GitHub 校验该分支真实存在。
+ * - displayName 可选；但服务端当前 setDisplayName(request.getDisplayName()) 会把 null 写入 DB，
+ *   调用方若想保持 displayName 不变，需要把原值带上。
+ */
+export interface UpdateProjectRepositoryPayload {
+  defaultBranch: string
   displayName?: string
 }
 

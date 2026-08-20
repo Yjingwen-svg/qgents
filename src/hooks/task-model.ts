@@ -372,6 +372,13 @@ export function useMergeRequests(
     queryKey: taskModelQueryKeys.mergeRequests.list(projectId, filters),
     queryFn: () => mergeRequestsApi.list(projectId, filters),
     enabled: Boolean(projectId) && (options?.enabled ?? true),
+    // 兼容"用户手动点创建 MR"和"后端 MrFirstAutomationService 自动创建 MR"两种链路：
+    // - 手动创建 useCreateMergeRequest 会在 onSuccess 立即 invalidate 缓存 → 立即刷新
+    // - 自动创建没有 SSE 推送前，用 10s 轻量轮询兜底，保证用户停在 MR 列表页时能很快看到新记录
+    //   (后台 tab 不刷新，最小化用户 CPU/网络开销)
+    refetchInterval: 10000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   })
 }
 

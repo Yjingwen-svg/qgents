@@ -52,6 +52,14 @@ describe('project SSE Task model query invalidation mapping', () => {
     expect(taskStepIdKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1', 'logs', {}]))
   })
 
+  it('maps workspace preview updates without invalidating formal Diff queries', () => {
+    const keys = keysFor('workspace.diff-preview.updated', { taskId: 'task-1', taskRunId: 'run-1', workspaceId: 'workspace-1', previewRevision: 2, filesChanged: 2, additions: 8, deletions: 3, eventVersion: 1 })
+    expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks', 'task-1', 'workspace-diff-preview']))
+    expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks', 'task-1']))
+    expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1']))
+    expect(keys.some((key) => key.includes('"diffs"'))).toBe(false)
+  })
+
   it.each(['input-required', 'approval-required'] as const)('maps %s to run, input requests, and Task detail', (type) => {
     const keys = keysFor(type, { taskId: 'task-1', taskStepId: 'step-1', taskRunId: 'run-1', inputRequestId: 'input-1' })
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1']))

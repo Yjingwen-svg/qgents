@@ -5,11 +5,9 @@ import {
   App,
   Button,
   Card,
-  Drawer,
   Form,
   Input,
   Modal,
-  Segmented,
   Select,
   Space,
   Spin,
@@ -21,6 +19,7 @@ import {
   TagsOutlined,
   UserOutlined,
   MessageOutlined,
+  CloseOutlined,
 } from '@ant-design/icons'
 import { ApiError, groupApi, memoryApi } from '@/api'
 import { EmptyState } from '@/components/EmptyState'
@@ -29,7 +28,6 @@ import './MemoryPage.css'
 
 const { Text, Paragraph } = Typography
 
-/** 状态筛选维度 */
 type FilterKey = 'ALL' | MemoryStatus
 
 const FILTERS: { key: FilterKey; label: string }[] = [
@@ -50,7 +48,7 @@ const STATUS_META: Record<MemoryStatus, { color: string; label: string }> = {
 }
 
 /**
- * 共享 Memory —— 对齐接口文档 v1.1.8 §9（A 负责）
+ * 共享 Memory —— 对齐接口文档 §9（A 负责）
  * 列表 / 状态筛选 / 详情 / 手动创建 / 从群消息生成草稿 / 归档
  * 审核功能（提交审核 / 批准·拒绝）统一在交付中心处理，本页不提供
  */
@@ -109,14 +107,15 @@ export function MemoryPage() {
     <div className="memory-page">
       <header className="memory-page__header">
         <h1 className="memory-page__title">共享 Memory</h1>
-        <p className="memory-page__desc">沉淀团队经验与约定，审核在交付中心统一处理（非原始聊天记录）</p>
+        <p className="memory-page__desc">将需求讨论中确认的工程约定沉淀为项目知识</p>
       </header>
 
       <div className="memory-page__toolbar">
-        <Segmented
-          options={FILTERS.map((f) => ({ label: `${f.label}`, value: f.key }))}
+        <Select<FilterKey>
+          className="memory-page__filter"
+          options={FILTERS.map((f) => ({ label: f.label, value: f.key }))}
           value={filter}
-          onChange={(v) => setFilter(v as FilterKey)}
+          onChange={setFilter}
         />
         <Space>
           <Button icon={<MessageOutlined />} onClick={() => setAiOpen(true)}>
@@ -128,43 +127,49 @@ export function MemoryPage() {
         </Space>
       </div>
 
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon="🧠"
-          title="暂无共享 Memory"
-          description="新建一条草稿，在交付中心提交审核后即可沉淀为项目共享知识"
-        />
-      ) : (
-        <div className="memory-page__list">
-          {filtered.map((m, i) => (
-            <MemoryCard
-              key={m.id}
-              memory={m}
-              index={i + 1}
-              onClick={() => setDetailId(m.id)}
+      <div className="memory-page__workspace">
+        <section className="memory-page__list-panel" aria-label="Memory 列表">
+          <div className="memory-page__list-heading">
+            <span>知识条目</span>
+            <span>{filtered.length}</span>
+          </div>
+          {filtered.length === 0 ? (
+            <EmptyState
+              icon="🧠"
+              title="暂无 Memory"
+              description="从需求群沉淀讨论结论，或手动新建一条项目知识"
             />
-          ))}
-        </div>
-      )}
+          ) : (
+            <div className="memory-page__list">
+              {filtered.map((m) => (
+                <MemoryCard
+                  key={m.id}
+                  memory={m}
+                  selected={m.id === detailId}
+                  onClick={() => setDetailId(m.id)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
 
-      {/* 详情抽屉 */}
-      <MemoryDetail
-        memory={detail}
-        onClose={() => setDetailId(null)}
-        onEdit={() => {
-          setEditId(detail?.id ?? null)
-          setDetailId(null)
-          setCreateOpen(true)
-        }}
-        onArchive={async () => {
-          if (!detail) return
-          try {
-            await archive.mutateAsync(detail.id)
-          } catch {
-            // mutation.onError 已给出错误提示，此处吞掉避免 unhandled rejection
-          }
-        }}
-      />
+        <MemoryDetail
+          memory={detail}
+          onClose={() => setDetailId(null)}
+          onEdit={() => {
+            setEditId(detail?.id ?? null)
+            setCreateOpen(true)
+          }}
+          onArchive={async () => {
+            if (!detail) return
+            try {
+              await archive.mutateAsync(detail.id)
+            } catch {
+              // mutation.onError 已给出错误提示，此处吞掉避免 unhandled rejection
+            }
+          }}
+        />
+      </div>
 
       {/* AI 沉淀：选择项目内需求群，自动检索其最近聊天生成草稿 */}
       <AiDraftModal
@@ -196,13 +201,12 @@ export function MemoryPage() {
 }
 
 /** 列表卡片 */
-function MemoryCard({ memory, index, onClick }: { memory: Memory; index: number; onClick: () => void }) {
+function MemoryCard({ memory, selected, onClick }: { memory: Memory; selected: boolean; onClick: () => void }) {
   const meta = STATUS_META[memory.status] ?? { color: 'default', label: memory.status }
   return (
-    <Card className="memory-card" onClick={onClick}>
+    <Card className={`memory-card${selected ? ' memory-card--selected' : ''}`} onClick={onClick}>
       <div className="memory-card__main">
         <div className="memory-card__left">
-          <span className="memory-card__index">{String(index).padStart(2, '0')}</span>
           <div className="memory-card__name-wrap">
             <Text className="memory-card__name">{memory.title}</Text>
             <Paragraph ellipsis={{ rows: 1 }} className="memory-card__content">
@@ -238,7 +242,7 @@ function MemoryCard({ memory, index, onClick }: { memory: Memory; index: number;
   )
 }
 
-/** 详情抽屉 */
+/** 固定详情栏 */
 function MemoryDetail({
   memory,
   onClose,
@@ -250,39 +254,41 @@ function MemoryDetail({
   onEdit: () => void
   onArchive: () => Promise<void>
 }) {
-  if (!memory) return <Drawer open={false} onClose={onClose} />
+  if (!memory) {
+    return (
+      <aside className="memory-detail memory-detail--empty">
+        <MessageOutlined className="memory-detail__empty-icon" />
+        <Text strong>选择一条 Memory</Text>
+        <Text type="secondary">在这里查看完整内容和来源信息</Text>
+      </aside>
+    )
+  }
   const meta = STATUS_META[memory.status] ?? { color: 'default', label: memory.status }
 
   return (
-    <Drawer
-      title={memory.title}
-      placement="right"
-      size={420}
-      open
-      onClose={onClose}
-      extra={<Tag color={meta.color}>{meta.label}</Tag>}
-    >
-      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+    <aside className="memory-detail">
+      <div className="memory-detail__header">
         <div>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            分类：{memory.category}
-          </Text>
-          {(memory.tags ?? []).length > 0 && (
-            <div style={{ marginTop: 8 }}>
-              {(memory.tags ?? []).map((t) => (
-                <Tag key={t} icon={<TagsOutlined />} style={{ marginBottom: 4 }}>
-                  {t}
-                </Tag>
-              ))}
-            </div>
-          )}
+          <Text className="memory-detail__title">{memory.title}</Text>
+          <div className="memory-detail__meta">
+            <Tag color={meta.color}>{meta.label}</Tag>
+            <Text type="secondary">{memory.category}</Text>
+          </div>
         </div>
-
-        <Paragraph style={{ color: '#e2e8f0', whiteSpace: 'pre-wrap', marginBottom: 0 }}>
-          {memory.content}
-        </Paragraph>
-
-        <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.8 }}>
+        <Button type="text" icon={<CloseOutlined />} onClick={onClose} aria-label="关闭详情" />
+      </div>
+      <div className="memory-detail__body">
+        {(memory.tags ?? []).length > 0 && (
+          <div className="memory-detail__tags">
+            {(memory.tags ?? []).map((t) => (
+              <Tag key={t} icon={<TagsOutlined />}>
+                {t}
+              </Tag>
+            ))}
+          </div>
+        )}
+        <Paragraph className="memory-detail__content">{memory.content}</Paragraph>
+        <div className="memory-detail__provenance">
           <div>
             <UserOutlined /> 创建者：{memory.creator?.displayName ?? '未知'}
           </div>
@@ -298,8 +304,7 @@ function MemoryDetail({
             </div>
           )}
         </div>
-
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 16 }}>
+        <div className="memory-detail__actions">
           {(memory.status === 'DRAFT' || memory.status === 'REJECTED') && (
             <Button type="primary" onClick={onEdit}>编辑</Button>
           )}
@@ -307,8 +312,8 @@ function MemoryDetail({
             <Button onClick={onArchive}>归档</Button>
           )}
         </div>
-      </Space>
-    </Drawer>
+      </div>
+    </aside>
   )
 }
 
@@ -459,7 +464,7 @@ function AiDraftModal({
       return memoryApi.generateDraft(projectId, { groupId })
     },
     onSuccess: () => {
-      message.success('AI 已根据该群最近聊天生成 Memory 草稿，可在交付中心提交审核')
+      message.success('AI 已根据该群最近聊天生成 Memory 草稿')
       setGroupId(undefined)
       onCreated()
     },
@@ -482,8 +487,8 @@ function AiDraftModal({
       confirmLoading={generate.isPending}
       destroyOnClose
     >
-      <div style={{ marginBottom: 12, color: '#94a3b8', fontSize: 13 }}>
-        AI 将自动检索所选需求群的最近聊天记录，甄别值得沉淀的内容并生成一份草稿，供你提交审核。
+      <div style={{ marginBottom: 12, color: 'var(--qg-text-secondary)', fontSize: 13 }}>
+        AI 将自动检索所选需求群的最近聊天记录，甄别值得沉淀的内容并生成一份草稿。
         仅可选择有消息的需求群（空群不消耗 AI 生成）。
       </div>
       <Select<string>

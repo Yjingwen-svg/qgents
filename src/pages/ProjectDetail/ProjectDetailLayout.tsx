@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react'
-import { Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge, Form, Input, Modal, Select } from 'antd'
 import { SearchOutlined, PushpinOutlined } from '@ant-design/icons'
@@ -9,6 +9,7 @@ import { useAppUiStore } from '@/store/appUiStore'
 import { latestMessageText } from '@/utils/messageSummary'
 import { useProjectTaskDomainEvents } from '@/realtime/useProjectTaskDomainEvents'
 import { ProjectActivityPanel } from './ProjectActivityPanel'
+import { ChatPanel } from '@/components/chat/ChatPanel'
 import type { CreateGroupPayload, Group } from '@/types'
 import './ProjectDetailLayout.scss'
 
@@ -122,6 +123,8 @@ export default function ProjectDetailLayout() {
     enabled: !!projectId,
   })
   const mainGroup = groups.find((g) => g.type === 'PROJECT_MAIN') ?? groups[0]
+  // 默认进入项目总群时直接复用当前布局渲染，避免先进入空 req-chat 再 Navigate 一次。
+  const effectiveGroupId = onReqChat ? groupId ?? mainGroup?.id : groupId
 
   // 建群选成员的候选池 = 项目成员；项目成员接口可能不返回 displayName，用团队成员接口补全（项目成员 ⊆ 团队成员）
   const { data: projectMembers = [] } = useQuery({
@@ -190,14 +193,6 @@ export default function ProjectDetailLayout() {
     })
   }, [groups])
 
-  // 在群聊路径但未指定具体群（/req-chat 无 groupId）时，重定向到项目总群。
-  // groups 加载完成前不重定向（避免闪成空态），加载完成后自动跳主群。
-  if (onReqChat && !groupId && !groupsLoading) {
-    if (mainGroup) {
-      return <Navigate to={PATHS.projectReqChat(projectId, mainGroup.id)} replace />
-    }
-  }
-
   /** 置顶/取消置顶需求群：乐观更新本地 + 后端持久化（失败回滚，localStorage 兜底） */
   function togglePin(groupId: string) {
     const prev = pinnedIds
@@ -230,7 +225,7 @@ export default function ProjectDetailLayout() {
         <NavLink
           to={PATHS.projectReqChat(projectId, g.id)}
           className={() =>
-            `pd-nav__branch${onReqChat && groupId === g.id ? ' is-active' : ''}`
+              `pd-nav__branch${onReqChat && effectiveGroupId === g.id ? ' is-active' : ''}`
           }
         >
           <span className="pd-nav__branch-hash">#</span>
@@ -241,7 +236,7 @@ export default function ProjectDetailLayout() {
               {isMain && <span className="pd-nav__branch-main-tag">总群</span>}
               {/* 未读 @ 角标：该群有 @ 我的未读消息（后端 mentionedUnread > 0 时显示）。
                   正在查看的群不显示（人在群里，无需侧栏红字提示；离开时 markRead 会清掉） */}
-              {(!onReqChat || groupId !== g.id) &&
+              {(!onReqChat || effectiveGroupId !== g.id) &&
               typeof g.mentionedUnread === 'number' &&
               g.mentionedUnread > 0 ? (
                 <span
@@ -260,7 +255,7 @@ export default function ProjectDetailLayout() {
                 </span>
               ) : null}
               {/* 正在查看的群不显示未读红点（游标只在进群时推进，群内新消息红点由前端视觉隐藏） */}
-              {!onReqChat || groupId !== g.id ? (
+              {!onReqChat || effectiveGroupId !== g.id ? (
                 g.unreadCount ? <Badge count={g.unreadCount} overflowCount={99} size="small" /> : null
               ) : null}
             </span>
@@ -292,7 +287,7 @@ export default function ProjectDetailLayout() {
     )
   }
 
-  const showActivityPanel = onReqChat && mainGroup && groupId === mainGroup.id
+  const showActivityPanel = onReqChat && mainGroup && effectiveGroupId === mainGroup.id
 
   // 群聊视图不做响应式压缩：窗口缩小时主内容列保持最小可读宽度（720px），
   // 超出部分由外层 Content 的 overflow:auto 出横向滚动条，而不是挤压布局。
@@ -391,7 +386,11 @@ export default function ProjectDetailLayout() {
       />
 
       <div className="pd-main">
-        <Outlet />
+        {onReqChat && !groupId && mainGroup ? (
+          <ChatPanel key={mainGroup.id} projectId={projectId} groupId={mainGroup.id} />
+        ) : (
+          <Outlet />
+        )}
       </div>
 
       {/* 群聊页右侧：项目动态面板（仅项目总群显示，需求群不显示），左侧为拖拽手柄可调宽 */}

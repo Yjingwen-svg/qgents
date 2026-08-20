@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Button,
   Modal,
+  Popconfirm,
   Select,
+  Space,
   Spin,
   Table,
   Tag,
@@ -76,6 +78,16 @@ export function MembersPage() {
       invalidate()
     },
     onError: (err) => message.error(err instanceof Error ? err.message : '移除失败'),
+  })
+
+  // 设为管理员 = 调整项目角色为 PROJECT_ADMIN（设置后不可撤销，前端不提供降级入口）
+  const updateRoleMutation = useMutation({
+    mutationFn: (userId: string) => projectApi.updateMemberRole(projectId, userId, 'PROJECT_ADMIN'),
+    onSuccess: () => {
+      message.success('已设置为管理员')
+      invalidate()
+    },
+    onError: (err) => message.error(err instanceof Error ? err.message : '设置失败'),
   })
 
   const addMutation = useMutation({
@@ -185,21 +197,40 @@ export function MembersPage() {
           {
             title: '操作',
             key: 'action',
-            width: 120,
+            width: 220,
             render: (_: unknown, m: ProjectMember) => {
               const isSelf = m.userId === user?.id
-              // 不能移除自己（Admin 也不能把自己移出项目）
-              if (isSelf) return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
+              // 不能移除自己；管理员不可被操作（不能移除/降级其他管理员）
+              if (isSelf || m.role === 'PROJECT_ADMIN') {
+                return (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {isSelf ? '—' : '管理员不可被操作'}
+                  </Text>
+                )
+              }
               return (
-                <Button
-                  size="small"
-                  danger
-                  type="link"
-                  loading={removeMutation.isPending}
-                  onClick={() => confirmRemove(m)}
-                >
-                  移除
-                </Button>
+                <Space size={4}>
+                  <Popconfirm
+                    title="设为管理员"
+                    description="设置后无法撤销，确定将他设置为管理员吗？"
+                    okText="设为管理员"
+                    cancelText="取消"
+                    onConfirm={() => updateRoleMutation.mutate(m.userId)}
+                  >
+                    <Button size="small" type="link" loading={updateRoleMutation.isPending}>
+                      设为管理员
+                    </Button>
+                  </Popconfirm>
+                  <Button
+                    size="small"
+                    danger
+                    type="link"
+                    loading={removeMutation.isPending}
+                    onClick={() => confirmRemove(m)}
+                  >
+                    移除
+                  </Button>
+                </Space>
               )
             },
           },

@@ -132,11 +132,11 @@ export function useTaskRun(projectId: string, taskRunId: string): UseQueryResult
   })
 }
 
-export function useTaskDiagnostics(projectId: string, taskId: string): UseQueryResult<TaskDiagnostics> {
+export function useTaskDiagnostics(projectId: string, taskId: string, enabled = true): UseQueryResult<TaskDiagnostics> {
   return useQuery({
     queryKey: taskModelQueryKeys.tasks.diagnostics(projectId, taskId),
     queryFn: () => tasksApi.diagnostics(projectId, taskId),
-    enabled: Boolean(projectId && taskId),
+    enabled: Boolean(projectId && taskId && enabled),
   })
 }
 

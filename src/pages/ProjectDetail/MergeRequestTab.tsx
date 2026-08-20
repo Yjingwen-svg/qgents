@@ -278,7 +278,7 @@ export function MergeRequestTab({
           const enabled = Boolean(record.taskId)
           if (!enabled) return <Text type="secondary">—</Text>
           return (
-            <Tooltip title="点击跳转到 CQ+1 大印章审查页（只有真正盖章后，才会标记通过）">
+            <Tooltip title="点击跳转到 CQ+1 大印章审查页">
               <Button
                 type="link"
                 size="small"
@@ -291,6 +291,10 @@ export function MergeRequestTab({
                     repositoryId: record.repositoryId ?? '',
                     targetBranch: record.targetBranch ?? '',
                   })
+                  // 真实 MR（非 PENDING_CREATE）才传 mr，让 CqReviewPage 进入 MR 模式
+                  if (record.status !== 'PENDING_CREATE' && record.id) {
+                    params.set('mr', record.id)
+                  }
                   navigate(`${PATHS.projectCqReview(projectId)}?${params.toString()}`)
                 }}
               >

@@ -51,7 +51,7 @@ const pageTheme = {
 
 /**
  * 测试集管理页 —— 列表展示 + CRUD
- * 入口：质量门禁页 → "管理测试集" 按钮
+ * 入口：质量门禁和MR页面 → "Testset 管理" 卡片
  */
 export default function TestsetManagePage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
@@ -182,7 +182,7 @@ export default function TestsetManagePage() {
   )
 
   function goBack() {
-    navigate(PATHS.projectQualityGate(projectId))
+    navigate(PATHS.projectTestset(projectId))
   }
 
   const columns: ColumnsType<Testset> = useMemo(
@@ -333,7 +333,7 @@ export default function TestsetManagePage() {
           }}
           onClick={goBack}
         >
-          <LeftOutlined /> 返回质量门禁
+          <LeftOutlined /> 返回质量门禁和MR
         </button>
         <Title level={2} style={{ marginTop: 0, marginBottom: 8 }}>
           测试集管理

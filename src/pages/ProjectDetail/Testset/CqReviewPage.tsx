@@ -317,49 +317,49 @@ export default function CqReviewPage() {
   // 标题区：两种模式下不同的描述 Tag
   const headerInfo = byMr
     ? {
-        title: `MR #${mr!.number} · ${mr!.title?.trim() || `${mr!.sourceBranch} → ${mr!.targetBranch}`}`,
-        tags: [
-          {
-            key: 'mr-status',
-            color: mr!.status === 'OPEN' ? 'blue' : mr!.status === 'MERGED' ? 'green' : 'default',
-            label: mr!.status === 'OPEN' ? '进行中' : mr!.status === 'MERGED' ? '已合并' : '已关闭',
-          },
-          {
-            key: 'cq',
-            color: cqStatus === 'PASSED' ? 'success' : cqStatus === 'FAILED' ? 'error' : 'default',
-            label:
-              cqStatus === 'PASSED' ? 'CQ+1：已盖章' : cqStatus === 'FAILED' ? 'CQ+1：已拒绝' : 'CQ+1：待审查',
-          },
-        ],
-      }
+      title: `MR #${mr!.number} · ${mr!.title?.trim() || `${mr!.sourceBranch} → ${mr!.targetBranch}`}`,
+      tags: [
+        {
+          key: 'mr-status',
+          color: mr!.status === 'OPEN' ? 'blue' : mr!.status === 'MERGED' ? 'green' : 'default',
+          label: mr!.status === 'OPEN' ? '进行中' : mr!.status === 'MERGED' ? '已合并' : '已关闭',
+        },
+        {
+          key: 'cq',
+          color: cqStatus === 'PASSED' ? 'success' : cqStatus === 'FAILED' ? 'error' : 'default',
+          label:
+            cqStatus === 'PASSED' ? 'CQ+1：已盖章' : cqStatus === 'FAILED' ? 'CQ+1：已拒绝' : 'CQ+1：待审查',
+        },
+      ],
+    }
     : {
-        title: task?.title?.trim() || `任务 ${taskId.slice(0, 8)}`,
-        tags: [
-          {
-            key: 'task-status',
-            color: 'cyan',
-            label: `任务：${task?.status || '未知'}`,
-          },
-          {
-            key: 'dry-run-status',
-            color:
-              dryRun?.status === 'PASSED'
-                ? 'success'
-                : dryRun?.status === 'FAILED'
-                  ? 'error'
-                  : dryRun?.status === 'RUNNING' || dryRun?.status === 'QUEUED'
-                    ? 'geekblue'
-                    : 'default',
-            label: `Dry Run：${dryRun?.status || '暂无'}`,
-          },
-          {
-            key: 'cq',
-            color: cqStatus === 'PASSED' ? 'success' : cqStatus === 'FAILED' ? 'error' : 'default',
-            label:
-              cqStatus === 'PASSED' ? 'CQ+1：已盖章' : cqStatus === 'FAILED' ? 'CQ+1：已拒绝' : 'CQ+1：待审查',
-          },
-        ],
-      }
+      title: task?.title?.trim() || `任务 ${taskId.slice(0, 8)}`,
+      tags: [
+        {
+          key: 'task-status',
+          color: 'cyan',
+          label: `任务：${task?.status || '未知'}`,
+        },
+        {
+          key: 'dry-run-status',
+          color:
+            dryRun?.status === 'PASSED'
+              ? 'success'
+              : dryRun?.status === 'FAILED'
+                ? 'error'
+                : dryRun?.status === 'RUNNING' || dryRun?.status === 'QUEUED'
+                  ? 'geekblue'
+                  : 'default',
+          label: `Dry Run：${dryRun?.status || '暂无'}`,
+        },
+        {
+          key: 'cq',
+          color: cqStatus === 'PASSED' ? 'success' : cqStatus === 'FAILED' ? 'error' : 'default',
+          label:
+            cqStatus === 'PASSED' ? 'CQ+1：已盖章' : cqStatus === 'FAILED' ? 'CQ+1：已拒绝' : 'CQ+1：待审查',
+        },
+      ],
+    }
 
   return (
     <ConfigProvider theme={pageTheme}>
@@ -423,8 +423,8 @@ export default function CqReviewPage() {
           )
         ) : null}
 
-        {/* ======== 模式 B：Preflight 级 —— 基于 usePreflight + Dry Run CQ 接口 ======== */}
-        {byPreflight ? (
+        {/* ======== 模式 B：Preflight 级 —— 仅在非 MR 模式下渲染 ======== */}
+        {byPreflight && !byMr ? (
           <Card className={styles.content}>
             {/* Dry Run 上下文信息 */}
             <Descriptions size="small" column={2} style={{ marginBottom: 20 }} bordered>
@@ -557,19 +557,19 @@ function PreflightSeal({
 
   const sealClass = (
     appearance === 'stamped' ? styles.isStamped :
-    appearance === 'failed' ? styles.isFailed :
-    appearance === 'locked' ? styles.isLocked : styles.isEmpty
+      appearance === 'failed' ? styles.isFailed :
+        appearance === 'locked' ? styles.isLocked : styles.isEmpty
   )
   const sha = sourceCommit?.slice(0, 7) ?? '—'
   const stateLabel =
     appearance === 'stamped' ? '有效' :
-    appearance === 'failed' ? '未通过' :
-    appearance === 'locked' ? '锁定' : '未盖章'
+      appearance === 'failed' ? '未通过' :
+        appearance === 'locked' ? '锁定' : '未盖章'
   const caption =
     appearance === 'locked' ? '不能给自己盖章' :
-    appearance === 'stamped' ? 'CQ+1 已盖章' :
-    appearance === 'failed' ? 'CQ+1 已被拒绝' :
-    dryRunStatus === 'PASSED' ? 'Dry Run 已通过，等待审查者盖章' : `Dry Run：${dryRunStatus || '暂无'}，暂不可盖章`
+      appearance === 'stamped' ? 'CQ+1 已盖章' :
+        appearance === 'failed' ? 'CQ+1 已被拒绝' :
+          dryRunStatus === 'PASSED' ? 'Dry Run 已通过，等待审查者盖章' : `Dry Run：${dryRunStatus || '暂无'}，暂不可盖章`
 
   return (
     <>

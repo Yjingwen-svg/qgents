@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Modal, Form, Select, Input, App, Typography, Tag } from 'antd'
-import { useTestsets, useCreateTestRun } from '@/hooks'
+import { useTestsets, useCreateTestRun, useTasks } from '@/hooks'
 import type { ProjectBoundRepository, Testset } from '@/types'
 import type { CreateTestRunPayload, TestRun } from '@/types/testset'
 
@@ -34,11 +34,24 @@ export default function TestRunCreateModal({
   const [form] = Form.useForm<CreateTestRunPayload & { testsetIds: string[] }>()
   const [repoId, setRepoId] = useState<string>('')
   const [selectedTestsets, setSelectedTestsets] = useState<Testset[]>([])
+  const [selectedTaskId, setSelectedTaskId] = useState<string | undefined>()
 
   // 稳定的空 filters 引用，避免每次渲染都生成新 queryKey
   const emptyFilters = useMemo(() => ({}), [])
 
   const { data: allTestsets = [] } = useTestsets(projectId, emptyFilters)
+
+  // 根据仓库 ID 加载任务列表
+  const taskFilters = useMemo(() => ({
+    repositoryId: repoId || undefined,
+    limit: 50,
+  }), [repoId])
+
+  const { data: tasksData, isLoading: tasksLoading } = useTasks(
+    projectId,
+    repoId ? taskFilters : {}
+  )
+  const taskList = tasksData?.data || []
 
   // 过滤出当前仓库的 Testset
   const repoTestsets = useMemo(() => {
@@ -58,12 +71,52 @@ export default function TestRunCreateModal({
     ),
   })), [repoTestsets])
 
+  // 构建 Task 选项（过滤活跃任务）
+  const taskStatusColor: Record<string, string> = {
+    PLANNING: 'default',
+    PENDING: 'default',
+    RUNNING: 'processing',
+    WAITING_DIFF_CONFIRMATION: 'warning',
+    WAITING_PREFLIGHT: 'warning',
+    DIFF_REJECTED: 'error',
+    DELIVERING: 'processing',
+    DELIVERY_FAILED: 'error',
+    SUCCEEDED: 'success',
+    FAILED: 'error',
+    CANCELLING: 'processing',
+    CANCELLED: 'default',
+  }
+
+  const taskOptions = useMemo(() => taskList.map((task) => ({
+    value: task.id,
+    label: (
+      <span>
+        <Text strong>{task.displayCode}</Text>
+        <Text type="secondary" style={{ marginLeft: 8 }}>{task.title}</Text>
+        <Tag
+          color={taskStatusColor[task.status]}
+          style={{ marginLeft: 8 }}
+        >
+          {task.status}
+        </Tag>
+      </span>
+    ),
+  })), [taskList])
+
   // 表单初始化
   useEffect(() => {
     if (open && repositories.length > 0 && !repoId) {
       setRepoId(repositories[0].id)
     }
   }, [open, repositories, repoId])
+
+  // 切换仓库时清空已选 Task
+  useEffect(() => {
+    setSelectedTaskId(undefined)
+    if (repoId) {
+      form.setFieldsValue({ taskId: undefined })
+    }
+  }, [repoId])
 
   const handleOk = useCallback(async () => {
     try {
@@ -72,11 +125,13 @@ export default function TestRunCreateModal({
         repositoryId: values.repositoryId,
         testsetIds: values.testsetIds,
       }
-      if (values.ref) {
-        payload.ref = values.ref
-      }
+      // taskId 与 ref 互斥：后端要求二选一
       if (values.taskId) {
         payload.taskId = values.taskId
+      } else if (values.ref) {
+        payload.ref = values.ref
+      } else {
+        // 都未填写时，自动使用默认分支（不传 ref，后端会使用默认分支）
       }
 
       createMutation.mutate(payload, {
@@ -97,8 +152,29 @@ export default function TestRunCreateModal({
   function handleClose() {
     form.resetFields()
     setSelectedTestsets([])
+    setSelectedTaskId(undefined)
     onClose()
   }
+
+  // 获取当前选中任务的分支信息
+  const selectedTaskBranch = useMemo(() => {
+    if (!selectedTaskId) return null
+    const task = taskList.find((t) => t.id === selectedTaskId)
+    return task?.repositories?.[0]?.sourceBranch || null
+  }, [selectedTaskId, taskList])
+
+  // 校验提示：taskId 与 ref 二选一
+  const refValidationRules = [
+    ({ getFieldValue }: { getFieldValue: (name: string) => string | undefined }) => ({
+      validator(_: unknown, value: string) {
+        const taskId = getFieldValue('taskId')
+        if (taskId && value) {
+          return Promise.reject(new Error('选择 Task 后，源引用将自动使用任务分支'))
+        }
+        return Promise.resolve()
+      },
+    }),
+  ]
 
   return (
     <Modal
@@ -108,7 +184,7 @@ export default function TestRunCreateModal({
       onCancel={handleClose}
       confirmLoading={createMutation.isPending}
       destroyOnHidden
-      width={560}
+      width={600}
     >
       <Form
         form={form}
@@ -126,8 +202,9 @@ export default function TestRunCreateModal({
             optionFilterProp="label"
             onChange={(value) => {
               setRepoId(value)
-              form.setFieldsValue({ testsetIds: [] })
+              form.setFieldsValue({ testsetIds: [], taskId: undefined, ref: undefined })
               setSelectedTestsets([])
+              setSelectedTaskId(undefined)
             }}
           >
             {repositories.map((r) => (
@@ -174,24 +251,46 @@ export default function TestRunCreateModal({
         ) : null}
 
         <Form.Item
-          label="源引用（可选）"
-          name="ref"
-          extra="不填则使用项目默认分支"
-        >
-          <Input placeholder="分支名或 commit SHA（可选）" allowClear />
-        </Form.Item>
-
-        <Form.Item
           label="关联 Task（可选）"
           name="taskId"
-          extra="如指定，将校验 Task 归属与 HEAD 一致性"
+          extra={
+            selectedTaskBranch
+              ? `将自动使用任务分支: ${selectedTaskBranch}`
+              : '选择后将使用该 Task 的分支进行测试'
+          }
         >
-          <Input placeholder="Task ID（可选）" allowClear />
+          <Select
+            placeholder={repoId ? '选择关联的 Task（可选）' : '请先选择仓库'}
+            showSearch
+            optionFilterProp="label"
+            loading={tasksLoading}
+            options={taskOptions}
+            disabled={!repoId}
+            allowClear
+            onChange={(value: string | undefined) => {
+              setSelectedTaskId(value)
+              // 选择 Task 后清空 ref 字段
+              if (value) {
+                form.setFieldsValue({ ref: undefined })
+              }
+            }}
+            notFoundContent={repoId && !tasksLoading ? '该仓库暂无活跃任务' : undefined}
+          />
         </Form.Item>
+
+        {!selectedTaskId && (
+          <Form.Item
+            label="源引用"
+            name="ref"
+            extra="分支名或 commit SHA，留空使用项目默认分支"
+          >
+            <Input placeholder="如: main 或 abc1234" allowClear />
+          </Form.Item>
+        )}
 
         <Form.Item style={{ marginBottom: 0 }}>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            ⚠️ Test Run 由用户手动发起，可指定具体测试集。运行结果将实时刷新页面。
+            💡 Test Run 由用户手动发起。选择 Task 时会自动使用该任务分支；不选择 Task 时可手动指定源引用。
           </Text>
         </Form.Item>
       </Form>

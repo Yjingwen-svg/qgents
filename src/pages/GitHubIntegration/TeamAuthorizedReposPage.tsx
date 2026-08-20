@@ -14,6 +14,7 @@ import {
   theme,
   Input,
   List,
+  Tooltip,
 } from 'antd'
 import { ArrowLeftOutlined, GithubOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { githubApi } from '@/api/github'
@@ -283,6 +284,9 @@ export default function TeamAuthorizedReposPage() {
                     ? '个人'
                     : ''
 
+              // defaultBranch 为空 → 未初始化仓库；按钮 disabled + Tooltip 提示原因
+              const isEmptyRepo = !bindable && !repo.defaultBranch
+
               return (
                 <List.Item
                   key={repo.id}
@@ -292,20 +296,31 @@ export default function TeamAuthorizedReposPage() {
                     paddingRight: 8,
                   }}
                   actions={[
-                    <Button
-                      key="bind"
-                      type="primary"
-                      size="small"
-                      disabled={bindingsLoading || (!bindable && !alreadyBound)}
-                      title={
-                        bindable || alreadyBound
-                          ? undefined
-                          : '当前仓库不可绑定：需已授权、未归档、默认分支非空，且 Installation 为 ACTIVE。请刷新授权仓库信息。'
-                      }
-                      onClick={() => goSelectProject(repo)}
-                    >
-                      {alreadyBound ? '选择项目' : '绑定到项目'}
-                    </Button>,
+                    isEmptyRepo && !alreadyBound ? (
+                      <Tooltip
+                        key="bind"
+                        title="仓库尚未初始化，请先创建初始提交（在 GitHub 端或通过新建仓库功能）"
+                      >
+                        <Button type="primary" size="small" disabled>
+                          绑定到项目
+                        </Button>
+                      </Tooltip>
+                    ) : (
+                      <Button
+                        key="bind"
+                        type="primary"
+                        size="small"
+                        disabled={bindingsLoading || (!bindable && !alreadyBound)}
+                        title={
+                          bindable || alreadyBound
+                            ? undefined
+                            : '当前仓库不可绑定：需已授权、未归档、默认分支非空，且 Installation 为 ACTIVE。请刷新授权仓库信息。'
+                        }
+                        onClick={() => goSelectProject(repo)}
+                      >
+                        {alreadyBound ? '选择项目' : '绑定到项目'}
+                      </Button>
+                    ),
                   ]}
                 >
                   <Space align="start" style={{ width: '100%' }}>
@@ -315,6 +330,7 @@ export default function TeamAuthorizedReposPage() {
                         {visibilityTag(repo.visibility)}
                         {repo.archived ? <Tag>已归档</Tag> : null}
                         {authorizationTag(repo.authorizationStatus)}
+                        {isEmptyRepo ? <Tag color="default">未初始化</Tag> : null}
                         {alreadyBound ? (
                           <Text type="success" style={{ fontSize: 12 }}>
                             已绑定
@@ -323,9 +339,15 @@ export default function TeamAuthorizedReposPage() {
                       </Space>
                       <div style={{ marginTop: 6 }}>
                         <Space size="large" wrap>
-                          <Text type="secondary">
-                            默认分支：{repo.defaultBranch || '—'}
-                          </Text>
+                          {isEmptyRepo ? (
+                            <Text type="warning">
+                              默认分支：仓库未初始化
+                            </Text>
+                          ) : (
+                            <Text type="secondary">
+                              默认分支：{repo.defaultBranch || '—'}
+                            </Text>
+                          )}
                           <Text type="secondary">
                             元数据同步：{formatGithubDateTime(repo.metadataSyncedAt)}
                           </Text>

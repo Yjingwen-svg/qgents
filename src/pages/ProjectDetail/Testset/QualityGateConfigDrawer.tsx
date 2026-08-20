@@ -58,11 +58,12 @@ export function QualityGateConfigDrawer({
   const [policyForm] = Form.useForm<BranchPolicyUpdateInput>()
   const [gateForm] = Form.useForm<QualityGateUpdateInput>()
 
-  // 换仓库时用默认分支作为目标分支
+  // 换仓库时用默认分支作为目标分支；不得回退 'main'，仓库未初始化时留空让用户/校验感知
   function handleRepoChange(value: string | undefined): void {
     setRepositoryId(value)
     const repo = repositories.find((item) => item.id === value)
-    setBranch(repo?.defaultBranch?.trim() || 'main')
+    const db = repo?.defaultBranch?.trim()
+    setBranch(db && db.length > 0 ? db : '')
   }
 
   useEffect(() => {
@@ -75,7 +76,8 @@ export function QualityGateConfigDrawer({
         fullName: first.fullName,
       })
       setRepositoryId(first.id)
-      setBranch(first.defaultBranch?.trim() || 'main')
+      const db = first.defaultBranch?.trim()
+      setBranch(db && db.length > 0 ? db : '')
     }
   }, [open, repositories, repositoryId])
 
@@ -94,7 +96,10 @@ export function QualityGateConfigDrawer({
   }, [gateQuery.data, gateForm])
 
   async function savePolicy(values: BranchPolicyUpdateInput): Promise<void> {
-    if (!repositoryId || !branch) return
+    if (!repositoryId || !branch) {
+      message.error('请先选择仓库并确保项目默认基准分支已设置（仓库未初始化时无法保存策略）')
+      return
+    }
     try {
       await updatePolicy.mutateAsync({ repositoryId, branch, input: values })
       message.success('已保存分支策略')
@@ -104,7 +109,10 @@ export function QualityGateConfigDrawer({
   }
 
   async function saveGate(values: QualityGateUpdateInput): Promise<void> {
-    if (!repositoryId || !branch) return
+    if (!repositoryId || !branch) {
+      message.error('请先选择仓库并确保项目默认基准分支已设置（仓库未初始化时无法保存质量门禁）')
+      return
+    }
     try {
       await updateGate.mutateAsync({
         repositoryId,

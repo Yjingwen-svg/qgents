@@ -328,3 +328,69 @@ export function countAuthorizedRepositories(
     (repo) => repo.installationId === installationId && repo.authorizationStatus === 'AUTHORIZED',
   ).length
 }
+
+// ============================================================================
+// 项目内"新建仓库并绑定" —— 接口文档 v2.0.19 §44
+// ============================================================================
+
+/** 新建仓库在远端创建时的状态机 */
+export type NewRepositoryStatus = 'CREATING' | 'READY' | 'FAILED'
+
+/**
+ * POST /projects/{projectId}/repositories/new 请求体
+ *
+ * 字段约束（前端表单层做校验，后端兜底返回 422）：
+ * - name：必填，长度 1-100，GitHub 仓库名规则 /^[a-zA-Z0-9_.-]+$/
+ * - description：可选，最长 500 字符
+ * - private：默认 true（私有）
+ * - installationId：当团队有多个 ACTIVE Installation 时必填；只有一个时也必须传
+ * - displayName：可选，缺省取 name
+ *
+ * 注意：禁止把 defaultBranch / sourceBranch 等任何分支相关字段写入 body，
+ *       后端会自动初始化 README，分支由 GitHub 默认规则产生。
+ */
+export interface ProjectRepositoryCreateNewInput {
+  name: string
+  description?: string
+  /** 是否私有仓库，默认 true */
+  private?: boolean
+  /** Qgents 本地 Installation.id（不是 GitHub 数字 ID） */
+  installationId: string
+  /** 项目内显示名，缺省取 name */
+  displayName?: string
+}
+
+/**
+ * POST /projects/{projectId}/repositories/new 成功响应
+ *
+ * 后端可能返回 202（CREATING，需要轮询/SSE 才能拿到 READY）或 201（READY，已建好）。
+ * 前端映射层做兜底，缺字段不崩。
+ */
+export interface ProjectRepositoryCreateNewResponse {
+  /** project_repositories.id（绑定记录 UUID） */
+  id: string
+  /** github_repositories.id（本地 UUID） */
+  repositoryId: string
+  installationId: string
+  fullName: string
+  githubUrl: string
+  /** GitHub 默认分支；CREATING 状态下可能为 null（README 初始化尚未完成） */
+  defaultBranch: string | null
+  displayName?: string
+  status: NewRepositoryStatus
+  failureCode?: string | null
+  failureReason?: string | null
+  createdAt: string
+}
+
+/** GitHub 仓库名规则：字母数字下划线连字符点，1-100 字符 */
+export const GITHUB_REPO_NAME_REGEX = /^[a-zA-Z0-9_.-]+$/
+
+/** 仓库名最大长度 */
+export const GITHUB_REPO_NAME_MAX = 100
+
+/** 仓库描述最大长度 */
+export const GITHUB_REPO_DESC_MAX = 500
+
+/** 项目内显示名最大长度 */
+export const PROJECT_REPO_DISPLAY_NAME_MAX = 60

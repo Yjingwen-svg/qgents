@@ -187,21 +187,23 @@ export function CreateProjectModal({
               .filter((m) => m.userId !== user?.id)
               .map((m) => ({
                 value: m.userId,
-                label: m.displayName || m.userId,
-                avatarUrl: m.avatarUrl,
+                // label 用 ReactNode：选项显示头像 + 昵称（无头像显示昵称首字）
+                label: (
+                  <Space size={6}>
+                    <Avatar size={20} src={m.avatarUrl} style={{ background: '#3b82f6' }}>
+                      {(m.displayName || m.userId).slice(0, 1)}
+                    </Avatar>
+                    {m.displayName || m.userId}
+                  </Space>
+                ),
+                // ReactNode label 无法直接按文本过滤，用 searchText 兜底
+                searchText: m.displayName || m.userId,
               }))}
-            optionFilterProp="label"
-            optionRender={(option) => {
-              const item = option.data as { value: string; label: string; avatarUrl?: string }
-              return (
-                <Space size={6}>
-                  <Avatar size={20} src={item.avatarUrl} style={{ background: '#3b82f6' }}>
-                    {(item.label || '?').slice(0, 1)}
-                  </Avatar>
-                  {item.label}
-                </Space>
-              )
-            }}
+            filterOption={(input, option) =>
+              String((option as { searchText?: string } | undefined)?.searchText ?? '')
+                .toLowerCase()
+                .includes(input.toLowerCase())
+            }
             allowClear
           />
         </Form.Item>

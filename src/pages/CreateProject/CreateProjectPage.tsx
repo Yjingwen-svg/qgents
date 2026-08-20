@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Avatar, Radio, Select, Space, Switch } from 'antd'
+import { Radio, Select, Switch } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/context/AuthContext'
 import { PATHS } from '@/routes/paths'
@@ -150,20 +150,8 @@ export default function CreateProjectPage() {
               .map((m) => ({
                 value: m.userId,
                 label: m.displayName || m.userId,
-                avatarUrl: m.avatarUrl,
               }))}
             optionFilterProp="label"
-            optionRender={(option) => {
-              const item = option.data as { value: string; label: string; avatarUrl?: string }
-              return (
-                <Space size={6}>
-                  <Avatar size={20} src={item.avatarUrl} style={{ background: '#3b82f6' }}>
-                    {(item.label || '?').slice(0, 1)}
-                  </Avatar>
-                  {item.label}
-                </Space>
-              )
-            }}
             allowClear
           />
           <p className="create-project__hint" style={{ fontSize: 12, color: '#94a3b8', margin: '4px 0 0' }}>

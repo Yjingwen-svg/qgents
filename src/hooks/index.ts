@@ -1,4 +1,4 @@
-export * from './task-model'
+export { useTasks, useInfiniteTasks, useTask, useTaskDiagnostics } from './task-model'
 export {
   useCreateDryRun,
   useCreateTestRun,

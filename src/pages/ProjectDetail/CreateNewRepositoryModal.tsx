@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, App, Form, Input, Modal, Select, Spin, Switch, Typography } from 'antd'
+import { Alert, App, Form, Input, Modal, Select, Spin, Switch, Tag, Typography } from 'antd'
 import { githubApi } from '@/api'
 import { formatApiError } from '@/utils/formatApiError'
 import {
@@ -58,14 +58,18 @@ export default function CreateNewRepositoryModal({
     [installations],
   )
 
-  // 弹窗打开时生成幂等键；关闭时清空
+  // 单选场景（只有 1 个 ACTIVE Installation）：直接把值写入 initialValues，
+  // 比 useEffect + setFieldValue 稳定，不会因组件重建导致写入丢失
+  const onlyInstallation = activeInstallations.length === 1 ? activeInstallations[0] : null
+  const formInitialValues = useMemo<Partial<FormValues>>(() => ({
+    isPrivate: true,
+    installationId: onlyInstallation ? onlyInstallation.id : undefined,
+  }), [onlyInstallation])
+
+  // 弹窗打开时生成幂等键；关闭时清空并重置表单
   useEffect(() => {
     if (open) {
       setIdempotencyKey(crypto.randomUUID())
-      form.setFieldsValue({
-        isPrivate: true,
-        installationId: activeInstallations[0]?.id ?? '',
-      })
     } else {
       setIdempotencyKey('')
       form.resetFields()
@@ -73,17 +77,17 @@ export default function CreateNewRepositoryModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  // 关键修复：installations 异步加载完成后，自动回填 installationId。
-  // 当只有一个 ACTIVE Installation 时，用户无需选择，由系统自动绑定。
+  // 多选/加载异步场景的兜底：
+  // - 打开弹窗时 activeInstallations 未加载（空数组），加载完成后自动选中第一个
+  // - 当前值不在候选列表中（列表变化导致旧值失效）时重新选中第一个
   useEffect(() => {
     if (!open) return
-    const firstId = activeInstallations[0]?.id ?? ''
-    if (firstId) {
-      // 仅当当前表单值为空时才回填，避免覆盖用户已手动选择的值
-      const current = form.getFieldValue('installationId')
-      if (!current) {
-        form.setFieldValue('installationId', firstId)
-      }
+    const firstId = activeInstallations[0]?.id
+    if (!firstId) return
+    const current = form.getFieldValue('installationId')
+    const candidateIds = new Set(activeInstallations.map((it) => it.id))
+    if (!current || !candidateIds.has(current)) {
+      form.setFieldValue('installationId', firstId)
     }
   }, [open, activeInstallations])
 
@@ -166,7 +170,7 @@ export default function CreateNewRepositoryModal({
         layout="vertical"
         preserve={false}
         requiredMark
-        initialValues={{ isPrivate: true }}
+        initialValues={formInitialValues}
       >
         <Form.Item
           name="name"
@@ -202,7 +206,9 @@ export default function CreateNewRepositoryModal({
         <Form.Item
           name="installationId"
           label="GitHub Installation"
-          rules={[{ required: true, message: '请选择 GitHub Installation' }]}
+          rules={showInstallationSelect
+            ? [{ required: true, message: '请选择 GitHub Installation' }]
+            : []}
           tooltip="团队授权的 GitHub App 安装；新建仓库将归属该 Installation 的账号或组织"
         >
           {installationsLoading ? (
@@ -220,10 +226,22 @@ export default function CreateNewRepositoryModal({
               description="请先在团队设置中安装 GitHub App 并授权至少一个仓库范围，才能新建仓库。"
               style={{ marginBottom: 0 }}
             />
+          ) : onlyInstallation ? (
+            // 只有一个 ACTIVE Installation：直接显示 Tag 文本而不是 disabled Select，
+            // 防止 AntD Select disabled + required 校验组合带来的回填/可见性坑
+            <Tag
+              color="processing"
+              style={{ padding: '4px 12px', fontSize: 14, lineHeight: '24px', margin: 0 }}
+            >
+              {onlyInstallation.accountLogin}
+              （{onlyInstallation.accountType === 'ORGANIZATION' ? '组织' : '用户'}）
+              <Text type="secondary" style={{ marginLeft: 8 }}>
+                · 团队仅一个 Installation，已自动绑定
+              </Text>
+            </Tag>
           ) : (
             <Select
               placeholder="选择 Installation"
-              disabled={!showInstallationSelect}
               loading={installationsLoading}
               options={activeInstallations.map((it) => ({
                 value: it.id,

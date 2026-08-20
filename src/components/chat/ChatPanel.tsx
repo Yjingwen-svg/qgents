@@ -1718,9 +1718,28 @@ function renderContent(
     }
     default: {
       const c = message.content as TextMessageContent
-      return c.text ?? ''
+      return renderTextWithAtMentions(c.text ?? '')
     }
   }
+}
+
+/**
+ * TEXT/QUOTE 文本渲染：把形如 {@code @名字} 的 @ 提及高亮显示（编排助手回群的
+ * 「@发起者 您创建的任务已开始」提示与用户手动 @ 均受益），其余文本原样输出。
+ */
+function renderTextWithAtMentions(text: string): React.ReactNode {
+  if (!text) return ''
+  const parts = text.split(/(@[^\s@，。；：！？,.!?]+)/g)
+  if (parts.length <= 1) return text
+  return parts.map((part, index) =>
+    part.startsWith('@') ? (
+      <span key={index} style={{ color: '#1677ff', fontWeight: 600 }}>
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  )
 }
 
 /** 文件大小格式化（字节 → 可读） */

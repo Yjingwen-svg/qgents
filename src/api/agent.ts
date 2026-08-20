@@ -10,6 +10,7 @@ export const agentApi = {
   get(teamId: string, agentId: string, projectId?: string) { return requestData<AgentDetail>(withQuery(`${teamAgentsPath(teamId)}/${agentId}`, { projectId })) },
   create(teamId: string, payload: CreateAgentPayload) { return requestData<AgentDetail>(teamAgentsPath(teamId), { method: 'POST', headers: writeHeaders(), body: payload }) },
   update(teamId: string, agentId: string, payload: UpdateAgentPayload) { return requestData<AgentDetail>(`${teamAgentsPath(teamId)}/${agentId}`, { method: 'PATCH', headers: writeHeaders(), body: payload }) },
+  /** 普通创建者返回 PENDING；Team Owner 发布自己创建的 Agent 时直接返回 TEAM。 */
   publish(teamId: string, agentId: string) { return requestData<AgentDetail>(`${teamAgentsPath(teamId)}/${agentId}/publish`, { method: 'POST', headers: writeHeaders() }) },
   /** §30.2 Team Owner 批准发布（PENDING → TEAM） */
   approve(teamId: string, agentId: string) { return requestData<AgentDetail>(`${teamAgentsPath(teamId)}/${agentId}/approve`, { method: 'POST', headers: writeHeaders() }) },

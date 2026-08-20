@@ -1020,7 +1020,7 @@ GET
 
 8. 共享 Skill
 
-Skill 是项目需求群内可复用的能力片段，例如规范、提示词、操作指引或工具调用约束。成员先创建自己的 PRIVATE Skill，并可装配给自己拥有的 Agent；Project Admin 可将其发布为 PROJECT_SHARED，供该项目成员的 Agent 使用。Skill 不是 Memory，不能承载未经确认的客观事实。
+Skill 是项目需求群内可复用的能力片段，例如规范、提示词、操作指引或工具调用约束。`PRIVATE` Skill 创建即发布，仅创建者可用；`PROJECT_SHARED` Skill 由 Project Admin 创建时直接发布，普通成员创建后需提交审核，由 Project Admin 批准后供该项目成员的 Agent 使用。Skill 不是 Memory，不能承载未经确认的客观事实。
 
 方法
 路径
@@ -1033,7 +1033,7 @@ GET
 POST
 /projects/{projectId}/skills
 项目成员
-创建草稿 Skill
+创建 Skill：PRIVATE 和 Project Admin 自建 PROJECT_SHARED 直接发布；普通成员的 PROJECT_SHARED 为草稿
 GET/PATCH
 /projects/{projectId}/skills/{skillId}
 项目成员/创建者或 Project Admin
@@ -1186,7 +1186,7 @@ Project Member 可查看并在未来任务计划中选择 ENABLED Testset；受�
 
 每个 Team 还拥有一个 ORCHESTRATOR Agent（展示名称为“编排助手”）。它仅负责在需求群发送任务进度、终态和 Diff 审核卡片，不参与 TaskStep 分配，也不替代 PLANNER、DEVELOPER、TESTER 或 REVIEWER 的执行职责。其资源 ID 是 Team 级数据，客户端不得硬编码；缺失时任务状态卡按 §7 的 SYSTEM 消息规则降级。
 
-团队成员可创建仅自己可用的 Agent；发布后成为团队可用资源。产品界面至少展示每张 Agent 身份卡的昵称、头像、角色、能力标签、可用状态、创建者和可访问的 Skill 摘要；不得向其他成员泄露私有提示词或凭据。
+团队成员可创建仅自己可用的 Agent；普通创建者发布后进入 Team Owner 审核，Team Owner 发布自己创建的 Agent 时直接成为团队可用资源。产品界面至少展示每张 Agent 身份卡的昵称、头像、角色、能力标签、可用状态、创建者和可访问的 Skill 摘要；不得向其他成员泄露私有提示词或凭据。
 
 11.1 个人与团队 Agent
 
@@ -1197,7 +1197,7 @@ Project Member 可查看并在未来任务计划中选择 ENABLED Testset；受�
 GET
 /teams/{teamId}/agents
 团队成员
-查询系统 Agent、本人私有 Agent 和团队已发布 Agent
+查询系统 Agent、本人私有 Agent、待审核 Agent（仅创建者与 Team Owner 可见）和团队已发布 Agent
 POST
 /teams/{teamId}/agents
 团队成员
@@ -1209,11 +1209,11 @@ GET/PATCH
 POST
 /teams/{teamId}/agents/{agentId}/publish
 创建者
-发布为 TEAM（团队共享），供团队成员使用
+普通创建者提交审核（PRIVATE → PENDING）；Team Owner 发布自己创建的 Agent 时直接 TEAM（团队共享），供团队成员使用
 POST
 /teams/{teamId}/agents/{agentId}/unpublish
-创建者或 Team Owner
-收回为私有 Agent
+—
+已废弃：TEAM Agent 不可收回为私有，返回 AGENT_UNPUBLISH_DISALLOWED；只能归档
 POST
 /teams/{teamId}/agents/{agentId}/archive
 创建者或 Team Owner

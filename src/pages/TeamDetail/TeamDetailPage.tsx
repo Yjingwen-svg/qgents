@@ -9,7 +9,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons'
 import { Button, Space, Spin } from 'antd'
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { Link, Navigate, NavLink, Outlet, useLocation, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi } from '@/api'
@@ -115,6 +115,9 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
 
 export default function TeamDetailPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
+  const location = useLocation()
+  // 团队设置是团队详情的路由层子视图（/teams/:teamId/settings）：命中时渲染 Outlet，不跳转新页面
+  const onSettings = location.pathname.endsWith('/settings')
   const [activeView, setActiveView] = useState<TeamDetailView>('projects')
   const [createOpen, setCreateOpen] = useState(false)
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
@@ -226,15 +229,26 @@ export default function TeamDetailPage() {
             <TeamOutlined />
             团队通讯录
           </button>
-          <Link to={PATHS.teamSettings(teamId)} className="team-detail__nav-item">
+          {/* 团队设置：路由层切换（/teams/:teamId/settings），在详情布局内渲染，不跳转新页面 */}
+          <NavLink
+            to={PATHS.teamSettings(teamId)}
+            className={({ isActive }) =>
+              `team-detail__nav-item${isActive ? ' team-detail__nav-item--active' : ''}`
+            }
+          >
             <SettingOutlined />
             团队设置
-          </Link>
+          </NavLink>
         </nav>
       </aside>
 
       <main className="team-detail__main">
-        <section className="team-detail__hero">
+        {onSettings ? (
+          /* 团队设置：路由层子视图（TeamSettingsPage），复用本页侧栏布局 */
+          <Outlet />
+        ) : (
+          <>
+            <section className="team-detail__hero">
           <div>
             <Link to={PATHS.MY_TEAMS} className="team-detail__back">
               返回我的团队
@@ -299,6 +313,8 @@ export default function TeamDetailPage() {
               ))}
             </div>
           </section>
+        )}
+          </>
         )}
       </main>
 

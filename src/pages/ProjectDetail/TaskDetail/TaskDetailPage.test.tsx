@@ -27,6 +27,8 @@ const useCancelTaskRunModelMock = vi.hoisted(() => vi.fn())
 const useReplyTaskRunInputRequestMock = vi.hoisted(() => vi.fn())
 const useApproveTaskRunInputRequestMock = vi.hoisted(() => vi.fn())
 const useRejectTaskRunInputRequestMock = vi.hoisted(() => vi.fn())
+const useWorkspaceDiffPreviewMock = vi.hoisted(() => vi.fn())
+const useWorkspaceDiffPreviewFilesMock = vi.hoisted(() => vi.fn())
 
 const usePreflightMock = vi.hoisted(() => vi.fn())
 
@@ -56,6 +58,10 @@ vi.mock('@/hooks/task-model', () => ({
 
 vi.mock('@/hooks/qualityGate', () => ({
   usePreflight: usePreflightMock,
+}))
+vi.mock('@/hooks/workspaceDiffPreview', () => ({
+  useWorkspaceDiffPreview: useWorkspaceDiffPreviewMock,
+  useWorkspaceDiffPreviewFiles: useWorkspaceDiffPreviewFilesMock,
 }))
 
 import TaskDetailPage from './TaskDetailPage'
@@ -102,6 +108,8 @@ beforeEach(() => {
   useReplyTaskRunInputRequestMock.mockReturnValue(idleMutation)
   useApproveTaskRunInputRequestMock.mockReturnValue(idleMutation)
   useRejectTaskRunInputRequestMock.mockReturnValue(idleMutation)
+  useWorkspaceDiffPreviewMock.mockReturnValue({ data: { kind: 'unavailable', reason: 'NOT_FOUND', message: 'Preview 尚未生成' }, isLoading: false, isError: false, refetch: vi.fn() })
+  useWorkspaceDiffPreviewFilesMock.mockReturnValue({ data: [], isLoading: false, isError: false, refetch: vi.fn() })
 })
 
 describe('TaskDetailPage workbench', () => {
@@ -164,6 +172,13 @@ describe('TaskDetailPage workbench', () => {
     expect(screen.getByText('需求说明')).toBeInTheDocument()
     expect(screen.getByText('实现登录页面与接口校验，完成后提交可审查的代码变更。')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '查看完整需求' })).not.toBeInTheDocument()
+  })
+
+  it('keeps workspace preview separate from formal Diff counts', () => {
+    useWorkspaceDiffPreviewMock.mockReturnValue({ data: { kind: 'available', preview: { projectId: task.projectId, taskId: task.id, taskRunId: run.id, workspaceId: 'workspace-1', revision: 2, baseCommit: 'base-1', workingTreeHash: 'sha256:preview', filesChanged: 2, additions: 8, deletions: 3, patch: 'diff --git a/a.txt b/a.txt', createdAt: run.createdAt } }, isLoading: false, isError: false, refetch: vi.fn() })
+    renderPage()
+    expect(screen.getByTestId('workspace-diff-preview-summary')).toHaveTextContent('实时预览：2 个文件 · +8 / -3 · revision 2')
+    expect(screen.getByText('产物 0 · Diff 0')).toBeInTheDocument()
   })
 
   it('keeps delivery confirmation actions in the delivery panel', async () => {

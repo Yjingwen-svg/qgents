@@ -1,8 +1,8 @@
-Qgents 接口文档v2.0.14
+Qgents 接口文档v2.0.17
 
-版本：v2.0.14
+版本：v2.0.18
 
-状态：新增§35
+状态：新增§38，修补§12.4
 
 更新日期：2026-08-19
 
@@ -35,10 +35,7 @@ Qgents 接口文档v2.0.14
   
     
   
-- 通知中心已按用户维度持久化（§7.1）；离线推送、会话个人偏好（未读数/置顶）、搜索、分支查询和 Test Run / Dry Run 历史列表不在本轮范围。
-  
-    
-  
+- 通知中心已按用户维度持久化（§7\.1）；离线推送、会话个人偏好（未读数/置顶）、搜索和分支查询不在本轮范围；Test Run / Dry Run 历史列表见第 38 节。
 
 ---
 
@@ -1307,7 +1304,24 @@ mentions 为对象数组 Mention[]，每项 { "type": "USER" | "AGENT", "id": <U
       Sandbox、工作流图等启动阶段发生意外失败时，Task 会置为 FAILED。客户端通过既有 task.updated、message.created（失败 TASK_STATUS 卡片）和 notification.created（kind=TASK_FAILED）获知结果；断线重连或收到乱序事件后，仍应以 Task、消息和通知查询接口返回的数据为准。
     
   - 显式触发：POST /projects/{projectId}/groups/{groupId}/messages/{messageId}/trigger-task，对已发送消息显式创建 Task（项目成员；body 为 TaskTriggerRequest，缺省字段由服务端从消息文本/群信息提取，需 Idempotency-Key）。
+POST /api/v1/projects/{projectId}/groups/{groupId}/messages/{messageId}/trigger-task
+Idempotency-Key: <client-generated-key>
+Content-Type: application/json
+
+{
+  "requirement": "@编排助手 新增用户控制台页面",
+  "deliveryMode": "DIFF_FIRST"
+}
+    说明：
+    - 省略 title → 后端用消息文本/群标题；
+    - 省略 repositoryIds → 后端用需求群关联仓库；
+    - 省略 baseRef → 后端按各仓库 defaultBranch 独立解析。
+    若需求群未绑仓库，响应：
     
+    {
+      "code": "REQUIREMENT_GROUP_NO_REPOSITORIES",
+      "message": "需求群未绑定仓库，请先为需求群绑定仓库后再触发任务"
+    }
     
     
 - 引用 DIFF 卡续作（增量修改）：当发送（或显式触发）的消息 replyToId 指向一条 type=DIFF
@@ -2731,6 +2745,10 @@ POST
 /projects/{projectId}/test-runs
 Project Member
 对指定提交或 Task 发起已启用 Testset 的受控运行
+
+
+
+
 GET
 /projects/{projectId}/test-runs/{testRunId}
 Project Member
@@ -2743,6 +2761,8 @@ GET
 /projects/{projectId}/dry-runs/{dryRunId}/report
 Project Member
 获取试运行报告和冲突、测试摘要
+|GET|/projects/{projectId}/test-runs|Project Member|按筛选条件查询项目 Test Run 历史列表，支持游标分页|
+|GET|/projects/{projectId}/dry-runs|Project Member|按筛选条件查询项目 Dry Run 历史列表，支持游标分页|
 
 test-runs 请求必须提供 repositoryId，并且提供 taskId 或 ref 之一；testsetIds 必须属于该仓库且为 ENABLED。
 
@@ -4775,7 +4795,7 @@ cases[]、reportUrl、pdfUrl 本轮给不给？
 本轮不给：TestRunResponse 详情为 id/projectId/repositoryId/ref/testsetIds/status/summary/createdBy/createdAt（无 caseSummary/cases/reportUrl/pdfUrl/sandboxId/startedAt/finishedAt）；DryRunReportResponse 为 id/status/createdAt。执行器未收集逐用例结果、报告产物未接存储。测试结果由 summary.results（TestRun）或 report.tests.results（Dry Run）提供（结构见 §12.4 冻结语义），caseSummary 缺失不代表没有测试结果。前端用例详情/报告 Tab 保持空态
 Q5
 Test Run / Dry Run 历史列表本轮做不做？
-本轮不做（§1 已声明）：无 GET /test-runs、GET /dry-runs 列表接口；前端继续本机 localStorage，联调不当作缺数据。后续补列表接口属 P1+
+已实现（第 38 节）：提供 GET /test-runs 与 GET /dry-runs，支持项目成员按项目仓库、Task、状态、发起人（Dry Run 另支持目标分支）筛选，并使用 cursor/limit 游标分页；本机 localStorage 只能作为缓存或离线入口，不能替代服务端列表
 
 
 
@@ -4858,9 +4878,9 @@ payload 含 testRunId + projectId/repositoryId/taskId/ref/status ✓
 SSE dry-run.updated
 payload 含 dryRunId + projectId/repositoryId/taskId/headCommit/targetBranch/status ✓
 已符合
-历史列表 / 用例详情 / 报告 URL
-无（Q4/Q5）
-本轮不做
+TestRun / DryRun 历史列表
+GET /test-runs、GET /dry-runs（§38）
+已实现；用例详情和报告产物 URL 仍不在本轮范围
 
 
 
@@ -4878,7 +4898,7 @@ payload 含 dryRunId + projectId/repositoryId/taskId/headCommit/targetBranch/sta
   
 5. Testset：响应补 scopeTags；
   
-6. （P1+）test-run / dry-run 历史列表、逐用例结果、报告产物 URL（前端按空态处理，不阻塞联调）。
+6. （P1+）逐用例结果详情、报告产物 URL（前端按空态处理，不阻塞联调）
   
    
   
@@ -6247,7 +6267,7 @@ IDEMPOTENCY_KEY_REQUIRED / IDEMPOTENCY_KEY_REUSED
   
   仅以下基础设施失败显示重试：DRY_RUN_TIMEOUT、SANDBOX_WORKER_UNAVAILABLE、SANDBOX_WORKER_ERROR、GITHUB_API_UNAVAILABLE、GIT_STORE_FETCH_FAILED。GIT_MERGE_CONFLICT、TESTSET_FAILED、上下文不匹配和配置错误不能通过该按钮解决。
   
-  当前没有 Dry Run 历史列表接口。正常 202 响应中的新 ID 应写入现有本机会话历史；本地历史只用于恢复页面入口，不是服务端权威状态。
+   Dry Run 历史列表通过第 38 节的 GET /api/v1/projects/{projectId}/dry-runs 获取。正常 202 响应中的新 ID 可写入本机会话历史作为即时入口，但本地历史不是服务端权威状态；列表页应在进入页面、筛选条件变化和收到 dry-run.updated 后重新请求服务端列表。
   
 32.3 状态与 SSE
   
@@ -6412,3 +6432,366 @@ GitHub App Installation 不可用
 502
 GITHUB_API_UNAVAILABLE
 GitHub API 暂时不可用或返回不完整数据
+36. Workspace 实时 Diff Preview（2026-08-19）
+
+实时 Preview 只反映 Coding 执行过程中的累积工作树变更，不代表已生成正式 Diff，不代表已 commit、push 或创建 MR。正式 Diff 仅在 Task 完成后生成，用于用户确认与后续交付。
+
+36.1 与正式 Diff 的区别
+
+类型
+产生时机
+是否可变
+用途
+是否可交付
+Workspace Diff Preview
+Coding 每次有效写入后
+是，通过 revision 递增
+执行过程中的实时查看
+否
+Task 正式 Diff
+Task 完成后
+否
+用户审查、确认、交付
+是
+
+实时 Preview 的统计不能写入现有 artifactSummary.diffCount 等正式 Diff 摘要字段，否则会让用户误以为正式 Diff 已生成。
+
+36.2 SSE 事件
+
+事件名：workspace.diff-preview.updated，广播范围使用 Task 所属需求群（PROJECT_MAIN 项目总群任务仍广播全部项目成员）。
+
+{
+  "eventVersion": 1,
+  "projectId": "project-uuid",
+  "taskId": "task-uuid",
+  "taskRunId": "task-run-uuid",
+  "workspaceId": "workspace-uuid",
+  "previewRevision": 3,
+  "filesChanged": 2,
+  "additions": 8,
+  "deletions": 3,
+  "updatedAt": "2026-08-19T12:00:00Z"
+}
+
+约束：
+
+- Payload 只含元数据，不含 patch、源码、Token、密码、宿主机路径、环境变量或命令原文。
+- 事件在 revision 落库成功后才发布；可重复投递，前端收到后必须以 REST 查询结果为准，不依赖事件顺序。
+- previewRevision 是 Workspace 内单调递增的非负整数；filesChanged/additions/deletions 为非负整数。
+  
+36.3 查询 Preview 详情
+
+方法
+路径
+权限
+说明
+GET
+/api/v1/projects/{projectId}/tasks/{taskId}/workspace-diff-preview
+Project Member + Task 需求群成员
+缺省返回最新修订
+GET
+/api/v1/projects/{projectId}/tasks/{taskId}/workspace-diff-preview?revision={revision}
+同上
+返回指定修订
+
+响应 data：
+
+{
+  "projectId": "project-uuid",
+  "taskId": "task-uuid",
+  "taskRunId": "task-run-uuid",
+  "workspaceId": "workspace-uuid",
+  "revision": 3,
+  "baseCommit": "base-sha",
+  "workingTreeHash": "sha256:...",
+  "filesChanged": 2,
+  "additions": 8,
+  "deletions": 3,
+  "patch": "diff --git ...",
+  "createdAt": "2026-08-19T12:00:00Z"
+}
+
+- patch 从受控快照读取；快照已清理或读取失败时为 null，前端不得把 null 当作正式 Diff 缺失。
+- 非需求群成员（项目成员但未加入该群）→ 403 FORBIDDEN GROUP_MEMBER_REQUIRED。
+- 任务不存在 / 不属于当前项目 / 指定修订不存在 → 404 WORKSPACE_DIFF_PREVIEW_NOT_FOUND。
+  
+36.4 查询 Preview 文件列表
+
+方法
+路径
+权限
+说明
+GET
+/api/v1/projects/{projectId}/tasks/{taskId}/workspace-diff-preview/files
+Project Member + Task 需求群成员
+缺省返回最新修订的文件列表
+GET
+/api/v1/projects/{projectId}/tasks/{taskId}/workspace-diff-preview/files?revision={revision}
+同上
+返回指定修订的文件列表
+
+文件条目至少包含：
+
+{
+  "path": "src/main.ts",
+  "changeType": "MODIFIED",
+  "additions": 3,
+  "deletions": 1,
+  "binary": false,
+  "repositoryPath": "repo-1"
+}
+
+- changeType 枚举与正式 Diff 一致：ADDED / MODIFIED / DELETED / RENAMED。
+- repositoryPath 为该文件所属仓库在 Workspace 内的相对目录；多仓库 patch 以 ===== repositoryPath ===== 分隔行归属，单仓库或无分隔时为空。前端按 repositoryPath 分组展示，不得跨仓库混合同名文件。
+- 文件路径是 Workspace 相对路径，不包含宿主机绝对路径。
+  
+36.5 权限与归属
+
+- 查询校验两级：先校验当前用户是项目成员，再校验属于 Task 所属需求群；PROJECT_MAIN 项目总群任务按项目成员可见性处理。
+- 修订行按 projectId + taskId + workspaceId（+ 可选 revision）精确匹配，Task A / Task B 复用同一 Workspace 时互不可见。
+- 身份、项目归属与仓库范围全部由服务端从认证上下文和持久化数据判断，不信任客户端提交的 actor/projectId/workspaceId 字段。
+  
+36.6 失败与降级
+
+- Worker 未启用、diff 不可用、无 workingTreeHash 或快照存储失败时，本次 Preview 不产生 revision、不发事件、不影响 Coding / Task 结果。
+- 前端在无 revision 或查询失败时展示“实时预览暂不可用”，不得把 Task 标记为失败。
+- RUNNING / FAILED / SUCCEEDED 状态均不能仅凭 Preview 推断正式交付状态。
+  
+36.7 前端接入要求
+
+- 注册 workspace.diff-preview.updated 到 SSE 解析白名单，校验 eventVersion == 1、必要 ID 非空、统计字段为非负整数。
+- 收到事件后只刷新该 Task 的 Preview detail / files 查询缓存，不刷新正式 diffs 查询。
+- 任务详情“最近执行”卡片独立展示实时状态，例如：实时预览：2 个文件 · +8 / -3 · revision 3，与正式 Diff 摘要分开。
+- Task 完成并生成正式 Diff 后，正式交付区域优先展示正式 Diff；实时 Preview 可折叠保留。
+  
+前端类型建模参考：
+
+interface WorkspaceDiffPreview {
+  projectId: string
+  taskId: string
+  taskRunId: string | null
+  workspaceId: string
+  revision: number
+  baseCommit: string | null
+  workingTreeHash: string | null
+  filesChanged: number
+  additions: number
+  deletions: number
+  patch: string | null
+  createdAt: string
+}
+
+interface WorkspaceDiffPreviewFile {
+  path: string
+  changeType: 'ADDED' | 'MODIFIED' | 'DELETED' | 'RENAMED'
+  additions: number
+  deletions: number
+  binary: boolean
+  repositoryPath: string | null
+}
+
+36.8 验收清单
+
+- 单仓库：Coding 写入 a.txt 产生 revision 1，再写 b.txt 产生 revision 2，前端累计显示 2 个文件。
+- 多仓库：/files 按 repositoryPath 正确分组，同名文件不混淆。
+- 复用 Workspace 的 Task 之间互不可见 Preview。
+- 需求群外项目成员不能读取其他群 Task 的 Preview。
+- Worker 停止时 Task 不因 Preview 失败而失败，前端显示“实时预览暂不可用”。
+- 正式 Diff 仍只在 Task 完成后生成；确认前不 commit/push/MR。
+- SSE 断线重连后按游标恢复并重新查询最新 Preview。
+38. Test Run 与 Dry Run 历史列表接口（已实现）
+
+本节补充项目级 Test Run / Dry Run 历史查询。两个接口只返回轻量生命周期摘要，不返回测试用例结果、Dry Run 报告或 Sandbox 详情；详情继续使用第 12.4 节已有的单条接口。
+
+38.1 接口总览
+
+方法
+路径
+权限
+说明
+GET
+/api/v1/projects/{projectId}/test-runs
+Project Member
+查询项目 Test Run 历史列表
+GET
+/api/v1/projects/{projectId}/dry-runs
+Project Member
+查询项目 Dry Run 历史列表
+
+repositoryId 指当前项目中的仓库绑定 ID（project_repositories.id），不是 GitHub 仓库数字 ID。服务端会先校验当前用户是项目成员，并将所有查询限制在路径中的 projectId 内。
+
+38.2 Test Run 列表
+
+请求：
+
+GET /api/v1/projects/{projectId}/test-runs
+
+可选查询参数：
+
+参数
+类型
+说明
+repositoryId
+UUID
+仅返回指定项目仓库的运行
+taskId
+UUID
+仅返回指定 Task 关联的运行
+status
+string
+状态筛选，可传逗号分隔值：QUEUED,RUNNING,PASSED,FAILED,CANCELLED
+createdByUserId
+UUID
+仅返回指定用户发起的运行
+cursor
+string
+上一页响应的 page.nextCursor，不透明游标，首次请求不传
+limit
+integer
+每页数量，默认 20，最大 100；小于等于 0 使用默认值，超过 100 按 100 处理
+
+列表项 data[] 字段：
+
+字段
+类型
+说明
+id
+UUID
+Test Run ID
+projectId
+UUID
+项目 ID
+repositoryId
+UUID
+项目仓库绑定 ID
+testsetIds
+UUID[]
+本次运行使用的 Testset 快照 ID 列表
+taskId
+UUID/null
+关联 Task；手动按 ref 发起时为 null
+ref
+string/null
+请求 ref；Task 运行未直接提交 ref 时返回解析后的执行 ref
+status
+enum
+QUEUED、RUNNING、PASSED、FAILED、CANCELLED
+createdBy
+UUID
+发起用户 ID
+createdAt
+RFC 3339 string
+创建时间，UTC
+startedAt
+RFC 3339 string/null
+执行开始时间；尚未开始时为 null
+finishedAt
+RFC 3339 string/null
+执行结束时间；未进入终态时为 null
+
+38.3 Dry Run 列表
+
+请求：
+
+GET /api/v1/projects/{projectId}/dry-runs
+
+可选查询参数：
+
+参数
+类型
+说明
+repositoryId
+UUID
+仅返回指定项目仓库的 Dry Run
+taskId
+UUID
+仅返回指定 Task 关联的 Dry Run
+status
+string
+状态筛选，可传逗号分隔值：QUEUED,RUNNING,PASSED,FAILED,CONFLICT,CANCELLED
+targetBranch
+string
+仅返回指定目标分支的 Dry Run；服务端会去除首尾空格
+createdByUserId
+UUID
+仅返回指定用户发起的 Dry Run
+cursor
+string
+上一页响应的 page.nextCursor，不透明游标，首次请求不传
+limit
+integer
+每页数量，默认 20，最大 100；小于等于 0 使用默认值，超过 100 按 100 处理
+
+列表项 data[] 字段：
+
+字段
+类型
+说明
+id
+UUID
+Dry Run ID
+projectId
+UUID
+项目 ID
+repositoryId
+UUID
+项目仓库绑定 ID
+sourceRef
+string
+本次预演的源分支或源提交引用
+targetBranch
+string
+本次预演的目标分支
+taskId
+UUID/null
+关联 Task；手动 Dry Run 未关联 Task 时为 null
+status
+enum
+QUEUED、RUNNING、PASSED、FAILED、CONFLICT、CANCELLED
+createdBy
+UUID
+发起用户 ID
+createdAt
+RFC 3339 string
+创建时间，UTC
+startedAt
+RFC 3339 string/null
+执行开始时间；尚未开始时为 null
+finishedAt
+RFC 3339 string/null
+执行结束时间；未进入终态时为 null
+
+CONFLICT 仅表示服务端已持久化的冲突状态；冲突详情和测试摘要仍须通过 GET /api/v1/projects/{projectId}/dry-runs/{dryRunId}/report 获取。前端不得仅根据列表状态推断 MR 已创建或已通过门禁。
+
+38.4 分页响应与排序
+
+两个接口均返回统一的 ApiPageResponse：
+
+{
+  "data": [
+    {
+      "id": "test-run-uuid",
+      "projectId": "project-uuid",
+      "repositoryId": "repository-binding-uuid",
+      "testsetIds": ["testset-uuid"],
+      "taskId": "task-uuid",
+      "ref": "feat/login-api",
+      "status": "RUNNING",
+      "createdBy": "user-uuid",
+      "createdAt": "2026-08-19T08:00:00Z",
+      "startedAt": null,
+      "finishedAt": null
+    }
+  ],
+  "page": {
+    "nextCursor": "opaque-cursor",
+    "hasMore": true
+  },
+  "requestId": "req_uuid"
+}
+
+结果按 createdAt DESC, id DESC 排序。还有下一页时，前端将本次响应的 page.nextCursor 原样作为下一次请求的 cursor；hasMore=false 且 nextCursor=null 表示已到末页。游标由服务端生成，前端不得解码、拼接或根据 ID/时间自行构造。
+
+列表接口不要求 Idempotency-Key。收到 test-run.updated 或 dry-run.updated SSE 事件后，前端应重新请求当前列表（必要时同时刷新当前详情），不要使用事件 payload 在本地拼接或覆盖完整列表记录。
+
+状态值、筛选值或游标格式不合法时分别返回 400 INVALID_STATUS_FILTER 或 400 INVALID_CURSOR；非项目成员按通用权限错误处理。

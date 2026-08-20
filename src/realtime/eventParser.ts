@@ -12,6 +12,7 @@ export const PROJECT_TASK_EVENT_TYPES = [
   'task-run.created',
   'task-run.updated',
   'task-run.step.progress',
+  'workspace.diff-preview.updated',
   'input-required',
   'approval-required',
   'diff.created',
@@ -77,6 +78,7 @@ function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPay
     'task-run.created': ['taskId', 'taskStepId', 'taskRunId'],
     'task-run.updated': ['taskId', 'taskStepId', 'taskRunId'],
     'task-run.step.progress': ['taskId', 'taskRunId'],
+    'workspace.diff-preview.updated': ['taskId', 'taskRunId', 'workspaceId'],
     'input-required': ['taskId', 'taskStepId', 'taskRunId', 'inputRequestId'],
     'approval-required': ['taskId', 'taskStepId', 'taskRunId', 'inputRequestId'],
     'diff.created': ['taskId', 'diffId'],
@@ -113,6 +115,11 @@ function hasRequiredIds(type: ProjectTaskEventType, payload: ProjectTaskEventPay
     const hasTaskStepId = typeof payload.taskStepId === 'string' && payload.taskStepId.length > 0
     const hasLegacyStepId = typeof payload.stepId === 'string' && payload.stepId.length > 0
     return hasTaskStepId || hasLegacyStepId
+  }
+  if (type === 'workspace.diff-preview.updated') {
+    const numericFields = ['previewRevision', 'filesChanged', 'additions', 'deletions'] as const
+    return numericFields.every((key) => typeof payload[key] === 'number' && Number.isInteger(payload[key]) && (payload[key] as number) >= 0)
+      && payload.eventVersion === 1
   }
   const stringsValid = required[type].every((key) => typeof payload[key] === 'string' && (payload[key] as string).length > 0)
   if (!stringsValid) return false

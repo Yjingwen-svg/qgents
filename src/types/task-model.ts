@@ -244,6 +244,42 @@ export interface ExecutionContext {
   expiresAt: string | null
 }
 
+export type WorkspaceDiffPreviewChangeType = 'ADDED' | 'MODIFIED' | 'DELETED' | 'RENAMED'
+
+/**
+ * Coding 过程中的累计工作树预览，不是正式 Diff，也不代表已交付。
+ * GET /projects/{projectId}/tasks/{taskId}/workspace-diff-preview
+ */
+export interface WorkspaceDiffPreview {
+  projectId: string
+  taskId: string
+  taskRunId: string | null
+  workspaceId: string
+  revision: number
+  baseCommit: string | null
+  workingTreeHash: string
+  filesChanged: number
+  additions: number
+  deletions: number
+  patch: string
+  createdAt: string
+}
+
+/** GET .../workspace-diff-preview/files 的 Workspace 相对路径摘要。 */
+export interface WorkspaceDiffPreviewFile {
+  repositoryId: string
+  repositoryPath: string
+  path: string
+  changeType: WorkspaceDiffPreviewChangeType
+  additions: number
+  deletions: number
+  binary: boolean
+}
+
+export type WorkspaceDiffPreviewStatus =
+  | { kind: 'available'; preview: WorkspaceDiffPreview }
+  | { kind: 'unavailable'; reason: 'NOT_FOUND' | 'WORKER_UNAVAILABLE' | 'UNKNOWN'; message: string }
+
 export interface InputRequestOption {
   value: string
   label: string

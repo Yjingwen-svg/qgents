@@ -78,11 +78,11 @@ export function WorkspaceDiffPreviewCard({ projectId, taskId, taskStatus, reposi
             items={[{
               key: 'preview',
               label: expanded ? '收起实时 Diff' : '查看实时 Diff',
-              children: (
-                filesQuery.isLoading ? (
+              children: (<>
+                {filesQuery.isLoading ? (
                   <div className={styles.inlineState}><Spin size="small" /><Text type="secondary">正在加载文件列表</Text></div>
                 ) : filesByRepository.length === 0 ? (
-                  <Empty description={filesLoading ? '正在加载文件列表' : '暂无文件'} />
+                  <Empty description="暂无文件" />
                 ) : (
                   <div className={styles.workspaceDiffPreviewFiles}>
                     {filesByRepository.map(({ repositoryId, repositoryName, files }) => (
@@ -101,8 +101,9 @@ export function WorkspaceDiffPreviewCard({ projectId, taskId, taskStatus, reposi
                       </div>
                     ))}
                   </div>
-                )
-              ),
+                )}
+                {status.preview.patch ? <pre>{status.preview.patch}</pre> : null}
+              </>),
               extra: <CaretRightOutlined rotate={expanded ? 90 : 0} aria-hidden />,
             }]}
           />

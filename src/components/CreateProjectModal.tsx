@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Modal, Form, Input, Select, Empty, Radio, Switch, Typography, Upload, Avatar, Button } from 'antd'
+import { Modal, Form, Input, Select, Empty, Radio, Switch, Typography, Upload, Avatar, Button, Space } from 'antd'
 import { CameraOutlined, UploadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { projectApi, teamApi, githubApi } from '@/api'
 import { useProjectAvatarUpload } from '@/hooks/useProjectAvatarUpload'
+import { useAuth } from '@/context/AuthContext'
 import { PATHS } from '@/routes/paths'
 import { isGithubRepoBindable } from '@/types/github'
 import type { CreateProjectPayload, NewProjectRepositoryInput } from '@/types'
@@ -34,6 +35,7 @@ export function CreateProjectModal({
 }) {
   const navigate = useNavigate()
   const queryClient=useQueryClient()
+  const { user } = useAuth()
   const [form] = Form.useForm<CreateProjectFormValues>()
   const [repositoryMode, setRepositoryMode] = useState<'existing' | 'new'>('existing')
   // 项目头像（v2.0.6：创建时可选；项目创建成功后才直传并回写）
@@ -180,11 +182,28 @@ export function CreateProjectModal({
           <Select
             mode="multiple"
             placeholder="从团队成员中选择，选中即加入项目"
-            options={teamMembers.map((m) => ({
-              value: m.userId,
-              label: m.displayName || m.userId,
-            }))}
-            optionFilterProp="label"
+            // 创建者自动成为项目成员，前端过滤自己避免误选
+            options={teamMembers
+              .filter((m) => m.userId !== user?.id)
+              .map((m) => ({
+                value: m.userId,
+                // label 用 ReactNode：选项显示头像 + 昵称（无头像显示昵称首字）
+                label: (
+                  <Space size={6}>
+                    <Avatar size={20} src={m.avatarUrl} style={{ background: '#3b82f6' }}>
+                      {(m.displayName || m.userId).slice(0, 1)}
+                    </Avatar>
+                    {m.displayName || m.userId}
+                  </Space>
+                ),
+                // ReactNode label 无法直接按文本过滤，用 searchText 兜底
+                searchText: m.displayName || m.userId,
+              }))}
+            filterOption={(input, option) =>
+              String((option as { searchText?: string } | undefined)?.searchText ?? '')
+                .toLowerCase()
+                .includes(input.toLowerCase())
+            }
             allowClear
           />
         </Form.Item>

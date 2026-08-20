@@ -888,8 +888,21 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         aria-label="对话内容"
       >
         {isLoading ? (
-          <div style={{ textAlign: 'center', padding: 40 }}>
-            <Text type="secondary">加载中…</Text>
+          <div
+            style={{
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <div style={{ textAlign: 'center' }}>
+              <Spin size="large" />
+              <div style={{ marginTop: 16, color: '#5b6b82', fontSize: 14 }}>
+                <MessageOutlined style={{ marginRight: 8 }} />
+                正在加载群聊消息…
+              </div>
+            </div>
           </div>
         ) : isError ? (
           <Empty description="消息加载失败" />
@@ -1104,6 +1117,8 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             autoSize={{ minRows: 1, maxRows: 4 }}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            // 发送中禁用输入框：防止发送期间继续输入/重复回车触发
+            disabled={sending}
             onPressEnter={(e) => {
               if (!e.shiftKey) {
                 e.preventDefault()
@@ -1117,7 +1132,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             icon={<SendOutlined />}
             onClick={handleSend}
             loading={sending}
-            disabled={!draft.trim() && !replyTo}
+            disabled={sending || (!draft.trim() && !replyTo)}
           >
             发送
           </Button>
@@ -1768,12 +1783,20 @@ function renderContent(
             <Text type="secondary" style={{ fontSize: 12 }}>
               {diffReady ? '任务已产生代码变更' : '代码变更生成后在此查看'}
             </Text>
-            {/* 右下角按钮：任务运行状态框 → 查看任务（Diff 查看走专门的 DIFF 卡片） */}
-            <Link to={PATHS.projectTaskDetail(projectId, c.taskId)}>
-              <Button size="small" type="link">
-                查看任务
-              </Button>
-            </Link>
+            {/* 右下角按钮：任务完成/交付阶段 → 查看交付详情（交付中心）；未完成 → 查看任务 */}
+            {diffReady ? (
+              <Link to={`${PATHS.projectDiffs(projectId)}?taskId=${encodeURIComponent(c.taskId)}`}>
+                <Button size="small" type="link">
+                  查看交付详情
+                </Button>
+              </Link>
+            ) : (
+              <Link to={PATHS.projectTaskDetail(projectId, c.taskId)}>
+                <Button size="small" type="link">
+                  查看任务
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       )

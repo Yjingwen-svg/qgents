@@ -9,7 +9,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons'
 import { Button, Space, Spin } from 'antd'
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi } from '@/api'
@@ -115,9 +115,19 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
 
 export default function TeamDetailPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
+  const location = useLocation()
+  const navigate = useNavigate()
+  // 团队设置是团队详情的路由层子视图（/teams/:teamId/settings）：命中时渲染 Outlet，不跳转新页面
+  const onSettings = location.pathname.endsWith('/settings')
   const [activeView, setActiveView] = useState<TeamDetailView>('projects')
   const [createOpen, setCreateOpen] = useState(false)
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
+
+  // 从「团队设置」切回首页/通讯录：设置是路由子视图，必须先把 URL 切回团队详情，否则 main 仍渲染设置页
+  function goView(view: TeamDetailView) {
+    setActiveView(view)
+    if (onSettings) navigate(PATHS.teamDetail(teamId))
+  }
 
   // 团队级 SSE：被拉进项目 / 成员变更 / 动态产生时实时刷新
   useTeamEvents(teamId || undefined)
@@ -136,7 +146,7 @@ export default function TeamDetailPage() {
     queryFn: () => teamApi.getById(teamId),
     enabled: !!teamId,
   })
-  const isOwner=team?.role==='TEAM_OWNER';
+  const isOwner = team?.role === 'TEAM_OWNER'
 
   // 团队资料加载后，把角色同步进 store，供 Banner「团队首页」跳转时带 as=owner
   useEffect(() => {
@@ -208,31 +218,43 @@ export default function TeamDetailPage() {
         </div>
 
         <nav className="team-detail__nav">
+          {/* 高亮逻辑：设置是路由子视图，此时首页/通讯录不参与高亮，只有「团队设置」高亮 */}
           <button
             type="button"
-            className={`team-detail__nav-item ${activeView === 'projects' ? 'team-detail__nav-item--active' : ''}`}
-            onClick={() => setActiveView('projects')}
+            className={`team-detail__nav-item ${!onSettings && activeView === 'projects' ? 'team-detail__nav-item--active' : ''}`}
+            onClick={() => goView('projects')}
           >
             <ApartmentOutlined />
             团队首页
           </button>
           <button
             type="button"
-            className={`team-detail__nav-item ${activeView === 'members' ? 'team-detail__nav-item--active' : ''}`}
-            onClick={() => setActiveView('members')}
+            className={`team-detail__nav-item ${!onSettings && activeView === 'members' ? 'team-detail__nav-item--active' : ''}`}
+            onClick={() => goView('members')}
           >
             <TeamOutlined />
             团队通讯录
           </button>
-          <Link to={PATHS.teamSettings(teamId)} className="team-detail__nav-item">
+          {/* 团队设置：路由层切换（/teams/:teamId/settings），在详情布局内渲染，不跳转新页面 */}
+          <NavLink
+            to={PATHS.teamSettings(teamId)}
+            className={({ isActive }) =>
+              `team-detail__nav-item${isActive ? ' team-detail__nav-item--active' : ''}`
+            }
+          >
             <SettingOutlined />
             团队设置
-          </Link>
+          </NavLink>
         </nav>
       </aside>
 
       <main className="team-detail__main">
-        <section className="team-detail__hero">
+        {onSettings ? (
+          /* 团队设置：路由层子视图（TeamSettingsPage），复用本页侧栏布局 */
+          <Outlet />
+        ) : (
+          <>
+            <section className="team-detail__hero">
           <div>
             <Link to={PATHS.MY_TEAMS} className="team-detail__back">
               返回我的团队
@@ -241,7 +263,7 @@ export default function TeamDetailPage() {
             <p>从个人中心切换团队或项目，进入项目总群继续协作。</p>
           </div>
           <Space>
-            {isOwner&&(
+            {isOwner && (
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
@@ -297,6 +319,8 @@ export default function TeamDetailPage() {
               ))}
             </div>
           </section>
+        )}
+          </>
         )}
       </main>
 

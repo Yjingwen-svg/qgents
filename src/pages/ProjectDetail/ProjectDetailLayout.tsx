@@ -225,13 +225,17 @@ export default function ProjectDetailLayout() {
 
   const showActivityPanel = onReqChat && mainGroup && groupId === mainGroup.id
 
+  // 群聊视图不做响应式压缩：窗口缩小时主内容列保持最小可读宽度（720px），
+  // 超出部分由外层 Content 的 overflow:auto 出横向滚动条，而不是挤压布局。
+  const mainColumn = onReqChat ? 'minmax(720px, 1fr)' : 'minmax(0, 1fr)'
+
   return (
     <div
       className="pd"
       style={{
         gridTemplateColumns: showActivityPanel
-          ? `${sidebarWidth}px 6px minmax(0, 1fr) 6px ${activityWidth}px`
-          : `${sidebarWidth}px 6px minmax(0, 1fr)`,
+          ? `${sidebarWidth}px 6px ${mainColumn} 6px ${activityWidth}px`
+          : `${sidebarWidth}px 6px ${mainColumn}`,
       }}
     >
       <aside className="pd-nav" aria-label="项目导航">

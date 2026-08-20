@@ -132,11 +132,10 @@ export function AppRouter() {
               <Route path="teams/join" element={<JoinTeamPage />} />
 
               <Route element={<RequireTeam />}>
-                <Route path="teams/:teamId" element={<TeamDetailPage />} />
-                <Route
-                  path="teams/:teamId/settings"
-                  element={<TeamSettingsPage />}
-                />
+                <Route path="teams/:teamId" element={<TeamDetailPage />}>
+                  {/* 团队设置作为团队详情的路由层子视图：点击侧栏切换，不跳转新页面 */}
+                  <Route path="settings" element={<TeamSettingsPage />} />
+                </Route>
                 <Route
                   path="teams/:teamId/activities"
                   element={<TeamActivitiesPage />}

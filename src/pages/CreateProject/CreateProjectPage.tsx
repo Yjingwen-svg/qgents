@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Radio, Select, Switch } from 'antd'
 import { useQuery } from '@tanstack/react-query'
+import { useAuth } from '@/context/AuthContext'
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi, githubApi } from '@/api'
 import { isGithubRepoBindable } from '@/types/github'
@@ -16,6 +17,7 @@ import './CreateProjectPage.css'
 export default function CreateProjectPage() {
   const { teamId = '' } = useParams<{ teamId: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -142,10 +144,13 @@ export default function CreateProjectPage() {
             placeholder="从团队成员中选择，选中即加入项目"
             value={memberIds}
             onChange={setMemberIds}
-            options={teamMembers.map((m) => ({
-              value: m.userId,
-              label: m.displayName || m.userId,
-            }))}
+            // 创建者自动成为项目成员，前端过滤自己避免误选
+            options={teamMembers
+              .filter((m) => m.userId !== user?.id)
+              .map((m) => ({
+                value: m.userId,
+                label: m.displayName || m.userId,
+              }))}
             optionFilterProp="label"
             allowClear
           />

@@ -346,7 +346,7 @@ export interface MergeRequestCqInput {
   reason: string
 }
 
-export type MergeRequestStatus = 'OPEN' | 'MERGED' | 'CLOSED'
+export type MergeRequestStatus = 'OPEN' | 'MERGED' | 'CLOSED' | 'PENDING_CREATE'
 
 export interface MergeRequestListFilters {
   repositoryId?: string
@@ -372,6 +372,15 @@ export interface MergeRequestSummary {
   webUrl?: string | null
   taskId?: string | null
   qualityGate?: { status: string; requiredChecks: string[] }
+  /**
+   * 区分 MR 创建来源：
+   *  - MANUAL：用户从流程图「创建 MR」节点或手动触发创建
+   *  - SYSTEM：后端 MrFirstAutomationService 自动创建（CQ+1 通过后自动）
+   *  - UNKNOWN：后端版本尚未回传该字段，前端不显示来源 Tag（兼容旧响应）
+   *
+   *  后端 MergeRequestSummaryResponse / Entity 后续会同步新增 createMode 字段。
+   */
+  createMode: 'MANUAL' | 'SYSTEM' | 'UNKNOWN'
 }
 
 export type MergeRequestCheckName = 'TESTSET' | 'AI_REVIEW' | 'DRY_RUN' | 'CQ_PLUS_ONE'

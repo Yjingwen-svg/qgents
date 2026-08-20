@@ -66,6 +66,8 @@ export interface PreflightDryRun {
   status: string
   sourceCommit: string | null
   targetCommit: string | null
+  /** Dry Run 完成时间（ISO UTC）；QUEUED/RUNNING 时常为 null */
+  completedAt: string | null
 }
 
 export type PreflightCqPlusOneStatus = 'MISSING' | 'APPROVED' | 'REJECTED'

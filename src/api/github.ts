@@ -14,6 +14,7 @@ import type {
   ProjectBoundRepository,
   RemoteBranch,
   RemoteBranchListFilters,
+  UpdateProjectRepositoryPayload,
   WorkBranch,
   WorkBranchListFilters,
 } from '@/types/github'
@@ -118,17 +119,30 @@ function mapProjectBoundRepository(raw: unknown): ProjectBoundRepository {
 }
 
 /**
- * 远程分支 DTO → 前端类型
+ * 后端 RemoteBranchResponse → 前端 RemoteBranch
+ *
+ * 【真实后端契约（RemoteBranchResponse.java）】
+ *  name: string
+ *  commitSha: string              ← 前端别名 headCommit
+ *  githubDefault: boolean         ← 前端别名 isGithubDefault
+ *  projectDefault: boolean        ← 前端别名 isProjectDefault
+ *  后端首期无 canCreateTaskFrom / canDelete 字段：按语义补默认值
  */
 function mapRemoteBranch(raw: unknown): RemoteBranch {
   const row = isRecord(raw) ? raw : {}
+  // 兼容两种写法：后端原生（commitSha/projectDefault/githubDefault）和文档旧字段名（headCommit/isProjectDefault/isGithubDefault）
+  const commitSha = readString(row, 'commitSha') || readString(row, 'headCommit')
+  const githubDefault = readBool(row, 'githubDefault') || readBool(row, 'isGithubDefault')
+  const projectDefault = readBool(row, 'projectDefault') || readBool(row, 'isProjectDefault')
   return {
     name: readString(row, 'name'),
-    headCommit: readString(row, 'headCommit'),
-    isProjectDefault: readBool(row, 'isProjectDefault'),
-    isGithubDefault: readBool(row, 'isGithubDefault'),
-    canCreateTaskFrom: readBool(row, 'canCreateTaskFrom'),
-    canDelete: readBool(row, 'canDelete'),
+    headCommit: commitSha,
+    isProjectDefault: projectDefault,
+    isGithubDefault: githubDefault,
+    // 只要分支真实存在就可以作为创建任务的基线（首期没有删除/归档保护时，保持 true）
+    canCreateTaskFrom: true,
+    // 首期不开放删除能力（执行计划 阶段 E），保持 false 让组件禁用删除按钮
+    canDelete: false,
   }
 }
 
@@ -298,12 +312,17 @@ export const githubApi = {
 
   /**
    * PATCH /projects/{projectId}/repositories/{projectRepositoryId}
-   * 已冻结见 docs：路径 ID 为绑定记录 id；支持 displayName 和 defaultBranch。
+   * 已冻结见 docs：路径 ID 为绑定记录 id。
+   *
+   * 【后端真实契约】defaultBranch 是 @NotBlank，调用时必须提供；服务端会先去 GitHub
+   * 实时校验该分支存在，再更新绑定记录的 default_branch。displayName 不传就发送
+   * null/undefined（后端 Service 实现会 setDisplayName(null)，所以调用方需要保留
+   * 原值时要一并带上 displayName）。
    */
   updateProjectRepository(
     projectId: string,
     projectRepositoryId: string,
-    payload: { displayName?: string; defaultBranch?: string },
+    payload: UpdateProjectRepositoryPayload,
   ) {
     return request<ApiEnvelope<unknown>>(
       `/projects/${projectId}/repositories/${projectRepositoryId}`,

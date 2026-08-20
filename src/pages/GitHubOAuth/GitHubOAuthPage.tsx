@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { Alert, App, Button, Card, Descriptions, Empty, Space, Spin, Tag, Typography } from 'antd'
 import { GithubOutlined, LinkOutlined, DisconnectOutlined } from '@ant-design/icons'
-import { authApi } from '@/api'
+import { authApi, githubApi } from '@/api'
 import { queryKeys } from '@/query/queryKeys'
 import { formatApiError } from '@/utils/formatApiError'
 import { personalRepositorySetupGuide } from '@/utils/githubRepositoryAccess'
@@ -95,6 +95,32 @@ export function GitHubOAuthPage() {
   function handleBind() {
     if (setupBlocked) return
     startMutation.mutate()
+  }
+
+  // NEED_INSTALLATION 时提供「去安装 GitHub App」跳转：取用户的第一个 Owner 团队生成安装链接
+  const { data: me } = useQuery({
+    queryKey: ['qgents', 'me'],
+    queryFn: () => authApi.me(),
+  })
+  const ownerTeamId = me?.teams.find((t) => t.role === 'TEAM_OWNER')?.id
+  const installMutation = useMutation({
+    mutationFn: (teamId: string) => githubApi.createInstallation(teamId, 'WEB'),
+    onSuccess: (result) => {
+      if (!result.installationUrl) {
+        message.error('后端未返回 GitHub App 安装地址')
+        return
+      }
+      window.location.assign(result.installationUrl)
+    },
+    onError: (error) => message.error(formatApiError(error)),
+  })
+
+  function handleInstallApp() {
+    if (!ownerTeamId) {
+      message.warning('未找到可安装 GitHub App 的团队，请先创建或加入团队')
+      return
+    }
+    installMutation.mutate(ownerTeamId)
   }
 
   function confirmRevoke() {
@@ -189,15 +215,26 @@ export function GitHubOAuthPage() {
                 styles={{ image: { height: 56 } }}
                 description="尚未关联个人 GitHub"
               >
-                <Button
-                  type="primary"
-                  icon={<LinkOutlined />}
-                  loading={startMutation.isPending}
-                  onClick={handleBind}
-                  disabled={setupBlocked}
-                >
-                  关联个人 GitHub
-                </Button>
+                {status?.personalRepositorySetup === 'NEED_INSTALLATION' ? (
+                  <Button
+                    type="primary"
+                    icon={<GithubOutlined />}
+                    loading={installMutation.isPending}
+                    onClick={handleInstallApp}
+                  >
+                    去安装 GitHub App
+                  </Button>
+                ) : (
+                  <Button
+                    type="primary"
+                    icon={<LinkOutlined />}
+                    loading={startMutation.isPending}
+                    onClick={handleBind}
+                    disabled={setupBlocked}
+                  >
+                    关联个人 GitHub
+                  </Button>
+                )}
               </Empty>
             </>
           )}

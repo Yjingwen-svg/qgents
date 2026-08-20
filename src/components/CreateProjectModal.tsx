@@ -110,6 +110,14 @@ export function CreateProjectModal({
   useEffect(() => {
     if (hideAutoCreate && repositoryMode === 'new') setRepositoryMode('existing')
   }, [hideAutoCreate, repositoryMode])
+  // §49.4：NEED_INSTALLATION 时提供「去安装 GitHub App」跳转（当前团队）
+  const installMutation = useMutation({
+    mutationFn: () => githubApi.createInstallation(teamId, 'WEB'),
+    onSuccess: (result) => {
+      if (result.installationUrl) window.location.assign(result.installationUrl)
+    },
+    onError: (err) => setSubmitError(err instanceof Error ? err.message : '获取安装链接失败'),
+  })
 
   const createProject = useMutation({
     mutationFn: (payload: CreateProjectPayload) => projectApi.create(payload),
@@ -284,6 +292,12 @@ export function CreateProjectModal({
                       <>
                         {' '}
                         <TextLink onClick={() => { onClose(); navigate(PATHS.GITHUB_OAUTH) }}>去绑定 GitHub</TextLink>
+                      </>
+                    ) : null}
+                    {githubOAuth?.personalRepositorySetup === 'NEED_INSTALLATION' ? (
+                      <>
+                        {' '}
+                        <TextLink onClick={() => installMutation.mutate()}>去安装 GitHub App</TextLink>
                       </>
                     ) : null}
                   </>

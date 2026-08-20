@@ -10,12 +10,18 @@ import { GitHubOAuthPage } from './GitHubOAuthPage'
 const statusMock = vi.hoisted(() => vi.fn())
 const startMock = vi.hoisted(() => vi.fn())
 const revokeMock = vi.hoisted(() => vi.fn())
+const meMock = vi.hoisted(() => vi.fn())
+const installMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api', () => ({
   authApi: {
     getGithubOAuthStatus: statusMock,
     startGithubOAuth: startMock,
     revokeGithubOAuth: revokeMock,
+    me: meMock,
+  },
+  githubApi: {
+    createInstallation: installMock,
   },
 }))
 
@@ -57,9 +63,13 @@ beforeEach(() => {
   statusMock.mockReset()
   startMock.mockReset()
   revokeMock.mockReset()
+  meMock.mockReset()
+  installMock.mockReset()
   statusMock.mockResolvedValue(unauthorized)
   startMock.mockResolvedValue({ authorizationUrl: 'https://github.com/login/oauth/authorize?state=x', expiresAt: '2026-08-20T15:00:00Z' })
   revokeMock.mockResolvedValue(undefined)
+  meMock.mockResolvedValue({ user: { id: 'u1', email: 'a@b.com', displayName: 'A' }, teams: [], projects: [] })
+  installMock.mockResolvedValue({ installationUrl: 'https://github.com/apps/qgents/installations/new?state=x', expiresAt: '2026-08-21T02:00:00Z' })
 })
 
 describe('GitHubOAuthPage', () => {
@@ -102,16 +112,22 @@ describe('GitHubOAuthPage', () => {
     await waitFor(() => expect(screen.getByTestId('query-string').textContent).toBe(''))
   })
 
-  it('blocks starting OAuth when there is no USER installation', async () => {
+  it('blocks OAuth and offers to install the App when there is no USER installation', async () => {
     const user = userEvent.setup()
     statusMock.mockResolvedValue({ ...unauthorized, personalRepositorySetup: 'NEED_INSTALLATION' })
+    meMock.mockResolvedValue({
+      user: { id: 'u1', email: 'a@b.com', displayName: 'A' },
+      teams: [{ id: 'team-owner', name: 'QGGG', role: 'TEAM_OWNER' }],
+      projects: [],
+    })
     renderPage()
 
-    // 未授权且没有 USER 安装时，展示“先装 App”的提示，且按钮禁用、不跳转 GitHub
+    // 未授权且没有 USER 安装时：不出现绑定按钮，只出现「去安装 GitHub App」
     expect(await screen.findByText(/请先用你的个人 GitHub 账号安装/)).toBeInTheDocument()
-    const bindButton = screen.getByRole('button', { name: /关联个人 GitHub/ })
-    expect(bindButton).toBeDisabled()
-    await user.click(bindButton)
-    expect(startMock).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /关联个人 GitHub/ })).not.toBeInTheDocument()
+
+    const installButton = screen.getByRole('button', { name: /去安装 GitHub App/ })
+    await user.click(installButton)
+    await waitFor(() => expect(installMock).toHaveBeenCalledWith('team-owner', 'WEB'))
   })
 })

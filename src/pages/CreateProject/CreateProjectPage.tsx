@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Radio, Select, Switch } from 'antd'
-import { useQuery } from '@tanstack/react-query'
+import { Button, Radio, Select, Switch } from 'antd'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/context/AuthContext'
 import { PATHS } from '@/routes/paths'
 import { projectApi, teamApi, githubApi } from '@/api'
@@ -82,6 +82,15 @@ export default function CreateProjectPage() {
   useEffect(() => {
     if (hideAutoCreate && repositoryMode === 'new') setRepositoryMode('existing')
   }, [hideAutoCreate, repositoryMode])
+  // §49.4：NEED_INSTALLATION 时提供「去安装 GitHub App」跳转（当前团队）
+  const installMutation = useMutation({
+    mutationFn: () => githubApi.createInstallation(teamId, 'WEB'),
+    onSuccess: (result) => {
+      if (result.installationUrl) window.location.assign(result.installationUrl)
+      else setError('后端未返回 GitHub App 安装地址')
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : '获取安装链接失败'),
+  })
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -227,6 +236,20 @@ export default function CreateProjectPage() {
                       <>
                         {' '}
                         <Link to={PATHS.GITHUB_OAUTH}>去绑定 GitHub</Link>
+                      </>
+                    ) : null}
+                    {githubOAuth?.personalRepositorySetup === 'NEED_INSTALLATION' ? (
+                      <>
+                        {' '}
+                        <Button
+                          type="link"
+                          size="small"
+                          style={{ padding: 0, height: 'auto' }}
+                          loading={installMutation.isPending}
+                          onClick={() => installMutation.mutate()}
+                        >
+                          去安装 GitHub App
+                        </Button>
                       </>
                     ) : null}
                   </>

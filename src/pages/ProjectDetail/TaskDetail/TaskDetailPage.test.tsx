@@ -120,7 +120,7 @@ describe('TaskDetailPage workbench', () => {
     expect(screen.getByTestId('recent-execution-panel')).toBeInTheDocument()
     expect(screen.getByTestId('delivery-panel')).toBeInTheDocument()
     expect(screen.getByTestId('run-inspector-panel')).toBeInTheDocument()
-    expect(screen.getByTestId('code-change-card')).toBeInTheDocument()
+    expect(within(screen.getByTestId('delivery-panel')).getByTestId('workspace-diff-preview-card')).toBeInTheDocument()
     expect(screen.queryByTestId('mission-panel')).not.toBeInTheDocument()
     expect(screen.queryByTestId('requirement-context-row')).not.toBeInTheDocument()
     expect(screen.queryByTestId('output-delivery-row')).not.toBeInTheDocument()
@@ -174,11 +174,45 @@ describe('TaskDetailPage workbench', () => {
     expect(screen.queryByRole('button', { name: '查看完整需求' })).not.toBeInTheDocument()
   })
 
-  it('keeps workspace preview separate from formal Diff counts', () => {
+  it('renders workspace preview in the code-workspace position while the task is running without a formal Diff', () => {
     useWorkspaceDiffPreviewMock.mockReturnValue({ data: { kind: 'available', preview: { projectId: task.projectId, taskId: task.id, taskRunId: run.id, workspaceId: 'workspace-1', revision: 2, baseCommit: 'base-1', workingTreeHash: 'sha256:preview', filesChanged: 2, additions: 8, deletions: 3, patch: 'diff --git a/a.txt b/a.txt', createdAt: run.createdAt } }, isLoading: false, isError: false, refetch: vi.fn() })
     renderPage()
-    expect(screen.getByTestId('workspace-diff-preview-summary')).toHaveTextContent('实时预览：2 个文件 · +8 / -3 · revision 2')
+    const deliveryPanel = screen.getByTestId('delivery-panel')
+    expect(within(deliveryPanel).getByTestId('workspace-diff-preview-summary')).toHaveTextContent('实时预览：2 个文件 · +8 / -3 · revision 2')
+    expect(within(screen.getByTestId('recent-execution-panel')).queryByTestId('workspace-diff-preview-card')).not.toBeInTheDocument()
+    expect(within(deliveryPanel).queryByTestId('code-delivery-card')).not.toBeInTheDocument()
     expect(screen.getByText('产物 0 · Diff 0')).toBeInTheDocument()
+  })
+
+  it('marks added and deleted workspace preview lines with dedicated code-diff styles', async () => {
+    const user = userEvent.setup()
+    useWorkspaceDiffPreviewMock.mockReturnValue({ data: { kind: 'available', preview: { projectId: task.projectId, taskId: task.id, taskRunId: run.id, workspaceId: 'workspace-1', revision: 2, baseCommit: 'base-1', workingTreeHash: 'sha256:preview', filesChanged: 1, additions: 1, deletions: 1, patch: '@@ -1 +1 @@\n-old line\n+new line', createdAt: run.createdAt } }, isLoading: false, isError: false, refetch: vi.fn() })
+    renderPage()
+    await user.click(screen.getByText('查看实时 Diff'))
+    expect(screen.getByTestId('workspace-diff-preview-patch')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-diff-line-workspaceDiffPreviewPatchDeleted')).toHaveTextContent('-old line')
+    expect(screen.getByTestId('workspace-diff-line-workspaceDiffPreviewPatchAdded')).toHaveTextContent('+new line')
+  })
+
+  it('keeps the workspace preview visible after execution failure for diagnosis', () => {
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'FAILED' }, isLoading: false, isError: false, error: null, refetch: vi.fn() })
+    renderPage()
+    expect(within(screen.getByTestId('delivery-panel')).getByTestId('workspace-diff-preview-card')).toBeInTheDocument()
+    expect(screen.queryByTestId('code-delivery-card')).not.toBeInTheDocument()
+  })
+
+  it('shows one task-level action notice and keeps failure details in the selected run', () => {
+    const failedRun = { ...run, status: 'FAILED' as const, statusReason: { code: 'EXECUTION_FAILED' as const, failureCode: 'PATCH_FAILED', title: '执行失败', summary: '补丁无法应用', retryable: true, occurredAt: run.updatedAt } }
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'FAILED', statusReason: { code: 'STARTUP_FAILED', title: '任务启动失败', summary: '不应重复显示', retryable: true }, attention: { kind: 'EXECUTION_FAILED', title: '执行失败', summary: '补丁无法应用', taskRunId: failedRun.id, inputRequestId: null, diffReviewBatchId: null, repositoryId: null } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskDiagnosticsMock.mockReturnValue({ ...idleQuery, data: { taskId: task.id, status: 'FAILED', stage: 'CODING', failure: failedRun.statusReason, latestFailedRun: { taskRunId: failedRun.id, taskStepId: step.id, taskStepTitle: step.title, status: 'FAILED', startedAt: run.startedAt, finishedAt: run.updatedAt } } })
+    useTaskRunMock.mockReturnValue({ ...idleQuery, data: failedRun })
+    useTaskRunDiagnosticsMock.mockReturnValue({ ...idleQuery, data: { taskRunId: failedRun.id, taskId: task.id, status: 'FAILED', stage: 'CODING', failure: failedRun.statusReason, workerExecutions: [] } })
+    renderPage()
+    expect(screen.getByTestId('task-attention-banner')).toBeInTheDocument()
+    expect(screen.queryByText('任务启动失败')).not.toBeInTheDocument()
+    expect(screen.queryByText('任务失败：PATCH_FAILED')).not.toBeInTheDocument()
+    expect(within(screen.getByTestId('run-inspector-panel')).getByText('PATCH_FAILED')).toBeInTheDocument()
+    expect(within(screen.getByTestId('run-inspector-panel')).getByText('执行失败：补丁无法应用')).toBeInTheDocument()
   })
 
   it('keeps delivery confirmation actions in the delivery panel', async () => {
@@ -197,17 +231,19 @@ describe('TaskDetailPage workbench', () => {
     renderPage()
     expect(screen.getByText('执行记录加载失败')).toBeInTheDocument()
     expect(screen.getByTestId('run-inspector-panel')).toBeInTheDocument()
-    expect(screen.getByTestId('code-change-card')).toBeInTheDocument()
+    expect(within(screen.getByTestId('delivery-panel')).getByTestId('workspace-diff-preview-card')).toBeInTheDocument()
   })
 
   it('restores repository-level code change details in the main delivery area', () => {
     const diff: DiffListItem = { id: 'diff-1', projectId: task.projectId, taskId: task.id, taskRunId: run.id, taskStepId: step.id, requirementGroupId: 'group-1', workspaceId: 'workspace-1', repositoryId: 'repo-1', baseCommit: 'base-1', sourceBranch: 'feat/login', headCommit: 'head-1', status: 'PENDING_REVIEW', changeStats: { files: 2, additions: 12, deletions: 3 }, createdAt: run.createdAt }
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'WAITING_DIFF_CONFIRMATION' }, isLoading: false, isError: false, error: null, refetch: vi.fn() })
     useDiffsMock.mockReturnValue({ data: page([diff]), error: null, isError: false, isLoading: false })
     renderPage()
     const card = screen.getByTestId('code-change-card')
+    expect(screen.getByTestId('code-delivery-card')).toContainElement(card)
     expect(within(card).getByText('Web 前端')).toBeInTheDocument()
     expect(within(card).getByText('2 files · +12 / -3')).toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: '查看完整 Diff' })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: '查看 Diff' })).toBeInTheDocument()
   })
 
   it('does not crash when an incomplete real response omits optional display fields', () => {
@@ -235,19 +271,28 @@ describe('TaskDetailPage workbench', () => {
     const failedTask: Task = {
       ...task,
       status: 'FAILED',
-      statusReason: {
-        code: 'STARTUP_FAILED',
-        failureCode: 'GIT_BRANCH_NOT_FOUND',
-        title: '基线分支不存在',
-        summary: '仓库 CloudPlayerBaby/test01 不存在基线分支 develop，请在项目仓库配置中选择真实存在的分支后重试',
-        retryable: true,
-        occurredAt: task.createdAt,
-      },
       repositories: [
-        { repositoryId: 'repo-1', name: 'test01', fullName: 'CloudPlayerBaby/test01', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'develop', baseCommit: null, sourceBranch: '', headCommit: null },
+        { repositoryId: 'repo-1', name: 'test01', fullName: 'CloudPlayerBaby/test01', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'develop', baseCommit: 'string', sourceBranch: '', headCommit: null },
       ],
     }
     useTaskMock.mockReturnValue({ data: failedTask, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskDiagnosticsMock.mockReturnValue({
+      ...idleQuery,
+      data: {
+        taskId: task.id,
+        status: 'FAILED',
+        stage: 'PLANNING',
+        failure: {
+          code: 'STARTUP_FAILED',
+          failureCode: 'GIT_BRANCH_NOT_FOUND',
+          title: '任务执行失败',
+          summary: '仓库 CloudPlayerBaby/test01 不存在基线分支 develop，请在项目仓库配置中选择真实存在的分支后重试',
+          retryable: true,
+          occurredAt: task.createdAt,
+        },
+        latestFailedRun: null,
+      },
+    })
     renderPage()
     expect(screen.getByText('任务无法启动')).toBeInTheDocument()
     expect(screen.getByText('仓库：CloudPlayerBaby/test01')).toBeInTheDocument()

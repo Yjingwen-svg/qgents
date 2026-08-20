@@ -72,6 +72,7 @@ export type {
   DiffMessageContent,
   TaskStatusMessageContent,
   TaskStatusPlanStep,
+  TaskStatusRepositoryMapping,
   SystemMessageContent,
   SendMessagePayload,
   SendMessageResult,

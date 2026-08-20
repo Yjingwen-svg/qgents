@@ -30,6 +30,7 @@ export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
     },
   }
   const completedWithoutCode = useTaskCompletedWithoutCode(task.projectId, task.id)
+  const attentionText = task.attention ? [task.attention.title, task.attention.summary].filter((value): value is string => Boolean(value)).join('：') : null
   return (
     <Card
       className={styles.taskCard}
@@ -74,9 +75,7 @@ export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
           </Tooltip>
         </div>
       </div>
-      <div className={`${styles.taskCardAttention} ${task.attention ? '' : styles.taskCardAttentionPlaceholder}`} title={task.attention ? `${task.attention.title}：${task.attention.summary}` : undefined}>
-        {task.attention ? `${task.attention.title}：${task.attention.summary}` : null}
-      </div>
+      {attentionText ? <Tooltip title={attentionText}><div className={styles.taskCardAttention}>{attentionText}</div></Tooltip> : <div className={`${styles.taskCardAttention} ${styles.taskCardAttentionPlaceholder}`} />}
       <div className={styles.taskCardDates}><Tooltip title={formatExactTime(task.updatedAt)}><Text type="secondary">更新：{formatRelativeTime(task.updatedAt)}</Text></Tooltip></div>
       <div className={styles.taskCardActions}>
         <Button type="link" className={styles.cardDetailsButton} onClick={(event) => { event.stopPropagation(); onViewDetails(task.id) }}>

@@ -144,6 +144,16 @@ export interface TaskStatusPlanStep {
   message?: string | null
 }
 
+/**
+ * TASK_STATUS 当前工作区的仓库映射（接口文档 §39）。
+ * repositoryId 是项目仓库绑定 ID（project_repositories.id），不是 GitHub 数字仓库 ID。
+ * workspacePath 是工作区内一级相对目录，绝不能作为宿主机绝对路径使用。
+ */
+export interface TaskStatusRepositoryMapping {
+  workspacePath: string
+  repositoryId: string
+}
+
 /** TASK_STATUS 任务状态卡片内容（后端富结构：状态 + 阶段 + 交付模式 + 执行计划步骤） */
 export interface TaskStatusMessageContent {
   taskId: string
@@ -156,6 +166,8 @@ export interface TaskStatusMessageContent {
   deliveryMode?: string
   deliveryReason?: string
   currentStepId?: string
+  /** 当前 Task Workspace 已挂载的项目仓库；空数组表示尚未挂载仓库。 */
+  repositoryMappings?: TaskStatusRepositoryMapping[]
   plan?: {
     summary?: string
     steps?: TaskStatusPlanStep[]

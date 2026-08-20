@@ -107,3 +107,31 @@ describe('groupApi.listMessagesIncremental（可靠消息同步 §1）', () => {
     expect(result.page.hasMore).toBe(false)
   })
 })
+
+describe('groupApi.listMessages（TASK_STATUS 仓库映射 §39）', () => {
+  it('preserves repositoryMappings from the structured status-card content', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: [{
+        id: 'message-1',
+        groupId: 'group-1',
+        type: 'TASK_STATUS',
+        senderType: 'AGENT',
+        createdAt: '2026-08-20T08:00:00Z',
+        content: {
+          taskId: 'task-1',
+          status: 'RUNNING',
+          repositoryMappings: [
+            { workspacePath: 'repo-2', repositoryId: 'project-repository-2' },
+          ],
+        },
+      }],
+      page: { nextCursor: null, hasMore: false },
+      requestId: 'request-1',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    const result = await groupApi.listMessages('project-1', 'group-1')
+    expect(result.data[0]?.content).toMatchObject({
+      repositoryMappings: [{ workspacePath: 'repo-2', repositoryId: 'project-repository-2' }],
+    })
+  })
+})

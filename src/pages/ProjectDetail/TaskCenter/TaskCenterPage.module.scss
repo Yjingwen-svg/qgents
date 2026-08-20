@@ -364,7 +364,7 @@
 .taskCardAttention {
   display: -webkit-box;
   margin-top: clamp(8px, 0.3vw + 6px, 12px);
-  height: clamp(44px, 4vw + 20px, 64px);
+  height: 52px;
   box-sizing: border-box;
   overflow: hidden;
   padding: clamp(6px, 0.2vw + 4px, 8px) clamp(8px, 0.2vw + 6px, 10px);
@@ -488,8 +488,8 @@
   }
 
   .taskCardAttention {
-    height: auto;
-    min-height: clamp(36px, 3vw + 14px, 48px);
+    height: 52px;
+    min-height: 0;
   }
 
   .taskCardStats {

@@ -1670,6 +1670,7 @@ function renderContent(
     case 'TASK_STATUS': {
       const c = message.content as TaskStatusMessageContent
       const steps = c.plan?.steps ?? []
+      const repositoryMappings = normalizeTaskStatusRepositoryMappings(c.repositoryMappings)
       const statusKey = c.status?.toUpperCase()
       const diffReady =
         statusKey === 'WAITING_DIFF_CONFIRMATION' ||
@@ -1705,6 +1706,20 @@ function renderContent(
               {c.deliveryMode}
               {c.deliveryReason ? ` · ${c.deliveryReason}` : ''}
             </Text>
+          ) : null}
+          {repositoryMappings.length > 0 ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginTop: 6 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>当前操作仓库：</Text>
+              {repositoryMappings.map((mapping) => (
+                <Tag
+                  key={`${mapping.repositoryId}:${mapping.workspacePath}`}
+                  title={`项目仓库绑定 ID：${mapping.repositoryId}`}
+                  style={{ margin: 0, fontSize: 12 }}
+                >
+                  {mapping.workspacePath}
+                </Tag>
+              ))}
+            </div>
           ) : null}
 
           {/* 执行计划步骤 */}
@@ -1768,6 +1783,23 @@ function renderContent(
       return renderTextWithAtMentions(c.text ?? '')
     }
   }
+}
+
+/**
+ * §39：只接受工作区一级相对目录与项目仓库绑定 ID。
+ * 真实接口已经承诺按 workspacePath 排序；这里仍做非破坏性排序与去重，避免历史消息或异常数据使卡片重复、无序。
+ */
+function normalizeTaskStatusRepositoryMappings(
+  mappings: TaskStatusMessageContent['repositoryMappings'],
+) {
+  if (!Array.isArray(mappings)) return []
+
+  const uniqueMappings = new Map<string, { workspacePath: string; repositoryId: string }>()
+  for (const mapping of mappings) {
+    if (!mapping || !mapping.workspacePath || !mapping.repositoryId) continue
+    uniqueMappings.set(`${mapping.repositoryId}:${mapping.workspacePath}`, mapping)
+  }
+  return [...uniqueMappings.values()].sort((left, right) => left.workspacePath.localeCompare(right.workspacePath))
 }
 
 /**

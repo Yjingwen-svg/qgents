@@ -317,6 +317,10 @@ const MOCK_MESSAGES: Record<string, Message[]> = {
         deliveryReason: '小范围单仓库修改',
         message: '正在执行代码修改',
         currentStepId: 'step-002',
+        repositoryMappings: [
+          { workspacePath: 'auth-service', repositoryId: 'project-repository-auth-service' },
+          { workspacePath: 'web-console', repositoryId: 'project-repository-web-console' },
+        ],
         plan: {
           summary: '修复需求群权限过滤和 Agent 回群校验',
           steps: [

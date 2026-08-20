@@ -654,8 +654,10 @@ export function MergeRequestTab({
         width: 120,
         render: (value: MergeRequestStatus, record, index: number) => {
           if (record.status === 'PENDING_CREATE') {
-            const currentStatus = preflightStatusMap[record.id]
             const cq = cqQueries[index]
+            // 轮询接口返回的是最新事实；本地 map 只作为首次请求/接口暂未返回时的回退。
+            // 否则自动模式拿到 REQUESTED 后会一直停留在“预检中”。
+            const currentStatus = cq?.data?.status ?? preflightStatusMap[record.id]
             const cqApproved = cq?.data?.cqPlusOne?.status === 'APPROVED'
             const eff = deriveEffectiveState(currentStatus, record.createMode, cqApproved)
             return <Tag color={preflightTagColor(eff)}>{preflightTagText(eff)}</Tag>
@@ -724,8 +726,8 @@ export function MergeRequestTab({
         render: (_value, record, index: number) => {
           // ============== PENDING_CREATE：占位 MR，预检流程阶段 ==============
           if (record.status === 'PENDING_CREATE') {
-            const currentStatus = preflightStatusMap[record.id]
             const cq = cqQueries[index]
+            const currentStatus = cq?.data?.status ?? preflightStatusMap[record.id]
             const cqApproved = cq?.data?.cqPlusOne?.status === 'APPROVED'
             const eff = deriveEffectiveState(currentStatus, record.createMode, cqApproved)
             const { text, loading, disabled, failed, clickable } = preflightButtonLabel(eff)

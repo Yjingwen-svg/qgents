@@ -148,11 +148,14 @@
 // ============================================================
 
 .settings-tab {
+  height: 100%;
+
   &__content {
     max-width: 640px;
     display: flex;
     flex-direction: column;
     gap: 20px;
+    height: 100%;
   }
 
   &__field {
@@ -290,9 +293,15 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    flex: 1; // 占满剩余高度，空态虚框可撑满卡片
   }
 
   &__repo-placeholder {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     padding: 40px 0;
     text-align: center;
     color: #b0b8c4;

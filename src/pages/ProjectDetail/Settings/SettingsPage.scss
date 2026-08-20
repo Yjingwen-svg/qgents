@@ -53,14 +53,22 @@
     flex: 1;
     display: flex;
     align-items: flex-start;
-    gap: 32px;
-    padding: 24px 32px 40px;
-    background: #fff;
+    gap: 24px;
+    // 内容收窄居中：卡片化两栏不占满全宽
+    width: 100%;
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 28px 32px 48px;
   }
 
   &__col {
     flex: 1;
     min-width: 0;
+    border: 1px solid #e8ecf1;
+    border-radius: 12px;
+    background: #fff;
+    padding: 20px 24px 28px;
+    box-shadow: 0 1px 3px rgba(16, 35, 77, 0.06);
   }
 
   &__section-title {

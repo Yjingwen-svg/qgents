@@ -52,7 +52,8 @@ const VISIBILITY_META: Record<Skill['visibility'], { color: string; label: strin
 /**
  * 共享 Skill —— 对齐接口文档 v1.3.0 §8
  * 列表 / 状态筛选 / 详情 / 手动创建 / 归档
- * 审核功能（提交审核 / 批准·拒绝）统一在交付中心处理，本页不提供
+ * 普通成员的审核功能（提交审核 / 批准·拒绝）统一在交付中心处理，本页不提供；
+ * Project Admin 创建 PROJECT_SHARED Skill 时由后端直接发布。
  */
 export function SkillPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
@@ -99,7 +100,7 @@ export function SkillPage() {
     <div className="skill-page">
       <header className="skill-page__header">
         <h1 className="skill-page__title">共享 Skill</h1>
-        <p className="skill-page__desc">沉淀可复用能力片段（规范、提示词、操作指引），审核在交付中心统一处理</p>
+        <p className="skill-page__desc">沉淀可复用能力片段（规范、提示词、操作指引）；共享审核在交付中心处理</p>
       </header>
 
       <div className="skill-page__toolbar">
@@ -117,7 +118,7 @@ export function SkillPage() {
         <EmptyState
           icon="🛠️"
           title="暂无共享 Skill"
-          description="新建一条草稿，在交付中心提交审核后即可发布为项目共享能力"
+          description="新建私有 Skill，或创建项目共享 Skill；普通成员的共享 Skill 需在交付中心提交审核"
         />
       ) : (
         <div className="skill-page__list">

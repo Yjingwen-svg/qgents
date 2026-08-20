@@ -9,7 +9,7 @@ export const skillApi = {
   list(projectId: string) {
     return request<Skill[]>(`/projects/${projectId}/skills`)
   },
-  /** 创建草稿 Skill */
+  /** 创建 Skill：PRIVATE 与 Project Admin 自建 PROJECT_SHARED 直接 PUBLISHED，普通成员共享 Skill 返回 DRAFT。 */
   create(projectId: string, payload: CreateSkillPayload) {
     return request<Skill>(`/projects/${projectId}/skills`, {
       method: 'POST',

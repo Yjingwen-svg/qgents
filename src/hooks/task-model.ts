@@ -8,7 +8,7 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query'
 import { diffsApi, mergeRequestsApi, tasksApi, taskRunsApi } from '@/api/taskModel'
-import { deliveryCenterKeys, queryClient, taskModelQueryKeys } from '@/query'
+import { deliveryCenterKeys, queryClient, queryKeys, taskModelQueryKeys } from '@/query'
 import type {
   DiffComment,
   DiffCommentInput,
@@ -443,6 +443,21 @@ export function useMergeRequestChecks(
     queryKey: taskModelQueryKeys.mergeRequests.checks(projectId, mergeRequestId),
     queryFn: () => mergeRequestsApi.checks(projectId, mergeRequestId),
     enabled: Boolean(projectId && mergeRequestId),
+  })
+}
+
+export function useSyncMergeRequest(
+  projectId: string,
+): UseMutationResult<MergeRequestSummary, Error, string> {
+  return useMutation({
+    mutationFn: (mergeRequestId) => mergeRequestsApi.sync(projectId, mergeRequestId),
+    onSuccess: (mr) => {
+      rememberMergeRequest(projectId, mr)
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.checks(projectId, mr.id) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.reviews(projectId, mr.id) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.commits(projectId, mr.id, 3) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.workBranches.all(projectId) })
+    },
   })
 }
 

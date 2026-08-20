@@ -13,12 +13,16 @@ import { ChatPanel } from '@/components/chat/ChatPanel'
 import type { CreateGroupPayload, Group } from '@/types'
 import './ProjectDetailLayout.scss'
 
-/** 群聊置顶（本地偏好）localStorage 键 */
+/** 群聊置顶（本地偏好）localStorage 键，按项目隔离，避免不同项目互相污染。 */
 const PINNED_GROUPS_KEY = 'qgents_pinned_groups'
 
-function readPinnedGroups(): string[] {
+function pinnedGroupsKey(projectId: string): string {
+  return `${PINNED_GROUPS_KEY}:${projectId}`
+}
+
+function readPinnedGroups(projectId: string): string[] {
   try {
-    const raw = localStorage.getItem(PINNED_GROUPS_KEY)
+    const raw = localStorage.getItem(pinnedGroupsKey(projectId))
     const parsed: unknown = raw ? JSON.parse(raw) : []
     return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []
   } catch {
@@ -50,7 +54,7 @@ export default function ProjectDetailLayout() {
   const [createOpen, setCreateOpen] = useState(false)
   const [groupSearch, setGroupSearch] = useState('')
   // 群聊置顶（前端 localStorage 兜底，后端本轮不返回 isPinned，见接口文档 §置顶不在本轮范围）
-  const [pinnedIds, setPinnedIds] = useState<string[]>(readPinnedGroups)
+  const [pinnedIds, setPinnedIds] = useState<string[]>(() => readPinnedGroups(projectId))
   const [form] = Form.useForm<CreateGroupPayload>()
 
   // 左侧导航栏宽度（可拖拽调整）
@@ -178,20 +182,25 @@ export default function ProjectDetailLayout() {
   // 后端群列表返回 pinned（当前用户置顶偏好）时，以后端为准覆盖本地（跨设备同步）；
   // 后端未实现/未返回该字段时保持 localStorage 兜底（§群聊置顶后端接口需求）。
   useEffect(() => {
-    const backendPinned = groups.filter((g) => typeof g.pinned === 'boolean').map((g) => g.id)
-    if (backendPinned.length === 0) return
+    const hasBackendPinnedField = groups.some(
+      (g) => typeof g.pinned === 'boolean' || typeof g.isPinned === 'boolean',
+    )
+    if (!hasBackendPinnedField) return
+    const backendPinned = groups
+      .filter((g) => g.pinned === true || g.isPinned === true)
+      .map((g) => g.id)
     setPinnedIds((prev) => {
       if (prev.length === backendPinned.length && prev.every((id) => backendPinned.includes(id))) {
         return prev
       }
       try {
-        localStorage.setItem(PINNED_GROUPS_KEY, JSON.stringify(backendPinned))
+        localStorage.setItem(pinnedGroupsKey(projectId), JSON.stringify(backendPinned))
       } catch {
         // localStorage 不可用时仅本次会话生效
       }
       return backendPinned
     })
-  }, [groups])
+  }, [groups, projectId])
 
   /** 置顶/取消置顶需求群：乐观更新本地 + 后端持久化（失败回滚，localStorage 兜底） */
   function togglePin(groupId: string) {
@@ -199,7 +208,7 @@ export default function ProjectDetailLayout() {
     setPinnedIds((current) => {
       const next = current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId]
       try {
-        localStorage.setItem(PINNED_GROUPS_KEY, JSON.stringify(next))
+        localStorage.setItem(pinnedGroupsKey(projectId), JSON.stringify(next))
       } catch {
         // localStorage 不可用时仅本次会话生效
       }
@@ -210,7 +219,7 @@ export default function ProjectDetailLayout() {
       // 接口未实现/失败：回滚本地，仍以 localStorage 兜底展示
       setPinnedIds(prev)
       try {
-        localStorage.setItem(PINNED_GROUPS_KEY, JSON.stringify(prev))
+        localStorage.setItem(pinnedGroupsKey(projectId), JSON.stringify(prev))
       } catch {
         // ignore
       }

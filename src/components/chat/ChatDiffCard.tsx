@@ -353,6 +353,11 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
                     alignItems: 'center',
                     gap: 10,
                     flexWrap: 'wrap',
+                    // 固定顶部：文件路径与「确认交付/查看详情」按钮不随 diff 内容滚动
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 1,
+                    background: '#fff',
                   }}
                 >
                   <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

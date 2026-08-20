@@ -33,10 +33,10 @@ export type InputRequestKind = 'INPUT' | 'APPROVAL'
 export type InputRequestStatus = 'PENDING' | 'ANSWERED' | 'APPROVED' | 'REJECTED'
 export type SandboxStatus = 'CREATING' | 'READY' | 'RUNNING' | 'STOPPED' | 'EXPIRED' | 'FAILED'
 
-export type DiffStatus = 'PENDING_REVIEW' | 'ACCEPTED' | 'REJECTED'
+export type DiffStatus = 'PENDING_REVIEW' | 'ACCEPTED' | 'REJECTED' | 'SUPERSEDED'
 
 export type TaskArtifactType = 'PLAN' | 'CODING' | 'TESTING' | 'REVIEWING'
-export type DiffReviewStatus = 'PENDING_CONFIRMATION' | 'ACCEPTED' | 'REJECTED'
+export type DiffReviewStatus = 'PENDING_CONFIRMATION' | 'ACCEPTED' | 'REJECTED' | 'SUPERSEDED'
 export type DiffReviewDeliveryStatus = 'NOT_STARTED' | 'DELIVERING' | 'DELIVERED' | 'PARTIALLY_DELIVERED' | 'FAILED'
 export type TaskDeliveryMode = 'DIFF_FIRST' | 'MR_FIRST'
 export type DiffReviewConfirmationSource = 'USER' | 'SYSTEM'
@@ -259,23 +259,37 @@ export interface WorkspaceDiffPreview {
   workspaceId: string
   revision: number
   baseCommit: string | null
-  workingTreeHash: string
+  workingTreeHash: string | null
   filesChanged: number
   additions: number
   deletions: number
-  patch: string
+  patch: string | null
   createdAt: string
 }
 
 /** GET .../workspace-diff-preview/files 的 Workspace 相对路径摘要。 */
 export interface WorkspaceDiffPreviewFile {
-  repositoryId: string
-  repositoryPath: string
+  /** 后端可选扩展字段；v2.0.22 文件接口不保证返回。 */
+  repositoryId: string | null
+  /** Workspace 内一级相对目录；单仓库或无分隔时可以为空。 */
+  repositoryPath: string | null
   path: string
   changeType: WorkspaceDiffPreviewChangeType
   additions: number
   deletions: number
   binary: boolean
+}
+
+/** §48：指定 Preview revision 的单文件 patch；不属于正式 Diff。 */
+export interface WorkspaceDiffPreviewFilePatch {
+  revision: number
+  repositoryId: string
+  path: string
+  changeType: WorkspaceDiffPreviewChangeType
+  additions: number
+  deletions: number
+  binary: boolean
+  patch: string | null
 }
 
 export type WorkspaceDiffPreviewStatus =

@@ -23,11 +23,11 @@ function formatDate(value: string): string {
 }
 
 function statusLabel(status: DiffStatus): string {
-  return status === 'PENDING_REVIEW' ? '待验收' : status === 'ACCEPTED' ? '已验收' : '已拒绝'
+  return status === 'PENDING_REVIEW' ? '待验收' : status === 'ACCEPTED' ? '已验收' : status === 'REJECTED' ? '已拒绝' : '已被后续修改取代'
 }
 
 function statusColor(status: DiffStatus): string {
-  return status === 'PENDING_REVIEW' ? 'gold' : status === 'ACCEPTED' ? 'green' : 'red'
+  return status === 'PENDING_REVIEW' ? 'gold' : status === 'ACCEPTED' ? 'green' : status === 'REJECTED' ? 'red' : 'default'
 }
 
 export default function DiffCenterPage() {
@@ -161,6 +161,7 @@ function DiffAcceptance({ diff, projectId, onRefresh }: { diff: DiffDetail; proj
   const reject = useRejectDiff(projectId)
   const [reason, setReason] = useState('')
   const pending = accept.isPending || reject.isPending
+  if (diff.status === 'SUPERSEDED') return <Alert type="info" showIcon message="已被后续修改取代" description="同一工作区已有更新的 Diff；当前 Diff 不可验收或拒绝。" />
   if (diff.status !== 'PENDING_REVIEW') return <Text type="secondary">该 Diff 已处理，只读。</Text>
   return <Form layout="vertical" onFinish={() => { if (reason.trim()) reject.mutate({ diffId: diff.id, input: { reason: reason.trim() } }, { onError: (error) => { if (error instanceof ApiError && error.status === 409) onRefresh() } }) }}>
     <Form.Item label="拒绝原因" required><Input.TextArea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="请输入拒绝原因" disabled={pending} /></Form.Item>
@@ -180,7 +181,7 @@ function errorTitle(error: Error | null, resource: string): string {
 }
 
 function mutationError(error: Error | null): string {
-  if (error instanceof ApiError) return error.status === 409 ? 'Diff 状态已变化，请刷新后重试' : error.status === 422 ? '请求参数不合法' : error.status === 403 ? '暂无权限执行该操作' : error.status === 404 ? 'Diff 不存在或不可见' : '操作失败'
+  if (error instanceof ApiError) return errorCode(error) === 'DIFF_REVIEW_SUPERSEDED' ? '该 Diff 已被后续修改取代，已刷新最新状态' : error.status === 409 ? 'Diff 状态已变化，请刷新后重试' : error.status === 422 ? '请求参数不合法' : error.status === 403 ? '暂无权限执行该操作' : error.status === 404 ? 'Diff 不存在或不可见' : '操作失败'
   return '操作失败，请稍后重试'
 }
 

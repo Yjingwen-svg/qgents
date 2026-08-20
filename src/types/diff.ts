@@ -7,7 +7,7 @@ import type { DiffFile, DiffFileStatus } from './task-model'
 
 export type { DiffFile, DiffFileStatus, DiffHunk, DiffLine, DiffLineKind } from './task-model'
 
-export type DiffReviewStatus = 'PENDING_REVIEW' | 'ACCEPTED' | 'REJECTED'
+export type DiffReviewStatus = 'PENDING_REVIEW' | 'ACCEPTED' | 'REJECTED' | 'SUPERSEDED'
 
 export type DiffCommentSide = 'LEFT' | 'RIGHT'
 
@@ -56,6 +56,8 @@ export function diffStatusLabel(status: DiffReviewStatus): string {
       return '已接受'
     case 'REJECTED':
       return '已拒绝'
+    case 'SUPERSEDED':
+      return '已被后续修改取代'
   }
 }
 

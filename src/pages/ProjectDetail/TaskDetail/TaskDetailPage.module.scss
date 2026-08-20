@@ -1114,17 +1114,35 @@
 
 .reviewActions {
   display: grid;
-  gap: clamp(2px, 0.1vw + 2px, 100%);
-  margin-top: auto;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e7edf3;
+  border-radius: 7px;
+  background: #fafcff;
 }
 
-.reviewActions form {
+.reviewActionBar,
+.rejectDeliveryActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reviewActionBar :global(.ant-btn-primary) {
+  min-width: 104px;
+}
+
+.rejectDeliveryActions { justify-content: flex-end; }
+
+.rejectDeliveryForm {
   display: grid;
-  gap: clamp(1px, 0.05vw + 1px, 100%);
+  gap: 7px;
+  padding-top: 8px;
+  border-top: 1px solid #e7edf3;
 }
 
-.reviewActions :global(.ant-form-item) {
-  margin-bottom: clamp(1px, 0.05vw + 1px, 100%);
+.rejectDeliveryForm :global(.ant-form-item) {
+  margin-bottom: 0;
 }
 
 .compactEmpty,
@@ -1209,8 +1227,9 @@
 }
 
 .workspaceDiffPreviewPatch {
-  max-height: 280px;
-  margin: 8px 0 0;
+  height: 100%;
+  max-height: 360px;
+  margin: 0;
   overflow: auto;
   border: 1px solid #e7edf3;
   border-radius: 6px;
@@ -1232,6 +1251,103 @@
 .workspaceDiffPreviewPatchDeleted { background: #ffebe9; color: #a40e26; }
 .workspaceDiffPreviewPatchMeta { background: #ddf4ff; color: #0969da; }
 .workspaceDiffPreviewPatchContext { background: transparent; }
+
+.workspaceDiffPreviewViewer {
+  display: grid;
+  grid-template-columns: minmax(210px, 26%) minmax(0, 1fr);
+  min-height: 300px;
+  overflow: hidden;
+  border: 1px solid #e7edf3;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.recentExecutionPanel > .inlineState {
+  padding: 8px 10px;
+  border-left: 2px solid #1677ff;
+  border-radius: 5px;
+  background: #f0f7ff;
+}
+
+.workspaceDiffPreviewFiles {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  max-height: 360px;
+  padding: 9px;
+  overflow: auto;
+  border-right: 1px solid #e7edf3;
+  background: #fafcff;
+}
+
+.workspaceDiffPreviewFilesHeading { font-size: 12px; color: #61758d; }
+.workspaceDiffPreviewFilesHeading :global(.anticon) { margin-right: 5px; color: #d48806; }
+
+.workspaceDiffPreviewRepo {
+  display: grid;
+  gap: 3px;
+}
+
+.workspaceDiffPreviewRepoHeading { display: flex; justify-content: space-between; gap: 8px; min-width: 0; padding: 2px 3px; }
+.workspaceDiffPreviewRepoName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+
+.workspaceDiffPreviewFileList {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workspaceDiffPreviewFileItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspaceDiffPreviewFileItem:hover:not(:disabled),
+.workspaceDiffPreviewFileItemSelected {
+  border-color: #1677ff;
+  background: #f0f7ff;
+}
+
+.workspaceDiffPreviewFileItem:disabled { cursor: not-allowed; opacity: .58; }
+.workspaceDiffPreviewPath { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspaceDiffPreviewStats { display: none; white-space: nowrap; }
+.workspaceDiffPreviewEmptySelection {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+  border: 1px dashed #d8e1eb;
+  border-radius: 5px;
+  background: #fafcff;
+}
+
+.workspaceDiffPreviewEmptySelection :global(.ant-empty) { margin: 0; }
+
+.workspaceDiffPreviewContent {
+  min-width: 0;
+  min-height: 0;
+  max-height: 360px;
+  padding: 9px;
+  overflow: auto;
+  background: #fff;
+}
+
+.workspaceDiffPreviewContent :global(.ant-alert) { margin: 0; }
+
+.workspaceDiffPreviewAlert {
+  margin-top: 5px;
+}
 
 .previewLoadingState,
 .deliveryGenerationPlaceholder :global(.ant-card-body) {
@@ -1356,8 +1472,33 @@
 .headerIdentity { display: grid; min-width: 0; gap: 2px; }
 .taskCode { font-size: clamp(11px, 0.12vw + 9px, 100%); font-weight: 700; }
 .taskTitle { font-size: clamp(18px, 0.45vw + 14px, 100%) !important; }
-.headerMeta { display: flex; min-width: 0; flex-wrap: wrap; gap: 0 clamp(12px, 0.8vw + 6px, 100%); padding: clamp(5px, 0.2vw + 3px, 100%) 0 0; }
-.headerMetaItem { display: flex; min-width: max-content; max-width: min(42%, 340px); align-items: baseline; gap: 4px; }
+.headerMeta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: clamp(2px, 0.3vw, 5px) clamp(7px, 0.65vw + 3px, 16px);
+  padding: clamp(4px, 0.2vw + 2px, 7px) 0 0;
+}
+
+.headerMetaItem {
+  display: flex;
+  min-width: 0;
+  max-width: min(46%, clamp(150px, 31vw, 340px));
+  align-items: baseline;
+  gap: clamp(3px, 0.2vw, 5px);
+  padding: clamp(1px, 0.1vw, 2px) 0;
+}
+
+.headerMetaItem :global(.ant-typography) {
+  min-width: 0;
+  font-size: clamp(11px, 0.3vw + 8px, 13px);
+  line-height: clamp(16px, 0.45vw + 11px, 19px);
+}
+
+.headerMetaItem > :global(.ant-typography:first-child) {
+  flex: 0 0 auto;
+  font-size: clamp(10px, 0.25vw + 7px, 12px);
+}
 
 .attentionBanner { padding: clamp(6px, 0.25vw + 4px, 100%) 0 0; }
 .attentionCard { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #f4d58b; border-radius: 8px; background: #fffbeb; }
@@ -1422,6 +1563,14 @@
 }
 
 .recentExecutionPanel .panelHeading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-bottom: 8px;
+  background: #fff;
+}
+
+.deliveryPanel .panelHeading {
   position: sticky;
   top: 0;
   z-index: 1;

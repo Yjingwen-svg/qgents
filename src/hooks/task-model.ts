@@ -280,9 +280,17 @@ export function useRetryTaskRunModel(projectId: string): UseMutationResult<TaskR
     onSuccess: (taskRun, originalTaskRunId) => {
       queryClient.setQueryData(taskModelQueryKeys.taskRuns.detail(projectId, taskRun.id), taskRun)
       void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.detail(projectId, originalTaskRunId) })
-      // 刷新运行列表，使新 retry run 显示在「最近执行」中
-      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.list(projectId, taskRun.taskId) })
+      // retry 是一次新的受控执行。接口返回新 TaskRun 后，后端会异步重新调度步骤、产物和 Preview；
+      // 因此必须刷新同一 Task 的全部读取模型，不能只刷新旧运行和运行列表。
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.all(projectId) })
       void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.detail(projectId, taskRun.taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskSteps.all(projectId, taskRun.taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.all(projectId, taskRun.taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskArtifacts.all(projectId, taskRun.taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.diffs.all(projectId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskDiffReview.detail(projectId, taskRun.taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.workspaceDiffPreview.all(projectId, taskRun.taskId) })
+      void queryClient.invalidateQueries({ queryKey: deliveryCenterKeys.all(projectId) })
     },
   })
 }

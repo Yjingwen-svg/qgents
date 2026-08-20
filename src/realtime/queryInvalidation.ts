@@ -143,11 +143,16 @@ export function queryKeysForProjectTaskEvent(
     case 'task.awaiting-diff-confirmation':
     case 'diff-review.confirmed':
     case 'diff-review.rejected':
+    case 'diff-review.superseded':
     case 'task.diff-review.failed':
       if (!taskId) return []
       addKey(keys, taskModelQueryKeys.tasks.all(projectId))
       addKey(keys, taskModelQueryKeys.taskDiffReview.detail(projectId, taskId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      if (event.type === 'diff-review.superseded') {
+        addKey(keys, taskModelQueryKeys.diffs.all(projectId))
+        addKey(keys, queryKeys.workBranches.all(projectId))
+      }
       addDeliveryQueries()
       break
     case 'diff-review.skipped':

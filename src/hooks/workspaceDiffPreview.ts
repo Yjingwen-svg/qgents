@@ -2,10 +2,12 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { taskModelQueryKeys } from '@/query'
 import {
   fetchWorkspaceDiffPreview,
+  fetchWorkspaceDiffPreviewFilePatch,
   fetchWorkspaceDiffPreviewFiles,
 } from '@/api/workspaceDiffPreview'
 import type {
   WorkspaceDiffPreviewFile,
+  WorkspaceDiffPreviewFilePatch,
   WorkspaceDiffPreviewStatus,
 } from '@/types/task-model'
 
@@ -23,6 +25,21 @@ export function useWorkspaceDiffPreview(
     queryFn: () => fetchWorkspaceDiffPreview(projectId, taskId, options.revision),
     enabled: Boolean(projectId && taskId) && (options.enabled ?? true),
     // Preview 是连续流式数据；避免短时间内重复请求，但也不要 stale 时间过长错过实时刷新。
+    staleTime: 5_000,
+    refetchOnWindowFocus: false,
+  })
+}
+
+/** §48：由用户选择的单个 Preview 文件 patch。不同 revision / 文件使用独立 Query Key，旧响应不会覆盖当前选择。 */
+export function useWorkspaceDiffPreviewFilePatch(
+  projectId: string,
+  taskId: string,
+  input: { repositoryId: string; path: string; revision?: number; enabled?: boolean },
+): UseQueryResult<WorkspaceDiffPreviewFilePatch> {
+  return useQuery({
+    queryKey: taskModelQueryKeys.workspaceDiffPreview.file(projectId, taskId, input.repositoryId, input.path, input.revision),
+    queryFn: () => fetchWorkspaceDiffPreviewFilePatch(projectId, taskId, input),
+    enabled: Boolean(projectId && taskId && input.repositoryId && input.path) && (input.enabled ?? true),
     staleTime: 5_000,
     refetchOnWindowFocus: false,
   })

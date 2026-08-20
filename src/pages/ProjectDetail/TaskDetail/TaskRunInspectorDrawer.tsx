@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Alert, Button, Card, Input, Spin, Tag, Tooltip, Typography } from 'antd'
 import { CheckCircleOutlined, ClockCircleOutlined, CodeOutlined, FileTextOutlined } from '@ant-design/icons'
 import { ApiError } from '@/api'
@@ -14,9 +14,14 @@ interface Props {
   taskId: string
   taskRunId: string | null
   onRunChange: (taskRunId: string) => void
+  onRetryRequested?: (taskRunId: string) => void
+  onRetryStarted?: (taskRunId: string) => void
+  onRetryRequestError?: () => void
+  focusRequest?: number
 }
 
-export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, onRunChange }: Props) {
+export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, onRunChange, onRetryRequested, onRetryStarted, onRetryRequestError, focusRequest = 0 }: Props) {
+  const panelRef = useRef<HTMLElement>(null)
   const runQuery = useTaskRun(projectId, taskRunId ?? '')
   const logsQuery = useInfiniteTaskRunLogs(projectId, taskRunId ?? '', { limit: 100 })
   const diagnosticsQuery = useTaskRunDiagnostics(projectId, taskRunId ?? '')
@@ -25,18 +30,34 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, onRu
   const retry = useRetryTaskRunModel(projectId)
   const cancel = useCancelTaskRunModel(projectId)
   const run = runQuery.data
-  const pending = retry.isPending || cancel.isPending
+  const [retrySubmitted, setRetrySubmitted] = useState(false)
+  const pending = retry.isPending || cancel.isPending || retrySubmitted
+
+  useEffect(() => {
+    if (focusRequest === 0 || !taskRunId) return
+    const panel = panelRef.current
+    if (panel && typeof panel.scrollTo === 'function') {
+      panel.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+    void runQuery.refetch()
+  }, [focusRequest, runQuery.refetch, taskRunId])
 
   function retryRun() {
-    if (!run || !window.confirm('确认重试此执行记录？原运行将保留。')) return
+    if (!run) return
+    // 先展示“请求已提交”，再等待服务端创建新的 TaskRun；不伪造新运行记录或执行状态。
+    setRetrySubmitted(true)
+    onRetryRequested?.(run.id)
     retry.mutate(run.id, {
       onSuccess: (next) => {
-        // 乐观切换到新 run，新数据已通过 setQueryData 写入缓存
+        // 新 run 是服务端已受理后返回的实体；立即切换右栏，并通知主区进入等待编排的过渡态。
         onRunChange(next.id)
+        onRetryStarted?.(next.id)
       },
       onError: (error) => {
+        onRetryRequestError?.()
         if (error instanceof ApiError && error.status === 409) void runQuery.refetch()
       },
+      onSettled: () => setRetrySubmitted(false),
     })
   }
 
@@ -47,7 +68,7 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, onRu
 
   const canRetry = run ? ['FAILED', 'CANCELLED', 'BLOCKED'].includes(run.status) : false
   const canCancel = run ? ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED', 'CANCELLING'].includes(run.status) : false
-  return <section className={styles.runInspectorPanel} data-testid="run-inspector-panel"><div className={styles.runInspectorPanelHeading}><div><Title level={4}>本次执行</Title></div><div>{canRetry ? <Button size="small" onClick={retryRun} loading={retry.isPending} disabled={pending}>重试</Button> : null}{canCancel ? <Button size="small" danger onClick={cancelRun} loading={cancel.isPending} disabled={pending}>取消</Button> : null}</div></div>{!taskRunId ? <InspectorState text="选择一条执行记录查看详情" /> : runQuery.isLoading ? <InspectorState loading /> : runQuery.isError ? <InspectorError error={runQuery.error} resource="执行详情" /> : !run || run.taskId !== taskId ? <InspectorState text="执行记录不存在或不属于当前任务" /> : <RunInspectorContent run={run} task={task} logsQuery={logsQuery} diagnosticsQuery={diagnosticsQuery} contextQuery={contextQuery} requestsQuery={requestsQuery} projectId={projectId} />}<AcceptanceOverview task={task} /></section>
+  return <section ref={panelRef} className={styles.runInspectorPanel} data-testid="run-inspector-panel"><div className={styles.runInspectorPanelHeading}><div><Title level={4}>本次执行</Title></div><div>{canRetry ? <Button size="small" onClick={retryRun} loading={retrySubmitted || retry.isPending} disabled={pending}>重试</Button> : null}{canCancel ? <Button size="small" danger onClick={cancelRun} loading={cancel.isPending} disabled={pending}>取消</Button> : null}</div></div>{retrySubmitted ? <Alert type="info" showIcon message="重试请求已提交，正在创建新的执行记录" /> : null}{!taskRunId ? <InspectorState text="选择一条执行记录查看详情" /> : runQuery.isLoading ? <InspectorState loading /> : runQuery.isError ? <InspectorError error={runQuery.error} resource="执行详情" /> : !run || run.taskId !== taskId ? <InspectorState text="执行记录不存在或不属于当前任务" /> : <RunInspectorContent run={run} task={task} logsQuery={logsQuery} diagnosticsQuery={diagnosticsQuery} contextQuery={contextQuery} requestsQuery={requestsQuery} projectId={projectId} />}<AcceptanceOverview task={task} /></section>
 }
 
 function RunInspectorContent({ run, task, logsQuery, diagnosticsQuery, contextQuery, requestsQuery, projectId }: { run: TaskRunDetail; task: Task; logsQuery: ReturnType<typeof useInfiniteTaskRunLogs>; diagnosticsQuery: ReturnType<typeof useTaskRunDiagnostics>; contextQuery: ReturnType<typeof useTaskRunExecutionContext>; requestsQuery: ReturnType<typeof useTaskRunInputRequests>; projectId: string }) {

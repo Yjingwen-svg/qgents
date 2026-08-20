@@ -83,11 +83,14 @@ describe('project SSE Task model query invalidation mapping', () => {
   })
 
   it('maps Diff review and delivery events to Task and batch queries', () => {
-    for (const type of ['diff-review.created', 'task.awaiting-diff-confirmation', 'diff-review.confirmed', 'diff-review.rejected', 'delivery.started', 'delivery.completed', 'delivery.failed', 'task.diff-review.failed'] as const) {
+    for (const type of ['diff-review.created', 'task.awaiting-diff-confirmation', 'diff-review.confirmed', 'diff-review.rejected', 'diff-review.superseded', 'delivery.started', 'delivery.completed', 'delivery.failed', 'task.diff-review.failed'] as const) {
       const keys = keysFor(type, { taskId: 'task-1', reviewBatchId: 'batch-1', deliveryStatus: 'FAILED', reason: 'failed' })
       expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks']))
       expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-diff-review', 'task-1']))
     }
+    const supersededKeys = keysFor('diff-review.superseded', { workspaceId: 'workspace-1', taskId: 'task-1', reviewBatchId: 'batch-1', reviewStatus: 'SUPERSEDED' })
+    expect(supersededKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'diffs']))
+    expect(supersededKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'work-branches']))
     const repositoryKeys = keysFor('delivery.repository.updated', { taskId: 'task-1', diffId: 'diff-1', deliveryStatus: 'DELIVERED' })
     expect(repositoryKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks']))
     expect(repositoryKeys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'diffs', 'diff-1']))

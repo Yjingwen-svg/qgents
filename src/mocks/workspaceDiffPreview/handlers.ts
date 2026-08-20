@@ -97,4 +97,27 @@ export const workspaceDiffPreviewHandlers: HttpHandler[] = [
     const preview = buildPreview(projectId, taskId)
     return response(preview.files, 'workspace-diff-preview-files-mock')
   }),
+
+  http.get('*/api/projects/:projectId/tasks/:taskId/workspace-diff-preview/file', ({ params, request }) => {
+    const projectId = pathParam(params.projectId)
+    const taskId = pathParam(params.taskId)
+    const query = new URL(request.url).searchParams
+    const repositoryId = query.get('repositoryId') ?? ''
+    const path = query.get('path') ?? ''
+    if (!repositoryId || !path || path.includes('..')) return errorResponse(400, 'INVALID_REQUEST', 'repositoryId and path are required')
+    if (taskId.endsWith('-pending') || taskId.endsWith('-worker-down')) return errorResponse(404, 'WORKSPACE_DIFF_PREVIEW_NOT_FOUND', 'Preview has not been generated yet')
+    const preview = buildPreview(projectId, taskId)
+    const file = preview.files.find((candidate) => candidate.repositoryId === repositoryId && candidate.path === path)
+    if (!file) return errorResponse(404, 'WORKSPACE_DIFF_PREVIEW_NOT_FOUND', 'Preview file was not found')
+    return response({
+      revision: preview.revision,
+      repositoryId: file.repositoryId,
+      path: file.path,
+      changeType: file.changeType,
+      additions: file.additions,
+      deletions: file.deletions,
+      binary: file.binary,
+      patch: file.binary ? null : `@@ -1,1 +1,${Math.max(file.additions, 1)} @@\n-${file.path}\n+${file.path}\n`,
+    }, 'workspace-diff-preview-file-mock')
+  }),
 ]

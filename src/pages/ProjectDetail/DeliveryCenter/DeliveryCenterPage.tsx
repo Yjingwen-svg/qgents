@@ -100,9 +100,15 @@ function errorText(error: unknown): string {
   if (!(error instanceof ApiError)) return '操作失败，请稍后重试'
   if (error.status === 403) return '无权限执行此操作'
   if (error.status === 404) return '关联资源不存在或不可见'
-  if (error.status === 409) return '资源状态已变化，已刷新最新数据'
+  if (error.status === 409) return apiErrorCode(error) === 'DIFF_REVIEW_SUPERSEDED' ? '该 Diff 已被后续修改取代，已刷新最新数据' : '资源状态已变化，已刷新最新数据'
   if (error.status === 422) return '参数无效或当前状态不可操作'
   return error.message || '操作失败，请稍后重试'
+}
+
+function apiErrorCode(error: ApiError): string | null {
+  if (!error.body || typeof error.body !== 'object' || !('error' in error.body)) return null
+  const bodyError = (error.body as { error?: { code?: unknown } }).error
+  return typeof bodyError?.code === 'string' ? bodyError.code : null
 }
 
 export default function DeliveryCenterPage() {
@@ -175,6 +181,8 @@ export default function DeliveryCenterPage() {
     keyword: filters.keyword,
   })
   const actionMutation = useDeliveryActionMutation()
+  const [activeAction, setActiveAction] = useState<DeliveryAction | null>(null)
+  const [refreshDeliveryUntil, setRefreshDeliveryUntil] = useState<number | null>(null)
 
   const { data: groups = [] } = useQuery({
     queryKey: ['groups', projectId],
@@ -237,10 +245,14 @@ export default function DeliveryCenterPage() {
       return
     }
     setActiveItemId(item.id)
+    setActiveAction(action)
     setActionErrors((current) => ({ ...current, [item.id]: '' }))
     try {
       await actionMutation.mutateAsync({ projectId, teamId, item, action, reason: reason?.trim() })
       setActiveItemId(null)
+      setActiveAction(null)
+      // 后端可能先受理、再异步更新资源摘要；限时轮询避免 SSE 延迟时页面停在旧状态。
+      setRefreshDeliveryUntil(Date.now() + 15_000)
       // 操作成功提示（申请交付等），避免用户误以为无响应后重复提交
       message.success(ACTION_SUCCESS_TEXT[action] ?? '操作成功')
       if (rejectTarget?.id === item.id) {
@@ -250,8 +262,25 @@ export default function DeliveryCenterPage() {
     } catch (error) {
       setActionErrors((current) => ({ ...current, [item.id]: errorText(error) }))
       setActiveItemId(null)
+      setActiveAction(null)
     }
   }
+
+  useEffect(() => {
+    if (!refreshDeliveryUntil) return
+    const refresh = () => {
+      void itemQuery.refetch()
+      void summaryQuery.refetch()
+    }
+    refresh()
+    const remaining = Math.max(refreshDeliveryUntil - Date.now(), 0)
+    const interval = window.setInterval(refresh, 3_000)
+    const timeout = window.setTimeout(() => setRefreshDeliveryUntil(null), remaining)
+    return () => {
+      window.clearInterval(interval)
+      window.clearTimeout(timeout)
+    }
+  }, [itemQuery.refetch, refreshDeliveryUntil, summaryQuery.refetch])
 
   function openReject(item: DeliveryItem) {
     setActionErrors((current) => ({ ...current, [item.id]: '' }))
@@ -361,7 +390,7 @@ export default function DeliveryCenterPage() {
                         <span className={styles.groupHeaderMain}><DownOutlined className={collapsed ? styles.chevronCollapsed : styles.chevron} /> <strong>{group.name}</strong><Text type="secondary">最近更新 {formatDate(group.latestAt)}</Text></span>
                         <span className={styles.groupCount}>{group.items.length} 个交付物</span>
                       </button>
-                      {!collapsed && <div className={styles.itemList}>{group.items.map((item) => <DeliveryItemCard key={item.id} item={item} active={activeItemId === item.id} error={actionErrors[item.id]} onAction={performAction} onReject={openReject} onOpenResource={openResource} />)}</div>}
+                      {!collapsed && <div className={styles.itemList}>{group.items.map((item) => <DeliveryItemCard key={item.id} item={item} active={activeItemId === item.id} activeAction={activeItemId === item.id ? activeAction : null} error={actionErrors[item.id]} onAction={performAction} onReject={openReject} onOpenResource={openResource} />)}</div>}
                     </section>
                   )
                 })}
@@ -498,6 +527,7 @@ function FilterField({ label, children }: { label: string; children: ReactNode }
 function DeliveryItemCard({
   item,
   active,
+  activeAction,
   error,
   onAction,
   onReject,
@@ -505,6 +535,7 @@ function DeliveryItemCard({
 }: {
   item: DeliveryItem
   active: boolean
+  activeAction: DeliveryAction | null
   error?: string
   onAction: (item: DeliveryItem, action: DeliveryAction, reason?: string) => Promise<void>
   onReject: (item: DeliveryItem) => void
@@ -530,6 +561,7 @@ function DeliveryItemCard({
         {item.reviewReason ? <div className={styles.reviewReason}><WarningOutlined /> {item.reviewReason}</div> : null}
         <div className={styles.itemActions}>
           {item.resourceType === 'CODE' ? <CodeActions item={item} active={active} onAction={onAction} onReject={onReject} onOpenResource={onOpenResource} /> : <ResourceActions item={item} active={active} onAction={onAction} onReject={onReject} onOpenResource={onOpenResource} />}
+          {activeAction ? <Text type="secondary">{deliveryActionPendingText(activeAction)}</Text> : null}
         </div>
         {error ? <Alert className={styles.itemError} type="error" showIcon message={error} /> : null}
       </div>
@@ -538,7 +570,15 @@ function DeliveryItemCard({
 }
 
 function CodeDetails({ item }: { item: CodeDeliveryItem }) {
-  return <><div className={styles.detailLine}><span><CloudUploadOutlined /> {item.repositories.map((repository) => `${repository.name} / ${display(repository.branch)}`).join('、') || '暂无仓库'}</span><span>来源 {display(item.requirementGroup?.name)}</span></div><div className={styles.detailLine}><span>Diff {item.filesChanged} 文件 · <b className={styles.additions}>+{item.additions}</b> <b className={styles.deletions}>-{item.deletions}</b></span><span>Review {item.reviewStatus} · Delivery {item.deliveryStatus}</span></div>{item.repositoryDeliveries.length > 1 ? <div className={styles.repositoryStrip}>{item.repositoryDeliveries.map((delivery) => <span key={delivery.repositoryId}>{delivery.repositoryName}: {delivery.deliveryStatus}</span>)}</div> : null}{item.mergeRequest ? <div className={styles.mrLine}>MR #{item.mergeRequest.number} · {item.mergeRequest.title}</div> : null}</>
+  return <><div className={styles.detailLine}><span><CloudUploadOutlined /> {item.repositories.map((repository) => `${repository.name} / ${display(repository.branch)}`).join('、') || '暂无仓库'}</span><span>来源 {display(item.requirementGroup?.name)}</span></div><div className={styles.detailLine}><span>Diff {item.filesChanged} 文件 · <b className={styles.additions}>+{item.additions}</b> <b className={styles.deletions}>-{item.deletions}</b></span><span>Review {codeReviewStatusLabel(item.reviewStatus)} · Delivery {item.deliveryStatus}</span></div>{item.reviewStatus === 'SUPERSEDED' ? <div className={styles.reviewReason}><WarningOutlined /> 已被同一工作区的后续修改取代，不可确认或拒绝。</div> : null}{item.repositoryDeliveries.length > 1 ? <div className={styles.repositoryStrip}>{item.repositoryDeliveries.map((delivery) => <span key={delivery.repositoryId}>{delivery.repositoryName}: {delivery.deliveryStatus}</span>)}</div> : null}{item.mergeRequest ? <div className={styles.mrLine}>MR #{item.mergeRequest.number} · {item.mergeRequest.title}</div> : null}</>
+}
+
+function deliveryActionPendingText(action: DeliveryAction): string {
+  return ({ submitReview: '正在提交交付申请…', approve: '正在提交批准请求…', confirm: '正在提交交付确认…', reject: '正在提交拒绝请求…', archive: '正在提交归档请求…', retryDelivery: '正在提交重试请求…' } as Record<DeliveryAction, string>)[action]
+}
+
+function codeReviewStatusLabel(status: CodeDeliveryItem['reviewStatus']): string {
+  return status === 'SUPERSEDED' ? '已被后续修改取代' : status
 }
 
 function MemoryDetails({ item }: { item: MemoryDeliveryItem }) {

@@ -35,6 +35,8 @@ describe('project SSE event parsing', () => {
                     ? { taskId: 'task-1', reviewBatchId: 'batch-1', reviewStatus: 'PENDING_CONFIRMATION', aggregateHash: 'hash-1' }
                     : eventType === 'task.awaiting-diff-confirmation' || eventType === 'diff-review.confirmed' || eventType === 'diff-review.rejected'
                       ? { taskId: 'task-1', reviewBatchId: 'batch-1' }
+                      : eventType === 'diff-review.superseded'
+                        ? { workspaceId: 'workspace-1', taskId: 'task-1', reviewBatchId: 'batch-1', reviewStatus: 'SUPERSEDED' }
                       : eventType === 'delivery.repository.updated'
                         ? { taskId: 'task-1', diffId: 'diff-1', deliveryStatus: 'DELIVERED' }
                         : eventType === 'delivery.started'

@@ -101,11 +101,29 @@ describe('new task model hooks', () => {
     expect(queryClient.getQueryState(taskModelQueryKeys.tasks.list('project-1', {}))?.isInvalidated).toBe(true)
   })
 
-  it('stores a server-created retry run and invalidates the original run', async () => {
+  it('stores a server-created retry run and refreshes every Task view affected by the asynchronous retry', async () => {
     taskRunRetryMock.mockResolvedValue(taskRun)
+    const seed = (queryKey: readonly unknown[]) => {
+      const query = queryClient.getQueryCache().build(queryClient, { queryKey, queryFn: async () => null })
+      query.setData(null)
+    }
+    seed(taskModelQueryKeys.tasks.list('project-1', {}))
+    seed(taskModelQueryKeys.taskSteps.list('project-1', 'task-1', {}))
+    seed(taskModelQueryKeys.taskRuns.list('project-1', 'task-1', {}))
+    seed(taskModelQueryKeys.taskArtifacts.all('project-1', 'task-1'))
+    seed(taskModelQueryKeys.diffs.list('project-1', {}))
+    seed(taskModelQueryKeys.taskDiffReview.detail('project-1', 'task-1'))
+    seed(taskModelQueryKeys.workspaceDiffPreview.detail('project-1', 'task-1'))
     const { result } = renderHook(() => useRetryTaskRunModel('project-1'), { wrapper: wrapper(queryClient) })
     await act(async () => { await result.current.mutateAsync('run-1') })
     expect(queryClient.getQueryData(taskModelQueryKeys.taskRuns.detail('project-1', 'run-2'))).toEqual(taskRun)
+    expect(queryClient.getQueryState(taskModelQueryKeys.tasks.list('project-1', {}))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(taskModelQueryKeys.taskSteps.list('project-1', 'task-1', {}))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(taskModelQueryKeys.taskRuns.list('project-1', 'task-1', {}))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(taskModelQueryKeys.taskArtifacts.all('project-1', 'task-1'))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(taskModelQueryKeys.diffs.list('project-1', {}))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(taskModelQueryKeys.taskDiffReview.detail('project-1', 'task-1'))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(taskModelQueryKeys.workspaceDiffPreview.detail('project-1', 'task-1'))?.isInvalidated).toBe(true)
   })
 
   it('stores accepted Diff details and refreshes the Diff list', async () => {

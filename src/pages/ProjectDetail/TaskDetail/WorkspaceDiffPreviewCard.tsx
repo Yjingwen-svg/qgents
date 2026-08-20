@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
-import { Alert, Button, Card, Collapse, Empty, Spin, Tag, Typography } from 'antd'
-import { CaretRightOutlined, FileTextOutlined } from '@ant-design/icons'
-import { useWorkspaceDiffPreview, useWorkspaceDiffPreviewFiles } from '@/hooks/workspaceDiffPreview'
+import { useEffect, useMemo, useState } from 'react'
+import { Alert, Card, Collapse, Empty, Spin, Tag, Typography } from 'antd'
+import { CaretRightOutlined, FileTextOutlined, FolderOpenOutlined } from '@ant-design/icons'
+import { useWorkspaceDiffPreview, useWorkspaceDiffPreviewFilePatch, useWorkspaceDiffPreviewFiles } from '@/hooks/workspaceDiffPreview'
 import type { WorkspaceDiffPreviewFile, WorkspaceDiffPreviewStatus } from '@/types/task-model'
 import styles from './TaskDetailPage.module.scss'
 
@@ -10,7 +10,7 @@ const { Text } = Typography
 interface WorkspaceDiffPreviewCardProps {
   projectId: string
   taskId: string
-  repositoryNames: Record<string, string>
+  repositories: ReadonlyArray<{ repositoryId: string; name: string }>
 }
 
 /**
@@ -19,13 +19,14 @@ interface WorkspaceDiffPreviewCardProps {
  * 语义边界：
  * - 仅展示 Coding 写入触发的累计工作树视图，不代表已生成正式 Diff。
  * - 失败/不可用时显示「实时预览暂不可用」，不污染任务状态。
- * - 多仓库文件按 repositoryId 分组显示，路径使用 Workspace 相对路径。
+ * - /files 仅作为文件导航；用户选中文件后通过 §48 /file 读取该文件 patch。
  */
-export function WorkspaceDiffPreviewCard({ projectId, taskId, repositoryNames }: WorkspaceDiffPreviewCardProps) {
+export function WorkspaceDiffPreviewCard({ projectId, taskId, repositories }: WorkspaceDiffPreviewCardProps) {
   const previewQuery = useWorkspaceDiffPreview(projectId, taskId)
-  const filesQuery = useWorkspaceDiffPreviewFiles(projectId, taskId)
   const status = previewQuery.data
   const availablePreview = status?.kind === 'available' ? status.preview : null
+  // 文件导航与详情锁定在同一个实际 revision，避免 Preview 更新时混用两个 snapshot。
+  const filesQuery = useWorkspaceDiffPreviewFiles(projectId, taskId, { revision: availablePreview?.revision })
 
   const summary = useMemo(() => buildSummary(status, previewQuery.isLoading, filesQuery.isLoading, filesQuery.data?.length ?? 0), [
     status,
@@ -33,10 +34,32 @@ export function WorkspaceDiffPreviewCard({ projectId, taskId, repositoryNames }:
     filesQuery.isLoading,
     filesQuery.data,
   ])
-  const filesByRepository = useMemo(() => groupFilesByRepository(filesQuery.data ?? [], repositoryNames), [filesQuery.data, repositoryNames])
+  const repositoryNames = useMemo(() => Object.fromEntries(repositories.map((repository) => [repository.repositoryId, repository.name])), [repositories])
+  // 旧 /files 响应只保证 repositoryPath。单仓库 Task 的所属仓库唯一，可安全补齐；
+  // 多仓库场景仍必须由服务端返回 repositoryId，不能按目录名或数组位置猜测。
+  const files = useMemo(() => resolveFileRepositoryIds(filesQuery.data ?? [], repositories), [filesQuery.data, repositories])
+  const filesByRepository = useMemo(() => groupFilesByRepository(files, repositoryNames), [files, repositoryNames])
 
-  // 默认折叠：用户展开后才加载更详细的 patch。折叠状态保留 —— SSE 刷新不会"啪"地打开/关闭。
+  // 默认折叠；SSE 刷新不强制打开。revision 更新时清除选择，避免旧 snapshot 覆盖当前展示。
   const [expanded, setExpanded] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<WorkspaceDiffPreviewFile | null>(null)
+  const selectedPatchQuery = useWorkspaceDiffPreviewFilePatch(projectId, taskId, {
+    repositoryId: selectedFile?.repositoryId ?? '',
+    path: selectedFile?.path ?? '',
+    revision: availablePreview?.revision,
+    enabled: expanded && selectedFile !== null,
+  })
+
+  useEffect(() => {
+    setSelectedFile(null)
+  }, [availablePreview?.revision])
+
+  // 打开 Preview 时默认定位第一个可读取的文件；用户仍可随时切换文件。
+  useEffect(() => {
+    if (!expanded || selectedFile) return
+    const firstSelectableFile = filesQuery.data?.find((file) => file.repositoryId)
+    if (firstSelectableFile) setSelectedFile(firstSelectableFile)
+  }, [expanded, filesQuery.data, selectedFile])
 
   return (
     <Card className={styles.workspaceDiffPreviewCard} size="small" data-testid="workspace-diff-preview-card">
@@ -55,9 +78,6 @@ export function WorkspaceDiffPreviewCard({ projectId, taskId, repositoryNames }:
           className={styles.workspaceDiffPreviewAlert}
           message="实时预览暂不可用"
           description={summary.message ?? null}
-          action={
-            <Button size="small" onClick={() => { void previewQuery.refetch(); void filesQuery.refetch() }}>重试</Button>
-          }
         />
       ) : summary.kind === 'available' ? (
         <>
@@ -72,28 +92,43 @@ export function WorkspaceDiffPreviewCard({ projectId, taskId, repositoryNames }:
               children: (<>
                 {filesQuery.isLoading ? (
                   <div className={styles.inlineState}><Spin size="small" /><Text type="secondary">正在加载文件列表</Text></div>
-                ) : filesByRepository.length === 0 && !availablePreview?.patch ? (
+                ) : filesByRepository.length === 0 ? (
                   <Empty description="暂无文件" />
-                ) : filesByRepository.length > 0 ? (
-                  <div className={styles.workspaceDiffPreviewFiles}>
-                    {filesByRepository.map(({ repositoryId, repositoryName, files }) => (
-                      <div key={repositoryId} className={styles.workspaceDiffPreviewRepo}>
-                        <Text strong className={styles.workspaceDiffPreviewRepoName}>{repositoryName}</Text>
-                        <Text type="secondary">{files.length} 个文件 · +{sum(files, 'additions')} / -{sum(files, 'deletions')}</Text>
-                        <ul className={styles.workspaceDiffPreviewFileList}>
-                          {files.map((file) => (
-                            <li key={`${repositoryId}:${file.path}`} className={styles.workspaceDiffPreviewFileItem}>
-                              <Tag color={file.changeType === 'ADDED' ? 'green' : file.changeType === 'DELETED' ? 'red' : file.changeType === 'RENAMED' ? 'blue' : 'orange'}>{file.changeType}</Tag>
-                              <span className={styles.workspaceDiffPreviewPath} title={file.path}>{file.path}</span>
-                              <Text type="secondary" className={styles.workspaceDiffPreviewStats}>+{file.additions} / -{file.deletions}{file.binary ? ' · binary' : ''}</Text>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
+                ) : (
+                  <div className={styles.workspaceDiffPreviewViewer}>
+                    <aside className={styles.workspaceDiffPreviewFiles} aria-label="实时预览文件树">
+                      <Text className={styles.workspaceDiffPreviewFilesHeading}><FolderOpenOutlined />文件树</Text>
+                      {filesByRepository.map(({ repositoryKey, repositoryName, files }) => (
+                        <div key={repositoryKey} className={styles.workspaceDiffPreviewRepo}>
+                          <div className={styles.workspaceDiffPreviewRepoHeading}>
+                            <Text strong className={styles.workspaceDiffPreviewRepoName}>{repositoryName}</Text>
+                            <Text type="secondary">{files.length}</Text>
+                          </div>
+                          <ul className={styles.workspaceDiffPreviewFileList}>
+                            {files.map((file) => (
+                              <li key={`${repositoryKey}:${file.path}`}>
+                                <button
+                                  type="button"
+                                  className={`${styles.workspaceDiffPreviewFileItem}${selectedFile?.repositoryId === file.repositoryId && selectedFile.path === file.path ? ` ${styles.workspaceDiffPreviewFileItemSelected}` : ''}`}
+                                  onClick={() => setSelectedFile(file)}
+                                  disabled={!file.repositoryId}
+                                  title={file.repositoryId ? file.path : '当前文件列表未返回 repositoryId，无法安全读取单文件预览'}
+                                >
+                                  <Tag color={file.changeType === 'ADDED' ? 'green' : file.changeType === 'DELETED' ? 'red' : file.changeType === 'RENAMED' ? 'blue' : 'orange'}>{file.changeType}</Tag>
+                                  <span className={styles.workspaceDiffPreviewPath}>{file.path}</span>
+                                  <Text type="secondary" className={styles.workspaceDiffPreviewStats}>+{file.additions} / -{file.deletions}{file.binary ? ' · binary' : ''}</Text>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </aside>
+                    <section className={styles.workspaceDiffPreviewContent} aria-live="polite">
+                      <SelectedFilePatch file={selectedFile} query={selectedPatchQuery} />
+                    </section>
                   </div>
-                ) : null}
-                {availablePreview?.patch ? <PatchPreview patch={availablePreview.patch} /> : null}
+                )}
               </>),
               extra: <CaretRightOutlined rotate={expanded ? 90 : 0} aria-hidden />,
             }]}
@@ -157,30 +192,51 @@ function unavailableMessage(reason: 'NOT_FOUND' | 'WORKER_UNAVAILABLE' | 'UNKNOW
 }
 
 interface RepositoryGroup {
-  repositoryId: string
+  repositoryKey: string
   repositoryName: string
   files: WorkspaceDiffPreviewFile[]
+}
+
+function SelectedFilePatch({ file, query }: { file: WorkspaceDiffPreviewFile | null; query: ReturnType<typeof useWorkspaceDiffPreviewFilePatch> }) {
+  if (!file) return <div className={styles.workspaceDiffPreviewEmptySelection}><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择一个文件以查看实时 Diff" /></div>
+  if (!file.repositoryId) return <Alert type="info" showIcon message="该文件暂不能读取实时预览" description="文件列表未返回 repositoryId，前端不会猜测仓库归属。" />
+  if (query.isLoading) return <div className={styles.inlineState}><Spin size="small" /><Text type="secondary">正在加载文件 Diff</Text></div>
+  if (query.isError) return <Alert type="error" showIcon message="文件实时预览加载失败" description="请稍后重新选择该文件。" />
+  const patch = query.data
+  if (!patch || patch.patch === null) return <Alert type="info" showIcon message={patch?.binary ? '二进制文件，不展示源码 Diff' : '该文件的实时预览暂不可用'} />
+  return <PatchPreview patch={patch.patch} />
 }
 
 function groupFilesByRepository(files: WorkspaceDiffPreviewFile[], names: Record<string, string>): RepositoryGroup[] {
   const map = new Map<string, RepositoryGroup>()
   for (const file of files) {
-    const existing = map.get(file.repositoryId)
+    const repositoryKey = file.repositoryPath
+      ? `path:${file.repositoryPath}`
+      : file.repositoryId
+        ? `id:${file.repositoryId}`
+        : 'workspace-root'
+    const existing = map.get(repositoryKey)
     if (existing) {
       existing.files.push(file)
       continue
     }
-    map.set(file.repositoryId, {
-      repositoryId: file.repositoryId,
-      repositoryName: file.repositoryPath || names[file.repositoryId] || file.repositoryId,
+    map.set(repositoryKey, {
+      repositoryKey,
+      repositoryName: file.repositoryPath ?? (file.repositoryId ? names[file.repositoryId] ?? file.repositoryId : '当前工作区'),
       files: [file],
     })
   }
   return [...map.values()].sort((left, right) => left.repositoryName.localeCompare(right.repositoryName))
 }
 
-function sum(files: WorkspaceDiffPreviewFile[], key: 'additions' | 'deletions'): number {
-  return files.reduce((acc, file) => acc + (key === 'additions' ? file.additions : file.deletions), 0)
+function resolveFileRepositoryIds(
+  files: WorkspaceDiffPreviewFile[],
+  repositories: ReadonlyArray<{ repositoryId: string }>,
+): WorkspaceDiffPreviewFile[] {
+  if (repositories.length !== 1) return files
+  const repositoryId = repositories[0]?.repositoryId
+  if (!repositoryId) return files
+  return files.map((file) => file.repositoryId ? file : { ...file, repositoryId })
 }
 
 function PatchPreview({ patch }: { patch: string }) {

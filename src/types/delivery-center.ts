@@ -62,7 +62,7 @@ export interface DeliveryRepositoryRef {
   branch: string | null
 }
 
-export type CodeReviewStatus = 'PENDING_CONFIRMATION' | 'ACCEPTED' | 'REJECTED'
+export type CodeReviewStatus = 'PENDING_CONFIRMATION' | 'ACCEPTED' | 'REJECTED' | 'SUPERSEDED'
 export type CodeDeliveryStatus = 'NOT_STARTED' | 'DELIVERING' | 'DELIVERED' | 'PARTIALLY_DELIVERED' | 'FAILED'
 
 export interface CodeRepositoryDelivery {

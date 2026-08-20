@@ -20,6 +20,7 @@ export const taskModelQueryKeys = {
     all: (projectId: string, taskId: string) => ['qgents', 'projects', projectId, 'tasks', taskId, 'workspace-diff-preview'] as const,
     detail: (projectId: string, taskId: string, revision?: number) => ['qgents', 'projects', projectId, 'tasks', taskId, 'workspace-diff-preview', 'detail', revision ?? 'latest'] as const,
     files: (projectId: string, taskId: string, revision?: number) => ['qgents', 'projects', projectId, 'tasks', taskId, 'workspace-diff-preview', 'files', revision ?? 'latest'] as const,
+    file: (projectId: string, taskId: string, repositoryId: string, path: string, revision?: number) => ['qgents', 'projects', projectId, 'tasks', taskId, 'workspace-diff-preview', 'file', revision ?? 'latest', repositoryId, path] as const,
   },
   taskSteps: {
     root: (projectId: string) => ['qgents', 'projects', projectId, 'task-steps'] as const,

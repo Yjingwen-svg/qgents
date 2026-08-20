@@ -1,5 +1,5 @@
 import { requestModelData } from './modelClient'
-import type { WorkspaceDiffPreview, WorkspaceDiffPreviewFile, WorkspaceDiffPreviewChangeType, WorkspaceDiffPreviewStatus } from '@/types/task-model'
+import type { WorkspaceDiffPreview, WorkspaceDiffPreviewFile, WorkspaceDiffPreviewFilePatch, WorkspaceDiffPreviewChangeType, WorkspaceDiffPreviewStatus } from '@/types/task-model'
 
 /**
  * Preview 的可恢复状态：后端可能在写入触发前、Worker 不可用、Preview 被清理时返回。
@@ -14,11 +14,19 @@ const PREVIEW_PATH = (projectId: string, taskId: string) =>
 const PREVIEW_FILES_PATH = (projectId: string, taskId: string) =>
   `${PREVIEW_PATH(projectId, taskId)}/files`
 
+const PREVIEW_FILE_PATH = (projectId: string, taskId: string) =>
+  `${PREVIEW_PATH(projectId, taskId)}/file`
+
 const CHANGE_TYPES: readonly WorkspaceDiffPreviewChangeType[] = ['ADDED', 'MODIFIED', 'DELETED', 'RENAMED']
 
 function readString(raw: Record<string, unknown>, key: string): string {
   const value = raw[key]
   return typeof value === 'string' ? value : ''
+}
+
+function readNullableString(raw: Record<string, unknown>, key: string): string | null {
+  const value = raw[key]
+  return typeof value === 'string' ? value : null
 }
 
 function readNumber(raw: Record<string, unknown>, key: string): number {
@@ -42,11 +50,11 @@ export function mapWorkspaceDiffPreview(raw: unknown): WorkspaceDiffPreview {
     workspaceId: readString(row, 'workspaceId'),
     revision: readNumber(row, 'revision'),
     baseCommit: typeof row.baseCommit === 'string' && row.baseCommit ? row.baseCommit : null,
-    workingTreeHash: readString(row, 'workingTreeHash'),
+    workingTreeHash: readNullableString(row, 'workingTreeHash'),
     filesChanged: readNumber(row, 'filesChanged'),
     additions: readNumber(row, 'additions'),
     deletions: readNumber(row, 'deletions'),
-    patch: readString(row, 'patch'),
+    patch: readNullableString(row, 'patch'),
     createdAt: readString(row, 'createdAt'),
   }
 }
@@ -55,11 +63,10 @@ export function mapWorkspaceDiffPreviewFile(raw: unknown): WorkspaceDiffPreviewF
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const row = raw as Record<string, unknown>
   const path = readString(row, 'path')
-  const repositoryId = readString(row, 'repositoryId')
-  if (!path || !repositoryId) return null
+  if (!path) return null
   return {
-    repositoryId,
-    repositoryPath: readString(row, 'repositoryPath') || repositoryId,
+    repositoryId: readNullableString(row, 'repositoryId'),
+    repositoryPath: readNullableString(row, 'repositoryPath'),
     path,
     changeType: readChangeType(row),
     additions: readNumber(row, 'additions'),
@@ -76,6 +83,25 @@ export function mapWorkspaceDiffPreviewFiles(raw: unknown): WorkspaceDiffPreview
     if (mapped) files.push(mapped)
   }
   return files
+}
+
+export function mapWorkspaceDiffPreviewFilePatch(raw: unknown): WorkspaceDiffPreviewFilePatch | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const row = raw as Record<string, unknown>
+  const repositoryId = readString(row, 'repositoryId')
+  const path = readString(row, 'path')
+  const revision = readNumber(row, 'revision')
+  if (!repositoryId || !path || !Number.isInteger(revision) || revision < 0) return null
+  return {
+    revision,
+    repositoryId,
+    path,
+    changeType: readChangeType(row),
+    additions: readNumber(row, 'additions'),
+    deletions: readNumber(row, 'deletions'),
+    binary: row.binary === true,
+    patch: readNullableString(row, 'patch'),
+  }
 }
 
 /**
@@ -117,6 +143,25 @@ export async function fetchWorkspaceDiffPreviewFiles(
   }
 }
 
+/** §48：仅在用户选中一个带 repositoryId 的 Preview 文件后读取对应 patch。 */
+export async function fetchWorkspaceDiffPreviewFilePatch(
+  projectId: string,
+  taskId: string,
+  input: { repositoryId: string; path: string; revision?: number },
+): Promise<WorkspaceDiffPreviewFilePatch> {
+  const query: Record<string, string> = {
+    repositoryId: input.repositoryId,
+    path: input.path,
+  }
+  if (typeof input.revision === 'number' && Number.isInteger(input.revision) && input.revision >= 0) {
+    query.revision = String(input.revision)
+  }
+  const data = await requestModelData<unknown>(appendQuery(PREVIEW_FILE_PATH(projectId, taskId), query))
+  const mapped = mapWorkspaceDiffPreviewFilePatch(data)
+  if (!mapped) throw new Error('Workspace Diff Preview 文件响应格式不完整')
+  return mapped
+}
+
 function previewUnavailable(error: unknown): WorkspaceDiffPreviewStatus {
   const status = readStatus(error)
   const message = readMessage(error)
@@ -148,4 +193,5 @@ function appendQuery(path: string, query: Record<string, string>): string {
 export const workspaceDiffPreviewApi = {
   get: fetchWorkspaceDiffPreview,
   files: fetchWorkspaceDiffPreviewFiles,
+  file: fetchWorkspaceDiffPreviewFilePatch,
 }

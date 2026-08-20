@@ -29,6 +29,7 @@ const useApproveTaskRunInputRequestMock = vi.hoisted(() => vi.fn())
 const useRejectTaskRunInputRequestMock = vi.hoisted(() => vi.fn())
 const useWorkspaceDiffPreviewMock = vi.hoisted(() => vi.fn())
 const useWorkspaceDiffPreviewFilesMock = vi.hoisted(() => vi.fn())
+const useWorkspaceDiffPreviewFilePatchMock = vi.hoisted(() => vi.fn())
 
 const usePreflightMock = vi.hoisted(() => vi.fn())
 
@@ -62,6 +63,7 @@ vi.mock('@/hooks/qualityGate', () => ({
 vi.mock('@/hooks/workspaceDiffPreview', () => ({
   useWorkspaceDiffPreview: useWorkspaceDiffPreviewMock,
   useWorkspaceDiffPreviewFiles: useWorkspaceDiffPreviewFilesMock,
+  useWorkspaceDiffPreviewFilePatch: useWorkspaceDiffPreviewFilePatchMock,
 }))
 
 import TaskDetailPage from './TaskDetailPage'
@@ -88,10 +90,10 @@ beforeEach(() => {
   useTaskNoCodeChangeStore.getState().clearAllCompletedWithoutCode()
   useTaskMock.mockReturnValue({ data: task, error: null, isError: false, isLoading: false, refetch: vi.fn() })
   useTaskDiagnosticsMock.mockReturnValue({ ...idleQuery, data: { taskId: task.id, status: task.status, stage: 'CODING', failure: null, latestFailedRun: null } })
-  useTaskStepsMock.mockReturnValue({ data: page([step]), error: null, isError: false, isLoading: false })
-  useTaskRunsMock.mockReturnValue({ data: page<TaskRunSummary>([run]), error: null, isError: false, isLoading: false })
+  useTaskStepsMock.mockReturnValue({ data: page([step]), error: null, isError: false, isLoading: false, refetch: vi.fn() })
+  useTaskRunsMock.mockReturnValue({ data: page<TaskRunSummary>([run]), error: null, isError: false, isLoading: false, refetch: vi.fn() })
   useCancelTaskMock.mockReturnValue(idleMutation)
-  useDiffsMock.mockReturnValue({ data: page<DiffListItem>([]), error: null, isError: false, isLoading: false })
+  useDiffsMock.mockReturnValue({ data: page<DiffListItem>([]), error: null, isError: false, isLoading: false, refetch: vi.fn() })
   useTaskArtifactsMock.mockReturnValue({ data: [], error: null, isError: false, isLoading: false })
   useTaskDiffReviewMock.mockReturnValue(idleQuery)
   useConfirmTaskDiffReviewMock.mockReturnValue(idleMutation)
@@ -110,6 +112,7 @@ beforeEach(() => {
   useRejectTaskRunInputRequestMock.mockReturnValue(idleMutation)
   useWorkspaceDiffPreviewMock.mockReturnValue({ data: { kind: 'unavailable', reason: 'NOT_FOUND', message: 'Preview 尚未生成' }, isLoading: false, isError: false, refetch: vi.fn() })
   useWorkspaceDiffPreviewFilesMock.mockReturnValue({ data: [], isLoading: false, isError: false, refetch: vi.fn() })
+  useWorkspaceDiffPreviewFilePatchMock.mockReturnValue({ data: undefined, isLoading: false, isError: false, refetch: vi.fn() })
 })
 
 describe('TaskDetailPage workbench', () => {
@@ -181,14 +184,16 @@ describe('TaskDetailPage workbench', () => {
     expect(within(deliveryPanel).getByTestId('workspace-diff-preview-summary')).toHaveTextContent('实时预览：2 个文件 · +8 / -3 · revision 2')
     expect(within(screen.getByTestId('recent-execution-panel')).queryByTestId('workspace-diff-preview-card')).not.toBeInTheDocument()
     expect(within(deliveryPanel).queryByTestId('code-delivery-card')).not.toBeInTheDocument()
-    expect(screen.getByText('产物 0 · Diff 0')).toBeInTheDocument()
   })
 
   it('marks added and deleted workspace preview lines with dedicated code-diff styles', async () => {
     const user = userEvent.setup()
     useWorkspaceDiffPreviewMock.mockReturnValue({ data: { kind: 'available', preview: { projectId: task.projectId, taskId: task.id, taskRunId: run.id, workspaceId: 'workspace-1', revision: 2, baseCommit: 'base-1', workingTreeHash: 'sha256:preview', filesChanged: 1, additions: 1, deletions: 1, patch: '@@ -1 +1 @@\n-old line\n+new line', createdAt: run.createdAt } }, isLoading: false, isError: false, refetch: vi.fn() })
+    useWorkspaceDiffPreviewFilesMock.mockReturnValue({ data: [{ repositoryId: null, repositoryPath: 'web', path: 'src/login.ts', changeType: 'MODIFIED', additions: 1, deletions: 1, binary: false }], isLoading: false, isError: false, refetch: vi.fn() })
+    useWorkspaceDiffPreviewFilePatchMock.mockReturnValue({ data: { revision: 2, repositoryId: 'repo-1', path: 'src/login.ts', changeType: 'MODIFIED', additions: 1, deletions: 1, binary: false, patch: '@@ -1 +1 @@\n-old line\n+new line' }, isLoading: false, isError: false, refetch: vi.fn() })
     renderPage()
     await user.click(screen.getByText('查看实时 Diff'))
+    await user.click(screen.getByRole('button', { name: /src\/login\.ts/ }))
     expect(screen.getByTestId('workspace-diff-preview-patch')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-diff-line-workspaceDiffPreviewPatchDeleted')).toHaveTextContent('-old line')
     expect(screen.getByTestId('workspace-diff-line-workspaceDiffPreviewPatchAdded')).toHaveTextContent('+new line')
@@ -201,11 +206,13 @@ describe('TaskDetailPage workbench', () => {
     expect(screen.queryByTestId('code-delivery-card')).not.toBeInTheDocument()
   })
 
-  it('shows one task-level action notice and keeps failure details in the selected run', () => {
+  it('shows one task-level action notice and keeps failure details in the selected run', async () => {
+    const user = userEvent.setup()
     const failedRun = { ...run, status: 'FAILED' as const, statusReason: { code: 'EXECUTION_FAILED' as const, failureCode: 'PATCH_FAILED', title: '执行失败', summary: '补丁无法应用', retryable: true, occurredAt: run.updatedAt } }
     useTaskMock.mockReturnValue({ data: { ...task, status: 'FAILED', statusReason: { code: 'STARTUP_FAILED', title: '任务启动失败', summary: '不应重复显示', retryable: true }, attention: { kind: 'EXECUTION_FAILED', title: '执行失败', summary: '补丁无法应用', taskRunId: failedRun.id, inputRequestId: null, diffReviewBatchId: null, repositoryId: null } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
     useTaskDiagnosticsMock.mockReturnValue({ ...idleQuery, data: { taskId: task.id, status: 'FAILED', stage: 'CODING', failure: failedRun.statusReason, latestFailedRun: { taskRunId: failedRun.id, taskStepId: step.id, taskStepTitle: step.title, status: 'FAILED', startedAt: run.startedAt, finishedAt: run.updatedAt } } })
-    useTaskRunMock.mockReturnValue({ ...idleQuery, data: failedRun })
+    const refetchRun = vi.fn()
+    useTaskRunMock.mockReturnValue({ ...idleQuery, data: failedRun, refetch: refetchRun })
     useTaskRunDiagnosticsMock.mockReturnValue({ ...idleQuery, data: { taskRunId: failedRun.id, taskId: task.id, status: 'FAILED', stage: 'CODING', failure: failedRun.statusReason, workerExecutions: [] } })
     renderPage()
     expect(screen.getByTestId('task-attention-banner')).toBeInTheDocument()
@@ -213,6 +220,9 @@ describe('TaskDetailPage workbench', () => {
     expect(screen.queryByText('任务失败：PATCH_FAILED')).not.toBeInTheDocument()
     expect(within(screen.getByTestId('run-inspector-panel')).getByText('PATCH_FAILED')).toBeInTheDocument()
     expect(within(screen.getByTestId('run-inspector-panel')).getByText('执行失败：补丁无法应用')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '查看运行' }))
+    expect(screen.getByTestId('location')).toHaveTextContent('runId=run-1')
+    expect(refetchRun).toHaveBeenCalledTimes(1)
   })
 
   it('keeps delivery confirmation actions in the delivery panel', async () => {
@@ -221,9 +231,50 @@ describe('TaskDetailPage workbench', () => {
     useTaskMock.mockReturnValue({ data: { ...task, status: 'WAITING_DIFF_CONFIRMATION', capabilities: { ...task.capabilities, canConfirmDiffReview: true, canRejectDiffReview: true } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
     useTaskDiffReviewMock.mockReturnValue({ data: batch, error: null, isError: false, isLoading: false, refetch: vi.fn() })
     renderPage()
-    expect(screen.getByRole('button', { name: '确认交付' })).toBeInTheDocument()
+    expect(within(screen.getByTestId('delivery-card')).getByRole('button', { name: '确认交付' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '拒绝交付' }))
-    expect(screen.getByRole('button', { name: '拒绝交付' })).toBeDisabled()
+    expect(screen.getByPlaceholderText('请填写拒绝原因')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '提交拒绝' })).toBeDisabled()
+  })
+
+  it('uses server capabilities for a multi-repository delivery even when the batch source is not USER', () => {
+    const batch: DiffReviewBatch = { id: 'batch-multi', taskId: task.id, reviewStatus: 'PENDING_CONFIRMATION', confirmationSource: 'SYSTEM', deliveryStatus: 'NOT_STARTED', aggregateHash: 'hash', reviewReason: null, diffs: [], repositoryDeliveries: [] }
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'WAITING_DIFF_CONFIRMATION', capabilities: { ...task.capabilities, canConfirmDiffReview: true, canRejectDiffReview: true } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskDiffReviewMock.mockReturnValue({ data: batch, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    renderPage()
+    const panel = screen.getByTestId('delivery-card')
+    expect(within(panel).getByRole('button', { name: '确认交付' })).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: '拒绝交付' })).toBeInTheDocument()
+  })
+
+  it('renders an explicit refreshable state when delivery fields are incomplete', () => {
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'WAITING_DIFF_CONFIRMATION', capabilities: { ...task.capabilities, canConfirmDiffReview: true } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskDiffReviewMock.mockReturnValue({ data: { id: 'batch-incomplete', taskId: task.id } as DiffReviewBatch, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    renderPage()
+    const panel = screen.getByTestId('delivery-card')
+    expect(within(panel).getByText('交付信息不完整，请刷新')).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: '刷新交付状态' })).toBeInTheDocument()
+  })
+
+  it('confirms a pending delivery directly from the matching attention action', async () => {
+    const user = userEvent.setup()
+    const mutate = vi.fn()
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'WAITING_DIFF_CONFIRMATION', capabilities: { ...task.capabilities, canConfirmDiffReview: true }, attention: { kind: 'DIFF_CONFIRMATION_REQUIRED', title: '等待确认', summary: '请确认最终 Diff', taskRunId: null, inputRequestId: null, diffReviewBatchId: 'batch-1', repositoryId: null, createdAt: run.updatedAt } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useConfirmTaskDiffReviewMock.mockReturnValue({ ...idleMutation, mutate })
+    renderPage()
+    await user.click(within(screen.getByTestId('task-attention-banner')).getByRole('button', { name: '确认交付' }))
+    expect(mutate).toHaveBeenCalledWith(task.id, expect.objectContaining({ onError: expect.any(Function) }))
+  })
+
+  it('shows a superseded Diff batch as read-only without confirmation actions', () => {
+    const batch: DiffReviewBatch = { id: 'batch-superseded', taskId: task.id, reviewStatus: 'SUPERSEDED', confirmationSource: 'USER', deliveryStatus: 'NOT_STARTED', aggregateHash: 'hash', reviewReason: null, diffs: [], repositoryDeliveries: [] }
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'WAITING_DIFF_CONFIRMATION', capabilities: { ...task.capabilities, canConfirmDiffReview: false, canRejectDiffReview: false } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskDiffReviewMock.mockReturnValue({ data: batch, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    renderPage()
+    const panel = screen.getByTestId('delivery-card')
+    expect(within(panel).getByText('已被后续修改取代')).toBeInTheDocument()
+    expect(within(panel).queryByRole('button', { name: '确认交付' })).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('button', { name: '拒绝交付' })).not.toBeInTheDocument()
   })
 
   it('isolates run record errors without hiding delivery or the inspector', () => {

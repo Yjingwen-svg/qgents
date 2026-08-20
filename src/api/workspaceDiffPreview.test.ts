@@ -4,6 +4,7 @@ import {
   fetchWorkspaceDiffPreview,
   mapWorkspaceDiffPreview,
   mapWorkspaceDiffPreviewFile,
+  mapWorkspaceDiffPreviewFilePatch,
   mapWorkspaceDiffPreviewFiles,
 } from './workspaceDiffPreview'
 
@@ -37,27 +38,32 @@ describe('workspace Diff Preview mapping', () => {
     })
   })
 
-  it('coerces missing baseCommit / taskRunId to safe defaults', () => {
+  it('preserves nullable snapshot fields defined by the Preview contract', () => {
     const preview = mapWorkspaceDiffPreview({
       projectId: 'project-1',
       taskId: 'task-1',
       workspaceId: 'ws-1',
       revision: 1,
-      workingTreeHash: 'sha256:abc',
+      workingTreeHash: null,
+      patch: null,
     })
     expect(preview.baseCommit).toBeNull()
     expect(preview.taskRunId).toBeNull()
+    expect(preview.workingTreeHash).toBeNull()
+    expect(preview.patch).toBeNull()
     expect(preview.additions).toBe(0)
   })
 
-  it('maps preview files and drops rows without repositoryId/path', () => {
+  it('maps Preview files from the documented path/repositoryPath shape', () => {
     const files = mapWorkspaceDiffPreviewFiles([
-      { repositoryId: 'repo-1', repositoryPath: 'auth-service', path: 'src/a.ts', changeType: 'MODIFIED', additions: 1, deletions: 0, binary: false },
+      { repositoryPath: 'auth-service', path: 'src/a.ts', changeType: 'MODIFIED', additions: 1, deletions: 0, binary: false },
       { repositoryId: 'repo-1', repositoryPath: 'auth-service', path: 'src/b.ts', changeType: 'UNKNOWN_TYPE', additions: 0, deletions: 0, binary: false },
-      { repositoryId: '', path: 'src/c.ts', changeType: 'ADDED', additions: 0, deletions: 0, binary: false },
+      { repositoryPath: 'web-console', path: 'src/c.ts', changeType: 'ADDED', additions: 0, deletions: 0, binary: false },
       'not-an-object',
     ])
-    expect(files).toHaveLength(2)
+    expect(files).toHaveLength(3)
+    expect(files[0].repositoryId).toBeNull()
+    expect(files[0].repositoryPath).toBe('auth-service')
     expect(files[0].changeType).toBe('MODIFIED')
     expect(files[1].changeType).toBe('MODIFIED')
   })
@@ -65,7 +71,26 @@ describe('workspace Diff Preview mapping', () => {
   it('returns null for malformed preview file rows', () => {
     expect(mapWorkspaceDiffPreviewFile(null)).toBeNull()
     expect(mapWorkspaceDiffPreviewFile({})).toBeNull()
-    expect(mapWorkspaceDiffPreviewFile({ path: 'x' })).toBeNull()
+    expect(mapWorkspaceDiffPreviewFile({ path: 'x' })).toMatchObject({
+      path: 'x',
+      repositoryId: null,
+      repositoryPath: null,
+    })
+  })
+
+  it('maps the §48 single-file Preview patch and keeps an unavailable patch nullable', () => {
+    const patch = mapWorkspaceDiffPreviewFilePatch({
+      revision: 3,
+      repositoryId: 'repo-1',
+      path: 'src/Login.vue',
+      changeType: 'MODIFIED',
+      additions: 12,
+      deletions: 4,
+      binary: false,
+      patch: null,
+    })
+    expect(patch).toMatchObject({ repositoryId: 'repo-1', path: 'src/Login.vue', revision: 3, patch: null })
+    expect(mapWorkspaceDiffPreviewFilePatch({ revision: 3, path: 'src/Login.vue' })).toBeNull()
   })
 
   it('does not throw when Preview is unavailable', async () => {

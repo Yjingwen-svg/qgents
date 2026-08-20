@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App, Avatar, Button, Empty, List, Modal, Popconfirm, Select, Space, Typography } from 'antd'
+import { App, Avatar, Button, Empty, List, Modal, Popconfirm, Select, Space, Tag, Typography } from 'antd'
 import { PlusOutlined, UserOutlined } from '@ant-design/icons'
 import { groupApi, projectApi, teamApi } from '@/api'
 import { formatApiError } from '@/utils/formatApiError'
 import { useAuth } from '@/context/AuthContext'
-import type { Group } from '@/types'
+import type { Group, GroupMemberType } from '@/types'
 
 const { Text } = Typography
 
@@ -15,11 +15,13 @@ interface Props {
 }
 
 /**
- * 群聊设置栏内嵌的「成员」区（创建者或 Project Admin 可管理）：
- * - 点开栏直接显示成员列表（头像 + 昵称 + 邮箱，自己带「（我）」标记）
- * - 「成员管理」开关：开启后每个 USER 成员行追加「移出群聊」，「取消」退出管理态
- * - 「邀请成员」：从项目成员中选择未入群的（真实后端项目成员接口可能缺 displayName，用团队成员接口补全）
- * 接口：GET/POST .../members、DELETE .../members/{userId}（后端补充文档见根目录接口补充）。
+ * 群聊设置栏内嵌的「成员」区（权限分层，v2.0.6）：
+ * - owner（项目 owner，主群创建者即项目创建者）：
+ *   可「设为管理员 / 移除管理员」（调整项目角色 PROJECT_ADMIN ↔ PROJECT_MEMBER），
+ *   可把所有人（含管理员）移出群聊
+ * - admin（项目管理员 PROJECT_ADMIN）：只能移出普通成员，不能动 owner 和其他管理员
+ * - 普通成员：无管理权限；自己不可被操作
+ * 接口：GET/POST .../members、DELETE .../members/{userId}、PATCH 项目成员角色。
  */
 export function GroupMemberSettings({ projectId, group }: Props) {
   const { message } = App.useApp()
@@ -30,8 +32,6 @@ export function GroupMemberSettings({ projectId, group }: Props) {
   const [inviteIds, setInviteIds] = useState<string[]>([])
 
   const groupId = group?.id ?? ''
-
-  /** 项目头像：已迁出群聊设置栏，改由「项目设置-基本信息」与「创建项目」弹窗提供（v2.0.6） */
 
   const { data: members = [] } = useQuery({
     queryKey: ['groups', projectId, groupId, 'members'],
@@ -60,8 +60,15 @@ export function GroupMemberSettings({ projectId, group }: Props) {
     teamMemberNameById.get(userId) ||
     userId
 
+  // 权限分层：owner = 群创建者（主群创建者即项目 owner）；admin = 项目管理员 PROJECT_ADMIN
+  const selfIsOwner = group?.createdBy === user?.id
+  const selfIsAdmin = !selfIsOwner && project?.role === 'PROJECT_ADMIN'
+  const projectMemberRoleById = new Map(projectMembers.map((m) => [m.userId, m.role]))
+  const isMemberOwner = (userId: string): boolean => userId === group?.createdBy
+  const isMemberAdmin = (userId: string): boolean => projectMemberRoleById.get(userId) === 'PROJECT_ADMIN'
+
   const canManage =
-    group?.type === 'REQUIREMENT' && (group.createdBy === user?.id || project?.role === 'PROJECT_ADMIN')
+    group?.type === 'REQUIREMENT' && (selfIsOwner || selfIsAdmin)
 
   const invalidate = (): void => {
     void queryClient.invalidateQueries({ queryKey: ['groups', projectId, groupId, 'members'] })
@@ -78,6 +85,16 @@ export function GroupMemberSettings({ projectId, group }: Props) {
   const removeMember = useMutation({
     mutationFn: (userId: string) => groupApi.removeMember(projectId, groupId, userId),
     onSuccess: invalidate,
+    onError: (error) => message.error(formatApiError(error)),
+  })
+  // 设/撤管理员 = 调整项目角色（owner 专属；PROJECT_ADMIN ↔ PROJECT_MEMBER）
+  const updateRole = useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: 'PROJECT_ADMIN' | 'PROJECT_MEMBER' }) =>
+      projectApi.updateMemberRole(projectId, userId, role),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'members'] })
+      message.success('项目角色已更新')
+    },
     onError: (error) => message.error(formatApiError(error)),
   })
 
@@ -111,6 +128,81 @@ export function GroupMemberSettings({ projectId, group }: Props) {
     }
   }
 
+  /** 管理模式下的成员行操作（按 owner / admin 分层；仅 USER 成员可操作） */
+  function memberActions(
+    memberId: string,
+    memberName: string,
+    memberType: GroupMemberType,
+  ): ReactNode[] | undefined {
+    if (!manageMode || memberType !== 'USER') return undefined
+    if (memberId === user?.id) return undefined // 自己不可操作
+    if (isMemberOwner(memberId)) return undefined // owner 唯一且不可被移出
+    const actions: ReactNode[] = []
+    if (selfIsOwner) {
+      // owner：可设/撤管理员 + 移出所有人（含管理员）
+      if (isMemberAdmin(memberId)) {
+        actions.push(
+          <Popconfirm
+            key="demote"
+            title={`确认将 ${memberName} 移除管理员？`}
+            description="移除后将降为项目普通成员"
+            okText="移除管理员"
+            cancelText="取消"
+            onConfirm={() => updateRole.mutate({ userId: memberId, role: 'PROJECT_MEMBER' })}
+          >
+            <Button size="small" type="text" loading={updateRole.isPending}>
+              移除管理员
+            </Button>
+          </Popconfirm>,
+        )
+      } else {
+        actions.push(
+          <Popconfirm
+            key="promote"
+            title={`确认将 ${memberName} 设为管理员？`}
+            description="设为项目管理员后可在各需求群管理普通成员"
+            okText="设为管理员"
+            cancelText="取消"
+            onConfirm={() => updateRole.mutate({ userId: memberId, role: 'PROJECT_ADMIN' })}
+          >
+            <Button size="small" type="text" loading={updateRole.isPending}>
+              设为管理员
+            </Button>
+          </Popconfirm>,
+        )
+      }
+      actions.push(
+        <Popconfirm
+          key="remove"
+          title={`确认将 ${memberName} 移出群聊？`}
+          okText="移出"
+          cancelText="取消"
+          onConfirm={() => removeMember.mutate(memberId)}
+        >
+          <Button size="small" type="text" danger loading={removeMember.isPending}>
+            移出群聊
+          </Button>
+        </Popconfirm>,
+      )
+    } else if (selfIsAdmin && !isMemberAdmin(memberId)) {
+      // admin：只能移出普通成员（owner / 管理员不可动）
+      actions.push(
+        <Popconfirm
+          key="remove"
+          title={`确认将 ${memberName} 移出群聊？`}
+          okText="移出"
+          cancelText="取消"
+          onConfirm={() => removeMember.mutate(memberId)}
+        >
+          <Button size="small" type="text" danger loading={removeMember.isPending}>
+            移出群聊
+          </Button>
+        </Popconfirm>,
+      )
+    }
+    return actions
+  }
+
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -141,57 +233,48 @@ export function GroupMemberSettings({ projectId, group }: Props) {
       <List
         dataSource={members}
         locale={{ emptyText: <Empty description="暂无成员" /> }}
-        renderItem={(member) => (
-          <List.Item
-            actions={
-              manageMode && member.memberType === 'USER' && member.id !== user?.id
-                ? [
-                    <Popconfirm
-                      key="remove"
-                      title={`确认将 ${member.displayName} 移出群聊？`}
-                      okText="移出"
-                      cancelText="取消"
-                      onConfirm={() => removeMember.mutate(member.id)}
-                    >
-                      <Button size="small" type="text" danger loading={removeMember.isPending}>
-                        移出群聊
-                      </Button>
-                    </Popconfirm>,
-                  ]
-                : undefined
-            }
-          >
-            <List.Item.Meta
-              avatar={
-                <Avatar
-                  size={32}
-                  src={member.id === user?.id ? user?.avatarUrl : member.avatarUrl}
-                  style={{ background: '#3b82f6' }}
-                  icon={<UserOutlined />}
-                >
-                  {(member.id === user?.id ? (user?.displayName ?? '我') : member.displayName).slice(0, 1)}
-                </Avatar>
-              }
-              title={
-                <Text strong>
-                  {member.id === user?.id ? user?.displayName ?? member.displayName : member.displayName}
-                  {member.id === user?.id ? <Text type="secondary">（我）</Text> : null}
-                </Text>
-              }
-              description={
-                member.email ? (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {member.email}
+        renderItem={(member) => {
+          const memberOwner = isMemberOwner(member.id)
+          const memberAdmin = isMemberAdmin(member.id)
+          return (
+            <List.Item actions={memberActions(member.id, member.displayName, member.memberType)}>
+              <List.Item.Meta
+                avatar={
+                  <Avatar
+                    size={32}
+                    src={member.id === user?.id ? user?.avatarUrl : member.avatarUrl}
+                    style={{ background: '#3b82f6' }}
+                    icon={<UserOutlined />}
+                  >
+                    {(member.id === user?.id ? (user?.displayName ?? '我') : member.displayName).slice(0, 1)}
+                  </Avatar>
+                }
+                title={
+                  <Text strong>
+                    {member.id === user?.id ? user?.displayName ?? member.displayName : member.displayName}
+                    {member.id === user?.id ? <Text type="secondary">（我）</Text> : null}
+                    {memberOwner ? (
+                      <Tag color="gold" style={{ marginLeft: 8, fontSize: 11 }}>所有者</Tag>
+                    ) : memberAdmin ? (
+                      <Tag color="blue" style={{ marginLeft: 8, fontSize: 11 }}>管理员</Tag>
+                    ) : null}
                   </Text>
-                ) : (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {member.memberType === 'AGENT' ? 'Agent' : ''}
-                  </Text>
-                )
-              }
-            />
-          </List.Item>
-        )}
+                }
+                description={
+                  member.email ? (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {member.email}
+                    </Text>
+                  ) : (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {member.memberType === 'AGENT' ? 'Agent' : ''}
+                    </Text>
+                  )
+                }
+              />
+            </List.Item>
+          )
+        }}
       />
 
       {/* 邀请成员：从项目成员中选择未入群的 */}

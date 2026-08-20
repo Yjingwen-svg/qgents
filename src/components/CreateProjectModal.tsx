@@ -5,6 +5,7 @@ import { CameraOutlined, UploadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { projectApi, teamApi, githubApi } from '@/api'
 import { useProjectAvatarUpload } from '@/hooks/useProjectAvatarUpload'
+import { useAuth } from '@/context/AuthContext'
 import { PATHS } from '@/routes/paths'
 import { isGithubRepoBindable } from '@/types/github'
 import type { CreateProjectPayload, NewProjectRepositoryInput } from '@/types'
@@ -34,6 +35,7 @@ export function CreateProjectModal({
 }) {
   const navigate = useNavigate()
   const queryClient=useQueryClient()
+  const { user } = useAuth()
   const [form] = Form.useForm<CreateProjectFormValues>()
   const [repositoryMode, setRepositoryMode] = useState<'existing' | 'new'>('existing')
   // 项目头像（v2.0.6：创建时可选；项目创建成功后才直传并回写）
@@ -180,10 +182,13 @@ export function CreateProjectModal({
           <Select
             mode="multiple"
             placeholder="从团队成员中选择，选中即加入项目"
-            options={teamMembers.map((m) => ({
-              value: m.userId,
-              label: m.displayName || m.userId,
-            }))}
+            // 创建者自动成为项目成员，前端过滤自己避免误选
+            options={teamMembers
+              .filter((m) => m.userId !== user?.id)
+              .map((m) => ({
+                value: m.userId,
+                label: m.displayName || m.userId,
+              }))}
             optionFilterProp="label"
             allowClear
           />

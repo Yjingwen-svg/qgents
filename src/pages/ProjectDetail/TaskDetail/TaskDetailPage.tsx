@@ -23,7 +23,10 @@ export default function TaskDetailPage() {
   const { projectId = '', taskId = '' } = useParams<{ projectId: string; taskId: string }>()
   const navigate = useNavigate()
   const taskQuery = useTask(projectId, taskId)
-  const diagnosticsQuery = useTaskDiagnostics(projectId, taskId)
+  // 失败诊断仅在任务进入失败终态后查询：质量修复循环（RUNNING）期间历史失败 run 不是任务失败，
+  // 避免空诊断与页面横幅闪烁；任务状态变化后 queryKey 不变、enabled 翻转触发重新拉取。
+  const taskFailed = taskQuery.data?.status === 'FAILED' || taskQuery.data?.status === 'DELIVERY_FAILED'
+  const diagnosticsQuery = useTaskDiagnostics(projectId, taskId, taskFailed)
   const stepsQuery = useTaskSteps(projectId, taskId, { limit: 100 })
   const taskRunsQuery = useTaskRuns(projectId, taskId, { limit: 5 })
   const diffsQuery = useDiffs(projectId, { taskId, limit: 100 })
@@ -178,7 +181,7 @@ export default function TaskDetailPage() {
           <CompactTaskHeader task={currentTask} projectId={projectId} onCancel={handleCancel} cancelPending={cancelMutation.isPending} completedWithoutCode={completedWithoutCode} showStartupFailure={!hasFailedRun} />
           {cancelMutation.error ? <CancelError error={cancelMutation.error} onRefresh={() => void taskQuery.refetch()} /> : null}
           {currentTask.attention ? <AttentionBanner task={currentTask} onLocate={locate} onOpenRun={openRun} /> : null}
-          <TaskFailureDiagnostic query={diagnosticsQuery} onOpenRun={openRun} suppress={attentionOwnsRunFailure} />
+          <TaskFailureDiagnostic task={currentTask} projectId={projectId} query={diagnosticsQuery} onOpenRun={openRun} suppress={attentionOwnsRunFailure} />
           {task.status === 'WAITING_PREFLIGHT' ? (
             <>
               {/* 每个仓库独立的 preflight 查询 Hook —— 组件化以确保 Hook 调用顺序稳定 */}
@@ -218,13 +221,47 @@ export default function TaskDetailPage() {
   )
 }
 
-function TaskFailureDiagnostic({ query, onOpenRun, suppress }: { query: ReturnType<typeof useTaskDiagnostics>; onOpenRun: (taskRunId: string) => void; suppress: boolean }) {
-  if (suppress || query.isLoading || query.isError || !query.data?.failure) return null
+function TaskFailureDiagnostic({ task, projectId, query, onOpenRun, suppress }: {
+  task: Task
+  projectId: string
+  query: ReturnType<typeof useTaskDiagnostics>
+  onOpenRun: (taskRunId: string) => void
+  suppress: boolean
+}) {
+  if (suppress || query.isLoading || query.isError || !query.data) return null
   const diagnostic = query.data
+  const failure = diagnostic.failure
+  if (!failure) return null
   const run = diagnostic.latestFailedRun
+  const isBranchMissing = failure.failureCode === 'GIT_BRANCH_NOT_FOUND'
+  // 基线分支不存在时从任务仓库元数据还原「仓库 + 基线分支」：summary 已含后端拼好的
+  // 可读文案（含仓库与分支名），结构化字段供前端精确展示与跳转。
+  const failedRepository = isBranchMissing
+    ? task.repositories?.find((repo) => repo.baseRef && !repo.fullName.startsWith('未')) ?? task.repositories?.[0]
+    : undefined
+  const action = isBranchMissing ? (
+    <Button type="link" size="small" onClick={() => {
+      const groupId = task.requirementGroup?.id
+      if (groupId) window.location.href = PATHS.projectReqChat(projectId, groupId)
+    }}>
+      重新发起任务
+    </Button>
+  ) : run ? (
+    <Button type="link" size="small" onClick={() => onOpenRun(run.taskRunId)}>查看失败运行</Button>
+  ) : failure.retryable ? <Tag color="orange">可重试</Tag> : undefined
   return <Alert type="error" showIcon className={styles.taskFailureDiagnostic}
-    title={`任务失败：${diagnostic.failure?.failureCode ?? diagnostic.failure?.title ?? '未知原因'}`}
-    description={<span>{diagnostic.failure?.summary ?? '任务执行失败'} · 阶段：{diagnostic.stage}{run ? <> · <Button type="link" size="small" onClick={() => onOpenRun(run.taskRunId)}>查看失败运行</Button></> : ' · 失败发生在创建执行记录之前'}</span>} />
+    title={isBranchMissing ? '任务无法启动' : `任务失败：${failure.failureCode ?? failure.title ?? '未知原因'}`}
+    description={isBranchMissing ? (
+      <>
+        <div>仓库：{failedRepository?.fullName ?? '未知仓库'}</div>
+        <div>基线分支：{failedRepository?.baseRef ?? '未知'}</div>
+        <div>原因：{failure.summary}</div>
+        <div>请修改基线分支后重新发起任务。</div>
+      </>
+    ) : (
+      <span>{failure.summary ?? '任务执行失败'} · 阶段：{diagnostic.stage}</span>
+    )}
+    action={action} />
 }
 
 function CompactTaskHeader({ task, projectId, onCancel, cancelPending, completedWithoutCode, showStartupFailure }: { task: Task; projectId: string; onCancel: () => void; cancelPending: boolean; completedWithoutCode: boolean; showStartupFailure: boolean }) {

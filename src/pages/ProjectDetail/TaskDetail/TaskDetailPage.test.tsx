@@ -266,4 +266,38 @@ describe('TaskDetailPage workbench', () => {
     await user.click(screen.getByRole('button', { name: '取消任务' }))
     expect(refetch).toHaveBeenCalled()
   })
+
+  it('renders branch-missing startup failure with repository context and retry entry', () => {
+    const failedTask: Task = {
+      ...task,
+      status: 'FAILED',
+      repositories: [
+        { repositoryId: 'repo-1', name: 'test01', fullName: 'CloudPlayerBaby/test01', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'develop', baseCommit: null, sourceBranch: '', headCommit: null },
+      ],
+    }
+    useTaskMock.mockReturnValue({ data: failedTask, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskDiagnosticsMock.mockReturnValue({
+      ...idleQuery,
+      data: {
+        taskId: task.id,
+        status: 'FAILED',
+        stage: 'PLANNING',
+        failure: {
+          code: 'STARTUP_FAILED',
+          failureCode: 'GIT_BRANCH_NOT_FOUND',
+          title: '任务执行失败',
+          summary: '仓库 CloudPlayerBaby/test01 不存在基线分支 develop，请在项目仓库配置中选择真实存在的分支后重试',
+          retryable: true,
+          occurredAt: task.createdAt,
+        },
+        latestFailedRun: null,
+      },
+    })
+    renderPage()
+    expect(screen.getByText('任务无法启动')).toBeInTheDocument()
+    expect(screen.getByText('仓库：CloudPlayerBaby/test01')).toBeInTheDocument()
+    expect(screen.getByText('基线分支：develop')).toBeInTheDocument()
+    expect(screen.getByText('请修改基线分支后重新发起任务。')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '重新发起任务' })).toBeInTheDocument()
+  })
 })

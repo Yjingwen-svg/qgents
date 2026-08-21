@@ -5,9 +5,13 @@ import type { MergeRequestSummary } from '@/types/task-model'
 import { MergeRequestTab } from './MergeRequestTab'
 
 const useMergeRequestsMock = vi.hoisted(() => vi.fn())
+const useMergeMergeRequestMock = vi.hoisted(() => vi.fn())
+const useRequestMergeRequestPreflightMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/task-model', () => ({
   useMergeRequests: useMergeRequestsMock,
+  useMergeMergeRequest: useMergeMergeRequestMock,
+  useRequestMergeRequestPreflight: useRequestMergeRequestPreflightMock,
 }))
 
 const items: MergeRequestSummary[] = [
@@ -24,6 +28,7 @@ const items: MergeRequestSummary[] = [
     headCommit: 'abc123456789',
     webUrl: 'https://github.com/mock/demo/pull/42',
     qualityGate: { status: 'PENDING', requiredChecks: ['TESTSET'] },
+    createMode: 'UNKNOWN',
   },
   {
     id: 'mr-2',
@@ -38,6 +43,7 @@ const items: MergeRequestSummary[] = [
     headCommit: 'def456789012',
     webUrl: null,
     qualityGate: { status: 'PASSED', requiredChecks: ['TESTSET'] },
+    createMode: 'UNKNOWN',
   },
 ]
 
@@ -80,6 +86,8 @@ function renderTab(path = '/code?tab=mr') {
 }
 
 beforeEach(() => {
+  useMergeMergeRequestMock.mockReturnValue({ mutateAsync: vi.fn() })
+  useRequestMergeRequestPreflightMock.mockReturnValue({ mutateAsync: vi.fn() })
   useMergeRequestsMock.mockReturnValue({
     data: { data: items, page: { nextCursor: null, hasMore: false }, requestId: 'r1' },
     isLoading: false,
@@ -99,10 +107,6 @@ describe('MergeRequestTab', () => {
     })
     expect(screen.getByText('实现邮箱登录')).toBeInTheDocument()
     expect(screen.getByText('auth-service')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '实现邮箱登录' })).toHaveAttribute(
-      'href',
-      '/app/projects/demo-project/code/mr/mr-1',
-    )
     const githubLinks = screen.getAllByRole('link', { name: 'GitHub' })
     expect(githubLinks).toHaveLength(2)
     expect(githubLinks[0]).toHaveAttribute('href', 'https://github.com/mock/demo/pull/42')

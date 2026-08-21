@@ -31,7 +31,8 @@ export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
     },
   }
   const completedWithoutCode = useTaskCompletedWithoutCode(task.projectId, task.id)
-  const attentionText = task.attention ? [task.attention.title, task.attention.summary].filter((value): value is string => Boolean(value)).join('：') : null
+  const hasActiveExecution = task.status === 'RUNNING' || task.executionSummary.runningSteps > 0
+  const attentionText = !hasActiveExecution && task.attention ? [task.attention.title, task.attention.summary].filter((value): value is string => Boolean(value)).join('：') : null
   return (
     <Card
       className={styles.taskCard}

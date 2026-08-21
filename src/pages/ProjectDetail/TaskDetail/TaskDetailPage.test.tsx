@@ -119,13 +119,7 @@ beforeEach(() => {
 })
 
 describe('TaskDetailPage workbench', () => {
-  it('routes MR_FIRST preflight attention to the visible preflight panel', async () => {
-    const user = userEvent.setup()
-    const scrollIntoView = vi.fn()
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value: scrollIntoView,
-    })
+  it('renders the MR_FIRST preflight panel without a duplicate attention banner', () => {
     useTaskMock.mockReturnValue({
       data: {
         ...task,
@@ -149,8 +143,7 @@ describe('TaskDetailPage workbench', () => {
     })
     renderPage()
     expect(screen.getByTestId('preflight-panel')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '查看 MR 预检' }))
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+    expect(screen.queryByTestId('task-attention-banner')).not.toBeInTheDocument()
   })
 
   it('renders recent executions, delivery and the embedded run inspector without legacy rows or Tabs', () => {
@@ -247,8 +240,7 @@ describe('TaskDetailPage workbench', () => {
     expect(screen.queryByTestId('code-delivery-card')).not.toBeInTheDocument()
   })
 
-  it('shows one task-level action notice and keeps failure details in the selected run', async () => {
-    const user = userEvent.setup()
+  it('keeps failure details in the selected run without a duplicate attention banner', async () => {
     const failedRun = { ...run, status: 'FAILED' as const, statusReason: { code: 'EXECUTION_FAILED' as const, failureCode: 'PATCH_FAILED', title: '执行失败', summary: '补丁无法应用', retryable: true, occurredAt: run.updatedAt } }
     useTaskMock.mockReturnValue({ data: { ...task, status: 'FAILED', statusReason: { code: 'STARTUP_FAILED', title: '任务启动失败', summary: '不应重复显示', retryable: true }, attention: { kind: 'EXECUTION_FAILED', title: '执行失败', summary: '补丁无法应用', taskRunId: failedRun.id, inputRequestId: null, diffReviewBatchId: null, repositoryId: null } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
     useTaskDiagnosticsMock.mockReturnValue({ ...idleQuery, data: { taskId: task.id, status: 'FAILED', stage: 'CODING', failure: failedRun.statusReason, latestFailedRun: { taskRunId: failedRun.id, taskStepId: step.id, taskStepTitle: step.title, status: 'FAILED', startedAt: run.startedAt, finishedAt: run.updatedAt } } })
@@ -256,14 +248,10 @@ describe('TaskDetailPage workbench', () => {
     useTaskRunMock.mockReturnValue({ ...idleQuery, data: failedRun, refetch: refetchRun })
     useTaskRunDiagnosticsMock.mockReturnValue({ ...idleQuery, data: { taskRunId: failedRun.id, taskId: task.id, status: 'FAILED', stage: 'CODING', failure: failedRun.statusReason, workerExecutions: [] } })
     renderPage()
-    expect(screen.getByTestId('task-attention-banner')).toBeInTheDocument()
-    expect(screen.queryByText('任务启动失败')).not.toBeInTheDocument()
-    expect(screen.queryByText('任务失败：PATCH_FAILED')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('task-attention-banner')).not.toBeInTheDocument()
     expect(within(screen.getByTestId('run-inspector-panel')).getByText('PATCH_FAILED')).toBeInTheDocument()
     expect(within(screen.getByTestId('run-inspector-panel')).getByText('执行失败：补丁无法应用')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '查看运行' }))
-    expect(screen.getByTestId('location')).toHaveTextContent('runId=run-1')
-    expect(refetchRun).toHaveBeenCalledTimes(1)
+    expect(refetchRun).not.toHaveBeenCalled()
   })
 
   it('keeps delivery confirmation actions in the delivery panel', async () => {
@@ -295,16 +283,6 @@ describe('TaskDetailPage workbench', () => {
     const panel = screen.getByTestId('delivery-card')
     expect(within(panel).getByText('交付信息不完整，请刷新')).toBeInTheDocument()
     expect(within(panel).getByRole('button', { name: '刷新交付状态' })).toBeInTheDocument()
-  })
-
-  it('confirms a pending delivery directly from the matching attention action', async () => {
-    const user = userEvent.setup()
-    const mutate = vi.fn()
-    useTaskMock.mockReturnValue({ data: { ...task, status: 'WAITING_DIFF_CONFIRMATION', capabilities: { ...task.capabilities, canConfirmDiffReview: true }, attention: { kind: 'DIFF_CONFIRMATION_REQUIRED', title: '等待确认', summary: '请确认最终 Diff', taskRunId: null, inputRequestId: null, diffReviewBatchId: 'batch-1', repositoryId: null, createdAt: run.updatedAt } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
-    useConfirmTaskDiffReviewMock.mockReturnValue({ ...idleMutation, mutate })
-    renderPage()
-    await user.click(within(screen.getByTestId('task-attention-banner')).getByRole('button', { name: '确认交付' }))
-    expect(mutate).toHaveBeenCalledWith(task.id, expect.objectContaining({ onError: expect.any(Function) }))
   })
 
   it('shows a superseded Diff batch as read-only without confirmation actions', () => {
@@ -346,7 +324,7 @@ describe('TaskDetailPage workbench', () => {
     expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument()
   })
 
-  it('keeps a cancelled run retryable even when the Task aggregate is cancelled', () => {
+  it('does not allow retry after the Task has been cancelled', () => {
     const cancelledRun: TaskRunDetail = { ...run, status: 'CANCELLED', statusSummary: '执行已取消' }
     useTaskMock.mockReturnValue({ data: { ...task, status: 'CANCELLED' }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
     useTaskRunsMock.mockReturnValue({ data: page<TaskRunSummary>([cancelledRun]), error: null, isError: false, isLoading: false, refetch: vi.fn() })
@@ -355,12 +333,23 @@ describe('TaskDetailPage workbench', () => {
     renderPage(`/app/projects/${task.projectId}/tasks/${task.id}?runId=${cancelledRun.id}`)
 
     expect(screen.getByText('执行已取消')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /重\s*试/ })).not.toBeInTheDocument()
+  })
+
+  it('does not allow cancelling a queued run after the Task has been cancelled', () => {
+    const queuedRun: TaskRunDetail = { ...run, status: 'QUEUED', statusSummary: '等待执行', startedAt: null, finishedAt: null, durationMs: null }
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'CANCELLED' }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskRunsMock.mockReturnValue({ data: page<TaskRunSummary>([queuedRun]), error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskRunMock.mockReturnValue({ data: queuedRun, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+
+    renderPage(`/app/projects/${task.projectId}/tasks/${task.id}?runId=${queuedRun.id}`)
+
+    expect(screen.queryByRole('button', { name: '取消本次执行' })).not.toBeInTheDocument()
   })
 
   it('immediately selects the TaskRun returned by retry and exits the transition after the list refreshes', async () => {
     const user = userEvent.setup()
-    const sourceRun: TaskRunDetail = { ...run, id: 'run-retry-source', status: 'FAILED', updatedAt: '2026-08-11T08:40:00Z' }
+    const sourceRun: TaskRunDetail = { ...run, id: 'run-retry-source', status: 'FAILED', statusReason: { code: 'EXECUTION_FAILED', failureCode: 'PATCH_FAILED', title: '执行失败', summary: '补丁无法应用', retryable: true, occurredAt: '2026-08-11T08:40:00Z' }, updatedAt: '2026-08-11T08:40:00Z' }
     const replacementRun: TaskRunDetail = { ...sourceRun, id: 'run-retry-replacement', status: 'RUNNING', retryOfTaskRunId: sourceRun.id, updatedAt: '2026-08-11T08:41:00Z' }
     let taskData: Task = { ...task, status: 'FAILED' }
     let runData: TaskRunSummary[] = [sourceRun]
@@ -419,37 +408,4 @@ describe('TaskDetailPage workbench', () => {
     expect(refetch).toHaveBeenCalled()
   })
 
-  it('renders branch-missing startup failure with repository context and retry entry', () => {
-    const failedTask: Task = {
-      ...task,
-      status: 'FAILED',
-      repositories: [
-        { repositoryId: 'repo-1', name: 'test01', fullName: 'CloudPlayerBaby/test01', provider: 'GITHUB', defaultBranch: 'main', baseRef: 'develop', baseCommit: 'string', sourceBranch: '', headCommit: null },
-      ],
-    }
-    useTaskMock.mockReturnValue({ data: failedTask, error: null, isError: false, isLoading: false, refetch: vi.fn() })
-    useTaskDiagnosticsMock.mockReturnValue({
-      ...idleQuery,
-      data: {
-        taskId: task.id,
-        status: 'FAILED',
-        stage: 'PLANNING',
-        failure: {
-          code: 'STARTUP_FAILED',
-          failureCode: 'GIT_BRANCH_NOT_FOUND',
-          title: '任务执行失败',
-          summary: '仓库 CloudPlayerBaby/test01 不存在基线分支 develop，请在项目仓库配置中选择真实存在的分支后重试',
-          retryable: true,
-          occurredAt: task.createdAt,
-        },
-        latestFailedRun: null,
-      },
-    })
-    renderPage()
-    expect(screen.getByText('任务无法启动')).toBeInTheDocument()
-    expect(screen.getByText('仓库：CloudPlayerBaby/test01')).toBeInTheDocument()
-    expect(screen.getByText('基线分支：develop')).toBeInTheDocument()
-    expect(screen.getByText('请修改基线分支后重新发起任务。')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '重新发起任务' })).toBeInTheDocument()
-  })
 })

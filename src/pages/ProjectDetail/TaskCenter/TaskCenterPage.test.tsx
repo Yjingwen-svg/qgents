@@ -102,6 +102,19 @@ describe('TaskCenterPage', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('scope=all')
   })
 
+  it('does not show stale failure attention while the task is running a retry', () => {
+    const retryingTask: TaskListItem = {
+      ...task,
+      attention: { kind: 'EXECUTION_FAILED', title: '执行失败', summary: 'Agent 执行超时', taskRunId: 'run-old', inputRequestId: null, diffReviewBatchId: null, repositoryId: null, createdAt: task.updatedAt },
+      executionSummary: { ...task.executionSummary, runningSteps: 1, failedSteps: 1 },
+    }
+    useInfiniteTasksMock.mockReturnValue(result({ data: { pages: [page([retryingTask])], pageParams: [undefined] } }))
+
+    renderPage()
+
+    expect(screen.queryByText('执行失败：Agent 执行超时')).not.toBeInTheDocument()
+  })
+
   it('keeps rendering when a new Task list item lacks derived summaries', () => {
     const incompleteTask = {
       ...task,

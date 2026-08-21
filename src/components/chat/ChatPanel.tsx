@@ -780,15 +780,16 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       } else if (hasAgentMention && canOpenTaskTrigger) {
         try {
           const repositories = await githubApi.listProjectRepositories(projectId)
-          const baseRef = repositories[0]?.defaultBranch
-          if (repositories.length === 0 || !baseRef) {
+          if (repositories.length === 0) {
             throw new Error('当前项目没有可用于创建任务的绑定仓库。')
           }
+          // @agent 自动触发不指定公共基线分支：每个仓库用各自项目默认分支兜底，
+          // 避免「仓库 A 用 develop、仓库 B 用 master」时单一 baseRef 导致 409 GIT_BRANCH_NOT_FOUND。
           await groupApi.triggerTask(projectId, groupId, sentMessage.id, {
             title: taskTitleFromMessage(text),
             requirement: text,
             repositoryIds: repositories.map((repository) => repository.id),
-            baseRef,
+            baseRef: null,
           })
           void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
           message.success('任务已创建，正在生成执行方案。')

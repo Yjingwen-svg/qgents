@@ -12,6 +12,7 @@ import {
   useRequestMergeRequestPreflight,
 } from '@/hooks/task-model'
 import { formatApiError } from '@/utils/formatApiError'
+import { ApiError } from '@/api/client'
 import type { ProjectBoundRepository } from '@/types/github'
 import type {
   MergeRequestStatus,
@@ -61,13 +62,13 @@ function qualityGateColor(status: string | undefined): string {
 }
 
 function cqLabel(preflight: Preflight | undefined, isLoading: boolean, isError: boolean, status: Preflight['cqPlusOne']['status'] | 'MISSING' | undefined): string {
-  if (status === 'MISSING') return '待盖章'
-  // 加载时仍显示已有数据（或待盖章），不暴露"CQ 查询中"的轮询噪声
+  if (status === 'MISSING') return 'WAITING'
+  // 加载时仍显示已有数据（或 WAITING），不暴露"CQ 查询中"的轮询噪声
   const s = preflight?.cqPlusOne?.status
   if (s === 'APPROVED') return 'CQ+1 通过'
   if (s === 'REJECTED') return 'CQ+1 未通过'
   if (isError) return 'CQ 未知'
-  if (s === 'PENDING' || !s) return '待盖章'
+  if (s === 'PENDING' || !s) return 'WAITING'
   return s
 }
 
@@ -100,7 +101,7 @@ type EffectiveState =
   | 'FAILED'
 
 function deriveEffectiveState(
-  status: PreflightStatus | null | undefined,
+  status: string | null | undefined,
   createMode: 'MANUAL' | 'SYSTEM' | 'UNKNOWN' | undefined,
   cqApproved: boolean,
 ): EffectiveState {
@@ -108,14 +109,13 @@ function deriveEffectiveState(
     case null:
     case undefined:
       return 'IDLE'
+    // 来自 task-model.ts 的预检状态（创建响应）
     case 'REQUESTED':
     case 'DRY_RUN_QUEUED':
     case 'DRY_RUN_RUNNING':
-      // 文档：这三个状态都代表 Dry Run 仍在执行，统一显示 "Dry Run 执行中"
       return 'DRY_RUN_RUNNING'
     case 'WAITING_CQ':
       if (createMode === 'MANUAL' && cqApproved) return 'READY_CREATE'
-      // 文档：WAITING_CQ = Dry Run 已通过，等待独立成员 CQ+1
       return 'WAITING_CQ'
     case 'CREATING_MR':
       return 'CREATING'
@@ -125,6 +125,12 @@ function deriveEffectiveState(
       return 'FAILED'
     case 'MR_CREATED':
       return 'MR_CREATED'
+    // 来自 qualityGate.ts 的预检状态（轮询接口）
+    case 'PENDING':
+      return 'DRY_RUN_RUNNING'  // PENDING = Dry Run 正在运行
+    case 'PASSED':
+      if (createMode === 'MANUAL' && cqApproved) return 'READY_CREATE'
+      return 'WAITING_CQ'  // PASSED = Dry Run 通过，等待 CQ+1
     default:
       return 'IDLE'
   }
@@ -132,23 +138,26 @@ function deriveEffectiveState(
 
 function preflightButtonLabel(
   eff: EffectiveState,
+  isAdmin: boolean = false,
 ): { text: string; loading: boolean; disabled: boolean; failed: boolean; clickable: boolean } {
   switch (eff) {
     case 'IDLE':
       return { text: '申请MR', loading: false, disabled: false, failed: false, clickable: true }
     case 'DRY_RUN_RUNNING':
-      // 文档：DRY_RUN_RUNNING 显示 Dry Run 执行中，不与 WAITING_CQ 混淆
-      return { text: 'Dry Run 执行中', loading: true, disabled: true, failed: false, clickable: false }
     case 'WAITING_CQ':
-      // 文档：WAITING_CQ = Dry Run 已通过，等待 CQ+1（按钮禁用，用户去 CQ+1 页盖章）
-      return { text: '等待 CQ+1', loading: false, disabled: true, failed: false, clickable: false }
+      // Dry Run 运行中 或 等待 CQ+1，按钮都显示"待预检通过"（灰色禁用）
+      return { text: '待预检通过', loading: true, disabled: true, failed: false, clickable: false }
     case 'READY_CREATE':
-      // 人工模式：CQ+1通过后，需要用户再点「创建MR」
+      // CQ+1通过后，需要用户再点「创建MR」
       return { text: '创建MR', loading: false, disabled: false, failed: false, clickable: true }
     case 'CREATING':
       return { text: '正在创建 MR', loading: true, disabled: true, failed: false, clickable: false }
     case 'MR_CREATED':
-      return { text: '', loading: false, disabled: true, failed: false, clickable: false }
+      // MR 已创建：Admin 显示"合并"按钮，非 Admin 显示"已创建成功"（禁用）
+      if (isAdmin) {
+        return { text: '合并', loading: false, disabled: false, failed: false, clickable: true }
+      }
+      return { text: '已创建成功', loading: false, disabled: true, failed: false, clickable: false }
     case 'FAILED':
       // 预检失败：允许用户点击重新发起预检
       return { text: '重新预检', loading: false, disabled: false, failed: true, clickable: true }
@@ -158,11 +167,11 @@ function preflightButtonLabel(
 function preflightTagText(eff: EffectiveState): string {
   switch (eff) {
     case 'IDLE': return '待创建'
-    case 'DRY_RUN_RUNNING': return 'Dry Run 执行中'
+    case 'DRY_RUN_RUNNING': return '正在进行质量门禁'
     case 'WAITING_CQ': return '等待 CQ+1'
     case 'READY_CREATE': return '待创建MR'
     case 'CREATING': return '正在创建 MR'
-    case 'MR_CREATED': return '进行中'
+    case 'MR_CREATED': return '待合并'  // 用户要求：状态列显示"待合并"
     case 'FAILED': return '预检失败'
   }
 }
@@ -271,24 +280,39 @@ export function MergeRequestTab({
   const [creatingId, setCreatingId] = useState<string | null>(null)
   // 记录每行的预检状态（前端跟踪，真实环境由 SSE/后端返回）
   const [preflightStatusMap, setPreflightStatusMap] = useState<Record<string, PreflightStatus>>({})
+  // 预检状态是否正在加载（用于显示 loading 状态）
+  const [preflightLoading, setPreflightLoading] = useState(false)
+  // 已完成加载预检状态的 MR ID 集合
+  const [loadedPreflightIds, setLoadedPreflightIds] = useState<Set<string>>(new Set())
 
   // 页面加载和真实占位行替换时恢复已启动的预检状态。
   useEffect(() => {
     if (displayItems.length === 0) return // 等待 MR 列表加载完成
     const taskIds = new Set<string>()
+    const pendingMrIds: string[] = []
     displayItems.forEach((mr) => {
-      if (mr.status === 'PENDING_CREATE' && mr.taskId) taskIds.add(mr.taskId)
+      if (mr.status === 'PENDING_CREATE' && mr.taskId) {
+        taskIds.add(mr.taskId)
+        if (!loadedPreflightIds.has(mr.id)) {
+          pendingMrIds.push(mr.id)
+        }
+      }
     })
     if (taskIds.size === 0) return
+    // 有未加载的 MR 则显示 loading
+    if (pendingMrIds.length > 0) setPreflightLoading(true)
       ; (async () => {
         try {
           const newMap: Record<string, PreflightStatus> = {}
+          const loadedIds = new Set(loadedPreflightIds)
           for (const taskId of taskIds) {
             const res = await mergeRequestsApi.getTaskPreflight(projectId, taskId)
             if (res?.items?.length) {
               const taskMrRows = displayItems.filter((mr) => mr.taskId === taskId && mr.status === 'PENDING_CREATE')
               taskMrRows.forEach((mr) => {
                 const repoStatus = res.items.find((it) => it.repositoryId === mr.repositoryId)
+                // 标记为已加载
+                loadedIds.add(mr.id)
                 if (repoStatus?.dryRunStatus) {
                   if (repoStatus.cqStatus === 'APPROVED') {
                     newMap[mr.id] = 'MR_CREATED'
@@ -306,8 +330,12 @@ export function MergeRequestTab({
             }
           }
           if (Object.keys(newMap).length > 0) setPreflightStatusMap((prev) => ({ ...prev, ...newMap }))
+          // 更新已加载的 ID 集合
+          setLoadedPreflightIds(loadedIds)
         } catch {
           // 静默失败，不影响页面展示
+        } finally {
+          setPreflightLoading(false)
         }
       })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -421,6 +449,12 @@ export function MergeRequestTab({
       message.warning('该 MR 未关联任务，无法从列表直接申请预检')
       return
     }
+    // 检查 repositoryId 是否存在
+    if (!record.repositoryId) {
+      message.error('缺少仓库绑定信息，无法申请预检')
+      console.error('[handleCreate] repositoryId is missing', record)
+      return
+    }
     // 如果已在预检流程中，根据当前状态决定是否允许重新申请
     const currentStatus = preflightStatusMap[record.id]
     if (currentStatus && !['FAILED', 'STALE', 'CQ_REJECTED'].includes(currentStatus)) {
@@ -433,66 +467,83 @@ export function MergeRequestTab({
         return
       }
     }
-    modal.confirm({
-      title: '申请MR？',
-      content: (
-        <div style={{ fontSize: 13, lineHeight: 1.8 }}>
-          <p>
-            将在仓库 <code>{repoLabel(repositories, record.repositoryId)}</code>
-            基于 <code>{record.sourceBranch} → {record.targetBranch}</code> 启动统一预检流程。
-          </p>
-          <p style={{ color: '#6d7d95', margin: 0 }}>
-            顺序：先执行 <strong>Dry Run</strong> → <strong>CQ+1</strong> 审查。
-            <br />
-            两项均通过后，由后端自动在 GitHub 端创建真实 PR，前端不绕过门禁直接创建。
-          </p>
-        </div>
-      ),
-      okText: '申请MR',
-      cancelText: '取消',
-      okButtonProps: { loading: creatingId === record.id },
-      onOk: async () => {
-        setCreatingId(record.id)
-        // 先乐观设置状态为预检中
-        setPreflightStatusMap((prev) => ({ ...prev, [record.id]: 'REQUESTED' }))
-        try {
-          const res = await requestPreflight.mutateAsync({
-            taskId,
-            repositoryId: record.repositoryId,
-          })
-          // 根据返回的预检状态更新 UI
-          setPreflightStatusMap((prev) => ({ ...prev, [record.id]: res.status }))
-          // MR_CREATED：后端已建 PR，回写 webUrl/number 让 GitHub 跳转按钮生效
-          if (res.mergeRequest && res.status === 'MR_CREATED') {
-            // 更新缓存中对应的占位 MR
-            setItems((prevItems) =>
-              prevItems.map((item) =>
-                item.id === record.id
-                  ? {
-                    ...item,
-                    webUrl: res.mergeRequest!.webUrl,
-                    number: res.mergeRequest!.number,
-                    qualityGate: res.mergeRequest!.qualityGate ?? item.qualityGate,
-                  }
-                  : item,
-              ),
-            )
-          }
-          if (res.status === 'FAILED' || res.status === 'STALE' || res.status === 'CQ_REJECTED') {
-            message.error(res.failureReason || '申请失败')
-          } else if (res.status === 'MR_CREATED') {
-            message.success('MR 已创建，点击 GitHub 按钮可跳转')
-          } else {
-            message.success('已申请 MR，正在预检（Dry Run → CQ+1）')
-          }
-        } catch (error) {
-          setPreflightStatusMap((prev) => ({ ...prev, [record.id]: 'FAILED' }))
-          message.error(formatApiError(error))
-        } finally {
-          setCreatingId(null)
-        }
+    // 直接执行预检申请（无需弹窗确认）
+    setCreatingId(record.id)
+    setPreflightStatusMap((prev) => ({ ...prev, [record.id]: 'REQUESTED' }))
+    // 添加调试日志
+    console.log('[handleCreate] Request payload:', {
+      taskId,
+      repositoryId: record.repositoryId,
+      record: {
+        id: record.id,
+        status: record.status,
+        createMode: record.createMode,
+        sourceBranch: record.sourceBranch,
+        targetBranch: record.targetBranch,
       },
     })
+    requestPreflight
+      .mutateAsync({
+        taskId,
+        repositoryId: record.repositoryId,
+      })
+      .then((res) => {
+        console.log('[handleCreate] API success:', res)
+        setPreflightStatusMap((prev) => ({ ...prev, [record.id]: res.status }))
+        if (res.mergeRequest && res.status === 'MR_CREATED') {
+          setItems((prevItems) =>
+            prevItems.map((item) =>
+              item.id === record.id
+                ? {
+                  ...item,
+                  webUrl: res.mergeRequest!.webUrl,
+                  number: res.mergeRequest!.number,
+                  qualityGate: res.mergeRequest!.qualityGate ?? item.qualityGate,
+                }
+                : item,
+            ),
+          )
+        }
+        if (res.status === 'FAILED' || res.status === 'STALE' || res.status === 'CQ_REJECTED') {
+          message.error(res.failureReason || '申请失败')
+        } else if (res.status === 'MR_CREATED') {
+          message.success('MR 已创建，点击 GitHub 按钮可跳转')
+        } else {
+          message.success('已申请 MR，正在预检（Dry Run → CQ+1）')
+        }
+      })
+      .catch((error) => {
+        console.error('[handleCreate] API error:', error)
+        // 解析后端错误响应结构: { error: { code, message, details: [{field, message}] }, requestId }
+        let errorMessage = formatApiError(error)
+        let details: Array<{ field?: string; message?: string }> = []
+        // ApiError 实例的 body 包含完整响应
+        if (error instanceof ApiError && error.body) {
+          const body = error.body as { error?: { code?: string; message?: string; details?: unknown[] }; requestId?: string }
+          if (body?.error?.details && Array.isArray(body.error.details)) {
+            details = body.error.details as Array<{ field?: string; message?: string }>
+          }
+          // 构建更详细的错误消息
+          if (details.length > 0) {
+            const detailMsgs = details.map(d => `${d.field || '字段'}: ${d.message || '不合法'}`).join('; ')
+            errorMessage = `${body.error?.message || errorMessage} - ${detailMsgs}`
+          }
+        }
+        console.error('[handleCreate] Error details:', {
+          status: error?.status,
+          errorMessage,
+          details,
+          fullBody: error instanceof ApiError ? error.body : null,
+        })
+        setPreflightStatusMap((prev) => ({ ...prev, [record.id]: 'FAILED' }))
+        message.error({
+          content: errorMessage,
+          duration: 5, // 延长显示时间
+        })
+      })
+      .finally(() => {
+        setCreatingId(null)
+      })
   }
 
   /**
@@ -635,8 +686,18 @@ export function MergeRequestTab({
         render: (value: MergeRequestStatus, record, index: number) => {
           if (record.status === 'PENDING_CREATE') {
             const cq = cqQueries[index]
+            // 检查预检数据是否已加载完成
+            const isLoaded = loadedPreflightIds.has(record.id)
+            // 如果还在加载中，显示 loading 状态
+            if (!isLoaded && preflightLoading) {
+              return (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Spin size="small" />
+                  <Text type="secondary">加载中</Text>
+                </span>
+              )
+            }
             // 轮询接口返回的是最新事实；本地 map 只作为首次请求/接口暂未返回时的回退。
-            // 否则自动模式拿到 REQUESTED 后会一直停留在“预检中”。
             const currentStatus = cq?.data?.status ?? preflightStatusMap[record.id]
             const cqApproved = cq?.data?.cqPlusOne?.status === 'APPROVED'
             const eff = deriveEffectiveState(currentStatus, record.createMode, cqApproved)
@@ -653,6 +714,17 @@ export function MergeRequestTab({
           const q = cqQueries[index]
           const enabled = Boolean(record.taskId)
           if (!enabled) return <Text type="secondary">—</Text>
+          // 检查预检数据是否已加载完成（仅对 PENDING_CREATE 状态的 MR）
+          const isPendingCreate = record.status === 'PENDING_CREATE'
+          const isLoaded = !isPendingCreate || loadedPreflightIds.has(record.id)
+          // 如果还在加载中，显示 loading 状态
+          if (isPendingCreate && !isLoaded && preflightLoading) {
+            return (
+              <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                <Spin size="small" />
+              </span>
+            )
+          }
           return (
             <Tooltip title="点击跳转到 CQ+1 大印章审查页">
               <Button
@@ -686,11 +758,24 @@ export function MergeRequestTab({
         title: '质量门禁',
         key: 'qualityGate',
         width: 120,
-        render: (_value, record) => (
-          <Tag color={qualityGateColor(record.qualityGate?.status)}>
-            {qualityGateLabel(record.qualityGate?.status)}
-          </Tag>
-        ),
+        render: (_value, record, index) => {
+          // 检查预检数据是否已加载完成（仅对 PENDING_CREATE 状态的 MR）
+          const isPendingCreate = record.status === 'PENDING_CREATE'
+          const isLoaded = !isPendingCreate || loadedPreflightIds.has(record.id)
+          // 如果还在加载中，显示 loading 状态
+          if (isPendingCreate && !isLoaded && preflightLoading) {
+            return (
+              <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                <Spin size="small" />
+              </span>
+            )
+          }
+          return (
+            <Tag color={qualityGateColor(record.qualityGate?.status)}>
+              {qualityGateLabel(record.qualityGate?.status)}
+            </Tag>
+          )
+        },
       },
       {
         title: 'HEAD',
@@ -707,12 +792,23 @@ export function MergeRequestTab({
           // ============== PENDING_CREATE：占位 MR，预检流程阶段 ==============
           if (record.status === 'PENDING_CREATE') {
             const cq = cqQueries[index]
+            // 检查预检数据是否已加载完成
+            const isLoaded = loadedPreflightIds.has(record.id)
+            // 如果还在加载中，显示 loading 状态
+            if (!isLoaded && preflightLoading) {
+              return (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Spin size="small" />
+                  <Text type="secondary">加载中</Text>
+                </span>
+              )
+            }
             const currentStatus = cq?.data?.status ?? preflightStatusMap[record.id]
             const cqApproved = cq?.data?.cqPlusOne?.status === 'APPROVED'
             const eff = deriveEffectiveState(currentStatus, record.createMode, cqApproved)
-            const { text, loading, disabled, failed, clickable } = preflightButtonLabel(eff)
+            const { text, loading, disabled, failed, clickable } = preflightButtonLabel(eff, isAdmin)
 
-            // MR_CREATED：后端已在 GitHub 成功创建 PR → 操作列：GitHub + Admin合并MR
+            // MR_CREATED：后端已在 GitHub 成功创建 PR
             if (eff === 'MR_CREATED') {
               const href = githubPullRequestUrl(
                 record.webUrl,
@@ -732,7 +828,8 @@ export function MergeRequestTab({
                       GitHub
                     </Button>
                   ) : null}
-                  {isAdmin && record.qualityGate?.status === 'PASSED' ? (
+                  {/* Admin 显示"合并"按钮，非 Admin 显示"已创建成功" */}
+                  {isAdmin ? (
                     <Button
                       size="small"
                       type="primary"
@@ -743,10 +840,13 @@ export function MergeRequestTab({
                         handleMerge(record)
                       }}
                     >
-                      {record.mergeOperationStatus === 'RUNNING' ? '合并中' : '合并MR'}
+                      {record.mergeOperationStatus === 'RUNNING' ? '合并中' : text}
                     </Button>
-                  ) : null}
-                  {!href && !isAdmin ? <Text type="secondary">—</Text> : null}
+                  ) : (
+                    <Button size="small" disabled>
+                      {text}
+                    </Button>
+                  )}
                 </Space>
               )
             }
@@ -755,7 +855,7 @@ export function MergeRequestTab({
             let tip: string | null = null
             if (eff === 'FAILED') {
               if (currentStatus === 'CQ_REJECTED') tip = 'CQ+1 未通过，申请失败'
-              else if (currentStatus === 'FAILED') tip = 'Dry Run 或质量门禁失败'
+              else if (currentStatus === 'FAILED') tip = '质量门禁失败'
               else tip = '预检上下文过期，请刷新重试'
             } else if (eff === 'IDLE') {
               const gatePassed = record.qualityGate?.status === 'PASSED'

@@ -44,7 +44,8 @@ export interface Testset {
   createdAt: string
   updatedAt: string
 }
-
+// 创建测试运行的请求
+//payloadpayload真正要传输的数据本体
 export interface CreateTestsetPayload {
   name: string
   repositoryId: string

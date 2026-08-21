@@ -25,6 +25,7 @@ export interface QualityGateConfig {
 
 /** 保存质量门禁的请求体：前端仅允许编辑强制 Testset 列表 */
 export interface QualityGateUpdateInput {
+  requiredChecks: string[]
   requiredTestsetIds: string[]
 }
 

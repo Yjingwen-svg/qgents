@@ -117,7 +117,10 @@ export function QualityGateConfigDrawer({
       await updateGate.mutateAsync({
         repositoryId,
         branch,
-        input: { requiredTestsetIds: values.requiredTestsetIds ?? [] },
+        input: {
+          requiredChecks: gateQuery.data?.requiredChecks ?? [],
+          requiredTestsetIds: values.requiredTestsetIds ?? [],
+        },
       })
       message.success('已保存质量门禁')
     } catch (error) {

@@ -140,7 +140,14 @@ export default function CqReviewPage() {
         return right.createdAt.localeCompare(left.createdAt)
       })[0] ?? null
   }, [diffsQuery.data, mrQuery.data?.headCommit, preflight?.sourceCommit, reviewRepositoryId])
-  const dryRunCqStatus = cqPlusOne?.status ?? 'PENDING' // PENDING | APPROVED | REJECTED
+  const dryRunCqStatus = (() => {
+    // Preflight 接口 cqPlusOne.status 的合法值是 'MISSING' | 'APPROVED' | 'REJECTED'
+    // （参见 types/qualityGate.ts PreflightCqPlusOneStatus）。
+    // 本页内部 CQ 状态机统一用 'PENDING' 表示"等待审查"，因此把 'MISSING' 与 null/undefined 归一化。
+    const raw = cqPlusOne?.status
+    if (raw === 'APPROVED' || raw === 'REJECTED') return raw
+    return 'PENDING'
+  })() // 'PENDING' | 'APPROVED' | 'REJECTED'
   const cqStatus = byMr
     ? (cqFromMr?.status ?? 'PENDING')
     : dryRunCqStatus === 'APPROVED'
@@ -164,9 +171,11 @@ export default function CqReviewPage() {
   const canReview = byMr
     ? mr?.status === 'OPEN' && (!cqFromMr || cqFromMr.status === 'PENDING') && !isAuthor
     : dryRun?.status === 'PASSED'
-      && dryRunCqStatus === 'PENDING'
-      && !preflightUnavailable
-      && !isAuthor
+    // 注意：Preflight 接口返回 cqPlusOne.status∈{MISSING,APPROVED,REJECTED}，
+    // 但 dryRunCqStatus 已经把 MISSING 归一化成 PENDING；这里仍兼容原始 MISSING 作为双保险。
+    && (dryRunCqStatus === 'PENDING' || dryRunCqStatus === 'MISSING' as string)
+    && !preflightUnavailable
+    && !isAuthor
 
   // ========== 返回按钮 ==========
   function goBack() {

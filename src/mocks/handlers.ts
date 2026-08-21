@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { GithubAuthorizedRepository, GithubInstallation } from '@/types/github'
+import type { GithubOAuthStatus } from '@/types/auth'
 import type { Group, GroupMember, Message } from '@/types/group'
 import type { Activity, Memory, Notification, MyTeamInvitation } from '@/types'
 import { MOCK_CURRENT_USER } from './currentUser'
@@ -13,6 +14,20 @@ import { createWorkBranchHandlers } from './workBranches'
 
 const MOCK_USER: { id: string; email: string; displayName: string; avatarChar: string; avatarUrl?: string } = {
   ...MOCK_CURRENT_USER,
+}
+
+let MOCK_GITHUB_OAUTH_STATUS: GithubOAuthStatus = {
+  authorized: false,
+  provider: null,
+  githubUserId: null,
+  githubLogin: null,
+  scopes: [],
+  authorizedAt: null,
+  lastValidatedAt: null,
+  canCreatePublicPersonalRepository: false,
+  canCreatePrivatePersonalRepository: false,
+  personalRepositorySetup: 'NEED_OAUTH',
+  expectedInstallationLogin: null,
 }
 
 // 项目设置（需求群规则）默认值，对齐 §22.2
@@ -1123,6 +1138,60 @@ export const handlers = [
       },
     }),
   ),
+
+  // ── 个人 GitHub OAuth（§49；Mock 与 authApi 使用同一请求链路）──
+  http.post('/api/me/integrations/github/oauth/start', () =>
+    HttpResponse.json({
+      data: {
+        authorizationUrl: 'https://github.com/login/oauth/authorize?client_id=mock&scope=repo&state=mock-state',
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      },
+      requestId: 'mock-github-oauth-start',
+    }),
+  ),
+
+  // 仅供本地手动联调：模拟后端校验 callback 后回跳前端，不接收或返回任何 Token。
+  http.get('/api/integrations/github/oauth/callback', ({ request }) => {
+    const url = new URL(request.url)
+    if (url.searchParams.get('error')) {
+      return HttpResponse.redirect('/app/settings/integrations/github?githubOAuth=failed&code=GITHUB_OAUTH_CALLBACK_DENIED')
+    }
+    MOCK_GITHUB_OAUTH_STATUS = {
+      authorized: true,
+      provider: 'GITHUB',
+      githubUserId: 12345678,
+      githubLogin: 'qgents-demo',
+      scopes: ['repo'],
+      authorizedAt: new Date().toISOString(),
+      lastValidatedAt: new Date().toISOString(),
+      canCreatePublicPersonalRepository: true,
+      canCreatePrivatePersonalRepository: true,
+      personalRepositorySetup: 'READY',
+      expectedInstallationLogin: null,
+    }
+    return HttpResponse.redirect('/app/settings/integrations/github?githubOAuth=authorized')
+  }),
+
+  http.get('/api/me/integrations/github/oauth', () =>
+    HttpResponse.json({ data: MOCK_GITHUB_OAUTH_STATUS, requestId: 'mock-github-oauth-status' }),
+  ),
+
+  http.delete('/api/me/integrations/github/oauth', () => {
+    MOCK_GITHUB_OAUTH_STATUS = {
+      authorized: false,
+      provider: null,
+      githubUserId: null,
+      githubLogin: null,
+      scopes: [],
+      authorizedAt: null,
+      lastValidatedAt: null,
+      canCreatePublicPersonalRepository: false,
+      canCreatePrivatePersonalRepository: false,
+      personalRepositorySetup: 'NEED_OAUTH',
+      expectedInstallationLogin: null,
+    }
+    return new HttpResponse(null, { status: 204 })
+  }),
 
   // 修改昵称/头像（§4 PATCH /me）
   http.patch('/api/me', async ({ request }) => {

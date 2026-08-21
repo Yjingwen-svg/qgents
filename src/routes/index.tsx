@@ -34,6 +34,9 @@ const ChatWorkspacePage = lazy(
 const GitHubIntegrationPage = lazy(
   () => import("@/pages/GitHubIntegration/GitHubIntegrationPage"),
 );
+const GitHubOAuthPage = lazy(
+  () => import("@/pages/GitHubOAuth/GitHubOAuthPage"),
+);
 const GithubInstallationReposPage = lazy(
   () => import("@/pages/GitHubIntegration/GithubInstallationReposPage"),
 );
@@ -130,6 +133,7 @@ export function AppRouter() {
               <Route path="teams" element={<MyTeamsPage />} />
               <Route path="teams/create" element={<CreateTeamPage />} />
               <Route path="teams/join" element={<JoinTeamPage />} />
+              <Route path="settings/integrations/github" element={<GitHubOAuthPage />} />
 
               <Route element={<RequireTeam />}>
                 <Route path="teams/:teamId" element={<TeamDetailPage />}>

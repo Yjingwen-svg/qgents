@@ -19,6 +19,7 @@ import {
   FolderAddOutlined,
   LogoutOutlined,
   CameraOutlined,
+  GithubOutlined,
 } from '@ant-design/icons'
 import { useAuth } from '@/context/AuthContext'
 import { usePersonalCenter } from '@/context/PersonalCenterContext'
@@ -200,6 +201,11 @@ export function PersonalCenter() {
         <Button block icon={<FolderAddOutlined />} onClick={handleCreateProject}>
           创建项目
         </Button>
+        <Link to={PATHS.GITHUB_OAUTH} onClick={closePersonalCenter}>
+          <Button block icon={<GithubOutlined />}>
+            个人 GitHub 授权
+          </Button>
+        </Link>
         <Button block danger icon={<LogoutOutlined />} onClick={handleLogout}>
           退出登录
         </Button>

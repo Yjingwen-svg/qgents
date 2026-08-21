@@ -191,9 +191,9 @@ export default function TaskDetailPage() {
     })
   }
 
-  function locate(id: string) {
+  function locate(id: string, block: ScrollLogicalPosition = 'nearest') {
     const target = document.getElementById(id)
-    if (target && typeof target.scrollIntoView === 'function') target.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    if (target && typeof target.scrollIntoView === 'function') target.scrollIntoView({ behavior: 'smooth', block })
   }
 
   function openRun(taskRunId: string, focusInspector = false) {
@@ -240,12 +240,14 @@ export default function TaskDetailPage() {
                   onUnmount={handlePreflightRemove}
                 />
               ))}
-              <PreflightPanel
-                projectId={projectId}
-                preflights={preflightArray}
-                onRefreshAll={preflightRefetchAll}
-                taskCreatedByUserId={taskCreatedByUserId}
-              />
+              <section id="preflight-panel" data-testid="preflight-panel">
+                <PreflightPanel
+                  projectId={projectId}
+                  preflights={preflightArray}
+                  onRefreshAll={preflightRefetchAll}
+                  taskCreatedByUserId={taskCreatedByUserId}
+                />
+              </section>
             </>
           ) : null}
           <main className={styles.content}>
@@ -336,14 +338,15 @@ function CompactTaskHeader({ task, projectId, onCancel, cancelPending, completed
   )
 }
 
-function AttentionBanner({ task, onLocate, onOpenRun, onConfirmDelivery, confirmPending, confirmError }: { task: Task; onLocate: (id: string) => void; onOpenRun: (taskRunId: string) => void; onConfirmDelivery: () => void; confirmPending: boolean; confirmError: Error | null }) {
+function AttentionBanner({ task, onLocate, onOpenRun, onConfirmDelivery, confirmPending, confirmError }: { task: Task; onLocate: (id: string, block?: ScrollLogicalPosition) => void; onOpenRun: (taskRunId: string) => void; onConfirmDelivery: () => void; confirmPending: boolean; confirmError: Error | null }) {
   const attention = task.attention!
   const attentionRunId = getAttentionRunId(attention)
   const runId = attentionRunId ?? null
   const isOutput = attention.kind === 'DIFF_CONFIRMATION_REQUIRED' || attention.kind === 'DELIVERY_FAILED'
+  const isPreflightRequired = attention.kind === 'PREFLIGHT_REQUIRED'
   const canConfirmDelivery = attention.kind === 'DIFF_CONFIRMATION_REQUIRED' && attention.diffReviewBatchId !== null && task.capabilities.canConfirmDiffReview
-  const primaryAction = attention.kind === 'INPUT_REQUIRED' ? '提供输入' : attention.kind === 'APPROVAL_REQUIRED' ? '前往审批' : attention.kind === 'DIFF_CONFIRMATION_REQUIRED' ? canConfirmDelivery ? '确认交付' : '前往交付' : attention.kind === 'DELIVERY_FAILED' ? '查看失败交付' : runId ? '查看运行' : '查看执行'
-  const action = canConfirmDelivery ? onConfirmDelivery : runId ? () => onOpenRun(runId) : isOutput ? () => onLocate('output-delivery') : () => onLocate('execution-flow')
+  const primaryAction = isPreflightRequired ? '查看 MR 预检' : attention.kind === 'INPUT_REQUIRED' ? '提供输入' : attention.kind === 'APPROVAL_REQUIRED' ? '前往审批' : attention.kind === 'DIFF_CONFIRMATION_REQUIRED' ? canConfirmDelivery ? '确认交付' : '前往交付' : attention.kind === 'DELIVERY_FAILED' ? '查看失败交付' : runId ? '查看运行' : '查看执行'
+  const action = isPreflightRequired ? () => onLocate('preflight-panel', 'center') : canConfirmDelivery ? onConfirmDelivery : runId ? () => onOpenRun(runId) : isOutput ? () => onLocate('output-delivery') : () => onLocate('execution-flow')
   return <section className={styles.attentionBanner} data-testid="task-attention-banner"><div className={styles.attentionCard}><div><Text strong className={styles.attentionTitle}>需要你的处理</Text><Text type="secondary">{attention.summary ?? attention.title}</Text>{canConfirmDelivery && confirmError ? <Text type="danger">{diffReviewError(confirmError)}</Text> : null}</div><div className={styles.attentionActions}><Button type="primary" size="small" loading={canConfirmDelivery && confirmPending} disabled={canConfirmDelivery && confirmPending} onClick={action}>{primaryAction}</Button></div></div></section>
 }
 

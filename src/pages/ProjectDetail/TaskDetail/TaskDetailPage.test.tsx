@@ -65,6 +65,9 @@ vi.mock('@/hooks/workspaceDiffPreview', () => ({
   useWorkspaceDiffPreviewFiles: useWorkspaceDiffPreviewFilesMock,
   useWorkspaceDiffPreviewFilePatch: useWorkspaceDiffPreviewFilePatchMock,
 }))
+vi.mock('../PreflightPanel', () => ({
+  PreflightPanel: () => <div data-testid="preflight-panel-content" />,
+}))
 
 import TaskDetailPage from './TaskDetailPage'
 
@@ -116,6 +119,40 @@ beforeEach(() => {
 })
 
 describe('TaskDetailPage workbench', () => {
+  it('routes MR_FIRST preflight attention to the visible preflight panel', async () => {
+    const user = userEvent.setup()
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    })
+    useTaskMock.mockReturnValue({
+      data: {
+        ...task,
+        status: 'WAITING_PREFLIGHT',
+        deliveryMode: 'MR_FIRST',
+        attention: {
+          kind: 'PREFLIGHT_REQUIRED',
+          title: '等待 MR 前预检',
+          summary: '代码已推送；请完成 Dry Run 和独立成员 CQ+1 后创建 MR',
+          taskRunId: null,
+          inputRequestId: null,
+          diffReviewBatchId: 'batch-1',
+          repositoryId: null,
+          createdAt: task.updatedAt,
+        },
+      },
+      error: null,
+      isError: false,
+      isLoading: false,
+      refetch: vi.fn(),
+    })
+    renderPage()
+    expect(screen.getByTestId('preflight-panel')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '查看 MR 预检' }))
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+  })
+
   it('renders recent executions, delivery and the embedded run inspector without legacy rows or Tabs', () => {
     renderPage()
     expect(screen.getByTestId('task-summary')).toBeInTheDocument()

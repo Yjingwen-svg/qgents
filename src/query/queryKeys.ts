@@ -27,6 +27,7 @@ export const queryKeys = {
     ['qgents', 'teams', teamId, 'github', 'installations'] as const,
   githubTeamRepositories: (teamId: string) =>
     ['qgents', 'teams', teamId, 'github', 'repositories'] as const,
+  githubOAuth: ['qgents', 'me', 'integrations', 'github', 'oauth'] as const,
   teamProjects: (teamId: string) => ['qgents', 'teams', teamId, 'projects'] as const,
   projectRepositories: (projectId: string) =>
     ['qgents', 'projects', projectId, 'repositories'] as const,

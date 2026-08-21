@@ -33,4 +33,16 @@ describe('global project Mock handler', () => {
     const invalidResponse = await fetch('/api/projects/unknown-project')
     expect(invalidResponse.status).toBe(404)
   })
+
+  it('simulates the backend 403 GITHUB_REPOSITORY_NOT_AUTHORIZED on auto-repo create', async () => {
+    const response = await fetch('/api/teams/team-owned-001/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Denied project', newRepository: { name: '__unauthorized__-repo' } }),
+    })
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: 'GITHUB_REPOSITORY_NOT_AUTHORIZED' },
+    })
+  })
 })

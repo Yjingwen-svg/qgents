@@ -183,7 +183,11 @@ function taskListItem(task: Task): import('@/types/task-model').TaskListItem {
 function createTaskResources(store: TaskModelStore, input: TaskCreateInput, projectId: string): Task {
   const createdAt = new Date().toISOString()
   const id = makeId(projectId, 'task', store.tasks.size)
-  const repositories = input.repositoryIds.map((repository) => ({ repositoryId: repository, name: 'Mock repository', fullName: `qgents/${repository}`, provider: 'GITHUB', defaultBranch: 'main', baseRef: input.baseRef, baseCommit: `base-${input.baseRef}`, sourceBranch: input.baseRef, headCommit: null }))
+  const refs = new Map((input.repositoryRefs ?? []).map((item) => [item.repositoryId, item.baseRef]))
+  const repositories = input.repositoryIds.map((repository) => {
+    const baseRef = refs.get(repository) ?? input.baseRef ?? 'main'
+    return { repositoryId: repository, name: 'Mock repository', fullName: `qgents/${repository}`, provider: 'GITHUB', defaultBranch: 'main', baseRef, baseCommit: `base-${baseRef}`, sourceBranch: baseRef, headCommit: null }
+  })
   const task: Task = { id, displayCode: `T-${store.tasks.size + 1000}`, projectId, title: input.title, requirementSummary: input.requirement.slice(0, 200), status: 'PLANNING', deliveryMode: input.deliveryMode ?? null, deliveryReason: null, requirementGroup: { id: input.requirementGroupId, name: input.requirementGroupId, status: 'ACTIVE' }, createdByUser: { id: 'mock-user', displayName: 'Mock User', avatarUrl: null }, repositories, executionSummary: { totalSteps: 0, pendingSteps: 0, runningSteps: 0, waitingSteps: 0, blockedSteps: 0, succeededSteps: 0, failedSteps: 0, currentStage: null, currentStageTitle: '规划中', requiresUserAction: false }, attention: null, statusReason: null, createdAt, updatedAt: createdAt, requirement: input.requirement, acceptanceCriteria: [], workspace: { id: input.workspaceId ?? `workspace-${id}`, status: 'READY', repositories }, capabilities: { canCancel: true, canReplacePendingStepAgent: false, canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: false }, artifactSummary: { total: 0, byType: {} }, diffReviewSummary: { available: false, diffId: null, reviewStatus: null, deliveryStatus: null, repositoryCount: 0, filesChanged: 0, additions: 0, deletions: 0 }, sourceMessage: null, triggerMessageId: null }
   store.tasks.set(task.id, task)
   return task

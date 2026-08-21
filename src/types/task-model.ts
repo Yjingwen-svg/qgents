@@ -117,7 +117,10 @@ export interface TaskCreateInput {
   title: string
   requirement: string
   repositoryIds: string[]
-  baseRef: string
+  /** Per-repository workspace base refs. */
+  repositoryRefs?: Array<{ repositoryId: string; baseRef: string }>
+  /** Legacy single base ref, retained for older callers during API migration. */
+  baseRef?: string
   /** Explicit user preference. Omit to let the planner/server decide. */
   deliveryMode?: TaskDeliveryMode
   workspaceId?: string

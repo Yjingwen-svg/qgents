@@ -8,10 +8,11 @@ import { ApiError } from '@/api'
 const navigateMock = vi.hoisted(() => vi.fn())
 const mutationMock = vi.hoisted(() => ({ mutateAsync: vi.fn(), reset: vi.fn(), isPending: false, error: null as Error | null }))
 const repositoriesMock = vi.hoisted(() => vi.fn())
+const remoteBranchesMock = vi.hoisted(() => vi.fn())
 const groupsMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/task-model', () => ({ useCreateTask: () => mutationMock }))
-vi.mock('@/api/github', () => ({ githubApi: { listProjectRepositories: repositoriesMock } }))
+vi.mock('@/api/github', () => ({ githubApi: { listProjectRepositories: repositoriesMock, listRemoteBranches: remoteBranchesMock } }))
 vi.mock('@/api', async () => {
   const actual = await vi.importActual<typeof import('@/api')>('@/api')
   return { ...actual, groupApi: { listByProject: groupsMock } }
@@ -35,7 +36,7 @@ function renderModal(onClose = vi.fn()) {
 }
 
 beforeEach(() => {
-  mutationMock.mutateAsync.mockReset(); mutationMock.reset.mockReset(); mutationMock.isPending = false; mutationMock.error = null; navigateMock.mockReset(); repositoriesMock.mockReset(); repositoriesMock.mockResolvedValue([repository]); groupsMock.mockReset(); groupsMock.mockResolvedValue([requirementGroup])
+  mutationMock.mutateAsync.mockReset(); mutationMock.reset.mockReset(); mutationMock.isPending = false; mutationMock.error = null; navigateMock.mockReset(); repositoriesMock.mockReset(); repositoriesMock.mockResolvedValue([repository]); remoteBranchesMock.mockReset(); remoteBranchesMock.mockResolvedValue([{ name: 'main', headCommit: 'abc123', isProjectDefault: true, isGithubDefault: true, canCreateTaskFrom: true, canDelete: false }]); groupsMock.mockReset(); groupsMock.mockResolvedValue([requirementGroup])
 })
 
 describe('TaskTriggerModal', () => {
@@ -44,10 +45,10 @@ describe('TaskTriggerModal', () => {
     await user.type(screen.getByLabelText('任务标题'), ' 新任务')
     await user.click(screen.getByLabelText('仓库'))
     await user.click(await screen.findByText('org/repo'))
-    expect(screen.getByLabelText('基准分支')).toHaveValue('main')
+    expect(screen.getByText('默认基准：main')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '创建任务' }))
     await waitFor(() => expect(mutationMock.mutateAsync).toHaveBeenCalledTimes(1))
-    expect(mutationMock.mutateAsync).toHaveBeenCalledWith({ requirementGroupId: 'group-test', title: '新任务', requirement: 'initial requirement', repositoryIds: ['binding-1'], baseRef: 'main' })
+    expect(mutationMock.mutateAsync).toHaveBeenCalledWith({ requirementGroupId: 'group-test', title: '新任务', requirement: 'initial requirement', repositoryIds: ['binding-1'], repositoryRefs: [{ repositoryId: 'binding-1', baseRef: 'main' }] })
     expect(navigateMock).toHaveBeenCalledWith('/app/projects/project-test/tasks?taskId=task-1')
   })
 
@@ -79,7 +80,7 @@ describe('TaskTriggerModal', () => {
 
   it('keeps the edited fields after a failed request', async () => {
     const user = userEvent.setup(); mutationMock.mutateAsync.mockRejectedValue(new ApiError('forbidden', 403)); renderModal()
-    const requirement = screen.getByLabelText('需求说明'); await user.clear(requirement); await user.type(requirement, 'edited requirement'); await user.click(screen.getByLabelText('仓库')); await user.click(await screen.findByText('org/repo')); await user.type(screen.getByLabelText('任务标题'), '标题'); await user.type(screen.getByLabelText('基准分支'), 'main'); await user.click(screen.getByRole('button', { name: '创建任务' }))
+    const requirement = screen.getByLabelText('需求说明'); await user.clear(requirement); await user.type(requirement, 'edited requirement'); await user.click(screen.getByLabelText('仓库')); await user.click(await screen.findByText('org/repo')); await user.type(screen.getByLabelText('任务标题'), '标题'); await user.click(screen.getByRole('button', { name: '创建任务' }))
     await waitFor(() => expect(mutationMock.mutateAsync).toHaveBeenCalledTimes(1)); expect(requirement).toHaveValue('edited requirement')
   })
 })

@@ -110,7 +110,8 @@ export async function uploadAttachment(projectId: string, file: File): Promise<s
     const origin = /^https?:\/\//i.test(base) ? new URL(base).origin : window.location.origin
     targetUrl = `${origin}${credential.uploadUrl.startsWith('/') ? credential.uploadUrl : `/${credential.uploadUrl}`}`
   }
-  const headers: Record<string, string> = {}
+  // 合并后端凭证要求的请求头（如本地回退/内网后端要求 Content-Type）；OSS 预签名场景该字段为空。
+  const headers: Record<string, string> = { ...(credential.headers ?? {}) }
   if (!isAbsolute) {
     const token = getStoredToken()
     if (token) headers['Authorization'] = `Bearer ${token}`

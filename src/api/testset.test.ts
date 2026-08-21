@@ -323,13 +323,14 @@ describe('testset API mapping', () => {
   })
 
   it('maps TestRun time fields with updatedAt fallback', () => {
-    // TestRun: updatedAt → finishedAt 兜底
+    // TestRun: updatedAt → finishedAt 兜底；startedAt 不回落 createdAt（创建时间≠开始时间，
+    // QUEUED 未开始时 startedAt 应为空，避免把未开始的运行显示成有时长）
     const fromUpdated = mapTestRun({
       id: 'r1',
       createdAt: '2026-08-15T10:00:00Z',
       updatedAt: '2026-08-15T10:05:00Z',
     })
-    expect(fromUpdated.startedAt).toBe('2026-08-15T10:00:00Z')
+    expect(fromUpdated.startedAt).toBeNull()
     expect(fromUpdated.finishedAt).toBe('2026-08-15T10:05:00Z')
 
     // TestRun: legacy startedAt/finishedAt 优先

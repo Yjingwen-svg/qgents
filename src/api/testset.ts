@@ -283,11 +283,8 @@ export function mapTestRun(raw: unknown): TestRun {
   let startedAt: string | null = rawStartedAt || null
   // finishedAt 优先使用后端显式返回，其次用 updatedAt（如果存在）
   let finishedAt: string | null = rawFinishedAt || updatedAt || null
-
-  // 如果有 updatedAt 但没有 startedAt，用 createdAt 作为开始时间
-  if (!startedAt && updatedAt) {
-    startedAt = createdAt || null
-  }
+  // 注意：不使用 createdAt 兜底 startedAt——创建时间不是开始执行时间（QUEUED 未开始时
+  // startedAt 应为空），且历史 updated_at 曾混入本地时区导致「运行时长」误显示 28800s。
 
   return {
     id: readString(row, 'id'),

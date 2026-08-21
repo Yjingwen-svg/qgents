@@ -74,9 +74,23 @@ const ACTION_SUCCESS_TEXT: Record<DeliveryAction, string> = {
   approve: '已批准并共享',
   reject: '已拒绝该交付',
   archive: '已归档',
-  confirm: '已确认交付，正在执行仓库交付',
-  retryDelivery: '已重新发起交付',
+  confirm: '已确认交付，正在同步目标分支并执行仓库交付',
+  retryDelivery: '已重新发起交付，正在同步目标分支并重试',
 }
+
+// 确认/重试交付会先读取 GitHub 目标分支并同步到 Worker；这些错误需要给出明确的恢复动作。
+const TARGET_BRANCH_SYNC_ERROR_CODES = new Set([
+  'GITHUB_REPOSITORY_UNAVAILABLE',
+  'GITHUB_INSTALLATION_UNAVAILABLE',
+  'GITHUB_BRANCH_SHA_INVALID',
+  'GIT_BASE_REF_NOT_SYNCED',
+  'GIT_REMOTE_NETWORK_FAILED',
+  'GIT_REMOTE_RATE_LIMITED',
+  'GIT_REMOTE_SHA_MISMATCH',
+  'SANDBOX_WORKER_UNAVAILABLE',
+  'SANDBOX_WORKER_ERROR',
+  'GIT_COMMAND_TIMEOUT',
+])
 
 function formatDate(value: string | null): string {
   if (!value) return '暂无'
@@ -98,9 +112,13 @@ function readStatus(value: string | null): DeliveryDisplayStatus | undefined {
 
 function errorText(error: unknown): string {
   if (!(error instanceof ApiError)) return '操作失败，请稍后重试'
+  const code = apiErrorCode(error)
+  if (code && TARGET_BRANCH_SYNC_ERROR_CODES.has(code)) {
+    return '无法同步目标分支，请检查 GitHub 连接后重试'
+  }
   if (error.status === 403) return '无权限执行此操作'
   if (error.status === 404) return '关联资源不存在或不可见'
-  if (error.status === 409) return apiErrorCode(error) === 'DIFF_REVIEW_SUPERSEDED' ? '该 Diff 已被后续修改取代，已刷新最新数据' : '资源状态已变化，已刷新最新数据'
+  if (error.status === 409) return code === 'DIFF_REVIEW_SUPERSEDED' ? '该 Diff 已被后续修改取代，已刷新最新数据' : '资源状态已变化，已刷新最新数据'
   if (error.status === 422) return '参数无效或当前状态不可操作'
   return error.message || '操作失败，请稍后重试'
 }
@@ -291,6 +309,12 @@ export default function DeliveryCenterPage() {
       setActionErrors((current) => ({ ...current, [item.id]: errorText(error) }))
       setActiveItemId(null)
       setActiveAction(null)
+      // 后端可能已持久化失败状态；失败后立即拉取，避免旧的 PROCESSING 状态留在页面上。
+      void Promise.all([
+        itemQuery.refetch(),
+        summaryQuery.refetch(),
+        recentActivityQuery.refetch(),
+      ])
     }
   }
 
@@ -603,7 +627,7 @@ function CodeDetails({ item }: { item: CodeDeliveryItem }) {
 }
 
 function deliveryActionPendingText(action: DeliveryAction): string {
-  return ({ submitReview: '正在提交交付申请…', approve: '正在提交批准请求…', confirm: '正在提交交付确认…', reject: '正在提交拒绝请求…', archive: '正在提交归档请求…', retryDelivery: '正在提交重试请求…' } as Record<DeliveryAction, string>)[action]
+  return ({ submitReview: '正在提交交付申请…', approve: '正在提交批准请求…', confirm: '正在同步目标分支并确认交付…', reject: '正在提交拒绝请求…', archive: '正在提交归档请求…', retryDelivery: '正在同步目标分支并重试交付…' } as Record<DeliveryAction, string>)[action]
 }
 
 function codeReviewStatusLabel(status: CodeDeliveryItem['reviewStatus']): string {

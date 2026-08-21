@@ -164,8 +164,10 @@ export default function TaskDetailPage() {
     // 新运行记录稍后才进入列表；在确认新 run 前持续轮询，不能按旧任务状态提前退出。
   }, [hasClearedRunSelection, retryReplacementRun, retryingRunId, searchParams, selectedRunId, setSearchParams])
 
-  // SSE 是主更新通道；活动任务额外每 3 秒刷新一次读取模型，覆盖事件延迟、断线和后端异步建 Run 的窗口。
+  // SSE 是主更新通道；活动任务额外每 5 秒刷新一次读取模型，覆盖事件延迟、断线和后端异步建 Run 的窗口。
   // 终态自动停止，且这里只读取服务端状态，不向缓存伪造 RUNNING/DELIVERING。
+  // 轮询频率从 3s 放宽到 5s：多任务并发时 3s 轮询（task/steps/runs/diffs 多个接口）会放大
+  // 数据库连接峰值，曾触发连接池瞬时耗尽（Hikari Connection is not available）。
   const shouldPollActiveTask = retryPending || isTaskInFlight(task?.status)
   useEffect(() => {
     if (!shouldPollActiveTask) return
@@ -180,7 +182,7 @@ export default function TaskDetailPage() {
       void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.workspaceDiffPreview.all(projectId, taskId) })
     }
     refresh()
-    const timer = window.setInterval(refresh, 3_000)
+    const timer = window.setInterval(refresh, 5_000)
     return () => window.clearInterval(timer)
   }, [diffReviewQuery.refetch, diffsQuery.refetch, reviewEnabled, shouldPollActiveTask, stepsQuery.refetch, taskQuery.refetch, taskRunsQuery.refetch])
 

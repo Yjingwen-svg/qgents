@@ -57,12 +57,13 @@ export function MemoryPage() {
   const queryClient = useQueryClient()
   const { message } = App.useApp()
   const [filter, setFilter] = useState<FilterKey>('ALL')
+  const [keyword, setKeyword] = useState('')
   const [detailId, setDetailId] = useState<string | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
 
-  const { data: memories = [], isLoading } = useQuery({
+  const { data: memories = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['memories', projectId],
     queryFn: () => memoryApi.list(projectId),
     enabled: !!projectId,
@@ -72,9 +73,13 @@ export function MemoryPage() {
     queryClient.invalidateQueries({ queryKey: ['memories', projectId] })
 
   const filtered = useMemo(() => {
-    if (filter === 'ALL') return memories
-    return memories.filter((m) => m.status === filter)
-  }, [memories, filter])
+    const normalized = keyword.trim().toLowerCase()
+    return memories.filter((memory) => {
+      const matchesFilter = filter === 'ALL' || memory.status === filter
+      const searchable = [memory.title, memory.content, memory.category, ...(memory.tags ?? [])].join(' ').toLowerCase()
+      return matchesFilter && (!normalized || searchable.includes(normalized))
+    })
+  }, [memories, filter, keyword])
 
   const detail = memories.find((m) => m.id === detailId) ?? null
   const editTarget = memories.find((m) => m.id === editId) ?? null
@@ -118,6 +123,13 @@ export function MemoryPage() {
           onChange={setFilter}
         />
         <Space>
+          <Input.Search
+            allowClear
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="搜索标题、内容或标签"
+            style={{ width: 240 }}
+          />
           <Button icon={<MessageOutlined />} onClick={() => setAiOpen(true)}>
             AI 沉淀
           </Button>
@@ -127,7 +139,14 @@ export function MemoryPage() {
         </Space>
       </div>
 
-      <div className="memory-page__workspace">
+      {isError ? (
+        <EmptyState
+          icon="⚠️"
+          title="Memory 加载失败"
+          description="请检查网络后重试"
+          action={<Button onClick={() => void refetch()}>重新加载</Button>}
+        />
+      ) : <div className="memory-page__workspace">
         <section className="memory-page__list-panel" aria-label="Memory 列表">
           <div className="memory-page__list-heading">
             <span>知识条目</span>
@@ -136,8 +155,8 @@ export function MemoryPage() {
           {filtered.length === 0 ? (
             <EmptyState
               icon="🧠"
-              title="暂无 Memory"
-              description="从需求群沉淀讨论结论，或手动新建一条项目知识"
+              title={keyword.trim() || filter !== 'ALL' ? '没有匹配的 Memory' : '暂无 Memory'}
+              description={keyword.trim() || filter !== 'ALL' ? '可以更换关键词或状态筛选' : '从需求群沉淀讨论结论，或手动新建一条项目知识'}
             />
           ) : (
             <div className="memory-page__list">
@@ -169,7 +188,7 @@ export function MemoryPage() {
             }
           }}
         />
-      </div>
+      </div>}
 
       {/* AI 沉淀：选择项目内需求群，自动检索其最近聊天生成草稿 */}
       <AiDraftModal

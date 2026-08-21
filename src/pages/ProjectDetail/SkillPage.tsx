@@ -58,12 +58,14 @@ const VISIBILITY_META: Record<Skill['visibility'], { color: string; label: strin
 export function SkillPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const queryClient = useQueryClient()
+  const { message } = App.useApp()
   const [filter, setFilter] = useState<FilterKey>('ALL')
+  const [keyword, setKeyword] = useState('')
   const [detailId, setDetailId] = useState<string | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
 
-  const { data: skills = [], isLoading } = useQuery({
+  const { data: skills = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['skills', projectId],
     queryFn: () => skillApi.list(projectId),
     enabled: !!projectId,
@@ -73,9 +75,13 @@ export function SkillPage() {
     queryClient.invalidateQueries({ queryKey: ['skills', projectId] })
 
   const filtered = useMemo(() => {
-    if (filter === 'ALL') return skills
-    return skills.filter((s) => s.status === filter)
-  }, [skills, filter])
+    const normalized = keyword.trim().toLowerCase()
+    return skills.filter((skill) => {
+      const matchesFilter = filter === 'ALL' || skill.status === filter
+      const searchable = [skill.name, skill.content, ...(skill.tags ?? [])].join(' ').toLowerCase()
+      return matchesFilter && (!normalized || searchable.includes(normalized))
+    })
+  }, [skills, filter, keyword])
 
   const detail = skills.find((s) => s.id === detailId) ?? null
   // 编辑目标独立于详情抽屉：点「编辑」时保存 editId，避免关闭抽屉后 editTarget 丢失
@@ -84,6 +90,7 @@ export function SkillPage() {
   const archive = useMutation({
     mutationFn: (id: string) => skillApi.archive(projectId, id),
     onSuccess: invalidate,
+    onError: () => message.error('归档失败，请检查权限或稍后重试'),
   })
 
   if (isLoading) {
@@ -109,16 +116,32 @@ export function SkillPage() {
           value={filter}
           onChange={(v) => setFilter(v as FilterKey)}
         />
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          新建 Skill
-        </Button>
+        <Space>
+          <Input.Search
+            allowClear
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="搜索名称、内容或标签"
+            style={{ width: 240 }}
+          />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            新建 Skill
+          </Button>
+        </Space>
       </div>
 
-      {filtered.length === 0 ? (
+      {isError ? (
+        <EmptyState
+          icon="⚠️"
+          title="Skill 加载失败"
+          description="请检查网络后重试"
+          action={<Button onClick={() => void refetch()}>重新加载</Button>}
+        />
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon="🛠️"
-          title="暂无共享 Skill"
-          description="新建私有 Skill，或创建项目共享 Skill；普通成员的共享 Skill 需在交付中心提交审核"
+          title={keyword.trim() || filter !== 'ALL' ? '没有匹配的 Skill' : '暂无共享 Skill'}
+          description={keyword.trim() || filter !== 'ALL' ? '可以更换关键词或状态筛选' : '新建私有 Skill，或创建项目共享 Skill'}
         />
       ) : (
         <div className="skill-page__list">

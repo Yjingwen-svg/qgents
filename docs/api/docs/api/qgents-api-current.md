@@ -853,9 +853,11 @@ GET/PUT
 项目成员/Project Admin
 查询/配置受保护分支策略
 GET/PUT
-/projects/{projectId}/repositories/{projectRepositoryId}/quality-gates/{branch}
+/projects/{projectId}/repositories/{projectRepositoryId}/quality-gates?branch={branch}
 项目成员/Project Admin
-查询/配置目标分支的门禁
+查询/配置目标分支的门禁；分支名包含 `/` 时必须使用查询参数形式
+
+兼容路径：`/projects/{projectId}/repositories/{projectRepositoryId}/quality-gates/{branch}` 仍可用于不含 `/` 的旧调用。
 质量门禁示例：
 
 

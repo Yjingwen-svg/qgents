@@ -27,7 +27,7 @@ const STATUS_OPTIONS: Array<{ value: MergeRequestStatus; label: string }> = [
   { value: 'PENDING_CREATE', label: '待发起' },
   { value: 'OPEN', label: '进行中' },
   { value: 'MERGED', label: '已合并' },
-  { value: 'CLOSED', label: '已关闭' },
+  { value: 'CLOSED', label: '已关闭（未合并）' },
 ]
 
 function isMergeRequestStatus(value: string | null): value is MergeRequestStatus {
@@ -44,20 +44,6 @@ function statusColor(status: MergeRequestStatus): string {
   if (status === 'CLOSED') return 'default'
   // PENDING_CREATE：占位 MR，GitHub PR 尚未创建
   return 'cyan'
-}
-
-function qualityGateLabel(status: string | undefined): string {
-  if (status === 'PASSED') return '门禁通过'
-  if (status === 'FAILED') return '门禁未过'
-  if (status === 'PENDING') return '等待预检结果'
-  return '门禁未知'
-}
-
-function qualityGateColor(status: string | undefined): string {
-  if (status === 'PASSED') return 'success'
-  if (status === 'FAILED') return 'error'
-  if (status === 'PENDING') return 'processing'
-  return 'default'
 }
 
 /**
@@ -862,31 +848,6 @@ export function MergeRequestTab({
         },
       },
       {
-        title: '质量门禁',
-        key: 'qualityGate',
-        width: 120,
-        render: (_value, record) => {
-          const status = preflightStatusMap[record.id]
-          const isRequesting = preflightRequestingIds.has(record.id)
-          const isDryRunFailed = status === 'FAILED'
-          if (record.status === 'PENDING_CREATE' && (isRequesting || (!status && preflightLoading && !loadedPreflightIds.has(record.id)))) {
-            return (
-              <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                <Spin size="small" />
-              </span>
-            )
-          }
-          if (isDryRunFailed) {
-            return <Tag color="error">质量门禁失败</Tag>
-          }
-          return (
-            <Tag color={qualityGateColor(record.qualityGate?.status)}>
-              {qualityGateLabel(record.qualityGate?.status)}
-            </Tag>
-          )
-        },
-      },
-      {
         title: 'HEAD',
         key: 'headCommit',
         width: 100,
@@ -1104,7 +1065,7 @@ export function MergeRequestTab({
             </Button>
           </Space>
         }
-        description="真实 MR 可进入站内详情；只有真实 GitHub PR 已创建且质量门禁通过时，才显示 GitHub 入口和合并按钮。待发起候选不会显示 GitHub 入口，预检进行中或等待 CQ+1 时只显示对应流程状态。"
+        description="真实 MR 可进入站内详情；只有真实 GitHub PR 已创建且质量门禁通过时，才显示 GitHub 入口和合并按钮。待发起候选不会显示 GitHub 入口，预检进行中或等待 CQ+1 时只显示对应流程状态。已关闭（未合并）表示 GitHub PR 被关闭但代码未合入目标分支，仍可能锁定源分支；只有已合并才会解除分支锁。"
       />
       {query.isLoading ? (
         <div style={{ textAlign: 'center', padding: 48 }}>

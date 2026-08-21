@@ -41,6 +41,9 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, disp
   const run = runQuery.data
   const [retrySubmitted, setRetrySubmitted] = useState(false)
   const pending = retry.isPending || cancel.isPending || retrySubmitted || retryPending || taskCancelPending
+  // 列表摘要与详情请求在自动重试的切换窗口可能先后返回。操作必须等待两者一致，
+  // 否则会把上一轮 FAILED 的“重试”错误展示在新一轮 RUNNING 上。
+  const statusMismatch = Boolean(run && displayStatus && displayStatus !== run.status)
 
   useEffect(() => {
     if (focusRequest === 0 || !taskRunId) return
@@ -50,6 +53,11 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, disp
     }
     void runQuery.refetch()
   }, [focusRequest, runQuery.refetch, taskRunId])
+
+  useEffect(() => {
+    if (!statusMismatch) return
+    void runQuery.refetch()
+  }, [statusMismatch, runQuery.refetch])
 
   function retryRun() {
     if (!run || !canRetry) return
@@ -86,12 +94,12 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, disp
   const runRetryable = run !== undefined
     && ['FAILED', 'BLOCKED'].includes(run.status)
     && run.statusReason?.retryable === true
-  const canRetry = taskAllowsRunRetry && runRetryable && retryEligibleRunIds.has(run?.id ?? '')
+  const canRetry = !statusMismatch && taskAllowsRunRetry && runRetryable && retryEligibleRunIds.has(run?.id ?? '')
   // 任务已在取消流程中时，不能再单独取消某次运行；避免任务级和运行级写操作互相竞争。
   // 在任务仍有效时，运行状态集与后端 CANCELLABLE_RUNNING 一致。
   const taskAllowsRunCancellation = task.status !== 'CANCELLING' && task.status !== 'CANCELLED'
-  const canCancel = taskAllowsRunCancellation && Boolean(run && ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED'].includes(run.status))
-  return <section ref={panelRef} className={styles.runInspectorPanel} data-testid="run-inspector-panel"><div className={styles.runInspectorPanelHeading}><div><Title level={4}>本次执行</Title></div><div>{canRetry ? <Button size="small" onClick={retryRun} loading={retrySubmitted || retry.isPending} disabled={pending}>重试</Button> : null}{canCancel ? <Button size="small" danger onClick={cancelRun} loading={cancel.isPending} disabled={pending}>取消本次执行</Button> : null}</div></div>{retrySubmitted ? <Alert type="info" showIcon message="重试请求已提交，正在创建新的执行记录" /> : null}{!taskRunId ? <InspectorState text="选择一条执行记录查看详情" /> : runQuery.isLoading ? <InspectorState loading /> : runQuery.isError ? <InspectorError error={runQuery.error} resource="执行详情" /> : !run || run.taskId !== taskId ? <InspectorState text="执行记录不存在或不属于当前任务" /> : <RunInspectorContent run={run} displayStatus={displayStatus} task={task} logsQuery={logsQuery} diagnosticsQuery={diagnosticsQuery} contextQuery={contextQuery} requestsQuery={requestsQuery} projectId={projectId} />}<AcceptanceOverview task={task} /></section>
+  const canCancel = !statusMismatch && taskAllowsRunCancellation && Boolean(run && ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED'].includes(run.status))
+  return <section ref={panelRef} className={styles.runInspectorPanel} data-testid="run-inspector-panel"><div className={styles.runInspectorPanelHeading}><div><Title level={4}>本次执行</Title></div><div>{canRetry ? <Button size="small" onClick={retryRun} loading={retrySubmitted || retry.isPending} disabled={pending}>重试</Button> : null}{canCancel ? <Button size="small" danger onClick={cancelRun} loading={cancel.isPending} disabled={pending}>取消本次执行</Button> : null}</div></div>{retrySubmitted ? <Alert type="info" showIcon message="重试请求已提交，正在创建新的执行记录" /> : null}{statusMismatch ? <Alert type="info" showIcon message="执行状态正在同步，暂不可操作" /> : null}{!taskRunId ? <InspectorState text="选择一条执行记录查看详情" /> : runQuery.isLoading ? <InspectorState loading /> : runQuery.isError ? <InspectorError error={runQuery.error} resource="执行详情" /> : !run || run.taskId !== taskId ? <InspectorState text="执行记录不存在或不属于当前任务" /> : <RunInspectorContent run={run} displayStatus={displayStatus} task={task} logsQuery={logsQuery} diagnosticsQuery={diagnosticsQuery} contextQuery={contextQuery} requestsQuery={requestsQuery} projectId={projectId} />}<AcceptanceOverview task={task} /></section>
 }
 
 function RunInspectorContent({ run, displayStatus, task, logsQuery, diagnosticsQuery, contextQuery, requestsQuery, projectId }: { run: TaskRunDetail; displayStatus: TaskRunDetail['status'] | undefined; task: Task; logsQuery: ReturnType<typeof useInfiniteTaskRunLogs>; diagnosticsQuery: ReturnType<typeof useTaskRunDiagnostics>; contextQuery: ReturnType<typeof useTaskRunExecutionContext>; requestsQuery: ReturnType<typeof useTaskRunInputRequests>; projectId: string }) {

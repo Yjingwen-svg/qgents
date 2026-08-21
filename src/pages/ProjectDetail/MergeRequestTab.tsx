@@ -334,7 +334,12 @@ export function MergeRequestTab({
           || currentStatus === 'STALE'
           || currentStatus === 'CQ_REJECTED'
           || currentStatus === 'MR_CREATED'
+        // DIFF_FIRST (MANUAL) 模式：只有用户显式点击"申请MR"后才允许轮询
+        // 如果 preflightStatusMap 中没有该 MR 的状态，说明尚未发起预检，跳过轮询
         if (mr.status === 'PENDING_CREATE' && mr.taskId && !terminal) {
+          if (mr.createMode === 'MANUAL' && !currentStatus) {
+            return false
+          }
           taskIds.add(mr.taskId)
           return true
         }

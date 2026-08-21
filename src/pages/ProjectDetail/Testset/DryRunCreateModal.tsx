@@ -37,7 +37,21 @@ export default function DryRunCreateModal({
 
   // 加载项目任务列表
   const { data: taskPage } = useTasks(projectId)
-  const tasks = useMemo(() => taskPage?.data ?? [], [taskPage])
+
+  // 关联 Task 可选状态白名单（与 TestRunCreateModal 保持一致）
+  const TASK_SELECTABLE_STATUSES: readonly string[] = [
+    'WAITING_DIFF_CONFIRMATION',
+    'DIFF_REJECTED',
+    'WAITING_PREFLIGHT',
+    'DELIVERING',
+    'DELIVERY_FAILED',
+    'SUCCEEDED',
+  ]
+
+  const tasks = useMemo(
+    () => (taskPage?.data ?? []).filter((t) => TASK_SELECTABLE_STATUSES.includes(t.status)),
+    [taskPage],
+  )
 
   // 加载已启用的测试集（供用户手动选择）
   const { data: allTestsets = [] } = useTestsets(projectId, {})

@@ -71,37 +71,45 @@ export default function TestRunCreateModal({
     ),
   })), [repoTestsets])
 
-  // 构建 Task 选项（过滤活跃任务）
+  // 关联 Task 可选状态白名单（仅这些状态的任务已拥有可用分支）
+  const TASK_SELECTABLE_STATUSES: readonly string[] = [
+    'WAITING_DIFF_CONFIRMATION',
+    'DIFF_REJECTED',
+    'WAITING_PREFLIGHT',
+    'DELIVERING',
+    'DELIVERY_FAILED',
+    'SUCCEEDED',
+  ]
+
   const taskStatusColor: Record<string, string> = {
-    PLANNING: 'default',
-    PENDING: 'default',
-    RUNNING: 'processing',
     WAITING_DIFF_CONFIRMATION: 'warning',
     WAITING_PREFLIGHT: 'warning',
     DIFF_REJECTED: 'error',
     DELIVERING: 'processing',
     DELIVERY_FAILED: 'error',
     SUCCEEDED: 'success',
-    FAILED: 'error',
-    CANCELLING: 'processing',
-    CANCELLED: 'default',
   }
 
-  const taskOptions = useMemo(() => taskList.map((task) => ({
+  const selectableTasks = useMemo(
+    () => taskList.filter((task) => TASK_SELECTABLE_STATUSES.includes(task.status)),
+    [taskList],
+  )
+
+  const taskOptions = useMemo(() => selectableTasks.map((task) => ({
     value: task.id,
     label: (
       <span>
         <Text strong>{task.displayCode}</Text>
         <Text type="secondary" style={{ marginLeft: 8 }}>{task.title}</Text>
         <Tag
-          color={taskStatusColor[task.status]}
+          color={taskStatusColor[task.status] ?? 'default'}
           style={{ marginLeft: 8 }}
         >
           {task.status}
         </Tag>
       </span>
     ),
-  })), [taskList])
+  })), [selectableTasks])
 
   // 表单初始化
   useEffect(() => {
@@ -159,9 +167,9 @@ export default function TestRunCreateModal({
   // 获取当前选中任务的分支信息
   const selectedTaskBranch = useMemo(() => {
     if (!selectedTaskId) return null
-    const task = taskList.find((t) => t.id === selectedTaskId)
+    const task = selectableTasks.find((t) => t.id === selectedTaskId)
     return task?.repositories?.[0]?.sourceBranch || null
-  }, [selectedTaskId, taskList])
+  }, [selectedTaskId, selectableTasks])
 
   // 校验提示：taskId 与 ref 二选一
   const refValidationRules = [

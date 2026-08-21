@@ -827,18 +827,16 @@ export function MergeRequestTab({
           const enabled = Boolean(record.taskId)
           if (!enabled) return <Text type="secondary">—</Text>
           const status = preflightStatusMap[record.id]
-          const isRequesting = preflightRequestingIds.has(record.id)
-          const isCqApproved = status === 'MR_CREATED'
-          const isCqRejected = status === 'CQ_REJECTED'
-          const isNoChanges = status === 'NO_CHANGES'
-          const isLoading = isRequesting || (!status && preflightLoading && !loadedPreflightIds.has(record.id))
+          // 只有 Dry Run 已通过且确实等待 CQ+1 时，才开放 CQ 审查入口。
+          if (status !== 'WAITING_CQ') {
+            return <Text type="secondary">—</Text>
+          }
           return (
             <Tooltip title="点击跳转到 CQ+1 大印章审查页">
               <Button
                 type="link"
                 size="small"
                 style={{ padding: 0 }}
-                disabled={isLoading}
                 onClick={(e) => {
                   e.stopPropagation()
                   const params = new URLSearchParams({
@@ -852,9 +850,7 @@ export function MergeRequestTab({
                   navigate(`${PATHS.projectCqReview(projectId)}?${params.toString()}`)
                 }}
               >
-                <Tag color={isLoading ? 'default' : isCqApproved ? 'success' : isCqRejected ? 'error' : 'default'}>
-                  {isLoading ? '加载中' : isNoChanges ? '无需 CQ+1' : isCqApproved ? 'CQ+1 通过' : isCqRejected ? 'CQ+1 未通过' : 'WAITING'}
-                </Tag>
+                <Tag color="warning">等待 CQ+1</Tag>
               </Button>
             </Tooltip>
           )

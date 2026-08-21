@@ -99,7 +99,7 @@ function DiffDetailPanel({ query, projectId, onRefresh }: { query: ReturnType<ty
       <DetailFields diff={diff} task={taskQuery.data} repositories={repositoriesQuery.data ?? []} />
       <DiffFilesPanel projectId={projectId} diffId={diff.id} />
       <DiffAcceptance diff={diff} projectId={projectId} task={taskQuery.data} batch={batchQuery.data} onRefresh={refreshLatest} refreshing={refreshing} batchState={batchQuery.isLoading ? 'loading' : batchQuery.data ? 'available' : 'unavailable'} />
-      <Text type="secondary">本页面仅完成 Diff 验收，不代表已合并 MR。</Text>
+      <Text type="secondary">本页面负责 Diff 验收和代码交付，不代表 MR 已创建或已合并。</Text>
     </Space>
   </Card>
 }
@@ -209,6 +209,7 @@ function DiffAcceptance({ diff, projectId, task, batch, onRefresh, refreshing, b
 }
 
 function TaskDeliveryPanel({ projectId, task, batch, onRefresh, refreshing }: { projectId: string; task: Task | undefined; batch: DiffReviewBatch; onRefresh: () => Promise<void>; refreshing: boolean }) {
+  const navigate = useNavigate()
   const confirm = useConfirmTaskDiffReview(projectId)
   const reject = useRejectTaskDiffReview(projectId)
   const retry = useRetryTaskDiffReviewDelivery(projectId)
@@ -228,7 +229,7 @@ function TaskDeliveryPanel({ projectId, task, batch, onRefresh, refreshing }: { 
   const canRetry = !superseded && retryableDelivery && task?.capabilities?.canRetryDelivery === true
   const diffs = Array.isArray(batch.diffs) ? batch.diffs : []
   const repositories = Array.isArray(batch.repositoryDeliveries) ? batch.repositoryDeliveries : []
-  const statusMessage = taskDeliveryStatusMessage(batch, repositories)
+  const statusMessage = taskDeliveryStatusMessage(batch, repositories, task?.deliveryMode)
   const handleError = (mutationError: Error) => {
     if (mutationError instanceof ApiError && (mutationError.status === 409 || errorCode(mutationError) === 'DIFF_DELIVERY_NOT_RETRYABLE')) void onRefresh()
   }
@@ -236,7 +237,17 @@ function TaskDeliveryPanel({ projectId, task, batch, onRefresh, refreshing }: { 
   return <Card size="small" title="任务级交付">
     <Space direction="vertical" size="small" className={styles.taskDeliveryPanel}>
       <Text type="secondary">最终交付批次：{diffs.length} 个 Diff · {repositories.length} 个仓库。</Text>
-      <Alert type={statusMessage.type} showIcon message={statusMessage.message} description={statusMessage.description} action={statusMessage.refreshable ? <Button size="small" loading={refreshing} disabled={refreshing || pending} onClick={() => void onRefresh()}>刷新最新状态</Button> : undefined} />
+      <Alert
+        type={statusMessage.type}
+        showIcon
+        message={statusMessage.message}
+        description={statusMessage.description}
+        action={statusMessage.refreshable ? (
+          <Button size="small" loading={refreshing} disabled={refreshing || pending} onClick={() => void onRefresh()}>刷新最新状态</Button>
+        ) : task?.deliveryMode === 'DIFF_FIRST' && batch.deliveryStatus === 'DELIVERED' ? (
+          <Button size="small" onClick={() => navigate(`${PATHS.projectTestset(projectId)}?tab=mr`)}>前往 MR 列表</Button>
+        ) : undefined}
+      />
       {canConfirm || canReject ? <Space wrap>
         {canConfirm ? <Button type="primary" loading={confirm.isPending} disabled={pending} onClick={() => confirm.mutate(batch.taskId, { onError: handleError })}>确认交付</Button> : null}
         {canReject ? <Button danger type="link" disabled={pending} onClick={() => setShowRejectForm((visible) => !visible)}>{showRejectForm ? '收起拒绝' : '拒绝交付'}</Button> : null}
@@ -254,12 +265,34 @@ function TaskDeliveryPanel({ projectId, task, batch, onRefresh, refreshing }: { 
 function taskDeliveryStatusMessage(
   batch: DiffReviewBatch,
   repositories: DiffReviewBatch['repositoryDeliveries'],
+  deliveryMode: Task['deliveryMode'],
 ): { type: 'info' | 'success' | 'warning' | 'error'; message: string; description: string; refreshable: boolean } {
   if (batch.reviewStatus === 'SUPERSEDED') return { type: 'warning', message: '该交付批次已被后续修改取代', description: '请刷新并查看最新 Diff，当前批次不能确认、拒绝或重试。', refreshable: true }
   if (batch.reviewStatus === 'REJECTED') return { type: 'error', message: '该任务交付已被拒绝', description: batch.reviewReason ? `拒绝原因：${batch.reviewReason}` : '需要生成新的最终 Diff 后再提交交付。', refreshable: false }
-  if (batch.reviewStatus === 'PENDING_CONFIRMATION') return { type: 'warning', message: '等待确认交付', description: '确认后将按仓库逐一创建提交或 MR。', refreshable: false }
-  if (batch.deliveryStatus === 'DELIVERED') return { type: 'success', message: '交付已完成', description: '所有仓库已完成交付，可继续查看对应 MR。', refreshable: false }
-  if (batch.deliveryStatus === 'DELIVERING') return { type: 'info', message: '正在交付', description: '后端正在按仓库创建提交或 MR，请稍候刷新状态。', refreshable: true }
+  if (batch.reviewStatus === 'PENDING_CONFIRMATION') {
+    const description = deliveryMode === 'MR_FIRST'
+      ? '确认后将按仓库提交代码，并自动进入 Dry Run 和 CQ+1 流程。'
+      : deliveryMode === 'DIFF_FIRST'
+        ? '确认后将按仓库提交代码；MR 需要在交付完成后由用户按需发起，不会自动执行 Dry Run 或 CQ+1。'
+        : '确认后将按仓库提交代码；后续 MR 流程以任务的交付模式为准。'
+    return { type: 'warning', message: '等待确认交付', description, refreshable: false }
+  }
+  if (batch.deliveryStatus === 'DELIVERED') {
+    const description = deliveryMode === 'DIFF_FIRST'
+      ? '所有仓库的代码提交已完成。你可以前往 MR 列表按需发起 MR；本流程不会自动执行 Dry Run 或 CQ+1。'
+      : deliveryMode === 'MR_FIRST'
+        ? '所有仓库的代码提交已完成，系统将继续进行 Dry Run 和 CQ+1；请前往 MR 列表查看后续状态。'
+        : '所有仓库的代码提交已完成；如任务需要创建 MR，请前往 MR 列表查看后续状态。'
+    return { type: 'success', message: '代码已交付', description, refreshable: false }
+  }
+  if (batch.deliveryStatus === 'DELIVERING') {
+    const description = deliveryMode === 'DIFF_FIRST'
+      ? '系统正在为各仓库提交代码。交付完成后可前往 MR 列表按需发起 MR，不会自动执行 Dry Run 或 CQ+1。'
+      : deliveryMode === 'MR_FIRST'
+        ? '系统正在为各仓库提交代码，完成后会自动进入 Dry Run 和 CQ+1 流程。请等待状态更新，无需重复提交。'
+        : '系统正在为各仓库提交代码，请等待处理完成后查看后续 MR 流程。无需重复提交。'
+    return { type: 'info', message: '代码交付处理中', description, refreshable: true }
+  }
   if (batch.deliveryStatus === 'FAILED' || batch.deliveryStatus === 'PARTIALLY_DELIVERED') {
     const failedRepositories = repositories.filter((repository) => repository.deliveryStatus === 'FAILED').map((repository) => repository.repositoryName)
     const scope = failedRepositories.length > 0 ? `失败仓库：${failedRepositories.join('、')}。` : '部分仓库尚未完成交付。'

@@ -246,7 +246,7 @@ export function TestsetPage() {
                           })
                         }}
                       >
-                        {isAdmin ? '查看待合并 MR' : '查看进行中 MR'}
+                        查看进行中 MR
                       </Button>
                     </Space>
                   </div>

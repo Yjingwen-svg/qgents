@@ -366,6 +366,13 @@ export function MergeRequestTab({
                 const repoStatus = res.items.find((it) => it.repositoryId === mr.repositoryId)
                 if (repoStatus?.failureCode === 'MR_NO_CHANGES') {
                   newMap[mr.id] = 'NO_CHANGES'
+                } else if (repoStatus?.mergeRequest) {
+                  // 预检状态已落库真实 MR 时，用真实 ID 替换占位 ID，
+                  // 否则后续“合并”会把 pending-mr:* 发给真实 MR 接口。
+                  newMap[mr.id] = 'MR_CREATED'
+                  setItems((prev) => prev.map((item) => item.id === mr.id
+                    ? { ...item, ...repoStatus.mergeRequest! }
+                    : item))
                 } else if (repoStatus?.dryRunStatus) {
                   if (repoStatus.cqStatus === 'APPROVED') {
                     newMap[mr.id] = 'MR_CREATED'
@@ -456,8 +463,7 @@ export function MergeRequestTab({
                   item.id === __mr.id
                     ? {
                       ...item,
-                      webUrl: res.mergeRequest!.webUrl,
-                      number: res.mergeRequest!.number,
+                      ...res.mergeRequest!,
                       qualityGate: res.mergeRequest!.qualityGate ?? item.qualityGate,
                     }
                     : item,
@@ -591,8 +597,7 @@ export function MergeRequestTab({
               item.id === record.id
                 ? {
                   ...item,
-                  webUrl: res.mergeRequest!.webUrl,
-                  number: res.mergeRequest!.number,
+                  ...res.mergeRequest!,
                   qualityGate: res.mergeRequest!.qualityGate ?? item.qualityGate,
                 }
                 : item,
@@ -693,8 +698,7 @@ export function MergeRequestTab({
                 item.id === record.id
                   ? {
                     ...item,
-                    webUrl: res.mergeRequest!.webUrl,
-                    number: res.mergeRequest!.number,
+                    ...res.mergeRequest!,
                     qualityGate: res.mergeRequest!.qualityGate ?? item.qualityGate,
                   }
                   : item,
@@ -910,6 +914,9 @@ export function MergeRequestTab({
 
             // MR_CREATED：后端已在 GitHub 成功创建 PR
             if (eff === 'MR_CREATED') {
+              if (record.status === 'PENDING_CREATE' && !record.webUrl && (!record.number || record.number <= 0)) {
+                return <Text type="secondary">MR 已创建，列表刷新中</Text>
+              }
               const href = githubPullRequestUrl(
                 record.webUrl,
                 record.number,
@@ -1004,7 +1011,20 @@ export function MergeRequestTab({
             record.qualityGate?.status === 'PASSED' &&
             record.mergeOperationStatus !== 'RUNNING'
           const children: ReactElement[] = []
-          if (href) {
+          children.push(
+            <Button
+              key="detail"
+              size="small"
+              onClick={(event) => {
+                event.stopPropagation()
+                navigate(PATHS.projectCodeMr(projectId, record.id))
+              }}
+            >
+              查看 MR
+            </Button>,
+          )
+          // 质量门禁未通过时仍可查看站内 MR 详情，但不展示 GitHub 外链或合并入口。
+          if (href && (record.status !== 'OPEN' || record.qualityGate?.status === 'PASSED')) {
             children.push(
               <Button
                 key="gh"
@@ -1035,10 +1055,10 @@ export function MergeRequestTab({
             )
           }
           if (record.status === 'OPEN' && record.qualityGate?.status !== 'PASSED') {
-            return <Text type="secondary">门禁未过</Text>
+            return <Space size={8}>{children}<Text type="secondary">门禁未过</Text></Space>
           }
           if (record.status === 'MERGED' || record.status === 'CLOSED') {
-            return href ? children[0] ?? <Text type="secondary">—</Text> : <Text type="secondary">—</Text>
+            return <Space size={8}>{children}</Space>
           }
           return children.length > 0 ? <Space size={8}>{children}</Space> : <Text type="secondary">—</Text>
         },

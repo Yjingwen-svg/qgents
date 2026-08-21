@@ -112,6 +112,7 @@ export default function MergeRequestDetailPage() {
   const [fileIndex, setFileIndex] = useState(0)
   const [draft, setDraft] = useState('')
   const cqRef = useRef<HTMLDivElement>(null)
+  const isPlaceholder = mergeRequestId.startsWith('pending-mr:')
 
   function handleCreateMr() {
     if (!mr) return
@@ -135,8 +136,9 @@ export default function MergeRequestDetailPage() {
     enabled: Boolean(projectId),
   })
 
-  const detailQuery = useMergeRequest(projectId, mergeRequestId)
-  const checksQuery = useMergeRequestChecks(projectId, mergeRequestId)
+  // PENDING_CREATE 是列表投影，不是数据库 MR，不能拿占位 ID 请求真实详情接口。
+  const detailQuery = useMergeRequest(projectId, isPlaceholder ? '' : mergeRequestId)
+  const checksQuery = useMergeRequestChecks(projectId, isPlaceholder ? '' : mergeRequestId)
   const syncMr = useSyncMergeRequest(projectId)
   const mergeMr = useMergeMergeRequest(projectId)
   const approveCq = useApproveMergeRequestCq(projectId)
@@ -299,7 +301,7 @@ export default function MergeRequestDetailPage() {
         <Alert
           type="error"
           showIcon
-          message={detailQuery.error ? formatApiError(detailQuery.error) : '该 MR 不存在或不可见'}
+          message={isPlaceholder ? '该记录仍在预检/待创建阶段，尚未生成真实 MR' : (detailQuery.error ? formatApiError(detailQuery.error) : '该 MR 不存在或不可见')}
           action={
             <Button size="small" onClick={() => void detailQuery.refetch()}>
               重试

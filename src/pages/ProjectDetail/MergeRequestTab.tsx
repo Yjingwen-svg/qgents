@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactElement } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Alert, App, Button, Empty, Select, Space, Spin, Table, Tag, Typography, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { useQueries } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
-import { qualityGateApi } from '@/api/qualityGate'
 import { mergeRequestsApi } from '@/api/taskModel'
 import {
   useMergeMergeRequest,
   useMergeRequests,
   useRequestMergeRequestPreflight,
+  useSyncMergeRequest,
 } from '@/hooks/task-model'
 import { formatApiError } from '@/utils/formatApiError'
 import { ApiError } from '@/api/client'
@@ -19,7 +19,6 @@ import type {
   MergeRequestSummary,
   PreflightStatus,
 } from '@/types/task-model'
-import type { Preflight } from '@/types/qualityGate'
 import { githubPullRequestUrl } from './mergeRequestDisplay'
 
 const { Text } = Typography
@@ -78,7 +77,10 @@ type EffectiveState =
   | 'READY_CREATE'
   | 'CREATING'
   | 'MR_CREATED'
+  | 'NO_CHANGES'
   | 'FAILED'
+
+type PreflightUiStatus = PreflightStatus | 'NO_CHANGES'
 
 function deriveEffectiveState(
   status: string | null | undefined,
@@ -105,6 +107,8 @@ function deriveEffectiveState(
       return 'FAILED'
     case 'MR_CREATED':
       return 'MR_CREATED'
+    case 'NO_CHANGES':
+      return 'NO_CHANGES'
     // 来自 qualityGate.ts 的预检状态（轮询接口）
     case 'PENDING':
       return 'DRY_RUN_RUNNING'  // PENDING = Dry Run 正在运行
@@ -124,9 +128,9 @@ function preflightButtonLabel(
     case 'IDLE':
       return { text: '申请MR', loading: false, disabled: false, failed: false, clickable: true }
     case 'DRY_RUN_RUNNING':
-    case 'WAITING_CQ':
-      // Dry Run 运行中 或 等待 CQ+1，按钮都显示"待预检通过"（灰色禁用）
       return { text: '待预检通过', loading: true, disabled: true, failed: false, clickable: false }
+    case 'WAITING_CQ':
+      return { text: '等待 CQ+1', loading: false, disabled: true, failed: false, clickable: false }
     case 'READY_CREATE':
       // CQ+1通过后，需要用户再点「创建MR」
       return { text: '创建MR', loading: false, disabled: false, failed: false, clickable: true }
@@ -138,6 +142,8 @@ function preflightButtonLabel(
         return { text: '合并', loading: false, disabled: false, failed: false, clickable: true }
       }
       return { text: '已创建成功', loading: false, disabled: true, failed: false, clickable: false }
+    case 'NO_CHANGES':
+      return { text: '无新增变更', loading: false, disabled: true, failed: false, clickable: false }
     case 'FAILED':
       // 预检失败：允许用户点击重新发起预检
       return { text: '重新预检', loading: false, disabled: false, failed: true, clickable: true }
@@ -152,6 +158,7 @@ function preflightTagText(eff: EffectiveState): string {
     case 'READY_CREATE': return '待创建MR'
     case 'CREATING': return '正在创建 MR'
     case 'MR_CREATED': return '待合并'  // 用户要求：状态列显示"待合并"
+    case 'NO_CHANGES': return '无新增变更'
     case 'FAILED': return '预检失败'
   }
 }
@@ -164,6 +171,7 @@ function preflightTagColor(eff: EffectiveState): string {
     case 'READY_CREATE': return 'warning'
     case 'CREATING': return 'processing'
     case 'MR_CREATED': return 'blue'
+    case 'NO_CHANGES': return 'default'
     case 'FAILED': return 'error'
   }
 }
@@ -176,6 +184,12 @@ function shortSha(value: string | null): string {
 function repoLabel(repositories: ProjectBoundRepository[], repositoryId: string): string {
   const repo = repositories.find((item) => item.id === repositoryId)
   return repo?.displayName || repo?.fullName || repositoryId
+}
+
+function isNoChangesError(error: unknown): boolean {
+  if (!(error instanceof ApiError) || !error.body) return false
+  const body = error.body as { error?: { code?: string } }
+  return body.error?.code === 'MR_NO_CHANGES'
 }
 
 export function MergeRequestTab({
@@ -201,6 +215,8 @@ export function MergeRequestTab({
   })
   // 使用本地 state 包裹，允许预检 MR_CREATED 时乐观回写 webUrl/number
   const [items, setItems] = useState<MergeRequestSummary[]>(query.data?.data ?? [])
+  const itemsRef = useRef(items)
+  itemsRef.current = items
   const lastDataRef = useRef(query.data?.data)
   useEffect(() => {
     const latest = query.data?.data ?? []
@@ -225,29 +241,29 @@ export function MergeRequestTab({
   // 表格、CQ 查询和操作列必须使用同一份数据。
   const displayItems = items
 
-  // ========== 预检状态查询：使用批量接口 + 并发控制 =====
-  // 废弃逐行 useQueries（N 行 = N 个请求，超过浏览器并发限制）
-  // 改为按 taskId 批量查询 + 并发控制（最多 3 个同时请求）
-  const cqQueries = useQueries({
-    queries: [],  // 占位，不再使用
-  })
-
   const mergeMr = useMergeMergeRequest(projectId)
   const requestPreflight = useRequestMergeRequestPreflight(projectId)
+  const syncMr = useSyncMergeRequest(projectId)
   const [mergingId, setMergingId] = useState<string | null>(null)
   const [creatingId, setCreatingId] = useState<string | null>(null)
   // 记录每行的预检状态（前端跟踪，真实环境由 SSE/后端返回）
-  const [preflightStatusMap, setPreflightStatusMap] = useState<Record<string, PreflightStatus>>({})
+  const [preflightStatusMap, setPreflightStatusMap] = useState<Record<string, PreflightUiStatus>>({})
+  // 自动模式提交预检请求期间，不能把“请求尚未返回”误显示成“待预检通过”。
+  const [preflightRequestingIds, setPreflightRequestingIds] = useState<Set<string>>(new Set())
+  const [coverageMap, setCoverageMap] = useState<Record<string, { taskCount: number; diffCount: number }>>({})
   // 预检状态是否正在加载（用于显示 loading 状态）
   const [preflightLoading, setPreflightLoading] = useState(false)
   // 已完成加载预检状态的 MR ID 集合
   const [loadedPreflightIds, setLoadedPreflightIds] = useState<Set<string>>(new Set())
+  // 轮询过程中状态会持续更新，但不能因此取消当前批次的请求。
+  const preflightStatusMapRef = useRef(preflightStatusMap)
+  preflightStatusMapRef.current = preflightStatusMap
 
   // 页面加载和真实占位行替换时恢复已启动的预检状态。
   // 优化：使用并发控制（最多 3 个同时请求），避免超过浏览器并发限制
   const CONCURRENCY_LIMIT = 3
   const PREFLIGHT_QUERY_TIMEOUT_MS = 8000
-  const [preflightPolling, setPreflightPolling] = useState(true)  // 是否轮询
+  const preflightPolling = true
   const [preflightPollingInterval] = useState(10000)  // 轮询间隔
 
   // 并发控制：限制同时发出的请求数量
@@ -270,88 +286,140 @@ export function MergeRequestTab({
     await Promise.all(executing)
   }
 
+  // GitHub webhook 可能因本地测试环境、隧道或网络问题延迟到达；定期同步 OPEN MR，
+  // 避免远端已合并但本地镜像仍显示“合并MR”。列表只同步当前前 20 条，且限制并发量。
   useEffect(() => {
-    if (displayItems.length === 0) return // 等待 MR 列表加载完成
-    const taskIds = new Set<string>()
-    const pendingMrIds: string[] = []
-    displayItems.forEach((mr) => {
-      if (mr.status === 'PENDING_CREATE' && mr.taskId) {
-        taskIds.add(mr.taskId)
-        if (!loadedPreflightIds.has(mr.id)) {
-          pendingMrIds.push(mr.id)
-        }
-      }
-    })
-    if (taskIds.size === 0) return
-    // 有未加载的 MR 则显示 loading
-    const shouldShowLoading = pendingMrIds.length > 0 && Object.keys(preflightStatusMap).length === 0
-    if (shouldShowLoading) setPreflightLoading(true)
-
     let cancelled = false
-      ; (async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const MR_SYNC_INTERVAL_MS = 15000
+    const MR_SYNC_CONCURRENCY = 3
+
+    const refreshRemoteStatuses = async () => {
+      const openRows = itemsRef.current
+        .filter((mr) => mr.status === 'OPEN' && Boolean(mr.id))
+        .slice(0, 20)
+      await asyncPool(openRows, MR_SYNC_CONCURRENCY, async (row) => {
         try {
-          const newMap: Record<string, PreflightStatus> = {}
-          const loadedIds = new Set(loadedPreflightIds)
-
-          // 使用并发控制，最多 CONCURRENCY_LIMIT 个同时请求
-          await asyncPool(Array.from(taskIds), CONCURRENCY_LIMIT, async (taskId) => {
-            if (cancelled) return
-            const controller = new AbortController()
-            const timeoutId = setTimeout(() => controller.abort(), PREFLIGHT_QUERY_TIMEOUT_MS)
-            try {
-              const res = await mergeRequestsApi.getTaskPreflight(projectId, taskId)
-              if (cancelled) return
-              if (res?.items?.length) {
-                const taskMrRows = displayItems.filter((mr) => mr.taskId === taskId && mr.status === 'PENDING_CREATE')
-                taskMrRows.forEach((mr) => {
-                  const repoStatus = res.items.find((it) => it.repositoryId === mr.repositoryId)
-                  loadedIds.add(mr.id)
-                  if (repoStatus?.dryRunStatus) {
-                    if (repoStatus.cqStatus === 'APPROVED') {
-                      newMap[mr.id] = 'MR_CREATED'
-                    } else if (repoStatus.cqStatus === 'REJECTED') {
-                      newMap[mr.id] = 'CQ_REJECTED'
-                    } else if (repoStatus.dryRunStatus === 'PASSED') {
-                      newMap[mr.id] = 'WAITING_CQ'
-                    } else if (repoStatus.dryRunStatus === 'FAILED') {
-                      newMap[mr.id] = 'FAILED'
-                    } else {
-                      newMap[mr.id] = 'DRY_RUN_RUNNING'
-                    }
-                  }
-                })
-              }
-            } catch {
-              // 静默失败
-            } finally {
-              clearTimeout(timeoutId)
-            }
-          })
-
+          const synced = await syncMr.mutateAsync(row.id)
           if (cancelled) return
-          if (Object.keys(newMap).length > 0) setPreflightStatusMap((prev) => ({ ...prev, ...newMap }))
-          setLoadedPreflightIds(loadedIds)
+          setItems((prev) => prev.map((item) => item.id === synced.id ? { ...item, ...synced } : item))
         } catch {
-          // 静默失败
-        } finally {
-          if (!cancelled) setPreflightLoading(false)
+          // webhook 或后续轮询可能完成同步；单行同步失败不影响列表其余内容。
         }
-      })()
-
-    // 轮询：每 10 秒刷新一次（仅当有 PENDING_CREATE 行时）
-    if (preflightPolling && taskIds.size > 0) {
-      const timer = setTimeout(() => {
-        // 重置已加载状态，触发下一次刷新
-        setLoadedPreflightIds(new Set())
-      }, preflightPollingInterval)
-      return () => {
-        cancelled = true
-        clearTimeout(timer)
+      })
+      if (!cancelled) {
+        timer = setTimeout(() => void refreshRemoteStatuses(), MR_SYNC_INTERVAL_MS)
       }
     }
-    return () => { cancelled = true }
+
+    void refreshRemoteStatuses()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, displayItems, preflightPolling])
+  }, [projectId])
+
+  useEffect(() => {
+    if (displayItems.length === 0) return // 等待 MR 列表加载完成
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const refresh = async () => {
+      const taskIds = new Set<string>()
+      const pendingRows = displayItems.filter((mr) => {
+        const currentStatus = preflightStatusMapRef.current[mr.id]
+        const terminal = currentStatus === 'NO_CHANGES'
+          || currentStatus === 'FAILED'
+          || currentStatus === 'STALE'
+          || currentStatus === 'CQ_REJECTED'
+          || currentStatus === 'MR_CREATED'
+        if (mr.status === 'PENDING_CREATE' && mr.taskId && !terminal) {
+          taskIds.add(mr.taskId)
+          return true
+        }
+        return false
+      })
+
+      if (taskIds.size === 0) {
+        setPreflightLoading(false)
+        return
+      }
+      setPreflightLoading(true)
+
+      try {
+        const newMap: Record<string, PreflightUiStatus> = {}
+        const loadedIds = new Set<string>()
+
+        // 使用并发控制，最多 CONCURRENCY_LIMIT 个同时请求
+        await asyncPool(Array.from(taskIds), CONCURRENCY_LIMIT, async (taskId) => {
+          if (cancelled) return
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), PREFLIGHT_QUERY_TIMEOUT_MS)
+          const taskMrRows = pendingRows.filter((mr) => mr.taskId === taskId)
+          try {
+            const res = await mergeRequestsApi.getTaskPreflight(projectId, taskId, controller.signal)
+            if (cancelled) return
+            taskMrRows.forEach((mr) => loadedIds.add(mr.id))
+            if (res?.items?.length) {
+              taskMrRows.forEach((mr) => {
+                const repoStatus = res.items.find((it) => it.repositoryId === mr.repositoryId)
+                if (repoStatus?.failureCode === 'MR_NO_CHANGES') {
+                  newMap[mr.id] = 'NO_CHANGES'
+                } else if (repoStatus?.mergeRequest) {
+                  // 预检状态已落库真实 MR 时，用真实 ID 替换占位 ID，
+                  // 否则后续“合并”会把 pending-mr:* 发给真实 MR 接口。
+                  newMap[mr.id] = 'MR_CREATED'
+                  setItems((prev) => prev.map((item) => item.id === mr.id
+                    ? { ...item, ...repoStatus.mergeRequest! }
+                    : item))
+                } else if (repoStatus?.dryRunStatus) {
+                  if (repoStatus.cqStatus === 'APPROVED') {
+                    newMap[mr.id] = 'MR_CREATED'
+                  } else if (repoStatus.cqStatus === 'REJECTED') {
+                    newMap[mr.id] = 'CQ_REJECTED'
+                  } else if (repoStatus.dryRunStatus === 'PASSED') {
+                    newMap[mr.id] = 'WAITING_CQ'
+                  } else if (repoStatus.dryRunStatus === 'FAILED') {
+                    newMap[mr.id] = 'FAILED'
+                  } else {
+                    newMap[mr.id] = 'DRY_RUN_RUNNING'
+                  }
+                }
+              })
+            }
+          } catch {
+            // 请求失败或超时也要结束该行的加载态，允许用户重新发起预检。
+            taskMrRows.forEach((mr) => loadedIds.add(mr.id))
+          } finally {
+            clearTimeout(timeoutId)
+          }
+        })
+
+        if (!cancelled) {
+          if (Object.keys(newMap).length > 0) {
+            setPreflightStatusMap((prev) => ({ ...prev, ...newMap }))
+          }
+          setLoadedPreflightIds(loadedIds)
+        }
+      } catch {
+        // 静默失败
+      } finally {
+        if (!cancelled) setPreflightLoading(false)
+      }
+
+      if (!cancelled && preflightPolling) {
+        timer = setTimeout(() => void refresh(), preflightPollingInterval)
+      }
+    }
+
+    void refresh()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, displayItems, preflightPolling, preflightPollingInterval])
 
   // ============== 自动模式（createMode = SYSTEM）：页面加载完自动触发申请预检 ==============
   // 后端返回占位 MR 时已经标记好 SYSTEM，前端就不需要用户再手动点「申请MR」。
@@ -372,8 +440,11 @@ export function MergeRequestTab({
     }
     systemRows.forEach((mr) => {
       autoStartRef.current.add(mr.id)
-      // 先乐观设置为 REQUESTED
-      setPreflightStatusMap((prev) => (prev[mr.id] ? prev : { ...prev, [mr.id]: 'REQUESTED' }))
+      setPreflightRequestingIds((prev) => {
+        const next = new Set(prev)
+        next.add(mr.id)
+        return next
+      })
       const __mr = mr
         ; (async () => {
           try {
@@ -382,26 +453,40 @@ export function MergeRequestTab({
               repositoryId: __mr.repositoryId,
             })
             setPreflightStatusMap((prev) => ({ ...prev, [__mr.id]: res.status }))
+            setCoverageMap((prev) => ({
+              ...prev,
+              [__mr.id]: { taskCount: res.coveredTaskIds.length, diffCount: res.coveredDiffIds.length },
+            }))
             if (res.mergeRequest && res.status === 'MR_CREATED') {
               setItems((prevItems) =>
                 prevItems.map((item) =>
                   item.id === __mr.id
                     ? {
                       ...item,
-                      webUrl: res.mergeRequest!.webUrl,
-                      number: res.mergeRequest!.number,
+                      ...res.mergeRequest!,
                       qualityGate: res.mergeRequest!.qualityGate ?? item.qualityGate,
                     }
                     : item,
                 ),
               )
             }
-          } catch {
-            setPreflightStatusMap((prev) =>
-              prev[__mr.id] === 'REQUESTED'
-                ? { ...prev, [__mr.id]: 'FAILED' }
-                : prev,
-            )
+          } catch (error) {
+            if (isNoChangesError(error)) {
+              setPreflightStatusMap((prev) => ({ ...prev, [__mr.id]: 'NO_CHANGES' }))
+              message.info('该分支与目标分支没有新增提交，无需申请 MR')
+            } else {
+              setPreflightStatusMap((prev) =>
+                prev[__mr.id] === 'REQUESTED'
+                  ? { ...prev, [__mr.id]: 'FAILED' }
+                  : prev,
+              )
+            }
+          } finally {
+            setPreflightRequestingIds((prev) => {
+              const next = new Set(prev)
+              next.delete(__mr.id)
+              return next
+            })
           }
         })()
     })
@@ -502,14 +587,17 @@ export function MergeRequestTab({
       .then((res) => {
         console.log('[handleCreate] API success:', res)
         setPreflightStatusMap((prev) => ({ ...prev, [record.id]: res.status }))
+        setCoverageMap((prev) => ({
+          ...prev,
+          [record.id]: { taskCount: res.coveredTaskIds.length, diffCount: res.coveredDiffIds.length },
+        }))
         if (res.mergeRequest && res.status === 'MR_CREATED') {
           setItems((prevItems) =>
             prevItems.map((item) =>
               item.id === record.id
                 ? {
                   ...item,
-                  webUrl: res.mergeRequest!.webUrl,
-                  number: res.mergeRequest!.number,
+                  ...res.mergeRequest!,
                   qualityGate: res.mergeRequest!.qualityGate ?? item.qualityGate,
                 }
                 : item,
@@ -547,11 +635,16 @@ export function MergeRequestTab({
           details,
           fullBody: error instanceof ApiError ? error.body : null,
         })
-        setPreflightStatusMap((prev) => ({ ...prev, [record.id]: 'FAILED' }))
-        message.error({
-          content: errorMessage,
-          duration: 5, // 延长显示时间
-        })
+        if (isNoChangesError(error)) {
+          setPreflightStatusMap((prev) => ({ ...prev, [record.id]: 'NO_CHANGES' }))
+          message.info('该分支与目标分支没有新增提交，无需申请 MR')
+        } else {
+          setPreflightStatusMap((prev) => ({ ...prev, [record.id]: 'FAILED' }))
+          message.error({
+            content: errorMessage,
+            duration: 5, // 延长显示时间
+          })
+        }
       })
       .finally(() => {
         setCreatingId(null)
@@ -595,14 +688,17 @@ export function MergeRequestTab({
           // 否则保守地把状态推进到 CREATING_MR，等待下次刷新
           const status = res.status === 'MR_CREATED' ? 'MR_CREATED' : 'CREATING_MR'
           setPreflightStatusMap((prev) => ({ ...prev, [record.id]: status }))
+          setCoverageMap((prev) => ({
+            ...prev,
+            [record.id]: { taskCount: res.coveredTaskIds.length, diffCount: res.coveredDiffIds.length },
+          }))
           if (res.mergeRequest) {
             setItems((prevItems) =>
               prevItems.map((item) =>
                 item.id === record.id
                   ? {
                     ...item,
-                    webUrl: res.mergeRequest!.webUrl,
-                    number: res.mergeRequest!.number,
+                    ...res.mergeRequest!,
                     qualityGate: res.mergeRequest!.qualityGate ?? item.qualityGate,
                   }
                   : item,
@@ -615,8 +711,13 @@ export function MergeRequestTab({
             message.success('正在创建 MR，稍后会显示 GitHub 跳转')
           }
         } catch (error) {
-          setPreflightStatusMap((prev) => ({ ...prev, [record.id]: 'FAILED' }))
-          message.error(formatApiError(error))
+          if (isNoChangesError(error)) {
+            setPreflightStatusMap((prev) => ({ ...prev, [record.id]: 'NO_CHANGES' }))
+            message.info('该分支与目标分支没有新增提交，无需创建 MR')
+          } else {
+            setPreflightStatusMap((prev) => ({ ...prev, [record.id]: 'FAILED' }))
+            message.error(formatApiError(error))
+          }
         } finally {
           setCreatingId(null)
         }
@@ -646,7 +747,7 @@ export function MergeRequestTab({
         width: 88,
         render: (_value, record) => (
           record.status === 'PENDING_CREATE' ? (
-            <Tooltip title="大任务识别后自动插入的占位记录，尚未在 GitHub 创建 PR。自动模式会自动发起预检；人工模式需点击「申请MR」。">
+            <Tooltip title="任务完成交付后由 Qgents 生成的待创建占位记录；真实 PR 创建前的交付、分支和质量校验由后端统一完成。">
               <Text type="secondary" style={{ cursor: 'help' }}>待创建</Text>
             </Tooltip>
           ) : <Text strong>#{record.number}</Text>
@@ -677,13 +778,21 @@ export function MergeRequestTab({
       {
         title: '分支',
         key: 'branches',
-        render: (_value, record) => (
-          <Text>
-            <Text code>{record.sourceBranch}</Text>
-            {' → '}
-            <Text code>{record.targetBranch}</Text>
-          </Text>
-        ),
+        render: (_value, record) => {
+          const coverage = coverageMap[record.id]
+          return (
+            <Space size={[6, 4]} wrap>
+              <Text>
+                <Text code>{record.sourceBranch}</Text>
+                {' → '}
+                <Text code>{record.targetBranch}</Text>
+              </Text>
+              {coverage && (coverage.taskCount > 1 || coverage.diffCount > 1) ? (
+                <Tag color="blue">{coverage.taskCount} 个任务 · {coverage.diffCount} 个 Diff</Tag>
+              ) : null}
+            </Space>
+          )
+        },
       },
       {
         title: '仓库',
@@ -698,8 +807,9 @@ export function MergeRequestTab({
         render: (value: MergeRequestStatus, record) => {
           if (record.status === 'PENDING_CREATE') {
             const status = preflightStatusMap[record.id]
+            const isRequesting = preflightRequestingIds.has(record.id)
             // 如果还没加载完成，显示 loading
-            if (!status && preflightLoading) {
+            if (isRequesting || (!status && preflightLoading && !loadedPreflightIds.has(record.id))) {
               return (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Spin size="small" />
@@ -721,16 +831,16 @@ export function MergeRequestTab({
           const enabled = Boolean(record.taskId)
           if (!enabled) return <Text type="secondary">—</Text>
           const status = preflightStatusMap[record.id]
-          const isCqApproved = status === 'MR_CREATED'
-          const isCqRejected = status === 'CQ_REJECTED'
-          const isLoading = !status && preflightLoading
+          // 只有 Dry Run 已通过且确实等待 CQ+1 时，才开放 CQ 审查入口。
+          if (status !== 'WAITING_CQ') {
+            return <Text type="secondary">—</Text>
+          }
           return (
             <Tooltip title="点击跳转到 CQ+1 大印章审查页">
               <Button
                 type="link"
                 size="small"
                 style={{ padding: 0 }}
-                disabled={isLoading}
                 onClick={(e) => {
                   e.stopPropagation()
                   const params = new URLSearchParams({
@@ -744,9 +854,7 @@ export function MergeRequestTab({
                   navigate(`${PATHS.projectCqReview(projectId)}?${params.toString()}`)
                 }}
               >
-                <Tag color={isLoading ? 'default' : isCqApproved ? 'success' : isCqRejected ? 'error' : 'default'}>
-                  {isLoading ? '加载中' : isCqApproved ? 'CQ+1 通过' : isCqRejected ? 'CQ+1 未通过' : 'WAITING'}
-                </Tag>
+                <Tag color="warning">前往 CQ+1</Tag>
               </Button>
             </Tooltip>
           )
@@ -758,8 +866,9 @@ export function MergeRequestTab({
         width: 120,
         render: (_value, record) => {
           const status = preflightStatusMap[record.id]
+          const isRequesting = preflightRequestingIds.has(record.id)
           const isDryRunFailed = status === 'FAILED'
-          if (record.status === 'PENDING_CREATE' && !status && preflightLoading) {
+          if (record.status === 'PENDING_CREATE' && (isRequesting || (!status && preflightLoading && !loadedPreflightIds.has(record.id)))) {
             return (
               <span style={{ display: 'inline-flex', alignItems: 'center' }}>
                 <Spin size="small" />
@@ -791,7 +900,8 @@ export function MergeRequestTab({
           // ============== PENDING_CREATE：占位 MR，预检流程阶段 ==============
           if (record.status === 'PENDING_CREATE') {
             const status = preflightStatusMap[record.id]
-            if (!status && preflightLoading) {
+            const isRequesting = preflightRequestingIds.has(record.id)
+            if (isRequesting || (!status && preflightLoading && !loadedPreflightIds.has(record.id))) {
               return (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Spin size="small" />
@@ -804,6 +914,9 @@ export function MergeRequestTab({
 
             // MR_CREATED：后端已在 GitHub 成功创建 PR
             if (eff === 'MR_CREATED') {
+              if (record.status === 'PENDING_CREATE' && !record.webUrl && (!record.number || record.number <= 0)) {
+                return <Text type="secondary">MR 已创建，列表刷新中</Text>
+              }
               const href = githubPullRequestUrl(
                 record.webUrl,
                 record.number,
@@ -819,7 +932,7 @@ export function MergeRequestTab({
                         window.open(href, '_blank')
                       }}
                     >
-                      GitHub
+                      查看 GitHub MR
                     </Button>
                   ) : null}
                   {/* Admin 显示"合并"按钮，非 Admin 显示"已创建成功" */}
@@ -852,10 +965,13 @@ export function MergeRequestTab({
               else if (status === 'FAILED') tip = '质量门禁失败'
               else tip = '预检上下文过期，请刷新重试'
             } else if (eff === 'IDLE') {
-              const gatePassed = record.qualityGate?.status === 'PASSED'
-              if (!gatePassed) tip = '申请前请确保质量门禁 = 通过'
+              // 质量门禁、commit/push 与分支上下文由后端预检统一校验，
+              // 不要求用户在点击前自行准备或判断门禁状态。
+              tip = null
             } else if (eff === 'READY_CREATE') {
               tip = 'Dry Run + CQ+1 已通过，点击创建 MR 后由后端在 GitHub 端创建真实 PR'
+            } else if (eff === 'NO_CHANGES') {
+              tip = '当前分支 HEAD 与目标分支相同，没有可提交到 MR 的新增变更'
             }
 
             const btn = (
@@ -894,8 +1010,21 @@ export function MergeRequestTab({
             record.status === 'OPEN' &&
             record.qualityGate?.status === 'PASSED' &&
             record.mergeOperationStatus !== 'RUNNING'
-          const children: JSX.Element[] = []
-          if (href) {
+          const children: ReactElement[] = []
+          children.push(
+            <Button
+              key="detail"
+              size="small"
+              onClick={(event) => {
+                event.stopPropagation()
+                navigate(PATHS.projectCodeMr(projectId, record.id))
+              }}
+            >
+              查看 MR
+            </Button>,
+          )
+          // 质量门禁未通过时仍可查看站内 MR 详情，但不展示 GitHub 外链或合并入口。
+          if (href && (record.status !== 'OPEN' || record.qualityGate?.status === 'PASSED')) {
             children.push(
               <Button
                 key="gh"
@@ -905,7 +1034,7 @@ export function MergeRequestTab({
                   window.open(href!, '_blank')
                 }}
               >
-                GitHub
+                查看 GitHub MR
               </Button>,
             )
           }
@@ -926,41 +1055,16 @@ export function MergeRequestTab({
             )
           }
           if (record.status === 'OPEN' && record.qualityGate?.status !== 'PASSED') {
-            return <Text type="secondary">门禁未过</Text>
+            return <Space size={8}>{children}<Text type="secondary">门禁未过</Text></Space>
           }
           if (record.status === 'MERGED' || record.status === 'CLOSED') {
-            return href ? children[0] ?? <Text type="secondary">—</Text> : <Text type="secondary">—</Text>
+            return <Space size={8}>{children}</Space>
           }
           return children.length > 0 ? <Space size={8}>{children}</Space> : <Text type="secondary">—</Text>
         },
       },
-      {
-        title: '',
-        key: 'link',
-        width: 88,
-        align: 'right',
-        render: (_value, record) => {
-          const href = githubPullRequestUrl(
-            record.webUrl,
-            record.number,
-            repositories.find((item) => item.id === record.repositoryId),
-          )
-          return href ? (
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(event) => event.stopPropagation()}
-            >
-              GitHub
-            </a>
-          ) : (
-            <Text type="secondary">—</Text>
-          )
-        },
-      },
     ],
-    [projectId, repositories, isAdmin, mergingId, creatingId, items, cqQueries, preflightStatusMap, navigate, handleMerge, handleCreate],
+    [projectId, repositories, isAdmin, mergingId, creatingId, items, preflightStatusMap, preflightRequestingIds, coverageMap, navigate, handleMerge, handleCreate],
   )
 
   return (
@@ -993,15 +1097,13 @@ export function MergeRequestTab({
         showIcon
         message={
           <Space>
-            <span>大任务完成后系统会在列表中插入占位记录。点击操作列的</span>
-            <Tag color="cyan" style={{ margin: 0 }}>申请MR</Tag>
-            <span>按钮启动统一预检：Dry Run → CQ+1 → 后端自动创建 GitHub PR。</span>
+            <span>任务完成交付后，列表会插入对应分支的待创建占位记录（仅展示 Qgents 任务分支，不是 GitHub 全部远程分支）。交付、分支和质量门禁由后端统一校验，并按 Dry Run → CQ+1 → 创建 GitHub PR 的流程推进。</span>
             <Button size="small" type="link" style={{ padding: 0, margin: 0 }} onClick={() => void query.refetch()}>
               手动刷新
             </Button>
           </Space>
         }
-        description="预检通过后自动在 GitHub 创建 PR。Project Admin 可在操作列看到 GitHub 跳转 + 合并MR 按钮，普通成员仅看到 GitHub 跳转。CQ+1 或质量门禁任一未过则显示申请失败。"
+        description="预检通过后由后端在 GitHub 创建 PR。Project Admin 可在操作列看到 GitHub 跳转 + 合并MR 按钮，普通成员仅看到 GitHub 跳转。Dry Run 或 CQ+1 被拒绝时显示失败，预检进行中或等待 CQ+1 时不会误显示为失败。"
       />
       {query.isLoading ? (
         <div style={{ textAlign: 'center', padding: 48 }}>

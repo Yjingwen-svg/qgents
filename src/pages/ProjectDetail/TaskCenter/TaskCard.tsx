@@ -32,6 +32,11 @@ export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
   }
   const completedWithoutCode = useTaskCompletedWithoutCode(task.projectId, task.id)
   const hasActiveExecution = task.status === 'RUNNING' || task.executionSummary.runningSteps > 0
+  // 任务最终失败时进度条以红色异常样式呈现，与「成功完成度」语义一致：失败任务按成功步骤占比
+  // 显示百分比，同时用红色明确传达失败终态，避免与成功任务的 100% 混淆。
+  const taskFailed = task.status === 'FAILED' || task.status === 'DELIVERY_FAILED'
+  // 已取消任务进度条以橙色（antd warning 色）呈现，与失败红色、成功蓝色区分。
+  const taskCancelled = task.status === 'CANCELLED'
   const attentionText = !hasActiveExecution && task.attention ? [task.attention.title, task.attention.summary].filter((value): value is string => Boolean(value)).join('：') : null
   return (
     <Card
@@ -55,7 +60,7 @@ export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
         <Tag className={styles.groupTag}>{valueOrNone(task.requirementGroup?.name)}</Tag>
         <Tag className={styles.deliveryTag}>{task.deliveryMode ?? '待判定'}</Tag>
       </Space>
-      <Paragraph ellipsis={{ rows: 2, tooltip: valueOrNone(task.requirementSummary) }} className={styles.taskCardCopy}>{valueOrNone(task.requirementSummary)}</Paragraph>
+      <Paragraph ellipsis={{ rows: 1, tooltip: valueOrNone(task.requirementSummary) }} className={styles.taskCardCopy}>{valueOrNone(task.requirementSummary)}</Paragraph>
       <div className={styles.taskCardInfoGrid}>
         <div>
           <Text type="secondary">仓库</Text>
@@ -72,7 +77,7 @@ export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
           <Tooltip title={<ExecutionSummaryTooltip summary={task.executionSummary} />}>
             <div className={styles.executionOverview}>
               <Text className={styles.taskInfoEllipsis}>{valueOrNone(task.executionSummary.currentStageTitle ?? task.executionSummary.currentStage)}</Text>
-              <Progress percent={executionPercent(task.executionSummary)} size="small" showInfo />
+              <Progress percent={executionPercent(task.executionSummary, task.status)} size="small" showInfo status={taskFailed ? 'exception' : undefined} strokeColor={taskCancelled ? '#faad14' : undefined} />
             </div>
           </Tooltip>
         </div>
@@ -152,8 +157,16 @@ function repositorySummary(task: TaskListItem): string {
   return task.repositories.map((repository) => repository.name).join('、')
 }
 
-function executionPercent(summary: TaskListItem['executionSummary']): number {
+function executionPercent(summary: TaskListItem['executionSummary'], taskStatus: TaskListItem['status']): number {
   if (summary.totalSteps <= 0) return 0
+  // 进度条语义 = 成功完成度：
+  // - 任务成功终态（含成功路径的交付中间态）强制 100%——任务成功即视为全部完成，避免
+  //   「任务成功但某验证/测试步骤未通过」时进度停在 75%（如 VERIFY 步骤 FAILED）；
+  // - 执行中/失败/取消按成功步骤占比（succeeded/total）——失败任务不显示 100% 的误导
+  //   进度（如任务 FAILED 但所有步骤都已终态时，「终态占比」口径会错误地显示 100%）。
+  const successful = taskStatus === 'SUCCEEDED' || taskStatus === 'WAITING_DIFF_CONFIRMATION'
+    || taskStatus === 'DELIVERING' || taskStatus === 'WAITING_PREFLIGHT'
+  if (successful) return 100
   return Math.min(100, Math.round((summary.succeededSteps / summary.totalSteps) * 100))
 }
 

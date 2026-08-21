@@ -41,6 +41,9 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, disp
   const run = runQuery.data
   const [retrySubmitted, setRetrySubmitted] = useState(false)
   const pending = retry.isPending || cancel.isPending || retrySubmitted || retryPending || taskCancelPending
+  // 列表摘要与详情请求在自动重试的切换窗口可能先后返回。操作必须等待两者一致，
+  // 否则会把上一轮 FAILED 的“重试”错误展示在新一轮 RUNNING 上。
+  const statusMismatch = Boolean(run && displayStatus && displayStatus !== run.status)
 
   useEffect(() => {
     if (focusRequest === 0 || !taskRunId) return
@@ -50,6 +53,11 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, disp
     }
     void runQuery.refetch()
   }, [focusRequest, runQuery.refetch, taskRunId])
+
+  useEffect(() => {
+    if (!statusMismatch) return
+    void runQuery.refetch()
+  }, [statusMismatch, runQuery.refetch])
 
   function retryRun() {
     if (!run || !canRetry) return
@@ -81,17 +89,16 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, disp
   }
 
   // 重试仅面向仍处于执行路径的任务：取消中、已取消或已结束交付的任务不能再启动新的 TaskRun。
-  // 同时必须是该步骤最新的一条、后端明确标记可重试的失败/阻塞运行；排队和执行中的运行一律不显示重试。
+  // 只要是当前步骤最新且未被后续运行替代的失败/阻塞运行，即提供重试入口；
+  // statusReason.retryable 是诊断信息，不能因后端缺失或误标而把有效入口隐藏。
   const taskAllowsRunRetry = !['CANCELLING', 'CANCELLED', 'SUCCEEDED', 'WAITING_DIFF_CONFIRMATION', 'WAITING_PREFLIGHT', 'DIFF_REJECTED', 'DELIVERING', 'DELIVERY_FAILED'].includes(task.status)
-  const runRetryable = run !== undefined
-    && ['FAILED', 'BLOCKED'].includes(run.status)
-    && run.statusReason?.retryable === true
-  const canRetry = taskAllowsRunRetry && runRetryable && retryEligibleRunIds.has(run?.id ?? '')
+  const runRetryable = run !== undefined && ['FAILED', 'BLOCKED'].includes(run.status)
+  const canRetry = !statusMismatch && taskAllowsRunRetry && runRetryable && retryEligibleRunIds.has(run?.id ?? '')
   // 任务已在取消流程中时，不能再单独取消某次运行；避免任务级和运行级写操作互相竞争。
   // 在任务仍有效时，运行状态集与后端 CANCELLABLE_RUNNING 一致。
   const taskAllowsRunCancellation = task.status !== 'CANCELLING' && task.status !== 'CANCELLED'
-  const canCancel = taskAllowsRunCancellation && Boolean(run && ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED'].includes(run.status))
-  return <section ref={panelRef} className={styles.runInspectorPanel} data-testid="run-inspector-panel"><div className={styles.runInspectorPanelHeading}><div><Title level={4}>本次执行</Title></div><div>{canRetry ? <Button size="small" onClick={retryRun} loading={retrySubmitted || retry.isPending} disabled={pending}>重试</Button> : null}{canCancel ? <Button size="small" danger onClick={cancelRun} loading={cancel.isPending} disabled={pending}>取消本次执行</Button> : null}</div></div>{retrySubmitted ? <Alert type="info" showIcon message="重试请求已提交，正在创建新的执行记录" /> : null}{!taskRunId ? <InspectorState text="选择一条执行记录查看详情" /> : runQuery.isLoading ? <InspectorState loading /> : runQuery.isError ? <InspectorError error={runQuery.error} resource="执行详情" /> : !run || run.taskId !== taskId ? <InspectorState text="执行记录不存在或不属于当前任务" /> : <RunInspectorContent run={run} displayStatus={displayStatus} task={task} logsQuery={logsQuery} diagnosticsQuery={diagnosticsQuery} contextQuery={contextQuery} requestsQuery={requestsQuery} projectId={projectId} />}<AcceptanceOverview task={task} /></section>
+  const canCancel = !statusMismatch && taskAllowsRunCancellation && Boolean(run && ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED'].includes(run.status))
+  return <section ref={panelRef} className={styles.runInspectorPanel} data-testid="run-inspector-panel"><div className={styles.runInspectorPanelHeading}><div><Title level={4}>本次执行</Title></div><div>{canRetry ? <Button size="small" onClick={retryRun} loading={retrySubmitted || retry.isPending} disabled={pending}>重试</Button> : null}{canCancel ? <Button size="small" danger onClick={cancelRun} loading={cancel.isPending} disabled={pending}>取消本次执行</Button> : null}</div></div>{retrySubmitted ? <Alert type="info" showIcon message="重试请求已提交，正在创建新的执行记录" /> : null}{statusMismatch ? <Alert type="info" showIcon message="执行状态正在同步，暂不可操作" /> : null}{!taskRunId ? <InspectorState text="选择一条执行记录查看详情" /> : runQuery.isLoading ? <InspectorState loading /> : runQuery.isError ? <InspectorError error={runQuery.error} resource="执行详情" /> : !run || run.taskId !== taskId ? <InspectorState text="执行记录不存在或不属于当前任务" /> : <RunInspectorContent run={run} displayStatus={displayStatus} task={task} logsQuery={logsQuery} diagnosticsQuery={diagnosticsQuery} contextQuery={contextQuery} requestsQuery={requestsQuery} projectId={projectId} />}<AcceptanceOverview task={task} /></section>
 }
 
 function RunInspectorContent({ run, displayStatus, task, logsQuery, diagnosticsQuery, contextQuery, requestsQuery, projectId }: { run: TaskRunDetail; displayStatus: TaskRunDetail['status'] | undefined; task: Task; logsQuery: ReturnType<typeof useInfiniteTaskRunLogs>; diagnosticsQuery: ReturnType<typeof useTaskRunDiagnostics>; contextQuery: ReturnType<typeof useTaskRunExecutionContext>; requestsQuery: ReturnType<typeof useTaskRunInputRequests>; projectId: string }) {
@@ -101,7 +108,7 @@ function RunInspectorContent({ run, displayStatus, task, logsQuery, diagnosticsQ
   return <div className={styles.runInspector}>
     <section className={styles.inspectorSummary}><div className={styles.inspectorTitleBlock}><Text className={styles.inspectorStepLabel}>当前执行步骤</Text><Tooltip title={title}><Title level={4} className={styles.inspectorRunTitle}>{title}</Title></Tooltip></div><Text type="secondary">{run.agent?.name ?? '未分配 Agent'} · {formatDuration(run.durationMs)}</Text><Tag className={styles.inspectorRunStatus} color={statusColor(effectiveStatus)}>{effectiveStatus}</Tag>{run.statusReason ? <Text type="secondary">{run.statusReason.title}：{run.statusReason.summary}</Text> : null}</section>
     <DiagnosticSection query={diagnosticsQuery} />
-    <InspectorSection title="内部轨迹" icon={<ClockCircleOutlined />}>{run.steps?.length ? <div className={styles.inspectorTimeline}>{run.steps.map((step, index) => <div key={`${step.node}-${step.startedAt ?? index}`}><Tag color={statusColor(step.status)}>{index + 1}</Tag><Text strong>{step.node}</Text><Text type="secondary">{formatDuration(step.durationMs)}</Text>{step.errorCode ? <Text type="danger">{step.errorCode}</Text> : null}</div>)}</div> : <InternalTracePlaceholder loading={effectiveStatus === 'RUNNING'} />}</InspectorSection>
+    <InspectorSection title="内部轨迹" icon={<ClockCircleOutlined />}>{run.steps?.length ? <div className={styles.inspectorTimeline}>{run.steps.map((step, index) => <div className={styles.inspectorTimelineItem} key={`${step.node}-${step.startedAt ?? index}`}><Tag color={statusColor(step.status)}>{index + 1}</Tag><div className={styles.inspectorTimelineContent}><Text strong ellipsis={{ tooltip: step.node }}>{step.node}</Text>{step.errorCode ? <Tooltip title={step.errorCode}><Text type="danger" className={styles.inspectorTimelineError} ellipsis>{step.errorCode}</Text></Tooltip> : null}</div><Text type="secondary">{formatDuration(step.durationMs)}</Text></div>)}</div> : <InternalTracePlaceholder loading={effectiveStatus === 'RUNNING'} />}</InspectorSection>
     {hasInputRequestSection ? <InspectorSection title="待处理请求" icon={<FileTextOutlined />}><DrawerInputRequests projectId={projectId} taskRunId={run.id} query={requestsQuery} /></InspectorSection> : null}
     <InspectorSection title="运行日志" icon={<CodeOutlined />}><RunLogsPanel query={logsQuery} runStatus={effectiveStatus} /></InspectorSection>
     <RunFooter task={task} run={run} contextQuery={contextQuery} />

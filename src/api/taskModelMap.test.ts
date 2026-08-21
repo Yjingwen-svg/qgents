@@ -6,6 +6,7 @@ import {
   mapMergeRequestChecks,
   mapMergeRequestCommitList,
   mapMergeRequestCqReviews,
+  mapTaskPreflightList,
 } from './taskModelMap'
 
 describe('task model Diff / MR mapping', () => {
@@ -235,6 +236,59 @@ describe('task model Diff / MR mapping', () => {
           committedAt: '2026-08-17T08:00:00Z',
         },
       ],
+    })
+  })
+
+  it('maps the task preflight endpoint when the backend returns a bare array', () => {
+    const result = mapTaskPreflightList([
+      {
+        taskId: 'task-1',
+        repositoryId: 'repo-1',
+        sourceBranch: 'feat/task-1',
+        targetBranch: 'main',
+        headCommit: 'head-1',
+        targetCommit: 'base-1',
+        status: 'WAITING_CQ',
+        dryRunId: 'dry-1',
+        failureCode: null,
+        failureReason: null,
+        coveredTaskIds: ['task-1', 'task-2'],
+        coveredDiffIds: ['diff-1', 'diff-2'],
+      },
+      {
+        taskId: 'task-1',
+        repositoryId: 'repo-2',
+        status: 'FAILED',
+        failureCode: 'GIT_STORE_SYNC_FAILED',
+        failureReason: '同步失败',
+      },
+    ])
+
+    expect(result.taskId).toBe('task-1')
+    expect(result.items).toHaveLength(2)
+    expect(result.items[0]).toMatchObject({
+      repositoryId: 'repo-1',
+      dryRunStatus: 'PASSED',
+      cqStatus: 'PENDING',
+      dryRunId: 'dry-1',
+    })
+    expect(result.items[1]).toMatchObject({
+      repositoryId: 'repo-2',
+      dryRunStatus: 'FAILED',
+      failureCode: 'GIT_STORE_SYNC_FAILED',
+    })
+  })
+
+  it('keeps compatibility with the wrapped items response shape', () => {
+    const result = mapTaskPreflightList({
+      taskId: 'task-2',
+      items: [{ repositoryId: 'repo-1', status: 'MR_CREATED' }],
+    })
+
+    expect(result).toMatchObject({
+      taskId: 'task-2',
+      totalCount: 1,
+      items: [{ repositoryId: 'repo-1', dryRunStatus: 'PASSED', cqStatus: 'APPROVED' }],
     })
   })
 })

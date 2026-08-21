@@ -14,17 +14,7 @@ import { githubApi, groupApi, projectApi, tasksApi } from '@/api'
 import { useDeliverySummary } from '@/hooks/delivery-center'
 import { PATHS } from '@/routes/paths'
 import { queryKeys, taskModelQueryKeys } from '@/query'
-import type { TaskStatus } from '@/types/task-model'
 import './OverviewPage.css'
-
-/** 视为「进行中」的任务状态（与群聊动态面板保持一致） */
-const RUNNING_STATUSES: TaskStatus[] = [
-  'PLANNING',
-  'PENDING',
-  'RUNNING',
-  'WAITING_DIFF_CONFIRMATION',
-  'DELIVERING',
-]
 
 /** 项目概览：项目信息、核心统计与项目协作状态 */
 export function OverviewPage() {
@@ -58,16 +48,17 @@ export function OverviewPage() {
     enabled: !!projectId,
   })
 
-  const { data: taskPage } = useQuery({
-    // 必须用 taskModelQueryKeys 前缀（['qgents','projects',projectId,'tasks',...]），
-    // SSE 事件失效与任务 mutation 都 invalidate 该前缀；孤儿 key 会导致「进行中任务」计数永不刷新
-    queryKey: taskModelQueryKeys.tasks.list(projectId, { limit: 100 }),
-    queryFn: () => tasksApi.list(projectId, { limit: 100 }),
+  const { data: runningTaskPage } = useQuery({
+    // 「运行中任务」与任务中心「运行中」筛选同源：status=RUNNING 由服务端过滤，
+    // 计数口径一致；不再把 WAITING_DIFF_CONFIRMATION/DELIVERING 等「等待用户/交付中」
+    // 状态误算为运行中。queryKey 必须用 taskModelQueryKeys 前缀
+    // （['qgents','projects',projectId,'tasks',...]），SSE 事件失效与任务 mutation
+    // 都 invalidate 该前缀；孤儿 key 会导致计数永不刷新。
+    queryKey: taskModelQueryKeys.tasks.list(projectId, { status: 'RUNNING', limit: 100 }),
+    queryFn: () => tasksApi.list(projectId, { status: 'RUNNING', limit: 100 }),
     enabled: !!projectId,
   })
-  const runningTasks = (taskPage?.data ?? []).filter((t) =>
-    RUNNING_STATUSES.includes(t.status),
-  ).length
+  const runningTasks = runningTaskPage?.data.length ?? 0
   const deliverySummary = useDeliverySummary(projectId)
 
   if (isLoading) {
@@ -97,7 +88,7 @@ export function OverviewPage() {
         <StatCard icon={<DatabaseOutlined />} tone="teal" label="绑定仓库" value={repositories.length} />
         <StatCard icon={<CommentOutlined />} tone="green" label="需求群" value={activeReqGroups} />
         <StatCard icon={<TeamOutlined />} tone="blue" label="项目成员" value={members.length} />
-        <StatCard icon={<RocketOutlined />} tone="orange" label="进行中任务" value={runningTasks} />
+        <StatCard icon={<RocketOutlined />} tone="orange" label="运行中任务" value={runningTasks} />
       </div>
 
       <div className="ov__dashboard-grid">

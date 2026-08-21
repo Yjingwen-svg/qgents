@@ -170,8 +170,9 @@ function mapDryRunCqResult(raw: unknown): DryRunCqResult {
   const reviewedAt = nestedCq
     ? readNullableString(nestedCq, 'reviewedAt')
     : readNullableString(row, 'reviewedAt')
-  // reviewerName 后端当前不回传，保持 null
-  const reviewerName = readNullableString(row, 'reviewerName')
+  const reviewerName = nestedCq
+    ? readNullableString(nestedCq, 'reviewerName')
+    : readNullableString(row, 'reviewerName')
   const dryRunId = nestedDryRun
     ? readNullableString(nestedDryRun, 'id') ?? readNullableString(nestedDryRun, 'dryRunId')
     : readNullableString(row, 'dryRunId') || readNullableString(row, 'id')

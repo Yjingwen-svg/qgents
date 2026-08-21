@@ -1,26 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   App,
   Button,
-  Card,
   Drawer,
   Form,
-  Input,
-  InputNumber,
   Select,
   Space,
   Spin,
-  Switch,
   Tag,
   Typography,
 } from 'antd'
 import { isTestsetEnabled } from '@/api/testset'
-import { useBranchPolicy, useQualityGate, useUpdateBranchPolicy, useUpdateQualityGate } from '@/hooks/qualityGate'
+import { useQualityGate, useUpdateQualityGate } from '@/hooks/qualityGate'
+import { useRemoteBranches } from '@/hooks/remoteBranch'
 import { formatApiError } from '@/utils/formatApiError'
 import type { ProjectBoundRepository } from '@/types/github'
 import type { Testset } from '@/types/testset'
-import type { BranchPolicyUpdateInput, QualityGateUpdateInput } from '@/types/qualityGate'
+import type { QualityGateUpdateInput } from '@/types/qualityGate'
 import styles from './TestsetPage.module.scss'
 
 const { Text } = Typography
@@ -48,22 +45,19 @@ export function QualityGateConfigDrawer({
 }) {
   const { message } = App.useApp()
   const [repositoryId, setRepositoryId] = useState<string | undefined>()
-  const [branch, setBranch] = useState('main')
+  const [branch, setBranch] = useState<string | undefined>()
 
-  const policyQuery = useBranchPolicy(projectId, repositoryId ?? '', branch)
-  const gateQuery = useQualityGate(projectId, repositoryId ?? '', branch)
-  const updatePolicy = useUpdateBranchPolicy(projectId)
+  const remoteBranchesQuery = useRemoteBranches(projectId, repositoryId ?? '')
+  const remoteBranches = useMemo(() => remoteBranchesQuery.data ?? [], [remoteBranchesQuery.data])
+  const gateQuery = useQualityGate(projectId, repositoryId ?? '', branch ?? '')
   const updateGate = useUpdateQualityGate(projectId)
 
-  const [policyForm] = Form.useForm<BranchPolicyUpdateInput>()
   const [gateForm] = Form.useForm<QualityGateUpdateInput>()
 
   // 换仓库时用默认分支作为目标分支；不得回退 'main'，仓库未初始化时留空让用户/校验感知
   function handleRepoChange(value: string | undefined): void {
     setRepositoryId(value)
-    const repo = repositories.find((item) => item.id === value)
-    const db = repo?.defaultBranch?.trim()
-    setBranch(db && db.length > 0 ? db : '')
+    setBranch(undefined)
   }
 
   useEffect(() => {
@@ -76,37 +70,27 @@ export function QualityGateConfigDrawer({
         fullName: first.fullName,
       })
       setRepositoryId(first.id)
-      const db = first.defaultBranch?.trim()
-      setBranch(db && db.length > 0 ? db : '')
+      setBranch(undefined)
     }
   }, [open, repositories, repositoryId])
 
   useEffect(() => {
-    if (!policyQuery.data) return
-    policyForm.setFieldsValue({
-      requirePullRequest: policyQuery.data.requirePullRequest,
-      minimumHumanApprovals: policyQuery.data.minimumHumanApprovals,
-      allowDirectPush: policyQuery.data.allowDirectPush,
+    if (!repositoryId || remoteBranches.length === 0) {
+      setBranch(undefined)
+      return
+    }
+    setBranch((current) => {
+      if (current && remoteBranches.some((item) => item.name === current)) return current
+      return remoteBranches.find((item) => item.isProjectDefault)?.name
+        ?? remoteBranches.find((item) => item.isGithubDefault)?.name
+        ?? remoteBranches[0].name
     })
-  }, [policyQuery.data, policyForm])
+  }, [repositoryId, remoteBranches])
 
   useEffect(() => {
     if (!gateQuery.data) return
     gateForm.setFieldsValue({ requiredTestsetIds: gateQuery.data.requiredTestsetIds })
   }, [gateQuery.data, gateForm])
-
-  async function savePolicy(values: BranchPolicyUpdateInput): Promise<void> {
-    if (!repositoryId || !branch) {
-      message.error('请先选择仓库并确保项目默认基准分支已设置（仓库未初始化时无法保存策略）')
-      return
-    }
-    try {
-      await updatePolicy.mutateAsync({ repositoryId, branch, input: values })
-      message.success('已保存分支策略')
-    } catch (error) {
-      message.error(formatApiError(error))
-    }
-  }
 
   async function saveGate(values: QualityGateUpdateInput): Promise<void> {
     if (!repositoryId || !branch) {
@@ -129,12 +113,12 @@ export function QualityGateConfigDrawer({
   }
 
   const enabledTestsets = testsets.filter((item) => item.repositoryId === repositoryId && isTestsetEnabled(item))
-  const loading = Boolean(repositoryId && branch) && (policyQuery.isLoading || gateQuery.isLoading)
+  const loading = Boolean(repositoryId && branch) && gateQuery.isLoading
   const readOnly = !isAdmin
 
   return (
     <Drawer
-      title="分支策略与质量门禁"
+      title="分支质量门禁"
       placement="right"
       size={560}
       open={open}
@@ -150,12 +134,17 @@ export function QualityGateConfigDrawer({
             onChange={handleRepoChange}
             options={repositories.map((repo) => ({ value: repo.id, label: repo.displayName || repo.fullName || repo.id }))}
           />
-          <Input
-            style={{ width: 180 }}
+          <Select
+            style={{ width: 220 }}
+            placeholder={remoteBranchesQuery.isLoading ? '加载远程分支中…' : '选择目标分支'}
             value={branch}
-            onChange={(event) => setBranch(event.target.value)}
-            placeholder="目标分支，如 main"
-            addonBefore="分支"
+            onChange={setBranch}
+            loading={remoteBranchesQuery.isLoading}
+            disabled={!repositoryId || remoteBranches.length === 0}
+            options={remoteBranches.map((item) => ({
+              value: item.name,
+              label: `${item.name}${item.isProjectDefault ? '（项目默认）' : item.isGithubDefault ? '（GitHub 默认）' : ''}`,
+            }))}
           />
         </Space>
 
@@ -163,52 +152,27 @@ export function QualityGateConfigDrawer({
           <Alert type="info" showIcon message="请先选择仓库" />
         ) : null}
 
+        {remoteBranchesQuery.isError ? (
+          <Alert type="error" showIcon message={formatApiError(remoteBranchesQuery.error)} />
+        ) : null}
+
+        {repositoryId && !remoteBranchesQuery.isLoading && remoteBranches.length === 0 ? (
+          <Alert type="info" showIcon message="该仓库暂无 GitHub 远程分支，暂时无法配置分支质量门禁。" />
+        ) : null}
+
         {!isAdmin ? (
-          <Alert type="info" showIcon message="你以成员身份查看；仅 Project Admin 可编辑分支策略与门禁。" />
+          <Alert type="info" showIcon message="你以成员身份查看；仅 Project Admin 可编辑质量门禁。" />
         ) : null}
 
         {loading ? (
           <div className={styles.state} role="status">
-            <Spin description="正在加载分支策略与门禁" />
+            <Spin description="正在加载分支质量门禁" />
           </div>
         ) : null}
 
         {!loading && repositoryId && branch ? (
           <>
-            <Card size="small" title="分支策略">
-              {policyQuery.isError ? (
-                <Alert type="error" showIcon message={formatApiError(policyQuery.error)} />
-              ) : (
-                <Form<BranchPolicyUpdateInput>
-                  form={policyForm}
-                  layout="vertical"
-                  disabled={readOnly}
-                  initialValues={{
-                    requirePullRequest: policyQuery.data?.requirePullRequest ?? false,
-                    minimumHumanApprovals: policyQuery.data?.minimumHumanApprovals ?? 0,
-                    allowDirectPush: policyQuery.data?.allowDirectPush ?? false,
-                  }}
-                  onFinish={(values) => void savePolicy(values)}
-                >
-                  <Form.Item name="requirePullRequest" label="要求 Pull Request" valuePropName="checked">
-                    <Switch />
-                  </Form.Item>
-                  <Form.Item name="minimumHumanApprovals" label="最少人工审批数">
-                    <InputNumber min={0} style={{ width: '100%' }} />
-                  </Form.Item>
-                  <Form.Item name="allowDirectPush" label="允许直接推送" valuePropName="checked">
-                    <Switch />
-                  </Form.Item>
-                  {isAdmin ? (
-                    <Button type="primary" htmlType="submit" loading={updatePolicy.isPending}>
-                      保存分支策略
-                    </Button>
-                  ) : null}
-                </Form>
-              )}
-            </Card>
-
-            <Card size="small" title="质量门禁">
+            <div>
               {gateQuery.isError ? (
                 <Alert type="error" showIcon message={formatApiError(gateQuery.error)} />
               ) : (
@@ -250,7 +214,7 @@ export function QualityGateConfigDrawer({
                   ) : null}
                 </Form>
               )}
-            </Card>
+            </div>
           </>
         ) : null}
       </Space>

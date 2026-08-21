@@ -89,11 +89,10 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, disp
   }
 
   // 重试仅面向仍处于执行路径的任务：取消中、已取消或已结束交付的任务不能再启动新的 TaskRun。
-  // 同时必须是该步骤最新的一条、后端明确标记可重试的失败/阻塞运行；排队和执行中的运行一律不显示重试。
+  // 只要是当前步骤最新且未被后续运行替代的失败/阻塞运行，即提供重试入口；
+  // statusReason.retryable 是诊断信息，不能因后端缺失或误标而把有效入口隐藏。
   const taskAllowsRunRetry = !['CANCELLING', 'CANCELLED', 'SUCCEEDED', 'WAITING_DIFF_CONFIRMATION', 'WAITING_PREFLIGHT', 'DIFF_REJECTED', 'DELIVERING', 'DELIVERY_FAILED'].includes(task.status)
-  const runRetryable = run !== undefined
-    && ['FAILED', 'BLOCKED'].includes(run.status)
-    && run.statusReason?.retryable === true
+  const runRetryable = run !== undefined && ['FAILED', 'BLOCKED'].includes(run.status)
   const canRetry = !statusMismatch && taskAllowsRunRetry && runRetryable && retryEligibleRunIds.has(run?.id ?? '')
   // 任务已在取消流程中时，不能再单独取消某次运行；避免任务级和运行级写操作互相竞争。
   // 在任务仍有效时，运行状态集与后端 CANCELLABLE_RUNNING 一致。

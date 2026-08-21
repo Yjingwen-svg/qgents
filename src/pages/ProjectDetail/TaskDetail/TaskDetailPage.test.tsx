@@ -251,7 +251,7 @@ describe('TaskDetailPage workbench', () => {
     expect(screen.queryByTestId('task-attention-banner')).not.toBeInTheDocument()
     expect(within(screen.getByTestId('run-inspector-panel')).getByText('PATCH_FAILED')).toBeInTheDocument()
     expect(within(screen.getByTestId('run-inspector-panel')).getByText('执行失败：补丁无法应用')).toBeInTheDocument()
-    expect(refetchRun).not.toHaveBeenCalled()
+    expect(refetchRun).toHaveBeenCalledTimes(1)
   })
 
   it('keeps delivery confirmation actions in the delivery panel', async () => {
@@ -322,6 +322,21 @@ describe('TaskDetailPage workbench', () => {
     useTaskRunMock.mockReturnValue({ data: oldFailedRun, error: null, isError: false, isLoading: false, refetch: vi.fn() })
     renderPage(`/app/projects/${task.projectId}/tasks/${task.id}?runId=${oldFailedRun.id}`)
     expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument()
+  })
+
+  it('offers retry for the latest failed run even when the diagnostic marks it non-retryable', () => {
+    const failedRun: TaskRunDetail = {
+      ...run,
+      status: 'FAILED',
+      statusReason: { code: 'EXECUTION_FAILED', failureCode: 'WORKER_UNAVAILABLE', title: '执行失败', summary: '执行基础设施暂不可用', retryable: false, occurredAt: run.updatedAt },
+    }
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'FAILED' }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskRunsMock.mockReturnValue({ data: page<TaskRunSummary>([failedRun]), error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskRunMock.mockReturnValue({ data: failedRun, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+
+    renderPage(`/app/projects/${task.projectId}/tasks/${task.id}?runId=${failedRun.id}`)
+
+    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeInTheDocument()
   })
 
   it('does not allow retry after the Task has been cancelled', () => {

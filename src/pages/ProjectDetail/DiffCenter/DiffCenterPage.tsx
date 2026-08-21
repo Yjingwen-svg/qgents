@@ -218,8 +218,12 @@ function TaskDeliveryPanel({ projectId, task, batch, onRefresh, refreshing }: { 
   const error = confirm.error ?? reject.error ?? retry.error
   const superseded = batch.reviewStatus === 'SUPERSEDED'
   const awaitingConfirmation = batch.reviewStatus === 'PENDING_CONFIRMATION'
-  const canConfirm = awaitingConfirmation && task?.capabilities?.canConfirmDiffReview === true
-  const canReject = awaitingConfirmation && task?.capabilities?.canRejectDiffReview === true
+  // 最终 Diff 批次已进入待确认时必须提供任务级确认入口。
+  // 旧 Task DTO 可能尚未返回该 capability；权限仍由 confirmDiffReview 接口最终校验。
+  const canConfirm = awaitingConfirmation
+  // 任务详情 capability 在交付状态切换中可能滞后；待确认批次统一给出两个任务级决策入口，
+  // 最终权限和状态判断由对应接口保证，避免前端把有效操作错误隐藏成“死按钮”。
+  const canReject = awaitingConfirmation
   const retryableDelivery = batch.reviewStatus === 'ACCEPTED' && (batch.deliveryStatus === 'FAILED' || batch.deliveryStatus === 'PARTIALLY_DELIVERED')
   const canRetry = !superseded && retryableDelivery && task?.capabilities?.canRetryDelivery === true
   const diffs = Array.isArray(batch.diffs) ? batch.diffs : []

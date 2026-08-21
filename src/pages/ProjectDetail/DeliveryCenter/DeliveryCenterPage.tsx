@@ -5,6 +5,7 @@ import { Alert, App, Button, Card, Empty, Form, Input, Result, Select, Skeleton,
 import {
   CheckCircleOutlined,
   CheckOutlined,
+  ClockCircleOutlined,
   CodeOutlined,
   CloudUploadOutlined,
   CloseOutlined,
@@ -17,7 +18,6 @@ import {
   RobotOutlined,
   SafetyCertificateOutlined,
   SendOutlined,
-  SettingOutlined,
   TagsOutlined,
   UserOutlined,
   WarningOutlined,
@@ -179,6 +179,8 @@ export default function DeliveryCenterPage() {
   const onlyActionableItems = !showAllItems && !hasExplicitFilter
 
   const itemQuery = useInfiniteDeliveryItems(projectId, { ...filters, limit: PAGE_SIZE })
+  // 侧栏活动不跟随筛选条件：始终展示该项目最近发生的交付状态变化。
+  const recentActivityQuery = useInfiniteDeliveryItems(projectId, { limit: 3 })
   const summaryQuery = useDeliverySummary(projectId, {
     groupId: filters.groupId,
     type: filters.type,
@@ -254,6 +256,13 @@ export default function DeliveryCenterPage() {
     const next = new URLSearchParams(searchParams)
     if (onlyActionableItems) next.set('view', 'all')
     else next.delete('view')
+    setSearchParams(next, { replace: true })
+  }
+
+  function showPendingDeliveries() {
+    const next = new URLSearchParams(searchParams)
+    next.set('status', 'PENDING_REVIEW')
+    next.delete('view')
     setSearchParams(next, { replace: true })
   }
 
@@ -420,7 +429,7 @@ export default function DeliveryCenterPage() {
           </main>
         </section>
 
-        <DeliveryOverview summaryQuery={summaryQuery} total={total} groupId={filters.groupId} />
+        <DeliveryOverview summaryQuery={summaryQuery} total={total} recentActivityQuery={recentActivityQuery} onShowPending={showPendingDeliveries} onOpenResource={openResource} />
       </div>
 
       <Modal
@@ -602,7 +611,8 @@ function codeReviewStatusLabel(status: CodeDeliveryItem['reviewStatus']): string
 }
 
 function MemoryDetails({ item }: { item: MemoryDeliveryItem }) {
-  return <><div className={styles.detailLine}><span><FileTextOutlined /> {item.category} · {item.visibility} · {item.resourceStatus}</span><span>{(item.sources ?? []).length > 0 ? `来源消息 ${(item.sources ?? []).map((source) => display(source.messageId)).join('、')}` : '无关联来源'}</span></div><div className={styles.excerpt}>{display(item.contentExcerpt)}</div><Tags tags={item.tags} /></>
+  const sourceText = item.requirementGroup?.name ? `来源群 ${item.requirementGroup.name}` : '无关联来源'
+  return <><div className={styles.detailLine}><span><FileTextOutlined /> {item.category} · {item.visibility} · {item.resourceStatus}</span><span>{sourceText}</span></div><div className={styles.excerpt}>{display(item.contentExcerpt)}</div><Tags tags={item.tags} /></>
 }
 
 function SkillDetails({ item }: { item: SkillDeliveryItem }) {
@@ -647,11 +657,11 @@ function CodeActions({ item, active, onAction, onReject, onOpenResource }: { ite
   </>
 }
 
-function DeliveryOverview({ summaryQuery, total, groupId }: { summaryQuery: ReturnType<typeof useDeliverySummary>; total: number; groupId?: string }) {
+function DeliveryOverview({ summaryQuery, total, recentActivityQuery, onShowPending, onOpenResource }: { summaryQuery: ReturnType<typeof useDeliverySummary>; total: number; recentActivityQuery: ReturnType<typeof useInfiniteDeliveryItems>; onShowPending: () => void; onOpenResource: (item: DeliveryItem) => void }) {
   if (summaryQuery.isLoading) return <aside className={styles.sidebar}><Card className={styles.overviewCard}><Skeleton active /></Card><Card className={styles.overviewCard}><Skeleton active /></Card></aside>
   if (summaryQuery.isError || !summaryQuery.data) return <aside className={styles.sidebar}><Card className={styles.overviewCard}><Alert type="error" showIcon message="交付概览加载失败" description={errorText(summaryQuery.error)} action={<Button size="small" onClick={() => void summaryQuery.refetch()}>重试</Button>} /></Card><Card className={styles.overviewCard}><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="仓库数据不可用" /></Card></aside>
 
-  const { countsByStatus, repositorySummaries, requirementGroupSummaries } = summaryQuery.data
+  const { countsByStatus, repositorySummaries } = summaryQuery.data
   const accepted = (countsByStatus.ACCEPTED ?? 0) + (countsByStatus.DELIVERED ?? 0)
   const processing = countsByStatus.PROCESSING ?? 0
   const failed = countsByStatus.FAILED ?? 0
@@ -669,20 +679,24 @@ function DeliveryOverview({ summaryQuery, total, groupId }: { summaryQuery: Retu
     <Card className={styles.overviewCard} title={<span>仓库交付状态 <Text type="secondary">{repositorySummaries.length} 个仓库</Text></span>}>
       {repositorySummaries.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无仓库交付" /> : <div className={styles.repositoryList}>{repositorySummaries.map((repository) => <div className={styles.repositoryRow} key={repository.repositoryId}><div><strong>{repository.repositoryName}</strong><span>{repository.accepted}/{repository.total} 已交付</span></div><div>{repository.deliveryStatus && repository.deliveryStatus !== 'NOT_STARTED' ? <Tag color={repository.failed > 0 ? 'red' : repository.pending > 0 ? 'orange' : 'green'}>{repository.deliveryStatus}</Tag> : null}{repository.mergeRequest ? <small>MR #{repository.mergeRequest.number}</small> : null}</div></div>)}</div>}
     </Card>
-    <Card className={styles.overviewCard} title={<span>待我处理 <Text type="secondary">{summaryQuery.data.pendingForCurrentUser}</Text></span>}>
-      <div className={styles.projectInfo}><SettingOutlined /><span>{summaryQuery.data.pendingForCurrentUser > 0 ? '当前筛选数据集中有待处理交付。' : '当前没有待处理交付。'}</span></div>
+    <Card className={styles.overviewCard} title={<span>待处理交付 <Text type="secondary">{summaryQuery.data.pendingForCurrentUser}</Text></span>}>
+      <div className={styles.pendingOverview}><span>{summaryQuery.data.pendingForCurrentUser > 0 ? '有交付等待你的确认或审核。' : '当前没有待处理交付。'}</span>{summaryQuery.data.pendingForCurrentUser > 0 ? <Button size="small" type="primary" onClick={onShowPending}>查看待处理</Button> : null}</div>
     </Card>
-    <Card className={styles.overviewCard} title="需求信息">
-      {groupId ? <GroupSummary summary={requirementGroupSummaries.find((group) => group.requirementGroupId === groupId)} /> : <div className={styles.projectInfo}><SettingOutlined /><span>当前展示项目级交付概览，可通过需求群筛选查看单组统计。</span></div>}
+    <Card className={styles.overviewCard} title="最近活动">
+      <RecentDeliveryActivities query={recentActivityQuery} onOpenResource={onOpenResource} />
     </Card>
   </aside>
+}
+
+function RecentDeliveryActivities({ query, onOpenResource }: { query: ReturnType<typeof useInfiniteDeliveryItems>; onOpenResource: (item: DeliveryItem) => void }) {
+  const activities = useMemo(() => query.data?.pages.flatMap((page) => page.data).slice(0, 3) ?? [], [query.data])
+  if (query.isLoading) return <Skeleton active title={false} paragraph={{ rows: 3 }} />
+  if (query.isError) return <Button type="link" size="small" onClick={() => void query.refetch()}>重新加载活动</Button>
+  if (activities.length === 0) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无交付动态" />
+  return <div className={styles.recentActivityList}>{activities.map((item) => <button type="button" key={item.id} className={styles.recentActivityItem} onClick={() => onOpenResource(item)} disabled={!item.capabilities.canOpenResource}><ClockCircleOutlined /><div><strong>{item.title}</strong><span><Tag color={STATUS_COLORS[item.displayStatus]}>{STATUS_LABELS[item.displayStatus]}</Tag>{formatDate(item.updatedAt)}</span></div></button>)}</div>
 }
 
 function Legend({ color, label, value }: { color: string; label: string; value: number }) {
   return <div><i style={{ background: color }} /><span>{label}</span><strong>{value}</strong></div>
 }
 
-function GroupSummary({ summary }: { summary: { requirementGroupId: string; name: string; total: number; pending: number } | undefined }) {
-  if (!summary) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前需求群暂无统计" />
-  return <div className={styles.projectInfo}><SettingOutlined /><div><strong>{summary.name}</strong><span>{summary.total} 个交付物，其中 {summary.pending} 个待审核</span></div></div>
-}

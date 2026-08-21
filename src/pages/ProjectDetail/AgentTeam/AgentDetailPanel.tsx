@@ -96,9 +96,19 @@ function Runs({ projectId, query, navigate }: { projectId: string; query: Return
   if (query.isError) return <Alert type="error" showIcon message="运行记录加载失败" />
   const runs = query.data?.data ?? []
   if (runs.length === 0) return <Empty description="暂无运行记录" />
-  return <div className={styles.runList}>{runs.map((run) => <button type="button" className={styles.runItem} key={run.id} onClick={() => navigate(PATHS.projectTaskRunDetail(projectId, run.taskId, run.id))}><div className={styles.runHeader}><strong>{run.taskDisplayCode}</strong><Tag>{run.status}</Tag></div><Text>{run.taskTitle}</Text><Text type="secondary">{run.taskStepTitle} · {run.requirementGroup.name}</Text><Text type="secondary">{run.repository?.name ?? '暂无仓库'} · {formatDate(run.createdAt)}</Text></button>)}</div>
+  return <div className={styles.runList}>{runs.map((run) => <button type="button" className={styles.runItem} key={run.id} onClick={() => navigate(PATHS.projectTaskRunDetail(projectId, run.taskId, run.id))}><div className={styles.runHeader}><strong>{run.taskDisplayCode}</strong><RunStatusTag status={run.status} /></div><Text>{run.taskTitle}</Text><Text type="secondary">{run.taskStepTitle} · {run.requirementGroup.name}</Text><Text type="secondary">{run.repository?.name ?? '暂无仓库'} · {formatDate(run.createdAt)}</Text></button>)}</div>
 }
 
-function TaskRunSummaryCard({ run }: { run: AgentTaskRunSummary }) { return <div className={styles.taskCard}><div><Text strong>{run.taskDisplayCode}</Text><Text> · {run.taskTitle}</Text></div><Text type="secondary">TaskStep：{run.taskStepTitle}</Text><Text type="secondary">需求群：{run.requirementGroup.name}</Text><Text type="secondary">仓库：{run.repository?.name ?? '暂无仓库'}</Text><Tag>{run.status}</Tag><Text type="secondary">创建：{formatDate(run.createdAt)}</Text></div> }
+function TaskRunSummaryCard({ run }: { run: AgentTaskRunSummary }) { return <div className={styles.taskCard}><div><Text strong>{run.taskDisplayCode}</Text><Text> · {run.taskTitle}</Text></div><Text type="secondary">TaskStep：{run.taskStepTitle}</Text><Text type="secondary">需求群：{run.requirementGroup.name}</Text><Text type="secondary">仓库：{run.repository?.name ?? '暂无仓库'}</Text><RunStatusTag status={run.status} /><Text type="secondary">创建：{formatDate(run.createdAt)}</Text></div> }
+
+function RunStatusTag({ status }: { status: AgentTaskRunSummary['status'] }) { return <Tag color={runStatusColor(status)}>{status}</Tag> }
+
+function runStatusColor(status: AgentTaskRunSummary['status']): 'success' | 'processing' | 'warning' | 'error' | 'default' {
+  if (status === 'SUCCEEDED') return 'success'
+  if (status === 'RUNNING' || status === 'CANCELLING') return 'processing'
+  if (status === 'QUEUED' || status === 'WAITING_INPUT' || status === 'WAITING_APPROVAL') return 'warning'
+  if (status === 'FAILED' || status === 'BLOCKED') return 'error'
+  return 'default'
+}
 
 function formatDate(value: string | null): string { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '尚未开始' }

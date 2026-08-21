@@ -32,6 +32,9 @@ export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
   }
   const completedWithoutCode = useTaskCompletedWithoutCode(task.projectId, task.id)
   const hasActiveExecution = task.status === 'RUNNING' || task.executionSummary.runningSteps > 0
+  // 任务最终失败时进度条以红色异常样式呈现，与「成功完成度」语义一致：失败任务按成功步骤占比
+  // 显示百分比，同时用红色明确传达失败终态，避免与成功任务的 100% 混淆。
+  const taskFailed = task.status === 'FAILED' || task.status === 'DELIVERY_FAILED'
   const attentionText = !hasActiveExecution && task.attention ? [task.attention.title, task.attention.summary].filter((value): value is string => Boolean(value)).join('：') : null
   return (
     <Card
@@ -72,7 +75,7 @@ export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
           <Tooltip title={<ExecutionSummaryTooltip summary={task.executionSummary} />}>
             <div className={styles.executionOverview}>
               <Text className={styles.taskInfoEllipsis}>{valueOrNone(task.executionSummary.currentStageTitle ?? task.executionSummary.currentStage)}</Text>
-              <Progress percent={executionPercent(task.executionSummary, task.status)} size="small" showInfo />
+              <Progress percent={executionPercent(task.executionSummary, task.status)} size="small" showInfo status={taskFailed ? 'exception' : undefined} />
             </div>
           </Tooltip>
         </div>

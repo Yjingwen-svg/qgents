@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-query'
 import { diffsApi, mergeRequestsApi, tasksApi, taskRunsApi } from '@/api/taskModel'
 import { deliveryCenterKeys, queryClient, queryKeys, taskModelQueryKeys } from '@/query'
+import type { CodeDeliveryItem, DeliveryItem, DeliveryItemsResponse } from '@/types/delivery-center'
 import type {
   DiffComment,
   DiffCommentInput,
@@ -550,12 +551,52 @@ type TaskDiffReviewRejectInput = { taskId: string; input: DiffRejectInput }
 
 function invalidateTaskDiffReview(projectId: string, batch: DiffReviewBatch): void {
   queryClient.setQueryData(taskModelQueryKeys.taskDiffReview.detail(projectId, batch.taskId), batch)
+  synchronizeDeliveryCenterCodeItem(projectId, batch)
   void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskDiffReview.detail(projectId, batch.taskId) })
   void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.detail(projectId, batch.taskId) })
   void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.all(projectId) })
   void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.diffs.all(projectId) })
   void queryClient.invalidateQueries({ queryKey: deliveryCenterKeys.all(projectId) })
   void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.all(projectId) })
+}
+
+function synchronizeDeliveryCenterCodeItem(projectId: string, batch: DiffReviewBatch): void {
+  queryClient.setQueriesData<InfiniteData<DeliveryItemsResponse>>(
+    { queryKey: deliveryCenterKeys.all(projectId) },
+    (cached) => cached && Array.isArray(cached.pages)
+      ? { ...cached, pages: cached.pages.map((page) => ({ ...page, data: page.data.map((item) => synchronizeCodeDeliveryItem(item, batch)) })) }
+      : cached,
+  )
+  queryClient.setQueriesData<DeliveryItemsResponse>(
+    { queryKey: deliveryCenterKeys.all(projectId) },
+    (cached) => cached && Array.isArray(cached.data)
+      ? { ...cached, data: cached.data.map((item) => synchronizeCodeDeliveryItem(item, batch)) }
+      : cached,
+  )
+}
+
+function synchronizeCodeDeliveryItem(item: DeliveryItem, batch: DiffReviewBatch): DeliveryItem {
+  if (item.resourceType !== 'CODE' || item.openTarget.taskId !== batch.taskId) return item
+  const deliveryStatus = batch.deliveryStatus
+  const displayStatus = deliveryStatus === 'DELIVERED'
+    ? 'DELIVERED'
+    : deliveryStatus === 'DELIVERING'
+      ? 'PROCESSING'
+      : deliveryStatus === 'FAILED' || deliveryStatus === 'PARTIALLY_DELIVERED'
+        ? 'FAILED'
+        : batch.reviewStatus === 'REJECTED'
+          ? 'REJECTED'
+          : item.displayStatus
+  const repositoryDeliveries: CodeDeliveryItem['repositoryDeliveries'] = batch.repositoryDeliveries.map((delivery) => ({ ...delivery }))
+  return {
+    ...item,
+    displayStatus,
+    resourceStatus: deliveryStatus,
+    reviewStatus: batch.reviewStatus,
+    deliveryStatus,
+    repositoryDeliveries,
+    mergeRequest: repositoryDeliveries.find((delivery) => delivery.mergeRequest)?.mergeRequest ?? null,
+  }
 }
 
 export function useConfirmTaskDiffReview(projectId: string): UseMutationResult<DiffReviewBatch, Error, string> {

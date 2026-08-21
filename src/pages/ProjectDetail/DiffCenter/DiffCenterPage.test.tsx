@@ -13,7 +13,10 @@ const useTaskMock = vi.hoisted(() => vi.fn())
 const useAcceptDiffMock = vi.hoisted(() => vi.fn())
 const useRejectDiffMock = vi.hoisted(() => vi.fn())
 const useTaskDiffReviewMock = vi.hoisted(() => vi.fn())
-vi.mock('@/hooks/task-model', () => ({ useInfiniteDiffs: useInfiniteDiffsMock, useDiff: useDiffMock, useDiffFiles: useDiffFilesMock, useTask: useTaskMock, useTaskDiffReview: useTaskDiffReviewMock, useAcceptDiff: useAcceptDiffMock, useRejectDiff: useRejectDiffMock }))
+const useConfirmTaskDiffReviewMock = vi.hoisted(() => vi.fn())
+const useRejectTaskDiffReviewMock = vi.hoisted(() => vi.fn())
+const useRetryTaskDiffReviewDeliveryMock = vi.hoisted(() => vi.fn())
+vi.mock('@/hooks/task-model', () => ({ useInfiniteDiffs: useInfiniteDiffsMock, useDiff: useDiffMock, useDiffFiles: useDiffFilesMock, useTask: useTaskMock, useTaskDiffReview: useTaskDiffReviewMock, useAcceptDiff: useAcceptDiffMock, useRejectDiff: useRejectDiffMock, useConfirmTaskDiffReview: useConfirmTaskDiffReviewMock, useRejectTaskDiffReview: useRejectTaskDiffReviewMock, useRetryTaskDiffReviewDelivery: useRetryTaskDiffReviewDeliveryMock }))
 vi.mock('@/api', async () => {
   const actual = await vi.importActual<typeof import('@/api')>('@/api')
   return {
@@ -62,6 +65,9 @@ beforeEach(() => {
   useRejectDiffMock.mockReturnValue({ mutate: vi.fn(), isPending: false, error: null })
   useTaskMock.mockReturnValue({ data: undefined, isLoading: false, isPending: false, isError: false, error: null, refetch: vi.fn() })
   useTaskDiffReviewMock.mockReturnValue({ data: undefined, isLoading: false, isPending: false, isError: true, error: null, refetch: vi.fn() })
+  useConfirmTaskDiffReviewMock.mockReturnValue({ mutate: vi.fn(), isPending: false, error: null })
+  useRejectTaskDiffReviewMock.mockReturnValue({ mutate: vi.fn(), isPending: false, error: null })
+  useRetryTaskDiffReviewDeliveryMock.mockReturnValue({ mutate: vi.fn(), isPending: false, error: null })
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 
@@ -97,9 +103,29 @@ describe('DiffCenterPage', () => {
     expect(screen.getByText('文件变更')).toBeInTheDocument()
     expect(screen.getByText('src/auth/AuthController.ts')).toBeInTheDocument()
     expect(screen.getByText('@@ -10,3 +10,4 @@')).toBeInTheDocument()
-    expect(screen.getByText('const x = 1')).toBeInTheDocument()
-    expect(screen.getByText('const y = 2')).toBeInTheDocument()
-    expect(screen.getByText('const z = 3')).toBeInTheDocument()
+    const codeViewer = screen.getByTestId('diff-code-viewer')
+    expect(codeViewer).toHaveTextContent('const x = 1')
+    expect(codeViewer).toHaveTextContent('const y = 2')
+    expect(codeViewer).toHaveTextContent('const z = 3')
+    expect(codeViewer).toHaveAttribute('tabindex', '0')
+    expect(screen.getByText('TypeScript')).toBeInTheDocument()
+  })
+
+  it('decodes escaped code before rendering and marks syntax tokens', () => {
+    useDiffFilesMock.mockReturnValue({
+      data: {
+        ...filesPage,
+        data: [{
+          ...diffFiles[0],
+          path: 'src/views/LoginView.vue',
+          hunks: [{ ...diffFiles[0].hunks[0], lines: [{ kind: 'ADD', oldLine: null, newLine: 1, text: '&lt;div class=&quot;login-container&quot;&gt;' }] }],
+        }],
+      },
+      isLoading: false, isPending: false, isError: false, error: null, refetch: vi.fn(),
+    })
+    renderPage()
+    expect(screen.getByTestId('diff-code-viewer')).toHaveTextContent('<div class="login-container">')
+    expect(document.querySelector('[data-syntax-token="keyword"]')).toBeInTheDocument()
   })
 
   it('hides the file panel when the diff has no files', () => {
@@ -115,12 +141,34 @@ describe('DiffCenterPage', () => {
     expect(screen.queryByRole('button', { name: '验收 Diff' })).not.toBeInTheDocument()
   })
 
-  it('uses the task-level batch review entry when a final Diff batch exists', async () => {
-    useTaskDiffReviewMock.mockReturnValue({ data: { id: 'batch-1', taskId: 'task-1' }, isLoading: false, isPending: false, isError: false, error: null, refetch: vi.fn() })
+  it('confirms the task-level batch directly from the Diff detail page', async () => {
+    const confirm = vi.fn()
+    useTaskMock.mockReturnValue({ data: { id: 'task-1', capabilities: { canConfirmDiffReview: true, canRejectDiffReview: false, canRetryDelivery: false } }, isLoading: false, isPending: false, isError: false, error: null, refetch: vi.fn() })
+    useTaskDiffReviewMock.mockReturnValue({ data: { id: 'batch-1', taskId: 'task-1', reviewStatus: 'PENDING_CONFIRMATION', deliveryStatus: 'NOT_STARTED', reviewReason: null, diffs: [diff], repositoryDeliveries: [] }, isLoading: false, isPending: false, isError: false, error: null, refetch: vi.fn() })
+    useConfirmTaskDiffReviewMock.mockReturnValue({ mutate: confirm, isPending: false, error: null })
     renderPage()
     expect(screen.queryByRole('button', { name: '验收 Diff' })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: '进入总 Diff 验收' }))
-    expect(screen.getByTestId('location')).toHaveTextContent('/app/projects/project-1/tasks/task-1')
+    expect(screen.getByText('任务级交付')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '确认交付' }))
+    expect(confirm).toHaveBeenCalledWith('task-1', expect.any(Object))
+  })
+
+  it('shows the task delivery status in the detail title when the batch has completed', () => {
+    useTaskDiffReviewMock.mockReturnValue({ data: { id: 'batch-1', taskId: 'task-1', reviewStatus: 'ACCEPTED', deliveryStatus: 'DELIVERED', reviewReason: null, diffs: [diff], repositoryDeliveries: [] }, isLoading: false, isPending: false, isError: false, error: null, refetch: vi.fn() })
+    renderPage()
+    expect(screen.getByText('已交付')).toBeInTheDocument()
+    expect(screen.queryByText('已验收')).not.toBeInTheDocument()
+  })
+
+  it('keeps task-level retry available after the individual Diff is accepted', async () => {
+    const retry = vi.fn()
+    useDiffMock.mockReturnValue({ data: { ...diff, status: 'ACCEPTED' }, isLoading: false, isPending: false, isError: false, error: null, refetch: vi.fn() })
+    useTaskMock.mockReturnValue({ data: { id: 'task-1', capabilities: { canConfirmDiffReview: false, canRejectDiffReview: false, canRetryDelivery: true } }, isLoading: false, isPending: false, isError: false, error: null, refetch: vi.fn() })
+    useTaskDiffReviewMock.mockReturnValue({ data: { id: 'batch-1', taskId: 'task-1', reviewStatus: 'ACCEPTED', deliveryStatus: 'FAILED', reviewReason: null, diffs: [diff], repositoryDeliveries: [] }, isLoading: false, isPending: false, isError: false, error: null, refetch: vi.fn() })
+    useRetryTaskDiffReviewDeliveryMock.mockReturnValue({ mutate: retry, isPending: false, error: null })
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: '重试交付' }))
+    expect(retry).toHaveBeenCalledWith('task-1', expect.any(Object))
   })
 
   it('requires confirmation before accepting and prevents cross-project detail display', async () => {

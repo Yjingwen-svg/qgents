@@ -5,6 +5,7 @@ import { CaretRightOutlined, FileTextOutlined, FolderOpenOutlined } from '@ant-d
 import { useWorkspaceDiffPreview, useWorkspaceDiffPreviewFilePatch, useWorkspaceDiffPreviewFiles } from '@/hooks/workspaceDiffPreview'
 import type { WorkspaceDiffPreviewFile, WorkspaceDiffPreviewStatus } from '@/types/task-model'
 import styles from './TaskDetailPage.module.scss'
+import { highlightDiffCode, syntaxLanguageLabel } from '@/utils/diffSyntaxHighlight'
 
 const { Text } = Typography
 
@@ -213,7 +214,7 @@ function SelectedFilePatch({ file, query }: { file: WorkspaceDiffPreviewFile | n
     <SelectedFilePanel file={file} fileLabel={fileLabel}>
       {!patch || patch.patch === null
         ? <Alert type="info" showIcon message={patch?.binary ? '二进制文件，不展示源码 Diff' : '该文件的实时预览暂不可用'} />
-        : <PatchPreview patch={patch.patch} />}
+        : <PatchPreview patch={patch.patch} path={file.path} />}
     </SelectedFilePanel>
   )
 }
@@ -223,6 +224,7 @@ function SelectedFilePanel({ file, fileLabel, children }: { file: WorkspaceDiffP
     <div className={styles.workspaceDiffPreviewSelectedFile}>
       <div className={styles.workspaceDiffPreviewSelectedFileHeading}>
         <Text className={styles.workspaceDiffPreviewSelectedFileName} title={fileLabel}>{fileLabel}</Text>
+        <Tag>{syntaxLanguageLabel(file.path)}</Tag>
         <span className={styles.workspaceDiffPreviewSelectedFileStats}>
           <span className={styles.workspaceDiffPreviewSelectedFileAdditions}>+{file.additions}</span>
           <span className={styles.workspaceDiffPreviewSelectedFileDeletions}>-{file.deletions}</span>
@@ -265,10 +267,10 @@ function resolveFileRepositoryIds(
   return files.map((file) => file.repositoryId ? file : { ...file, repositoryId })
 }
 
-function PatchPreview({ patch }: { patch: string }) {
+function PatchPreview({ patch, path }: { patch: string; path: string }) {
   // 隐藏 Git 文件头与 hunk 标记；保留未改动上下文，方便用户阅读新增/删除代码所在的位置。
   const visibleLines = patch.split('\n').filter(isVisiblePatchLine)
-  return <pre className={styles.workspaceDiffPreviewPatch} data-testid="workspace-diff-preview-patch">{visibleLines.map((line, index) => <span key={`${index}:${line}`} className={styles[patchLineKind(line)]} data-testid={`workspace-diff-line-${patchLineKind(line)}`}>{line || ' '}{index < visibleLines.length - 1 ? '\n' : null}</span>)}</pre>
+  return <pre className={styles.workspaceDiffPreviewPatch} data-testid="workspace-diff-preview-patch">{visibleLines.map((line, index) => <span key={`${index}:${line}`} className={styles[patchLineKind(line)]} data-testid={`workspace-diff-line-${patchLineKind(line)}`}>{highlightDiffCode(line || ' ', path)}{index < visibleLines.length - 1 ? '\n' : null}</span>)}</pre>
 }
 
 function isVisiblePatchLine(line: string): boolean {

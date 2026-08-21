@@ -4,10 +4,11 @@ import { Alert, Button, Card, Empty, Form, Input, Result, Space, Spin, Tag, Typo
 import { ArrowLeftOutlined, CheckOutlined, CodeOutlined, CloseOutlined } from '@ant-design/icons'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError, githubApi } from '@/api'
-import { useAcceptDiff, useDiff, useDiffFiles, useInfiniteDiffs, useRejectDiff, useTask, useTaskDiffReview } from '@/hooks/task-model'
+import { useAcceptDiff, useConfirmTaskDiffReview, useDiff, useDiffFiles, useInfiniteDiffs, useRejectDiff, useRejectTaskDiffReview, useRetryTaskDiffReviewDelivery, useTask, useTaskDiffReview } from '@/hooks/task-model'
 import { queryKeys } from '@/query/queryKeys'
-import type { DiffDetail, DiffFile, DiffLine, DiffStatus, Task } from '@/types/task-model'
+import type { DiffDetail, DiffFile, DiffLine, DiffReviewBatch, DiffStatus, Task } from '@/types/task-model'
 import { PATHS } from '@/routes/paths'
+import { highlightDiffCode, syntaxLanguageLabel } from '@/utils/diffSyntaxHighlight'
 import styles from './DiffCenterPage.module.scss'
 
 const { Text, Title } = Typography
@@ -28,6 +29,14 @@ function statusLabel(status: DiffStatus): string {
 
 function statusColor(status: DiffStatus): string {
   return status === 'PENDING_REVIEW' ? 'gold' : status === 'ACCEPTED' ? 'green' : status === 'REJECTED' ? 'red' : 'default'
+}
+
+function taskDeliveryDisplay(batch: DiffReviewBatch | undefined, diff: DiffDetail): { label: string; color: string } {
+  if (!batch) return { label: statusLabel(diff.status), color: statusColor(diff.status) }
+  if (batch.deliveryStatus === 'DELIVERED') return { label: '已交付', color: 'green' }
+  if (batch.deliveryStatus === 'DELIVERING') return { label: '交付中', color: 'blue' }
+  if (batch.deliveryStatus === 'FAILED' || batch.deliveryStatus === 'PARTIALLY_DELIVERED') return { label: '交付失败', color: 'red' }
+  return { label: statusLabel(diff.status), color: statusColor(diff.status) }
 }
 
 export default function DiffCenterPage() {
@@ -68,17 +77,18 @@ function DiffDetailPanel({ query, projectId, onRefresh }: { query: ReturnType<ty
   })
   if (query.isLoading) return <Card><Spin /></Card>
   if (query.isError || !diff || diff.projectId !== projectId) return <Card><Result status={query.isError ? errorStatus(query.error) : '404'} title={query.isError ? errorTitle(query.error, 'Diff 详情') : 'Diff 不存在或不可见'} extra={<Button onClick={onRefresh}>刷新</Button>} /></Card>
+  const deliveryDisplay = taskDeliveryDisplay(batchQuery.data, diff)
   const cardTitle = (
     <span>
       {taskQuery.data?.title?.trim() || display(diff.taskId)}
-      <Tag color={statusColor(diff.status)}>{statusLabel(diff.status)}</Tag>
+      <Tag color={deliveryDisplay.color}>{deliveryDisplay.label}</Tag>
     </span>
   )
   return <Card title={cardTitle}>
     <Space direction="vertical" className={styles.detailContent}>
       <DetailFields diff={diff} task={taskQuery.data} repositories={repositoriesQuery.data ?? []} />
       <DiffFilesPanel projectId={projectId} diffId={diff.id} />
-      <DiffAcceptance diff={diff} projectId={projectId} onRefresh={onRefresh} batchState={batchQuery.isLoading ? 'loading' : batchQuery.data ? 'available' : 'unavailable'} />
+      <DiffAcceptance diff={diff} projectId={projectId} task={taskQuery.data} batch={batchQuery.data} onRefresh={() => { onRefresh(); void batchQuery.refetch() }} batchState={batchQuery.isLoading ? 'loading' : batchQuery.data ? 'available' : 'unavailable'} />
       <Text type="secondary">本页面仅完成 Diff 验收，不代表已合并 MR。</Text>
     </Space>
   </Card>
@@ -115,26 +125,34 @@ function DiffFilesPanel({ projectId, diffId }: { projectId: string; diffId: stri
       ) : current.hunks.length === 0 ? (
         <Empty style={{ margin: 24 }} description="该文件暂无行级变更" />
       ) : (
-        current.hunks.map((hunk) => (
-          <div key={hunk.id}>
-            <div className={styles.hunkHead}>{hunk.header}</div>
-            {hunk.lines.map((line, index) => <DiffLineRow key={`${hunk.id}-${index}`} line={line} />)}
+        <section className={styles.codeViewer} aria-label={`${current.path} 代码预览`}>
+          <div className={styles.codeViewerMeta}>
+            <span>代码预览</span>
+            <span className={styles.languageBadge}>{syntaxLanguageLabel(current.path)}</span>
           </div>
-        ))
+          <div className={styles.codeViewport} data-testid="diff-code-viewer" tabIndex={0}>
+            {current.hunks.map((hunk) => (
+              <div key={hunk.id}>
+                <div className={styles.hunkHead}>{hunk.header}</div>
+                {hunk.lines.map((line, index) => <DiffLineRow key={`${hunk.id}-${index}`} line={line} path={current.path} />)}
+              </div>
+            ))}
+          </div>
+        </section>
       )
     ) : null}
   </Card>
 }
 
 /** 行级渲染：CONTEXT 灰、ADD 绿、DEL 红（kind 已由映射层归一） */
-function DiffLineRow({ line }: { line: DiffLine }) {
+function DiffLineRow({ line, path }: { line: DiffLine; path: string }) {
   const sign = line.kind === 'ADD' ? '+' : line.kind === 'DEL' ? '-' : ''
   return (
     <div className={`${styles.lineRow}${line.kind === 'ADD' ? ` ${styles.lineAdd}` : ''}${line.kind === 'DEL' ? ` ${styles.lineDel}` : ''}`}>
       <span className={styles.gutter}>{line.oldLine ?? ''}</span>
       <span className={styles.gutter}>{line.newLine ?? ''}</span>
       <span className={styles.sign}>{sign}</span>
-      <span className={styles.code}>{line.text}</span>
+      <span className={styles.code}>{highlightDiffCode(line.text, path)}</span>
     </div>
   )
 }
@@ -157,29 +175,83 @@ function DetailFields({ diff, task, repositories }: { diff: DiffDetail; task?: T
   </div>
 }
 
-function DiffAcceptance({ diff, projectId, onRefresh, batchState }: { diff: DiffDetail; projectId: string; onRefresh: () => void; batchState: 'loading' | 'available' | 'unavailable' }) {
-  const navigate = useNavigate()
+function DiffAcceptance({ diff, projectId, task, batch, onRefresh, batchState }: { diff: DiffDetail; projectId: string; task: Task | undefined; batch: DiffReviewBatch | undefined; onRefresh: () => void; batchState: 'loading' | 'available' | 'unavailable' }) {
   const accept = useAcceptDiff(projectId)
   const reject = useRejectDiff(projectId)
   const [reason, setReason] = useState('')
   const pending = accept.isPending || reject.isPending
-  const openBatchReview = () => navigate(PATHS.projectTaskDetail(projectId, diff.taskId))
   const handleMutationError = (error: Error) => {
     if (errorCode(error) === 'DIFF_BATCH_REVIEW_REQUIRED') {
-      openBatchReview()
+      onRefresh()
       return
     }
     if (error instanceof ApiError && error.status === 409) onRefresh()
   }
   if (diff.status === 'SUPERSEDED') return <Alert type="info" showIcon message="已被后续修改取代" description="同一工作区已有更新的 Diff；当前 Diff 不可验收或拒绝。" />
-  if (diff.status !== 'PENDING_REVIEW') return <Text type="secondary">该 Diff 已处理，只读。</Text>
   if (batchState === 'loading') return <Text type="secondary">正在确认最终 Diff 验收状态…</Text>
-  if (batchState === 'available') return <Alert type="info" showIcon message="该 Diff 已纳入最终交付批次" description="最终交付需要按任务统一验收，不能单独验收此 Diff。" action={<Button size="small" type="primary" onClick={openBatchReview}>进入总 Diff 验收</Button>} />
+  if (batchState === 'available' && batch) return <TaskDeliveryPanel projectId={projectId} task={task} batch={batch} onRefresh={onRefresh} />
+  if (diff.status !== 'PENDING_REVIEW') return <Text type="secondary">该 Diff 已处理，只读。</Text>
   return <Form layout="vertical" onFinish={() => { if (reason.trim()) reject.mutate({ diffId: diff.id, input: { reason: reason.trim() } }, { onError: handleMutationError }) }}>
     <Form.Item label="拒绝原因" required><Input.TextArea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="请输入拒绝原因" disabled={pending} /></Form.Item>
     <Space wrap><Button aria-label="accept-diff" type="primary" icon={<CheckOutlined />} loading={accept.isPending} disabled={pending} onClick={() => { if (!window.confirm('确认验收此 Diff？')) return; accept.mutate(diff.id, { onError: handleMutationError }) }}>验收 Diff</Button><Button aria-label="reject-diff" danger htmlType="submit" icon={<CloseOutlined />} loading={reject.isPending} disabled={pending || !reason.trim()}>拒绝 Diff</Button></Space>
     {accept.error || reject.error ? <Alert className={styles.mutationError} type="error" showIcon message={mutationError(accept.error ?? reject.error)} action={accept.error instanceof ApiError && accept.error.status === 409 || reject.error instanceof ApiError && reject.error.status === 409 ? <Button size="small" onClick={onRefresh}>刷新状态</Button> : undefined} /> : null}
   </Form>
+}
+
+function TaskDeliveryPanel({ projectId, task, batch, onRefresh }: { projectId: string; task: Task | undefined; batch: DiffReviewBatch; onRefresh: () => void }) {
+  const confirm = useConfirmTaskDiffReview(projectId)
+  const reject = useRejectTaskDiffReview(projectId)
+  const retry = useRetryTaskDiffReviewDelivery(projectId)
+  const [reason, setReason] = useState('')
+  const [showRejectForm, setShowRejectForm] = useState(false)
+  const pending = confirm.isPending || reject.isPending || retry.isPending
+  const error = confirm.error ?? reject.error ?? retry.error
+  const superseded = batch.reviewStatus === 'SUPERSEDED'
+  const awaitingConfirmation = batch.reviewStatus === 'PENDING_CONFIRMATION'
+  const canConfirm = awaitingConfirmation && task?.capabilities?.canConfirmDiffReview === true
+  const canReject = awaitingConfirmation && task?.capabilities?.canRejectDiffReview === true
+  const retryableDelivery = batch.reviewStatus === 'ACCEPTED' && (batch.deliveryStatus === 'FAILED' || batch.deliveryStatus === 'PARTIALLY_DELIVERED')
+  const canRetry = !superseded && retryableDelivery && task?.capabilities?.canRetryDelivery === true
+  const diffs = Array.isArray(batch.diffs) ? batch.diffs : []
+  const repositories = Array.isArray(batch.repositoryDeliveries) ? batch.repositoryDeliveries : []
+  const statusMessage = taskDeliveryStatusMessage(batch, repositories)
+  const handleError = (mutationError: Error) => {
+    if (mutationError instanceof ApiError && (mutationError.status === 409 || errorCode(mutationError) === 'DIFF_DELIVERY_NOT_RETRYABLE')) onRefresh()
+  }
+
+  return <Card size="small" title="任务级交付">
+    <Space direction="vertical" size="small" className={styles.taskDeliveryPanel}>
+      <Text type="secondary">最终交付批次：{diffs.length} 个 Diff · {repositories.length} 个仓库。</Text>
+      <Alert type={statusMessage.type} showIcon message={statusMessage.message} description={statusMessage.description} action={statusMessage.refreshable ? <Button size="small" onClick={onRefresh}>刷新最新状态</Button> : undefined} />
+      {canConfirm || canReject ? <Space wrap>
+        {canConfirm ? <Button type="primary" loading={confirm.isPending} disabled={pending} onClick={() => confirm.mutate(batch.taskId, { onError: handleError })}>确认交付</Button> : null}
+        {canReject ? <Button danger type="link" disabled={pending} onClick={() => setShowRejectForm((visible) => !visible)}>{showRejectForm ? '收起拒绝' : '拒绝交付'}</Button> : null}
+      </Space> : null}
+      {showRejectForm ? <Form layout="vertical" onFinish={() => { const trimmed = reason.trim(); if (trimmed) reject.mutate({ taskId: batch.taskId, input: { reason: trimmed } }, { onError: handleError }) }}>
+        <Form.Item label="拒绝原因" required><Input.TextArea value={reason} rows={2} maxLength={4000} placeholder="请填写拒绝原因" disabled={pending} onChange={(event) => setReason(event.target.value)} /></Form.Item>
+        <Space><Button onClick={() => setShowRejectForm(false)} disabled={pending}>取消</Button><Button danger type="primary" htmlType="submit" loading={reject.isPending} disabled={pending || !reason.trim()}>提交拒绝</Button></Space>
+      </Form> : null}
+      {canRetry ? <Button size="small" loading={retry.isPending} disabled={pending} onClick={() => retry.mutate(batch.taskId, { onError: handleError })}>重试交付</Button> : null}
+      {error ? <Alert type="error" showIcon message={taskDeliveryError(error)} action={error instanceof ApiError && error.status === 409 ? <Button size="small" onClick={onRefresh}>刷新</Button> : undefined} /> : null}
+    </Space>
+  </Card>
+}
+
+function taskDeliveryStatusMessage(
+  batch: DiffReviewBatch,
+  repositories: DiffReviewBatch['repositoryDeliveries'],
+): { type: 'info' | 'success' | 'warning' | 'error'; message: string; description: string; refreshable: boolean } {
+  if (batch.reviewStatus === 'SUPERSEDED') return { type: 'warning', message: '该交付批次已被后续修改取代', description: '请刷新并查看最新 Diff，当前批次不能确认、拒绝或重试。', refreshable: true }
+  if (batch.reviewStatus === 'REJECTED') return { type: 'error', message: '该任务交付已被拒绝', description: batch.reviewReason ? `拒绝原因：${batch.reviewReason}` : '需要生成新的最终 Diff 后再提交交付。', refreshable: false }
+  if (batch.reviewStatus === 'PENDING_CONFIRMATION') return { type: 'warning', message: '等待确认交付', description: '确认后将按仓库逐一创建提交或 MR。', refreshable: false }
+  if (batch.deliveryStatus === 'DELIVERED') return { type: 'success', message: '交付已完成', description: '所有仓库已完成交付，可继续查看对应 MR。', refreshable: false }
+  if (batch.deliveryStatus === 'DELIVERING') return { type: 'info', message: '正在交付', description: '后端正在按仓库创建提交或 MR，请稍候刷新状态。', refreshable: true }
+  if (batch.deliveryStatus === 'FAILED' || batch.deliveryStatus === 'PARTIALLY_DELIVERED') {
+    const failedRepositories = repositories.filter((repository) => repository.deliveryStatus === 'FAILED').map((repository) => repository.repositoryName)
+    const scope = failedRepositories.length > 0 ? `失败仓库：${failedRepositories.join('、')}。` : '部分仓库尚未完成交付。'
+    return { type: 'error', message: batch.deliveryStatus === 'FAILED' ? '交付失败' : '部分仓库交付失败', description: `${scope} 修复问题后可重试未成功的仓库。`, refreshable: true }
+  }
+  return { type: 'info', message: '已验收，等待开始交付', description: '最终 Diff 已验收，正在等待服务端启动交付。', refreshable: true }
 }
 
 function errorStatus(error: Error | null): '403' | '404' | 'error' {
@@ -201,4 +273,11 @@ function errorCode(error: Error | null): string | undefined {
   if (!(error instanceof ApiError) || !error.body || typeof error.body !== 'object' || !('error' in error.body)) return undefined
   const bodyError = (error.body as { error?: { code?: unknown } }).error
   return typeof bodyError?.code === 'string' ? bodyError.code : undefined
+}
+
+function taskDeliveryError(error: Error): string {
+  if (!(error instanceof ApiError)) return '交付操作失败，请稍后重试'
+  if (error.status === 403) return '暂无任务级交付权限'
+  if (error.status === 409) return '交付状态已变化，请刷新后重试'
+  return '交付操作失败，请稍后重试'
 }

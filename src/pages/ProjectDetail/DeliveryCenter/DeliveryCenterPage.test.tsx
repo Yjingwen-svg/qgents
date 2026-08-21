@@ -79,6 +79,9 @@ describe('DeliveryCenterPage', () => {
 
     filteredRender.unmount()
     renderPage('/app/projects/project-delivery-center/diffs')
+    expect(await screen.findByText('Draft memory')).toBeInTheDocument()
+    expect(screen.queryByText('Published skill')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '查看全部交付物' }))
     expect(await screen.findByText('未关联需求群')).toBeInTheDocument()
     const loadMore = await screen.findByRole('button', { name: '加载更多' })
     fireEvent.click(loadMore)
@@ -87,7 +90,7 @@ describe('DeliveryCenterPage', () => {
   })
 
   it('routes code details through the formal openTarget and enforces capabilities plus rejection reason validation', async () => {
-    const firstRender = renderPage('/app/projects/project-delivery-center/diffs')
+    const firstRender = renderPage('/app/projects/project-delivery-center/diffs?view=all')
     await screen.findByText('Draft memory')
     fireEvent.click(await screen.findByRole('button', { name: '加载更多' }))
     const codeTitle = (await screen.findAllByText('Code delivery in progress')).find((element) => element.closest('article'))
@@ -97,7 +100,7 @@ describe('DeliveryCenterPage', () => {
     expect(await screen.findByText('Diff Center')).toBeInTheDocument()
 
     firstRender.unmount()
-    const diffRender = renderPage('/app/projects/project-delivery-center/diffs')
+    const diffRender = renderPage('/app/projects/project-delivery-center/diffs?view=all')
     await screen.findByText('Draft memory')
     fireEvent.click(await screen.findByRole('button', { name: '加载更多' }))
     const partialTitle = (await screen.findAllByText('Code delivery partially failed')).find((element) => element.closest('article'))
@@ -106,7 +109,7 @@ describe('DeliveryCenterPage', () => {
     fireEvent.click(within(partialCard).getByRole('button', { name: /查看 Diff/ }))
     expect(await screen.findByText('Diff Center')).toBeInTheDocument()
     diffRender.unmount()
-    const secondRender = renderPage('/app/projects/project-delivery-center/diffs')
+    const secondRender = renderPage('/app/projects/project-delivery-center/diffs?view=all')
     await screen.findByText('Draft memory')
     fireEvent.click(screen.getByRole('button', { name: '加载更多' }))
     fireEvent.click((await screen.findAllByRole('button', { name: /拒绝/ }))[0]!)
@@ -115,7 +118,7 @@ describe('DeliveryCenterPage', () => {
     expect(screen.getByRole('button', { name: '确认拒绝' })).not.toBeDisabled()
 
     secondRender.unmount()
-    renderPage('/app/projects/project-no-approval/diffs')
+    renderPage('/app/projects/project-no-approval/diffs?view=all')
     const memberItem = await screen.findByText('Member pending memory')
     const memberCard = memberItem.closest('article')
     if (!memberCard) throw new Error('member card not rendered')

@@ -15,6 +15,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { notificationApi } from '@/api'
 import { useNotificationEvents } from '@/realtime/useNotificationEvents'
+import { useRealtimeConnectionStatus } from '@/realtime/realtimeClient'
 import { PATHS } from '@/routes/paths'
 import type { Notification, NotificationKind } from '@/types'
 
@@ -83,8 +84,9 @@ export function NotificationCenter() {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
 
-  // 通知级 SSE：新通知产生时实时刷新未读数
-  useNotificationEvents()
+  const realtimeStatus = useRealtimeConnectionStatus()
+  // WebSocket 连通时已覆盖通知事件；仅断开时保留 SSE 兜底，避免重复长连接占满 HTTP/1.1 槽位。
+  useNotificationEvents(realtimeStatus !== 'connected')
 
   const { data: notifications = [] } = useQuery({
     queryKey: ['notifications'],

@@ -3,6 +3,7 @@ import { projectEventsEnabled } from '@/api/projectEvents'
 import { useTaskNoCodeChangeStore } from '@/store/taskNoCodeChangeStore'
 import { invalidateProjectTaskEvent, invalidateProjectTaskModel } from './queryInvalidation'
 import { ProjectEventConnection, type ProjectEventConnectionStatus } from './projectEventConnection'
+import { useRealtimeConnectionStatus } from './realtimeClient'
 
 type StatusListener = (status: ProjectEventConnectionStatus) => void
 
@@ -67,13 +68,16 @@ export function subscribeProjectTaskDomainEvents(
   }
 }
 
-export function useProjectTaskDomainEvents(projectId: string): ProjectEventConnectionStatus {
+export function useProjectTaskDomainEvents(projectId: string, enabled = true): ProjectEventConnectionStatus {
   const [status, setStatus] = useState<ProjectEventConnectionStatus>('idle')
 
   useEffect(() => {
-    if (!projectId || !projectEventsEnabled()) return undefined
+    if (!projectId || !enabled || !projectEventsEnabled()) {
+      setStatus('idle')
+      return undefined
+    }
     return subscribeProjectTaskDomainEvents(projectId, setStatus)
-  }, [projectId])
+  }, [enabled, projectId])
 
   return status
 }
@@ -83,6 +87,7 @@ export function useProjectTaskDomainEvents(projectId: string): ProjectEventConne
  * 每个调用点共享同一项目连接，不会额外建立 EventSource。
  */
 export function useProjectTaskPollingInterval(projectId: string, fallbackIntervalMs: number): number | false {
-  const status = useProjectTaskDomainEvents(projectId)
-  return status === 'connected' ? false : fallbackIntervalMs
+  const realtimeStatus = useRealtimeConnectionStatus()
+  const status = useProjectTaskDomainEvents(projectId, realtimeStatus !== 'connected')
+  return realtimeStatus === 'connected' || status === 'connected' ? false : fallbackIntervalMs
 }

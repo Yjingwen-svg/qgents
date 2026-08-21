@@ -8,6 +8,7 @@ import { ApiError, groupApi, projectApi, teamApi } from '@/api'
 import { useAppUiStore } from '@/store/appUiStore'
 import { latestMessageText } from '@/utils/messageSummary'
 import { useProjectTaskDomainEvents } from '@/realtime/useProjectTaskDomainEvents'
+import { useRealtimeConnectionStatus } from '@/realtime/realtimeClient'
 import type { CreateGroupPayload, Group } from '@/types'
 import './ProjectDetailLayout.scss'
 
@@ -51,7 +52,9 @@ export default function ProjectDetailLayout() {
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
   const setCurrentProject = useAppUiStore((state) => state.setCurrentProject)
   const openProjectDetailNav = useAppUiStore((state) => state.openProjectDetailNav)
-  useProjectTaskDomainEvents(projectId)
+  const realtimeStatus = useRealtimeConnectionStatus()
+  // WebSocket 是项目实时事件主通道；SSE 只在它不可用时接管。
+  useProjectTaskDomainEvents(projectId, realtimeStatus !== 'connected')
 
   const [createOpen, setCreateOpen] = useState(false)
   const [groupSearch, setGroupSearch] = useState('')

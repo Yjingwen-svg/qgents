@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react'
 import { getApiBaseUrl, getStoredToken, refreshAccessToken } from '@/api/client'
 import { projectEventsEnabled } from '@/api/projectEvents'
 import { queryClient } from '@/query'
@@ -17,6 +18,33 @@ import type { RealtimeFrame } from '@/types'
  */
 
 export const REALTIME_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000] as const
+export type RealtimeConnectionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected'
+
+let connectionStatus: RealtimeConnectionStatus = 'idle'
+const connectionStatusListeners = new Set<() => void>()
+
+function setConnectionStatus(status: RealtimeConnectionStatus): void {
+  if (connectionStatus === status) return
+  connectionStatus = status
+  for (const listener of connectionStatusListeners) listener()
+}
+
+function subscribeConnectionStatus(listener: () => void): () => void {
+  connectionStatusListeners.add(listener)
+  return () => connectionStatusListeners.delete(listener)
+}
+
+/**
+ * 全局实时通道状态。WebSocket 已收到 hello 后，页面可关闭重复的 SSE；
+ * 断线时再由 SSE 接管，避免长期连接挤占普通 API 请求的浏览器连接槽。
+ */
+export function useRealtimeConnectionStatus(): RealtimeConnectionStatus {
+  return useSyncExternalStore(
+    subscribeConnectionStatus,
+    () => connectionStatus,
+    () => 'idle',
+  )
+}
 
 /** 拼接 WS 地址：BASE_URL 为绝对 http(s) 时转 ws(s)；为相对路径（/api）时拼当前 origin */
 export function realtimeWsUrl(token: string): string {
@@ -95,6 +123,7 @@ export class RealtimeClient {
     this.running = false
     this.clearRetryTimer()
     this.closeSocket()
+    setConnectionStatus('idle')
   }
 
   /** 断线重连成功后回调（用于重查当前范围关键列表，REST 兜底） */
@@ -132,13 +161,18 @@ export class RealtimeClient {
   private connectNow(): void {
     if (!this.running || this.ws) return
     const token = getStoredToken()
-    if (!token) return
+    if (!token) {
+      setConnectionStatus('disconnected')
+      return
+    }
 
     this.everOpened = false
+    setConnectionStatus('connecting')
     let ws: WebSocket
     try {
       ws = new WebSocket(realtimeWsUrl(token))
     } catch {
+      setConnectionStatus('disconnected')
       this.scheduleReconnect()
       return
     }
@@ -155,6 +189,7 @@ export class RealtimeClient {
     ws.onclose = () => {
       if (this.ws === ws) this.ws = null
       if (!this.running) return
+      setConnectionStatus('disconnected')
       if (this.everOpened) {
         // 已建立过连接后断线：直接用当前 token 重连
         this.scheduleReconnect()
@@ -175,6 +210,7 @@ export class RealtimeClient {
     if (typeof raw === 'object' && raw !== null && (raw as Record<string, unknown>).type === 'hello') {
       const wasReconnecting = this.retryAttempt > 0
       this.retryAttempt = 0
+      setConnectionStatus('connected')
       if (wasReconnecting) this.handleReconnected()
       return
     }

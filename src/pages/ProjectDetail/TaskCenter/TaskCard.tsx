@@ -72,7 +72,7 @@ export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
           <Tooltip title={<ExecutionSummaryTooltip summary={task.executionSummary} />}>
             <div className={styles.executionOverview}>
               <Text className={styles.taskInfoEllipsis}>{valueOrNone(task.executionSummary.currentStageTitle ?? task.executionSummary.currentStage)}</Text>
-              <Progress percent={executionPercent(task.executionSummary)} size="small" showInfo />
+              <Progress percent={executionPercent(task.executionSummary, task.status)} size="small" showInfo />
             </div>
           </Tooltip>
         </div>
@@ -152,14 +152,17 @@ function repositorySummary(task: TaskListItem): string {
   return task.repositories.map((repository) => repository.name).join('、')
 }
 
-function executionPercent(summary: TaskListItem['executionSummary']): number {
+function executionPercent(summary: TaskListItem['executionSummary'], taskStatus: TaskListItem['status']): number {
   if (summary.totalSteps <= 0) return 0
-  // 终态步骤占比：PENDING/RUNNING/WAITING/BLOCKED 之外的步骤（SUCCEEDED/FAILED/CANCELLED/SKIPPED）
-  // 均视为已走完。任务终态时必然 100%——否则「任务成功但某验证/测试步骤未通过」的进度会永远不满
-  // （如 VERIFY 步骤 FAILED 时 succeeded/total 停在 75%）。
-  const terminalSteps = summary.totalSteps - summary.pendingSteps - summary.runningSteps
-    - summary.waitingSteps - summary.blockedSteps
-  return Math.min(100, Math.round((terminalSteps / summary.totalSteps) * 100))
+  // 进度条语义 = 成功完成度：
+  // - 任务成功终态（含成功路径的交付中间态）强制 100%——任务成功即视为全部完成，避免
+  //   「任务成功但某验证/测试步骤未通过」时进度停在 75%（如 VERIFY 步骤 FAILED）；
+  // - 执行中/失败/取消按成功步骤占比（succeeded/total）——失败任务不显示 100% 的误导
+  //   进度（如任务 FAILED 但所有步骤都已终态时，「终态占比」口径会错误地显示 100%）。
+  const successful = taskStatus === 'SUCCEEDED' || taskStatus === 'WAITING_DIFF_CONFIRMATION'
+    || taskStatus === 'DELIVERING' || taskStatus === 'WAITING_PREFLIGHT'
+  if (successful) return 100
+  return Math.min(100, Math.round((summary.succeededSteps / summary.totalSteps) * 100))
 }
 
 function ExecutionSummaryTooltip({ summary }: { summary: TaskListItem['executionSummary'] }) {

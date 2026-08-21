@@ -1,4 +1,4 @@
-import { getApiBaseUrl, request } from './client'
+import { getApiBaseUrl, getStoredToken, request } from './client'
 
 /** POST /projects/{projectId}/attachments 响应（§18.1） */
 export interface AttachmentCredential {
@@ -100,8 +100,16 @@ export async function uploadAttachment(projectId: string, file: File): Promise<s
 
   // 用 ArrayBuffer 作 body：fetch 不会自动带 Content-Type 头。
   // 后端签预签名 URL 时 Content-Type 为空（§18.1 headers: {}），若带 Content-Type 会导致 SignatureDoesNotMatch(403)。
+  // 相对路径（本地回退/内网后端）→ 走 Qgents 鉴权需带 Bearer；绝对地址（OSS 预签名直传）→
+  // 不加 Authorization，避免污染阿里云签名。
+  const headers: Record<string, string> = {}
+  if (!/^https?:\/\//i.test(credential.uploadUrl)) {
+    const token = getStoredToken()
+    if (token) headers['Authorization'] = `Bearer ${token}`
+  }
   const putRes = await fetch(credential.uploadUrl, {
     method: 'PUT',
+    headers,
     body: await file.arrayBuffer(),
   })
   if (!putRes.ok) {

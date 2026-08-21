@@ -248,6 +248,8 @@ export function MergeRequestTab({
   const [creatingId, setCreatingId] = useState<string | null>(null)
   // 记录每行的预检状态（前端跟踪，真实环境由 SSE/后端返回）
   const [preflightStatusMap, setPreflightStatusMap] = useState<Record<string, PreflightUiStatus>>({})
+  // 自动模式提交预检请求期间，不能把“请求尚未返回”误显示成“待预检通过”。
+  const [preflightRequestingIds, setPreflightRequestingIds] = useState<Set<string>>(new Set())
   const [coverageMap, setCoverageMap] = useState<Record<string, { taskCount: number; diffCount: number }>>({})
   // 预检状态是否正在加载（用于显示 loading 状态）
   const [preflightLoading, setPreflightLoading] = useState(false)
@@ -431,8 +433,11 @@ export function MergeRequestTab({
     }
     systemRows.forEach((mr) => {
       autoStartRef.current.add(mr.id)
-      // 先乐观设置为 REQUESTED
-      setPreflightStatusMap((prev) => (prev[mr.id] ? prev : { ...prev, [mr.id]: 'REQUESTED' }))
+      setPreflightRequestingIds((prev) => {
+        const next = new Set(prev)
+        next.add(mr.id)
+        return next
+      })
       const __mr = mr
         ; (async () => {
           try {
@@ -470,6 +475,12 @@ export function MergeRequestTab({
                   : prev,
               )
             }
+          } finally {
+            setPreflightRequestingIds((prev) => {
+              const next = new Set(prev)
+              next.delete(__mr.id)
+              return next
+            })
           }
         })()
     })
@@ -792,8 +803,9 @@ export function MergeRequestTab({
         render: (value: MergeRequestStatus, record) => {
           if (record.status === 'PENDING_CREATE') {
             const status = preflightStatusMap[record.id]
+            const isRequesting = preflightRequestingIds.has(record.id)
             // 如果还没加载完成，显示 loading
-            if (!status && preflightLoading && !loadedPreflightIds.has(record.id)) {
+            if (isRequesting || (!status && preflightLoading && !loadedPreflightIds.has(record.id))) {
               return (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Spin size="small" />
@@ -815,10 +827,11 @@ export function MergeRequestTab({
           const enabled = Boolean(record.taskId)
           if (!enabled) return <Text type="secondary">—</Text>
           const status = preflightStatusMap[record.id]
+          const isRequesting = preflightRequestingIds.has(record.id)
           const isCqApproved = status === 'MR_CREATED'
           const isCqRejected = status === 'CQ_REJECTED'
           const isNoChanges = status === 'NO_CHANGES'
-          const isLoading = !status && preflightLoading && !loadedPreflightIds.has(record.id)
+          const isLoading = isRequesting || (!status && preflightLoading && !loadedPreflightIds.has(record.id))
           return (
             <Tooltip title="点击跳转到 CQ+1 大印章审查页">
               <Button
@@ -853,8 +866,9 @@ export function MergeRequestTab({
         width: 120,
         render: (_value, record) => {
           const status = preflightStatusMap[record.id]
+          const isRequesting = preflightRequestingIds.has(record.id)
           const isDryRunFailed = status === 'FAILED'
-          if (record.status === 'PENDING_CREATE' && !status && preflightLoading && !loadedPreflightIds.has(record.id)) {
+          if (record.status === 'PENDING_CREATE' && (isRequesting || (!status && preflightLoading && !loadedPreflightIds.has(record.id)))) {
             return (
               <span style={{ display: 'inline-flex', alignItems: 'center' }}>
                 <Spin size="small" />
@@ -886,7 +900,8 @@ export function MergeRequestTab({
           // ============== PENDING_CREATE：占位 MR，预检流程阶段 ==============
           if (record.status === 'PENDING_CREATE') {
             const status = preflightStatusMap[record.id]
-            if (!status && preflightLoading && !loadedPreflightIds.has(record.id)) {
+            const isRequesting = preflightRequestingIds.has(record.id)
+            if (isRequesting || (!status && preflightLoading && !loadedPreflightIds.has(record.id))) {
               return (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Spin size="small" />
@@ -1058,7 +1073,7 @@ export function MergeRequestTab({
         },
       },
     ],
-    [projectId, repositories, isAdmin, mergingId, creatingId, items, preflightStatusMap, coverageMap, navigate, handleMerge, handleCreate],
+    [projectId, repositories, isAdmin, mergingId, creatingId, items, preflightStatusMap, preflightRequestingIds, coverageMap, navigate, handleMerge, handleCreate],
   )
 
   return (

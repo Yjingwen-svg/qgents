@@ -529,6 +529,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     if (lastReadSeq == null || !currentUserId) return []
     return messages.filter(
       (m) =>
+        m.senderType !== 'AGENT' &&
         m.senderId !== currentUserId &&
         (m.sequence ?? 0) > lastReadSeq &&
         (m.mentions ?? []).some((mention) => mention.type === 'USER' && mention.id === currentUserId),
@@ -565,12 +566,14 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     const hasAutoJumpFlag =
       typeof mentionMessageId === 'string' || (location.state as { autoJumpMention?: boolean } | null)?.autoJumpMention === true
     if (!hasAutoJumpFlag) return
+    const isUserMention = (m: Message): boolean =>
+      m.senderType !== 'AGENT' &&
+      m.senderId !== currentUserId &&
+      (m.mentions ?? []).some((mention) => mention.type === 'USER' && mention.id === currentUserId)
     const target = mentionMessageId
-      ? messages.find((m) => m.id === mentionMessageId)
+      ? messages.find((m) => m.id === mentionMessageId && isUserMention(m))
       : messages.find(
-          (m) =>
-            m.senderId !== currentUserId &&
-            (m.mentions ?? []).some((mention) => mention.type === 'USER' && mention.id === currentUserId),
+          isUserMention,
         )
     if (target) {
       autoMentionJumpedRef.current = true
@@ -1797,8 +1800,14 @@ function renderContent(
       const repositoryMappings = normalizeTaskStatusRepositoryMappings(c.repositoryMappings).filter(
         (mapping) => !currentPaths || currentPaths.length === 0 || currentPaths.includes(mapping.workspacePath),
       )
-      const statusKey = c.status?.toUpperCase()
-      const displayStatus = taskStatus ?? c.status
+      const messageStatus = c.status?.toUpperCase()
+      const queriedStatus = taskStatus?.toUpperCase()
+      const hasRunningStep = steps.some((step) => step.status === 'RUNNING')
+      // 消息和任务查询可能短暂不同步：步骤已开始执行时，避免旧的 PLANNING 覆盖真实运行态。
+      const displayStatus = queriedStatus === 'PLANNING' && (messageStatus !== 'PLANNING' || hasRunningStep)
+        ? (messageStatus && messageStatus !== 'PLANNING' ? messageStatus : 'RUNNING')
+        : (queriedStatus ?? messageStatus ?? 'PLANNING')
+      const statusKey = displayStatus.toUpperCase()
       const diffReady =
         statusKey === 'WAITING_DIFF_CONFIRMATION' ||
         statusKey === 'DELIVERING' ||

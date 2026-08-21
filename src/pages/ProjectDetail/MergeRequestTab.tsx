@@ -249,6 +249,9 @@ export function MergeRequestTab({
   const [preflightLoading, setPreflightLoading] = useState(false)
   // 已完成加载预检状态的 MR ID 集合
   const [loadedPreflightIds, setLoadedPreflightIds] = useState<Set<string>>(new Set())
+  // 轮询过程中状态会持续更新，但不能因此取消当前批次的请求。
+  const preflightStatusMapRef = useRef(preflightStatusMap)
+  preflightStatusMapRef.current = preflightStatusMap
 
   // 页面加载和真实占位行替换时恢复已启动的预检状态。
   // 优化：使用并发控制（最多 3 个同时请求），避免超过浏览器并发限制
@@ -279,95 +282,97 @@ export function MergeRequestTab({
 
   useEffect(() => {
     if (displayItems.length === 0) return // 等待 MR 列表加载完成
-    const taskIds = new Set<string>()
-    const pendingMrIds: string[] = []
-    displayItems.forEach((mr) => {
-      const currentStatus = preflightStatusMap[mr.id]
-      const terminal = currentStatus === 'NO_CHANGES'
-        || currentStatus === 'FAILED'
-        || currentStatus === 'STALE'
-        || currentStatus === 'CQ_REJECTED'
-        || currentStatus === 'MR_CREATED'
-      if (mr.status === 'PENDING_CREATE' && mr.taskId && !terminal) {
-        taskIds.add(mr.taskId)
-        if (!loadedPreflightIds.has(mr.id)) {
-          pendingMrIds.push(mr.id)
-        }
-      }
-    })
-    if (taskIds.size === 0) return
-    // 有未加载的 MR 则显示 loading
-    const shouldShowLoading = pendingMrIds.length > 0
-    if (shouldShowLoading) setPreflightLoading(true)
-
     let cancelled = false
-      ; (async () => {
-        try {
-          const newMap: Record<string, PreflightUiStatus> = {}
-          const loadedIds = new Set(loadedPreflightIds)
+    let timer: ReturnType<typeof setTimeout> | undefined
 
-          // 使用并发控制，最多 CONCURRENCY_LIMIT 个同时请求
-          await asyncPool(Array.from(taskIds), CONCURRENCY_LIMIT, async (taskId) => {
-            if (cancelled) return
-            const controller = new AbortController()
-            const timeoutId = setTimeout(() => controller.abort(), PREFLIGHT_QUERY_TIMEOUT_MS)
-            const taskMrRows = displayItems.filter((mr) => mr.taskId === taskId && mr.status === 'PENDING_CREATE')
-            try {
-              const res = await mergeRequestsApi.getTaskPreflight(projectId, taskId, controller.signal)
-              if (cancelled) return
-              taskMrRows.forEach((mr) => loadedIds.add(mr.id))
-              if (res?.items?.length) {
-                taskMrRows.forEach((mr) => {
-                  const repoStatus = res.items.find((it) => it.repositoryId === mr.repositoryId)
-                  if (repoStatus?.failureCode === 'MR_NO_CHANGES') {
-                    newMap[mr.id] = 'NO_CHANGES'
-                  } else if (repoStatus?.dryRunStatus) {
-                    if (repoStatus.cqStatus === 'APPROVED') {
-                      newMap[mr.id] = 'MR_CREATED'
-                    } else if (repoStatus.cqStatus === 'REJECTED') {
-                      newMap[mr.id] = 'CQ_REJECTED'
-                    } else if (repoStatus.dryRunStatus === 'PASSED') {
-                      newMap[mr.id] = 'WAITING_CQ'
-                    } else if (repoStatus.dryRunStatus === 'FAILED') {
-                      newMap[mr.id] = 'FAILED'
-                    } else {
-                      newMap[mr.id] = 'DRY_RUN_RUNNING'
-                    }
-                  }
-                })
-              }
-            } catch {
-              // 请求失败或超时也要结束该行的加载态，允许用户重新发起预检。
-              taskMrRows.forEach((mr) => loadedIds.add(mr.id))
-            } finally {
-              clearTimeout(timeoutId)
-            }
-          })
-
-          if (cancelled) return
-          if (Object.keys(newMap).length > 0) setPreflightStatusMap((prev) => ({ ...prev, ...newMap }))
-          setLoadedPreflightIds(loadedIds)
-        } catch {
-          // 静默失败
-        } finally {
-          if (!cancelled) setPreflightLoading(false)
+    const refresh = async () => {
+      const taskIds = new Set<string>()
+      const pendingRows = displayItems.filter((mr) => {
+        const currentStatus = preflightStatusMapRef.current[mr.id]
+        const terminal = currentStatus === 'NO_CHANGES'
+          || currentStatus === 'FAILED'
+          || currentStatus === 'STALE'
+          || currentStatus === 'CQ_REJECTED'
+          || currentStatus === 'MR_CREATED'
+        if (mr.status === 'PENDING_CREATE' && mr.taskId && !terminal) {
+          taskIds.add(mr.taskId)
+          return true
         }
-      })()
+        return false
+      })
 
-    // 轮询：每 10 秒刷新一次（仅当有 PENDING_CREATE 行时）
-    if (preflightPolling && taskIds.size > 0) {
-      const timer = setTimeout(() => {
-        // 重置已加载状态，触发下一次刷新
-        setLoadedPreflightIds(new Set())
-      }, preflightPollingInterval)
-      return () => {
-        cancelled = true
-        clearTimeout(timer)
+      if (taskIds.size === 0) {
+        setPreflightLoading(false)
+        return
+      }
+      setPreflightLoading(true)
+
+      try {
+        const newMap: Record<string, PreflightUiStatus> = {}
+        const loadedIds = new Set<string>()
+
+        // 使用并发控制，最多 CONCURRENCY_LIMIT 个同时请求
+        await asyncPool(Array.from(taskIds), CONCURRENCY_LIMIT, async (taskId) => {
+          if (cancelled) return
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), PREFLIGHT_QUERY_TIMEOUT_MS)
+          const taskMrRows = pendingRows.filter((mr) => mr.taskId === taskId)
+          try {
+            const res = await mergeRequestsApi.getTaskPreflight(projectId, taskId, controller.signal)
+            if (cancelled) return
+            taskMrRows.forEach((mr) => loadedIds.add(mr.id))
+            if (res?.items?.length) {
+              taskMrRows.forEach((mr) => {
+                const repoStatus = res.items.find((it) => it.repositoryId === mr.repositoryId)
+                if (repoStatus?.failureCode === 'MR_NO_CHANGES') {
+                  newMap[mr.id] = 'NO_CHANGES'
+                } else if (repoStatus?.dryRunStatus) {
+                  if (repoStatus.cqStatus === 'APPROVED') {
+                    newMap[mr.id] = 'MR_CREATED'
+                  } else if (repoStatus.cqStatus === 'REJECTED') {
+                    newMap[mr.id] = 'CQ_REJECTED'
+                  } else if (repoStatus.dryRunStatus === 'PASSED') {
+                    newMap[mr.id] = 'WAITING_CQ'
+                  } else if (repoStatus.dryRunStatus === 'FAILED') {
+                    newMap[mr.id] = 'FAILED'
+                  } else {
+                    newMap[mr.id] = 'DRY_RUN_RUNNING'
+                  }
+                }
+              })
+            }
+          } catch {
+            // 请求失败或超时也要结束该行的加载态，允许用户重新发起预检。
+            taskMrRows.forEach((mr) => loadedIds.add(mr.id))
+          } finally {
+            clearTimeout(timeoutId)
+          }
+        })
+
+        if (!cancelled) {
+          if (Object.keys(newMap).length > 0) {
+            setPreflightStatusMap((prev) => ({ ...prev, ...newMap }))
+          }
+          setLoadedPreflightIds(loadedIds)
+        }
+      } catch {
+        // 静默失败
+      } finally {
+        if (!cancelled) setPreflightLoading(false)
+      }
+
+      if (!cancelled && preflightPolling) {
+        timer = setTimeout(() => void refresh(), preflightPollingInterval)
       }
     }
-    return () => { cancelled = true }
+
+    void refresh()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, displayItems, preflightPolling, preflightStatusMap])
+  }, [projectId, displayItems, preflightPolling, preflightPollingInterval])
 
   // ============== 自动模式（createMode = SYSTEM）：页面加载完自动触发申请预检 ==============
   // 后端返回占位 MR 时已经标记好 SYSTEM，前端就不需要用户再手动点「申请MR」。

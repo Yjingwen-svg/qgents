@@ -297,7 +297,7 @@ export function MergeRequestTab({
     })
     if (taskIds.size === 0) return
     // 有未加载的 MR 则显示 loading
-    const shouldShowLoading = pendingMrIds.length > 0 && Object.keys(preflightStatusMap).length === 0
+    const shouldShowLoading = pendingMrIds.length > 0
     if (shouldShowLoading) setPreflightLoading(true)
 
     let cancelled = false
@@ -311,14 +311,14 @@ export function MergeRequestTab({
             if (cancelled) return
             const controller = new AbortController()
             const timeoutId = setTimeout(() => controller.abort(), PREFLIGHT_QUERY_TIMEOUT_MS)
+            const taskMrRows = displayItems.filter((mr) => mr.taskId === taskId && mr.status === 'PENDING_CREATE')
             try {
               const res = await mergeRequestsApi.getTaskPreflight(projectId, taskId, controller.signal)
               if (cancelled) return
+              taskMrRows.forEach((mr) => loadedIds.add(mr.id))
               if (res?.items?.length) {
-                const taskMrRows = displayItems.filter((mr) => mr.taskId === taskId && mr.status === 'PENDING_CREATE')
                 taskMrRows.forEach((mr) => {
                   const repoStatus = res.items.find((it) => it.repositoryId === mr.repositoryId)
-                  loadedIds.add(mr.id)
                   if (repoStatus?.failureCode === 'MR_NO_CHANGES') {
                     newMap[mr.id] = 'NO_CHANGES'
                   } else if (repoStatus?.dryRunStatus) {
@@ -337,7 +337,8 @@ export function MergeRequestTab({
                 })
               }
             } catch {
-              // 静默失败
+              // 请求失败或超时也要结束该行的加载态，允许用户重新发起预检。
+              taskMrRows.forEach((mr) => loadedIds.add(mr.id))
             } finally {
               clearTimeout(timeoutId)
             }
@@ -749,7 +750,7 @@ export function MergeRequestTab({
           if (record.status === 'PENDING_CREATE') {
             const status = preflightStatusMap[record.id]
             // 如果还没加载完成，显示 loading
-            if (!status && preflightLoading) {
+            if (!status && preflightLoading && !loadedPreflightIds.has(record.id)) {
               return (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Spin size="small" />
@@ -774,7 +775,7 @@ export function MergeRequestTab({
           const isCqApproved = status === 'MR_CREATED'
           const isCqRejected = status === 'CQ_REJECTED'
           const isNoChanges = status === 'NO_CHANGES'
-          const isLoading = !status && preflightLoading
+          const isLoading = !status && preflightLoading && !loadedPreflightIds.has(record.id)
           return (
             <Tooltip title="点击跳转到 CQ+1 大印章审查页">
               <Button
@@ -810,7 +811,7 @@ export function MergeRequestTab({
         render: (_value, record) => {
           const status = preflightStatusMap[record.id]
           const isDryRunFailed = status === 'FAILED'
-          if (record.status === 'PENDING_CREATE' && !status && preflightLoading) {
+          if (record.status === 'PENDING_CREATE' && !status && preflightLoading && !loadedPreflightIds.has(record.id)) {
             return (
               <span style={{ display: 'inline-flex', alignItems: 'center' }}>
                 <Spin size="small" />
@@ -842,7 +843,7 @@ export function MergeRequestTab({
           // ============== PENDING_CREATE：占位 MR，预检流程阶段 ==============
           if (record.status === 'PENDING_CREATE') {
             const status = preflightStatusMap[record.id]
-            if (!status && preflightLoading) {
+            if (!status && preflightLoading && !loadedPreflightIds.has(record.id)) {
               return (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Spin size="small" />

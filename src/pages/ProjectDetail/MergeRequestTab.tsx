@@ -9,6 +9,7 @@ import {
   useMergeMergeRequest,
   useMergeRequests,
   useRequestMergeRequestPreflight,
+  useRetryMergeRequestPreflight,
   useSyncMergeRequest,
 } from '@/hooks/task-model'
 import { formatApiError } from '@/utils/formatApiError'
@@ -230,11 +231,13 @@ export function MergeRequestTab({
 
   const mergeMr = useMergeMergeRequest(projectId)
   const requestPreflight = useRequestMergeRequestPreflight(projectId)
+  const retryPreflight = useRetryMergeRequestPreflight(projectId)
   const syncMr = useSyncMergeRequest(projectId)
   const [mergingId, setMergingId] = useState<string | null>(null)
   const [creatingId, setCreatingId] = useState<string | null>(null)
   // 记录每行的预检状态（前端跟踪，真实环境由 SSE/后端返回）
   const [preflightStatusMap, setPreflightStatusMap] = useState<Record<string, PreflightUiStatus>>({})
+  const [preflightIdMap, setPreflightIdMap] = useState<Record<string, string>>({})
   // 自动模式提交预检请求期间，不能把“请求尚未返回”误显示成“待预检通过”。
   const [preflightRequestingIds, setPreflightRequestingIds] = useState<Set<string>>(new Set())
   const [coverageMap, setCoverageMap] = useState<Record<string, { taskCount: number; diffCount: number }>>({})
@@ -372,6 +375,9 @@ export function MergeRequestTab({
             if (res?.items?.length) {
               taskMrRows.forEach((mr) => {
                 const repoStatus = res.items.find((it) => it.repositoryId === mr.repositoryId)
+                if (repoStatus?.preflightId) {
+                  setPreflightIdMap((prev) => ({ ...prev, [mr.id]: repoStatus.preflightId! }))
+                }
                 if (repoStatus?.failureCode === 'MR_NO_CHANGES') {
                   newMap[mr.id] = 'NO_CHANGES'
                 } else if (repoStatus?.mergeRequest) {
@@ -569,6 +575,7 @@ export function MergeRequestTab({
     }
     // 如果已在预检流程中，根据当前状态决定是否允许重新申请
     const currentStatus = preflightStatusMap[record.id]
+    const currentPreflightId = preflightIdMap[record.id]
     if (currentStatus && !['FAILED', 'STALE', 'CQ_REJECTED'].includes(currentStatus)) {
       // 预检进行中或已在等待 CQ，只允许「重新预检」的场景
       const label = preflightButtonLabel(
@@ -594,13 +601,17 @@ export function MergeRequestTab({
         targetBranch: record.targetBranch,
       },
     })
-    requestPreflight
-      .mutateAsync({
-        taskId,
-        repositoryId: record.repositoryId,
-      })
+    const request = currentStatus === 'FAILED' || currentStatus === 'CQ_REJECTED'
+      ? currentPreflightId
+        ? retryPreflight.mutateAsync(currentPreflightId)
+        : requestPreflight.mutateAsync({ taskId, repositoryId: record.repositoryId })
+      : requestPreflight.mutateAsync({ taskId, repositoryId: record.repositoryId })
+    request
       .then((res) => {
         console.log('[handleCreate] API success:', res)
+        if (res.id) {
+          setPreflightIdMap((prev) => ({ ...prev, [record.id]: res.id }))
+        }
         setPreflightStatusMap((prev) => ({ ...prev, [record.id]: res.status }))
         setCoverageMap((prev) => ({
           ...prev,

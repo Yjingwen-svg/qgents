@@ -409,6 +409,18 @@ export function useRequestMergeRequestPreflight(
   })
 }
 
+/** 重新运行失败/CQ 拒绝的分支级预检。 */
+export function useRetryMergeRequestPreflight(
+  projectId: string,
+): UseMutationResult<MergeRequestPreflight, Error, string> {
+  return useMutation({
+    mutationFn: (preflightId) => mergeRequestsApi.retryPreflight(projectId, preflightId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.all(projectId) })
+    },
+  })
+}
+
 /** 按 Task 查询预检状态（恢复已启动的预检进度） */
 export function useTaskMergeRequestPreflight(
   projectId: string,

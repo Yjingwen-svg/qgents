@@ -1725,11 +1725,17 @@ function renderContent(
     case 'IMAGE': {
       const c = message.content as ImageMessageContent
       // 增量契约 §7：content.previewUrl 若由后端回填（带短期 token），直接用；
-      // 否则回退 AuthedImage 走 §18.5 content 代理（带 Bearer 拉取）
+      // 否则走 §18.5 content 代理（带 Bearer 拉取）。地址优先用 attachmentId 重建，
+      // 与存储的 content.url 前缀无关——历史消息 url 可能是 /api/... 或 /projects/...，
+      // 直接 normalizeContentUrl 会把已带 /api 的地址拼成 /api/api/... 双前缀 404。
+      // 缺 attachmentId 的旧消息才回退 normalizeContentUrl(c.url)。
       const previewUrl = typeof c.previewUrl === 'string' && c.previewUrl ? resolvePreviewUrl(c.previewUrl) : null
+      const contentUrl = c.attachmentId
+        ? attachmentApi.contentUrl(projectId, c.attachmentId)
+        : normalizeContentUrl(c.url)
       const image = (
         <AuthedImage
-          src={previewUrl ?? normalizeContentUrl(c.url)}
+          src={previewUrl ?? contentUrl}
           width={c.width ?? 260}
           height={c.height}
           style={{ borderRadius: 10, display: 'block', maxWidth: '100%' }}

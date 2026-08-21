@@ -61,26 +61,6 @@ function qualityGateColor(status: string | undefined): string {
   return 'default'
 }
 
-function cqLabel(preflight: Preflight | undefined, isLoading: boolean, isError: boolean, status: Preflight['cqPlusOne']['status'] | 'MISSING' | undefined): string {
-  if (status === 'MISSING') return 'WAITING'
-  // 加载时仍显示已有数据（或 WAITING），不暴露"CQ 查询中"的轮询噪声
-  const s = preflight?.cqPlusOne?.status
-  if (s === 'APPROVED') return 'CQ+1 通过'
-  if (s === 'REJECTED') return 'CQ+1 未通过'
-  if (isError) return 'CQ 未知'
-  if (s === 'PENDING' || !s) return 'WAITING'
-  return s
-}
-
-function cqColor(preflight: Preflight | undefined, isLoading: boolean, isError: boolean): string {
-  const s = preflight?.cqPlusOne?.status
-  if (s === 'APPROVED') return 'success'
-  if (s === 'REJECTED') return 'error'
-  if (isError) return 'default'
-  // PENDING / 无记录 / 加载中
-  return 'warning'
-}
-
 /**
  * 前端派生状态：严格按 PreflightStatus 区分不同阶段，便于用户理解 Dry Run 是否已通过。
  *  - 'IDLE'                未申请预检
@@ -245,33 +225,11 @@ export function MergeRequestTab({
   // 表格、CQ 查询和操作列必须使用同一份数据。
   const displayItems = items
 
-  // ========== 每行的 CQ+1 状态：useQueries 按 (projectId+taskId+repoId+targetBranch) 查 Preflight =====
-  // taskId 为空或未关联任务的 MR（如纯手动 GitHub 创建）不查，直接显示 "—"
+  // ========== 预检状态查询：使用批量接口 + 并发控制 =====
+  // 废弃逐行 useQueries（N 行 = N 个请求，超过浏览器并发限制）
+  // 改为按 taskId 批量查询 + 并发控制（最多 3 个同时请求）
   const cqQueries = useQueries({
-    queries: displayItems.map((mr) => {
-      const enabled = Boolean(mr.taskId)
-        && Boolean(mr.repositoryId)
-        && Boolean(mr.targetBranch)
-      return {
-        queryKey: ['preflight', 'mr-row', projectId, mr.taskId || '', mr.repositoryId || '', mr.targetBranch || ''],
-        enabled,
-        staleTime: 30 * 1000,
-        gcTime: 2 * 60 * 1000,
-        // 预检期间（Dry Run → CQ+1 → MR 创建）状态变化频繁，10s 轮询自动刷新，
-        // 避免用户在 MR 列表页看到过期的 Dry Run/CQ 状态。
-        refetchInterval: 10000,
-        refetchIntervalInBackground: false,
-        queryFn: async (): Promise<Preflight | null> => {
-          if (!enabled) return null
-          const res = await qualityGateApi.preflight(projectId, {
-            taskId: mr.taskId!,
-            repositoryId: mr.repositoryId!,
-            targetBranch: mr.targetBranch!,
-          })
-          return (res as unknown) as Preflight | null
-        },
-      }
-    }),
+    queries: [],  // 占位，不再使用
   })
 
   const mergeMr = useMergeMergeRequest(projectId)
@@ -286,6 +244,32 @@ export function MergeRequestTab({
   const [loadedPreflightIds, setLoadedPreflightIds] = useState<Set<string>>(new Set())
 
   // 页面加载和真实占位行替换时恢复已启动的预检状态。
+  // 优化：使用并发控制（最多 3 个同时请求），避免超过浏览器并发限制
+  const CONCURRENCY_LIMIT = 3
+  const PREFLIGHT_QUERY_TIMEOUT_MS = 8000
+  const [preflightPolling, setPreflightPolling] = useState(true)  // 是否轮询
+  const [preflightPollingInterval] = useState(10000)  // 轮询间隔
+
+  // 并发控制：限制同时发出的请求数量
+  async function asyncPool<T>(
+    items: T[],
+    limit: number,
+    iteratorFn: (item: T) => Promise<void>,
+  ) {
+    const executing: Promise<void>[] = []
+    for (const item of items) {
+      const p = iteratorFn(item).finally(() => {
+        const idx = executing.indexOf(p)
+        if (idx > -1) executing.splice(idx, 1)
+      })
+      executing.push(p)
+      if (executing.length >= limit) {
+        await Promise.race(executing)
+      }
+    }
+    await Promise.all(executing)
+  }
+
   useEffect(() => {
     if (displayItems.length === 0) return // 等待 MR 列表加载完成
     const taskIds = new Set<string>()
@@ -300,46 +284,74 @@ export function MergeRequestTab({
     })
     if (taskIds.size === 0) return
     // 有未加载的 MR 则显示 loading
-    if (pendingMrIds.length > 0) setPreflightLoading(true)
+    const shouldShowLoading = pendingMrIds.length > 0 && Object.keys(preflightStatusMap).length === 0
+    if (shouldShowLoading) setPreflightLoading(true)
+
+    let cancelled = false
       ; (async () => {
         try {
           const newMap: Record<string, PreflightStatus> = {}
           const loadedIds = new Set(loadedPreflightIds)
-          for (const taskId of taskIds) {
-            const res = await mergeRequestsApi.getTaskPreflight(projectId, taskId)
-            if (res?.items?.length) {
-              const taskMrRows = displayItems.filter((mr) => mr.taskId === taskId && mr.status === 'PENDING_CREATE')
-              taskMrRows.forEach((mr) => {
-                const repoStatus = res.items.find((it) => it.repositoryId === mr.repositoryId)
-                // 标记为已加载
-                loadedIds.add(mr.id)
-                if (repoStatus?.dryRunStatus) {
-                  if (repoStatus.cqStatus === 'APPROVED') {
-                    newMap[mr.id] = 'MR_CREATED'
-                  } else if (repoStatus.cqStatus === 'REJECTED') {
-                    newMap[mr.id] = 'CQ_REJECTED'
-                  } else if (repoStatus.dryRunStatus === 'PASSED') {
-                    newMap[mr.id] = 'WAITING_CQ'
-                  } else if (repoStatus.dryRunStatus === 'FAILED') {
-                    newMap[mr.id] = 'FAILED'
-                  } else {
-                    newMap[mr.id] = 'DRY_RUN_RUNNING'
+
+          // 使用并发控制，最多 CONCURRENCY_LIMIT 个同时请求
+          await asyncPool(Array.from(taskIds), CONCURRENCY_LIMIT, async (taskId) => {
+            if (cancelled) return
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), PREFLIGHT_QUERY_TIMEOUT_MS)
+            try {
+              const res = await mergeRequestsApi.getTaskPreflight(projectId, taskId)
+              if (cancelled) return
+              if (res?.items?.length) {
+                const taskMrRows = displayItems.filter((mr) => mr.taskId === taskId && mr.status === 'PENDING_CREATE')
+                taskMrRows.forEach((mr) => {
+                  const repoStatus = res.items.find((it) => it.repositoryId === mr.repositoryId)
+                  loadedIds.add(mr.id)
+                  if (repoStatus?.dryRunStatus) {
+                    if (repoStatus.cqStatus === 'APPROVED') {
+                      newMap[mr.id] = 'MR_CREATED'
+                    } else if (repoStatus.cqStatus === 'REJECTED') {
+                      newMap[mr.id] = 'CQ_REJECTED'
+                    } else if (repoStatus.dryRunStatus === 'PASSED') {
+                      newMap[mr.id] = 'WAITING_CQ'
+                    } else if (repoStatus.dryRunStatus === 'FAILED') {
+                      newMap[mr.id] = 'FAILED'
+                    } else {
+                      newMap[mr.id] = 'DRY_RUN_RUNNING'
+                    }
                   }
-                }
-              })
+                })
+              }
+            } catch {
+              // 静默失败
+            } finally {
+              clearTimeout(timeoutId)
             }
-          }
+          })
+
+          if (cancelled) return
           if (Object.keys(newMap).length > 0) setPreflightStatusMap((prev) => ({ ...prev, ...newMap }))
-          // 更新已加载的 ID 集合
           setLoadedPreflightIds(loadedIds)
         } catch {
-          // 静默失败，不影响页面展示
+          // 静默失败
         } finally {
-          setPreflightLoading(false)
+          if (!cancelled) setPreflightLoading(false)
         }
       })()
+
+    // 轮询：每 10 秒刷新一次（仅当有 PENDING_CREATE 行时）
+    if (preflightPolling && taskIds.size > 0) {
+      const timer = setTimeout(() => {
+        // 重置已加载状态，触发下一次刷新
+        setLoadedPreflightIds(new Set())
+      }, preflightPollingInterval)
+      return () => {
+        cancelled = true
+        clearTimeout(timer)
+      }
+    }
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, displayItems])
+  }, [projectId, displayItems, preflightPolling])
 
   // ============== 自动模式（createMode = SYSTEM）：页面加载完自动触发申请预检 ==============
   // 后端返回占位 MR 时已经标记好 SYSTEM，前端就不需要用户再手动点「申请MR」。
@@ -683,13 +695,11 @@ export function MergeRequestTab({
         dataIndex: 'status',
         key: 'status',
         width: 120,
-        render: (value: MergeRequestStatus, record, index: number) => {
+        render: (value: MergeRequestStatus, record) => {
           if (record.status === 'PENDING_CREATE') {
-            const cq = cqQueries[index]
-            // 检查预检数据是否已加载完成
-            const isLoaded = loadedPreflightIds.has(record.id)
-            // 如果还在加载中，显示 loading 状态
-            if (!isLoaded && preflightLoading) {
+            const status = preflightStatusMap[record.id]
+            // 如果还没加载完成，显示 loading
+            if (!status && preflightLoading) {
               return (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Spin size="small" />
@@ -697,10 +707,7 @@ export function MergeRequestTab({
                 </span>
               )
             }
-            // 轮询接口返回的是最新事实；本地 map 只作为首次请求/接口暂未返回时的回退。
-            const currentStatus = cq?.data?.status ?? preflightStatusMap[record.id]
-            const cqApproved = cq?.data?.cqPlusOne?.status === 'APPROVED'
-            const eff = deriveEffectiveState(currentStatus, record.createMode, cqApproved)
+            const eff = deriveEffectiveState(status, record.createMode, false)
             return <Tag color={preflightTagColor(eff)}>{preflightTagText(eff)}</Tag>
           }
           return <Tag color={statusColor(value)}>{statusLabel(value)}</Tag>
@@ -710,28 +717,20 @@ export function MergeRequestTab({
         title: 'CQ+1',
         key: 'cqPlusOne',
         width: 120,
-        render: (_value, record, index) => {
-          const q = cqQueries[index]
+        render: (_value, record) => {
           const enabled = Boolean(record.taskId)
           if (!enabled) return <Text type="secondary">—</Text>
-          // 检查预检数据是否已加载完成（仅对 PENDING_CREATE 状态的 MR）
-          const isPendingCreate = record.status === 'PENDING_CREATE'
-          const isLoaded = !isPendingCreate || loadedPreflightIds.has(record.id)
-          // 如果还在加载中，显示 loading 状态
-          if (isPendingCreate && !isLoaded && preflightLoading) {
-            return (
-              <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                <Spin size="small" />
-              </span>
-            )
-          }
+          const status = preflightStatusMap[record.id]
+          const isCqApproved = status === 'MR_CREATED'
+          const isCqRejected = status === 'CQ_REJECTED'
+          const isLoading = !status && preflightLoading
           return (
             <Tooltip title="点击跳转到 CQ+1 大印章审查页">
               <Button
                 type="link"
                 size="small"
                 style={{ padding: 0 }}
-                disabled={q?.isLoading}
+                disabled={isLoading}
                 onClick={(e) => {
                   e.stopPropagation()
                   const params = new URLSearchParams({
@@ -739,15 +738,14 @@ export function MergeRequestTab({
                     repositoryId: record.repositoryId ?? '',
                     targetBranch: record.targetBranch ?? '',
                   })
-                  // 真实 MR（非 PENDING_CREATE）才传 mr，让 CqReviewPage 进入 MR 模式
                   if (record.status !== 'PENDING_CREATE' && record.id) {
                     params.set('mr', record.id)
                   }
                   navigate(`${PATHS.projectCqReview(projectId)}?${params.toString()}`)
                 }}
               >
-                <Tag color={cqColor(q?.data, q?.isLoading, q?.isError)}>
-                  {cqLabel(q?.data, q?.isLoading, q?.isError, q?.isFetched && !q?.data ? 'MISSING' : undefined)}
+                <Tag color={isLoading ? 'default' : isCqApproved ? 'success' : isCqRejected ? 'error' : 'default'}>
+                  {isLoading ? '加载中' : isCqApproved ? 'CQ+1 通过' : isCqRejected ? 'CQ+1 未通过' : 'WAITING'}
                 </Tag>
               </Button>
             </Tooltip>
@@ -758,17 +756,18 @@ export function MergeRequestTab({
         title: '质量门禁',
         key: 'qualityGate',
         width: 120,
-        render: (_value, record, index) => {
-          // 检查预检数据是否已加载完成（仅对 PENDING_CREATE 状态的 MR）
-          const isPendingCreate = record.status === 'PENDING_CREATE'
-          const isLoaded = !isPendingCreate || loadedPreflightIds.has(record.id)
-          // 如果还在加载中，显示 loading 状态
-          if (isPendingCreate && !isLoaded && preflightLoading) {
+        render: (_value, record) => {
+          const status = preflightStatusMap[record.id]
+          const isDryRunFailed = status === 'FAILED'
+          if (record.status === 'PENDING_CREATE' && !status && preflightLoading) {
             return (
               <span style={{ display: 'inline-flex', alignItems: 'center' }}>
                 <Spin size="small" />
               </span>
             )
+          }
+          if (isDryRunFailed) {
+            return <Tag color="error">质量门禁失败</Tag>
           }
           return (
             <Tag color={qualityGateColor(record.qualityGate?.status)}>
@@ -788,14 +787,11 @@ export function MergeRequestTab({
         key: 'action',
         width: 220,
         align: 'right',
-        render: (_value, record, index: number) => {
+        render: (_value, record) => {
           // ============== PENDING_CREATE：占位 MR，预检流程阶段 ==============
           if (record.status === 'PENDING_CREATE') {
-            const cq = cqQueries[index]
-            // 检查预检数据是否已加载完成
-            const isLoaded = loadedPreflightIds.has(record.id)
-            // 如果还在加载中，显示 loading 状态
-            if (!isLoaded && preflightLoading) {
+            const status = preflightStatusMap[record.id]
+            if (!status && preflightLoading) {
               return (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Spin size="small" />
@@ -803,9 +799,7 @@ export function MergeRequestTab({
                 </span>
               )
             }
-            const currentStatus = cq?.data?.status ?? preflightStatusMap[record.id]
-            const cqApproved = cq?.data?.cqPlusOne?.status === 'APPROVED'
-            const eff = deriveEffectiveState(currentStatus, record.createMode, cqApproved)
+            const eff = deriveEffectiveState(status, record.createMode, false)
             const { text, loading, disabled, failed, clickable } = preflightButtonLabel(eff, isAdmin)
 
             // MR_CREATED：后端已在 GitHub 成功创建 PR
@@ -854,8 +848,8 @@ export function MergeRequestTab({
             // 申请失败：显示 tooltip 原因
             let tip: string | null = null
             if (eff === 'FAILED') {
-              if (currentStatus === 'CQ_REJECTED') tip = 'CQ+1 未通过，申请失败'
-              else if (currentStatus === 'FAILED') tip = '质量门禁失败'
+              if (status === 'CQ_REJECTED') tip = 'CQ+1 未通过，申请失败'
+              else if (status === 'FAILED') tip = '质量门禁失败'
               else tip = '预检上下文过期，请刷新重试'
             } else if (eff === 'IDLE') {
               const gatePassed = record.qualityGate?.status === 'PASSED'

@@ -142,12 +142,8 @@ export default function CqReviewPage() {
 
   // ========== 返回按钮 ==========
   function goBack() {
-    if (byMr) {
-      navigate(PATHS.projectTestset(projectId))
-    } else {
-      // Preflight 入口：回到 TaskDetailPage
-      navigate(`${PATHS.projectTasks(projectId)}/${taskId}`)
-    }
+    // 返回测试集页面
+    navigate(PATHS.projectTestset(projectId))
   }
 
   // ========== CQ 提交：自动按模式选接口 ==========
@@ -366,7 +362,7 @@ export default function CqReviewPage() {
       <div className={styles.page}>
         <BackTop />
         <button type="button" className={styles.backLink} onClick={goBack}>
-          <LeftOutlined /> {byMr ? '返回质量门禁页' : '返回任务详情'}
+          <LeftOutlined /> 返回质量门禁和MR
         </button>
 
         <header className={styles.header}>

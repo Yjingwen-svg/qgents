@@ -80,11 +80,15 @@ export default function TaskDetailPage() {
   const [hasClearedRunSelection, setHasClearedRunSelection] = useState(false)
   const [retryRequestedRunId, setRetryRequestedRunId] = useState<string | null>(null)
   const [retryingRunId, setRetryingRunId] = useState<string | null>(null)
+  // 重试超时：受理后长时间等不到新 run（后端异步被吞/失败），停止无限转圈并提示用户刷新。
+  const [retryTimedOut, setRetryTimedOut] = useState(false)
   const [runInspectorFocusRequest, setRunInspectorFocusRequest] = useState(0)
   const paramBatchId = searchParams.get('diffReviewBatchId')
   const selectedRunId = searchParams.get('runId')
   useEffect(() => {
     setHasClearedRunSelection(false)
+    setRetryTimedOut(false)
+    setRetryingRunId(null)
   }, [taskId])
   useEffect(() => {
     if (!paramBatchId) return
@@ -143,11 +147,23 @@ export default function TaskDetailPage() {
   // retryingRunId 记的是「被重试的源 run id」；真正的新 run 是 retryOfTaskRunId === retryingRunId 的那条。
   // 重试请求已发送但新 TaskRun 尚未返回时进入过渡态，不能继续把旧失败运行当作当前状态。
   const retryPending = retryRequestedRunId !== null
-    || (retryingRunId !== null && !recentRuns.some((run) => run.retryOfTaskRunId === retryingRunId))
+    || (retryingRunId !== null && !retryTimedOut
+        && !recentRuns.some((run) => run.retryOfTaskRunId === retryingRunId))
 
   useEffect(() => {
     if (!retryingRunId || recentRuns.some((run) => run.retryOfTaskRunId === retryingRunId)) setRetryingRunId(null)
   }, [recentRuns, retryingRunId])
+
+  // 重试超时兜底：后端重试是异步受理，若编排事件被吞/失败，新 run 永远不出现，前端会一直转
+  // 「重试已受理」。受理后 30 秒仍等不到新 run 时退出过渡态，展示任务真实失败原因供用户处理。
+  useEffect(() => {
+    if (!retryingRunId || retryTimedOut) return
+    const timer = window.setTimeout(() => {
+      setRetryTimedOut(true)
+      setRetryingRunId(null)
+    }, 30_000)
+    return () => window.clearTimeout(timer)
+  }, [retryingRunId, retryTimedOut])
 
   // SSE 是主更新通道；活动任务额外每 3 秒刷新一次读取模型，覆盖事件延迟、断线和后端异步建 Run 的窗口。
   // 终态自动停止，且这里只读取服务端状态，不向缓存伪造 RUNNING/DELIVERING。
@@ -253,13 +269,13 @@ export default function TaskDetailPage() {
           <main className={styles.content}>
             <ExecutionFlowRow task={currentTask} query={stepsQuery} steps={steps} retryPending={retryPending} onOpenRun={openRun} />
             <div className={styles.workbenchMain}>
-              <RecentExecutionPanel query={taskRunsQuery} retryPending={retryPending} onOpenRun={openRun} onClearSelection={clearRunSelection} selectedRunId={inspectedRunId} />
+              <RecentExecutionPanel query={taskRunsQuery} retryPending={retryPending} retryTimedOut={retryTimedOut} onOpenRun={openRun} onClearSelection={clearRunSelection} selectedRunId={inspectedRunId} />
               <DeliveryPanel projectId={projectId} taskId={currentTask.id} task={currentTask} retryPending={retryPending} diffsQuery={diffsQuery} diffReviewQuery={diffReviewQuery} reviewEnabled={reviewEnabled} completedWithoutCode={completedWithoutCode} onRefresh={() => { void diffReviewQuery.refetch(); void taskQuery.refetch() }} />
             </div>
           </main>
         </div>
         <aside className={styles.taskWorkspaceAside}>
-          <TaskRunInspectorPanel projectId={projectId} task={currentTask} taskId={currentTask.id} taskRunId={inspectedRunId} onRunChange={openRun} onRetryRequested={setRetryRequestedRunId} onRetryStarted={(sourceRunId) => { setRetryRequestedRunId(null); setRetryingRunId(sourceRunId) }} onRetryRequestError={() => setRetryRequestedRunId(null)} retryPending={retryPending} focusRequest={runInspectorFocusRequest} />
+          <TaskRunInspectorPanel projectId={projectId} task={currentTask} taskId={currentTask.id} taskRunId={inspectedRunId} onRunChange={openRun} onRetryRequested={setRetryRequestedRunId} onRetryStarted={(sourceRunId) => { setRetryRequestedRunId(null); setRetryTimedOut(false); setRetryingRunId(sourceRunId) }} onRetryRequestError={() => setRetryRequestedRunId(null)} retryPending={retryPending} focusRequest={runInspectorFocusRequest} />
         </aside>
       </div>
     </div>
@@ -416,9 +432,9 @@ function StepCard({ step, onRun }: { step: TaskStep; onRun: (runId: string) => v
   return <article className={`${styles.stepCard} ${current ? styles.stepCardCurrent : ''}`}><div className={styles.stepHeading}><span className={styles.stepIcon}>{stepIcon(step.role)}</span><span className={styles.stepNumber}>{step.sequenceNo}.</span><Tooltip title={display(step.title)}><Text strong className={styles.stepTitle}>{display(step.title)}</Text></Tooltip><Tag color={stepStatusColor(step.status)}>{step.status}</Tag></div><div className={styles.stepDetails}><StepInfo label="Agent" value={display(step.agent?.name)} /><StepInfo label="仓库" value={display(step.repository?.name)} /><StepInfo label="说明" value={display(step.acceptanceNotes)} /><StepInfo label="运行" value={`${step.runCount} 次`} /></div><div className={styles.stepFooter}>{step.latestRun ? <Button type="link" size="small" onClick={() => onRun(step.latestRun!.id)}>查看最新运行</Button> : <Text type="secondary">尚未运行</Text>}{step.latestRun ? <ArrowRightOutlined /> : null}</div></article>
 }
 
-function RecentExecutionPanel({ query, retryPending, onOpenRun, onClearSelection, selectedRunId }: { query: ReturnType<typeof useTaskRuns>; retryPending: boolean; onOpenRun: (taskRunId: string) => void; onClearSelection: () => void; selectedRunId: string | null }) {
+function RecentExecutionPanel({ query, retryPending, retryTimedOut, onOpenRun, onClearSelection, selectedRunId }: { query: ReturnType<typeof useTaskRuns>; retryPending: boolean; retryTimedOut: boolean; onOpenRun: (taskRunId: string) => void; onClearSelection: () => void; selectedRunId: string | null }) {
   const runs = [...(query.data?.data ?? [])].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
-  return <section className={styles.recentExecutionPanel} data-testid="recent-execution-panel"><div className={styles.panelHeading}><Title level={3}>最近执行</Title></div>{retryPending ? <InlineState loading text="重试已受理，正在等待服务端返回运行记录" /> : null}{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="执行记录" error={query.error} /> : runs.length === 0 ? <Text type="secondary" className={styles.compactEmpty}>尚无执行记录</Text> : <div className={styles.recentExecutionList} data-testid="recent-execution-blank" onClick={(event) => { if (event.target === event.currentTarget) onClearSelection() }}>{runs.map((run) => <RecentRunItem key={run.id} run={run} selected={run.id === selectedRunId} onOpen={() => onOpenRun(run.id)} />)}</div>}</section>
+  return <section className={styles.recentExecutionPanel} data-testid="recent-execution-panel"><div className={styles.panelHeading}><Title level={3}>最近执行</Title></div>{retryPending ? <InlineState loading text="重试已受理，正在等待服务端返回运行记录" /> : retryTimedOut ? <Alert type="warning" showIcon message="重试未在预期时间内生效，请刷新任务详情查看真实失败原因；若因配置问题失败（如基线分支不存在），请先修复配置后再重试。" /> : null}{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="执行记录" error={query.error} /> : runs.length === 0 ? <Text type="secondary" className={styles.compactEmpty}>尚无执行记录</Text> : <div className={styles.recentExecutionList} data-testid="recent-execution-blank" onClick={(event) => { if (event.target === event.currentTarget) onClearSelection() }}>{runs.map((run) => <RecentRunItem key={run.id} run={run} selected={run.id === selectedRunId} onOpen={() => onOpenRun(run.id)} />)}</div>}</section>
 }
 
 function RecentRunItem({ run, selected, onOpen }: { run: TaskRunSummary; selected: boolean; onOpen: () => void }) {

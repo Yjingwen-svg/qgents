@@ -115,6 +115,9 @@ export async function uploadAttachment(projectId: string, file: File): Promise<s
   if (!isAbsolute) {
     const token = getStoredToken()
     if (token) headers['Authorization'] = `Bearer ${token}`
+    // 后端代理 PUT 属于 /projects/** 写请求，幂等过滤器要求每次上传携带唯一键。
+    // 绝对 OSS 预签名地址不添加该头，避免改变签名请求的 header 集合。
+    headers['Idempotency-Key'] = crypto.randomUUID()
   }
   const putRes = await fetch(targetUrl, {
     method: 'PUT',

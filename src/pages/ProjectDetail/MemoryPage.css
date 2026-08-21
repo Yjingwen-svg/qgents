@@ -49,6 +49,21 @@
   background: var(--qg-card);
 }
 
+@media (min-width: 901px) {
+  .memory-page__workspace {
+    height: calc(100dvh - 220px);
+    min-height: 420px;
+    overflow: hidden;
+  }
+
+  .memory-page__list-panel,
+  .memory-detail {
+    min-height: 0;
+    height: 100%;
+    overflow-y: auto;
+  }
+}
+
 .memory-page__list-panel {
   padding: 8px;
 }

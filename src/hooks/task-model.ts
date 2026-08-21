@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-query'
 import { diffsApi, mergeRequestsApi, tasksApi, taskRunsApi } from '@/api/taskModel'
 import { deliveryCenterKeys, queryClient, queryKeys, taskModelQueryKeys } from '@/query'
+import type { CodeDeliveryItem, DeliveryItem, DeliveryItemsResponse } from '@/types/delivery-center'
 import type {
   DiffComment,
   DiffCommentInput,
@@ -47,6 +48,7 @@ import type {
   MergeRequestPreflight,
   MergeRequestSummary,
 } from '@/types/task-model'
+import { useProjectTaskPollingInterval } from '@/realtime/useProjectTaskDomainEvents'
 
 type Page<T> = TaskModelPage<T>
 
@@ -72,6 +74,7 @@ export function useInfiniteTasks(
 }
 
 export function useTask(projectId: string, taskId: string): UseQueryResult<Task> {
+  const pollingInterval = useProjectTaskPollingInterval(projectId, 5_000)
   return useQuery({
     queryKey: taskModelQueryKeys.tasks.detail(projectId, taskId),
     queryFn: () => tasksApi.get(projectId, taskId),
@@ -79,7 +82,7 @@ export function useTask(projectId: string, taskId: string): UseQueryResult<Task>
     // 任务状态可能从 DELIVERING → WAITING_PREFLIGHT → SUCCEEDED 等转换。
     // 当 SSE/WebSocket 不可用时，通过 5s 轻量轮询兜底刷新状态，
     // 避免 MR_FIRST 任务完成后用户看不到预检面板和 MR 占位。
-    refetchInterval: 5000,
+    refetchInterval: pollingInterval,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   })
@@ -286,6 +289,15 @@ export function useRetryTaskRunModel(projectId: string): UseMutationResult<TaskR
     mutationFn: (taskRunId) => taskRunsApi.retry(projectId, taskRunId),
     onSuccess: (taskRun, originalTaskRunId) => {
       queryClient.setQueryData(taskModelQueryKeys.taskRuns.detail(projectId, taskRun.id), taskRun)
+      // retry 的 202 响应已经携带真实的新 TaskRun。先写入已加载的列表缓存，
+      // 让“最近执行”和右侧详情立即切换；随后仍以列表失效后的服务端响应为准。
+      queryClient.setQueriesData<Page<TaskRunSummary>>(
+        { queryKey: taskModelQueryKeys.taskRuns.all(projectId, taskRun.taskId) },
+        (previous) => {
+          if (!previous || previous.data.some((run) => run.id === taskRun.id)) return previous
+          return { ...previous, data: [taskRun, ...previous.data] }
+        },
+      )
       void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.detail(projectId, originalTaskRunId) })
       // retry 是一次新的受控执行。接口返回新 TaskRun 后，后端会异步重新调度步骤、产物和 Preview；
       // 因此必须刷新同一 Task 的全部读取模型，不能只刷新旧运行和运行列表。
@@ -307,7 +319,12 @@ export function useCancelTaskRunModel(projectId: string): UseMutationResult<Task
     mutationFn: (taskRunId) => taskRunsApi.cancel(projectId, taskRunId),
     onSuccess: (taskRun) => {
       queryClient.setQueryData(taskModelQueryKeys.taskRuns.detail(projectId, taskRun.id), taskRun)
-      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.list(projectId, taskRun.taskId) })
+      // TaskRun 取消会改变任务、步骤和运行三个读取模型。不能只刷新运行列表，
+      // 否则执行流程会继续显示取消前缓存的 FAILED/RUNNING 状态。
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.all(projectId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.detail(projectId, taskRun.taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskSteps.all(projectId, taskRun.taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.all(projectId, taskRun.taskId) })
     },
   })
 }
@@ -396,12 +413,13 @@ export function useTaskMergeRequestPreflight(
   projectId: string,
   taskId: string | null | undefined,
 ): UseQueryResult<TaskMergeRequestPreflightList> {
+  const pollingInterval = useProjectTaskPollingInterval(projectId, 30_000)
   return useQuery({
     queryKey: taskModelQueryKeys.mergeRequests.preflightByTask(projectId, taskId ?? ''),
     queryFn: () => mergeRequestsApi.getTaskPreflight(projectId, taskId!),
     enabled: Boolean(projectId) && Boolean(taskId),
     staleTime: 10 * 1000,
-    refetchInterval: 30 * 1000,
+    refetchInterval: pollingInterval,
   })
 }
 
@@ -410,6 +428,7 @@ export function useMergeRequests(
   filters: MergeRequestListFilters = {},
   options?: { enabled?: boolean },
 ): UseQueryResult<Page<MergeRequestSummary>> {
+  const pollingInterval = useProjectTaskPollingInterval(projectId, 10_000)
   return useQuery({
     queryKey: taskModelQueryKeys.mergeRequests.list(projectId, filters),
     queryFn: () => mergeRequestsApi.list(projectId, filters),
@@ -418,7 +437,7 @@ export function useMergeRequests(
     // - 手动创建 useCreateMergeRequest 会在 onSuccess 立即 invalidate 缓存 → 立即刷新
     // - 自动创建没有 SSE 推送前，用 10s 轻量轮询兜底，保证用户停在 MR 列表页时能很快看到新记录
     //   (后台 tab 不刷新，最小化用户 CPU/网络开销)
-    refetchInterval: 10000,
+    refetchInterval: pollingInterval,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   })
@@ -532,12 +551,52 @@ type TaskDiffReviewRejectInput = { taskId: string; input: DiffRejectInput }
 
 function invalidateTaskDiffReview(projectId: string, batch: DiffReviewBatch): void {
   queryClient.setQueryData(taskModelQueryKeys.taskDiffReview.detail(projectId, batch.taskId), batch)
+  synchronizeDeliveryCenterCodeItem(projectId, batch)
   void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskDiffReview.detail(projectId, batch.taskId) })
   void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.detail(projectId, batch.taskId) })
   void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.all(projectId) })
   void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.diffs.all(projectId) })
   void queryClient.invalidateQueries({ queryKey: deliveryCenterKeys.all(projectId) })
   void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.all(projectId) })
+}
+
+function synchronizeDeliveryCenterCodeItem(projectId: string, batch: DiffReviewBatch): void {
+  queryClient.setQueriesData<InfiniteData<DeliveryItemsResponse>>(
+    { queryKey: deliveryCenterKeys.all(projectId) },
+    (cached) => cached && Array.isArray(cached.pages)
+      ? { ...cached, pages: cached.pages.map((page) => ({ ...page, data: page.data.map((item) => synchronizeCodeDeliveryItem(item, batch)) })) }
+      : cached,
+  )
+  queryClient.setQueriesData<DeliveryItemsResponse>(
+    { queryKey: deliveryCenterKeys.all(projectId) },
+    (cached) => cached && Array.isArray(cached.data)
+      ? { ...cached, data: cached.data.map((item) => synchronizeCodeDeliveryItem(item, batch)) }
+      : cached,
+  )
+}
+
+function synchronizeCodeDeliveryItem(item: DeliveryItem, batch: DiffReviewBatch): DeliveryItem {
+  if (item.resourceType !== 'CODE' || item.openTarget.taskId !== batch.taskId) return item
+  const deliveryStatus = batch.deliveryStatus
+  const displayStatus = deliveryStatus === 'DELIVERED'
+    ? 'DELIVERED'
+    : deliveryStatus === 'DELIVERING'
+      ? 'PROCESSING'
+      : deliveryStatus === 'FAILED' || deliveryStatus === 'PARTIALLY_DELIVERED'
+        ? 'FAILED'
+        : batch.reviewStatus === 'REJECTED'
+          ? 'REJECTED'
+          : item.displayStatus
+  const repositoryDeliveries: CodeDeliveryItem['repositoryDeliveries'] = batch.repositoryDeliveries.map((delivery) => ({ ...delivery }))
+  return {
+    ...item,
+    displayStatus,
+    resourceStatus: deliveryStatus,
+    reviewStatus: batch.reviewStatus,
+    deliveryStatus,
+    repositoryDeliveries,
+    mergeRequest: repositoryDeliveries.find((delivery) => delivery.mergeRequest)?.mergeRequest ?? null,
+  }
 }
 
 export function useConfirmTaskDiffReview(projectId: string): UseMutationResult<DiffReviewBatch, Error, string> {

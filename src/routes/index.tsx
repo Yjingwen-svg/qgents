@@ -12,17 +12,6 @@ import { LoginPage } from "@/pages/Login/LoginPage";
 // ✅ 忘记密码页（匿名可访问，与登录页同级）
 const ForgotPasswordPage = lazy(() => import("@/pages/ForgotPassword/ForgotPasswordPage"));
 
-// ✅ sections 统一导入保持不变
-import {
-  OverviewPage,
-  SkillsPage,
-  MemoryPage,
-  CodePage,
-  TestsetPage,
-  MembersPage,
-  SettingsPage,
-} from "@/pages/ProjectDetail/sections";
-
 // ✅ 其他所有独立页面用懒加载
 const WelcomePage = lazy(() => import("@/pages/Welcome/WelcomePage"));
 const CreateTeamPage = lazy(() => import("@/pages/CreateTeam/CreateTeamPage"));
@@ -101,6 +90,27 @@ const DeliveryCenterPage = lazy(
 const AgentTeamPage = lazy(
   () => import("@/pages/ProjectDetail/AgentTeam/AgentTeamPage"),
 );
+const OverviewPage = lazy(async () => ({
+  default: (await import("@/pages/ProjectDetail/OverviewPage")).OverviewPage,
+}));
+const SkillsPage = lazy(async () => ({
+  default: (await import("@/pages/ProjectDetail/SkillPage")).SkillPage,
+}));
+const MemoryPage = lazy(async () => ({
+  default: (await import("@/pages/ProjectDetail/MemoryPage")).MemoryPage,
+}));
+const CodePage = lazy(async () => ({
+  default: (await import("@/pages/ProjectDetail/CodePage")).CodePage,
+}));
+const TestsetPage = lazy(async () => ({
+  default: (await import("@/pages/ProjectDetail/Testset/TestsetPage")).TestsetPage,
+}));
+const MembersPage = lazy(async () => ({
+  default: (await import("@/pages/ProjectDetail/MembersPage")).MembersPage,
+}));
+const SettingsPage = lazy(async () => ({
+  default: (await import("@/pages/ProjectDetail/Settings/SettingsPage")).SettingsPage,
+}));
 
 export function AppRouter() {
   return (

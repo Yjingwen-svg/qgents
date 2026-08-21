@@ -960,6 +960,8 @@
   min-width: 0;
   align-items: center;
   gap: clamp(4px, 0.15vw + 3px, 100%);
+  padding-left: 8px;
+  border-left: 3px solid #1677ff;
 }
 
 .inspectorHeading {
@@ -1345,6 +1347,80 @@
 
 .workspaceDiffPreviewContent :global(.ant-alert) { margin: 0; }
 
+.workspaceDiffPreviewSelectedFile {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.panelEmptyPlaceholder {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 92px;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 16px;
+  border: 1px dashed #d8e1ec;
+  border-radius: 6px;
+  background: #fbfcfe;
+  color: #71829a;
+}
+
+.panelEmptyPlaceholderIcon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: #edf3fa;
+  color: #8a9bb4;
+  font-size: 15px;
+}
+
+.recentExecutionPanel > .panelEmptyPlaceholder {
+  min-height: 0;
+  margin-bottom: 2px;
+}
+
+.workspaceDiffPreviewSelectedFileHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 1px 1px 8px;
+  border-bottom: 1px solid #edf1f5;
+}
+
+.workspaceDiffPreviewSelectedFileName {
+  min-width: 0;
+  overflow: hidden;
+  color: #1f2f46;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspaceDiffPreviewSelectedFileStats {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.workspaceDiffPreviewSelectedFileAdditions { color: #1a7f37; }
+.workspaceDiffPreviewSelectedFileDeletions { color: #cf222e; }
+
+.workspaceDiffPreviewLoadingFile {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+}
+
 .workspaceDiffPreviewAlert {
   margin-top: 5px;
 }
@@ -1589,10 +1665,17 @@
   flex: 1 1 auto;
   margin: 0 !important;
   overflow: hidden;
-  font-size: 16px !important;
-  line-height: 1.35 !important;
+  color: #102a43 !important;
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.inspectorRunStatus {
+  width: fit-content;
+  margin-inline-end: 0 !important;
 }
 
 .inspectorSummary>div>:global(.ant-tag) {

@@ -1,4 +1,5 @@
 import { Button, Card, Progress, Space, Tag, Tooltip, Typography } from 'antd'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { TaskListItem } from '@/types/task-model'
 import { TaskModelStatusTag } from './TaskModelStatusTag'
 import { useTaskCompletedWithoutCode } from '@/store/taskNoCodeChangeStore'
@@ -87,9 +88,62 @@ export function TaskCard({ task: rawTask, onViewDetails }: TaskCardProps) {
 }
 
 function RepositoryLocation({ task }: { task: TaskListItem }) {
-  const repository = task.repositories[0]
-  if (!repository) return <Text className={styles.taskInfoEllipsis}>暂无</Text>
-  return <Tooltip title={repositorySummary(task)}><div className={styles.repositoryLocationValue}><Tag className={styles.repositoryName}>{repository.name}</Tag>{task.repositories.length > 1 ? <Text className={styles.repositoryMore}>+{task.repositories.length - 1}</Text> : null}</div></Tooltip>
+  const repositories = task.repositories
+  const containerRef = useRef<HTMLDivElement>(null)
+  const measureRefs = useRef<Array<HTMLSpanElement | null>>([])
+  const [visibleCount, setVisibleCount] = useState(repositories.length)
+  const repositorySignature = repositories.map((repository) => `${repository.repositoryId}:${repository.name}`).join('|')
+
+  const updateVisibleCount = useCallback(() => {
+    const availableWidth = containerRef.current?.clientWidth ?? 0
+    const widths = measureRefs.current.map((element) => element?.getBoundingClientRect().width ?? 0)
+    if (availableWidth <= 0 || widths.length === 0) return
+
+    const gap = 4
+    const moreWidth = 30
+    const allWidth = widths.reduce((total, width, index) => total + width + (index > 0 ? gap : 0), 0)
+    if (allWidth <= availableWidth) {
+      setVisibleCount(repositories.length)
+      return
+    }
+
+    let usedWidth = 0
+    let count = 0
+    for (const width of widths) {
+      const nextWidth = usedWidth + (count > 0 ? gap : 0) + width
+      if (nextWidth + moreWidth > availableWidth && count > 0) break
+      usedWidth = nextWidth
+      count += 1
+    }
+    setVisibleCount(Math.max(1, count))
+  }, [repositories.length])
+
+  useLayoutEffect(() => {
+    updateVisibleCount()
+    const container = containerRef.current
+    if (!container || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(updateVisibleCount)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [repositorySignature, updateVisibleCount])
+
+  if (repositories.length === 0) return <Text className={styles.taskInfoEllipsis}>暂无</Text>
+  const hiddenCount = repositories.length - visibleCount
+  return (
+    <Tooltip title={repositorySummary(task)}>
+      <div ref={containerRef} className={styles.repositoryLocationValue}>
+        <div className={styles.repositoryVisibleTags}>
+          {repositories.slice(0, visibleCount).map((repository) => <Tag key={repository.repositoryId} className={styles.repositoryName}>{repository.name}</Tag>)}
+          {hiddenCount > 0 ? <Text className={styles.repositoryMore}>+{hiddenCount}</Text> : null}
+        </div>
+        <div aria-hidden className={styles.repositoryMeasure}>
+          {repositories.map((repository, index) => (
+            <span key={repository.repositoryId} ref={(element) => { measureRefs.current[index] = element }}><Tag className={styles.repositoryName}>{repository.name}</Tag></span>
+          ))}
+        </div>
+      </div>
+    </Tooltip>
+  )
 }
 
 function repositorySummary(task: TaskListItem): string {

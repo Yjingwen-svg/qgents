@@ -42,6 +42,10 @@ export function useWorkspaceDiffPreviewFilePatch(
     enabled: Boolean(projectId && taskId && input.repositoryId && input.path) && (input.enabled ?? true),
     staleTime: 5_000,
     refetchOnWindowFocus: false,
+    // Preview revision 写入与单文件 patch 落库可能存在短暂间隔；请求失败时继续读取，
+    // 页面只展示加载态，不伪造 patch 或把后端暂态暴露为闪烁错误。
+    retry: 1,
+    refetchInterval: (query) => query.state.status === 'error' ? 2_000 : false,
   })
 }
 

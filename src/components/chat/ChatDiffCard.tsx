@@ -8,6 +8,7 @@ import { formatApiError } from '@/utils/formatApiError'
 import { taskModelQueryKeys } from '@/query/taskModelKeys'
 import { diffFileStatusLabel } from '@/types/diff'
 import { PATHS } from '@/routes/paths'
+import { highlightDiffCode, syntaxLanguageLabel } from '@/utils/diffSyntaxHighlight'
 import type { DiffPreviewFile, DiffPreviewLine } from '@/types/task-model'
 import type { DiffMessageContent, Message } from '@/types'
 
@@ -363,6 +364,7 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
                   <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {selectedFile.path}
                   </span>
+                  <Text type="secondary" style={{ fontSize: 11 }}>{syntaxLanguageLabel(selectedFile.path)}</Text>
                   <Text type="success" style={{ fontSize: 12 }}>+{selectedFile.additions}</Text>
                   <Text type="danger" style={{ fontSize: 12 }}>-{selectedFile.deletions}</Text>
                   <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -394,7 +396,7 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
                 ) : (
                   <div style={{ width: 'max-content', minWidth: '100%' }}>
                     {preview.lines.map((line, index) => (
-                      <PreviewLineRow key={index} line={line} />
+                      <PreviewLineRow key={index} line={line} path={selectedFile.path} />
                     ))}
                     {preview.truncated ? (
                       <div style={{ padding: '10px 12px', fontSize: 12, color: '#5b6b82' }}>
@@ -414,7 +416,7 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
 }
 
 /** 预览行：行号 + 符号 + 内容（ADD 绿底 / DELETE 红底 / CONTEXT 无背景） */
-function PreviewLineRow({ line }: { line: DiffPreviewLine }) {
+function PreviewLineRow({ line, path }: { line: DiffPreviewLine; path: string }) {
   const sign = line.type === 'ADD' ? '+' : line.type === 'DELETE' ? '-' : ''
   return (
     <div
@@ -433,7 +435,7 @@ function PreviewLineRow({ line }: { line: DiffPreviewLine }) {
         {line.newLineNo ?? ''}
       </span>
       <span style={{ width: 22, flexShrink: 0, textAlign: 'center', fontWeight: 700 }}>{sign}</span>
-      <span style={{ padding: '0 10px', whiteSpace: 'pre' }}>{line.content}</span>
+      <span style={{ padding: '0 10px', whiteSpace: 'pre' }}>{highlightDiffCode(line.content, path)}</span>
     </div>
   )
 }

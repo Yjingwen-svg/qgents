@@ -20,7 +20,7 @@ const TASK_CARD_TARGET_WIDTH = 285
 const MIN_TASK_CARD_GAP = 16
 // 搜索关键词防抖窗口：避免每次按键 / IME 过程就触发 URL 同步和重新查询造成列表抖动。
 const KEYWORD_DEBOUNCE_MS = 300
-const SEARCH_PARAMS = new Set(['status', 'groupId', 'createdBy', 'repositoryId', 'view', 'keyword'])
+const SEARCH_PARAMS = new Set(['status', 'groupId', 'createdBy', 'repositoryId', 'view', 'keyword', 'scope'])
 
 const taskCenterTheme: ThemeConfig = {
   algorithm: theme.defaultAlgorithm,
@@ -36,6 +36,7 @@ export default function TaskCenterPage() {
   const createdBy = searchParams.get('createdBy') ?? undefined
   const repositoryId = searchParams.get('repositoryId') ?? undefined
   const search = searchParams.get('keyword') ?? ''
+  const showCompletedTasks = searchParams.get('scope') === 'all'
   const legacyTaskId = searchParams.get('taskId')?.trim() || undefined
   const view = searchParams.get('view') === 'table' ? 'table' : 'board'
   // 输入框草稿：仅在用户主动提交（Enter / blur / 清除）时同步到 URL，
@@ -91,11 +92,14 @@ export default function TaskCenterPage() {
   const repositoryOptions = useMemo(() => uniqueOptions(tasks.flatMap((task) => taskRepositories(task).map((repository) => ({ label: repository.name, value: repository.repositoryId })))), [tasks])
   const createdByOptions = useMemo(() => uniqueOptions(tasks.flatMap((task) => task.createdByUser ? [{ label: task.createdByUser.displayName, value: task.createdByUser.id }] : [])), [tasks])
   const hasServerItems = query.data?.pages.some((page) => page.data.length > 0) ?? false
-  const isUnfiltered = status === 'all' && !createdBy && !groupId && !repositoryId
+  const hasExplicitFilter = status !== 'all' || Boolean(createdBy || groupId || repositoryId || search)
+  const hideCompletedTasks = !showCompletedTasks && !hasExplicitFilter
+  const displayedTasks = hideCompletedTasks ? tasks.filter((task) => task.status !== 'SUCCEEDED') : tasks
+  const isUnfiltered = !hasExplicitFilter
   const pageStart = (currentPage - 1) * visibleTaskCount
-  const visibleTasks = tasks.slice(pageStart, pageStart + visibleTaskCount)
-  const loadedPageCount = Math.max(1, Math.ceil(tasks.length / visibleTaskCount))
-  const paginationTotal = tasks.length + (query.hasNextPage ? visibleTaskCount : 0)
+  const visibleTasks = displayedTasks.slice(pageStart, pageStart + visibleTaskCount)
+  const loadedPageCount = Math.max(1, Math.ceil(displayedTasks.length / visibleTaskCount))
+  const paginationTotal = displayedTasks.length + (query.hasNextPage ? visibleTaskCount : 0)
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams)
@@ -116,7 +120,7 @@ export default function TaskCenterPage() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [groupId, status, createdBy, repositoryId, search, visibleTaskCount])
+  }, [groupId, status, createdBy, repositoryId, search, showCompletedTasks, visibleTaskCount])
 
   function updateParam(key: string, value: string | undefined) {
     const next = new URLSearchParams(searchParams)
@@ -129,6 +133,13 @@ export default function TaskCenterPage() {
     const next = new URLSearchParams(searchParams)
     for (const key of ['status', 'createdBy', 'groupId', 'repositoryId']) next.delete(key)
     next.delete('keyword')
+    next.delete('scope')
+    setSearchParams(next, { replace: true })
+  }
+
+  function toggleCompletedTasks() {
+    const next = new URLSearchParams(searchParams)
+    if (hideCompletedTasks) next.set('scope', 'all'); else next.delete('scope')
     setSearchParams(next, { replace: true })
   }
 
@@ -158,13 +169,13 @@ export default function TaskCenterPage() {
       <div className={styles.page}>
         <main ref={mainRef} className={styles.main} style={{ '--task-card-gap': `${cardGap}px` } as CSSProperties}>
           <header className={styles.header}>
-            <Title level={2} className={styles.title}>任务中心 <Text type="secondary">（按需求分组）</Text></Title>
+            <Title level={2} className={styles.title}>任务中心</Title>
             {query.isFetching && !query.isLoading ? <Spin size="small" /> : null}
           </header>
           <TaskFilters status={status} groupId={groupId} repositoryId={repositoryId} createdBy={createdBy} search={pendingSearch} groupOptions={groupOptions} repositoryOptions={repositoryOptions} createdByOptions={createdByOptions} onStatusChange={(value) => updateParam('status', value === 'all' ? undefined : value)} onGroupChange={(value) => updateParam('groupId', value)} onRepositoryChange={(value) => updateParam('repositoryId', value)} onCreatedByChange={(value) => updateParam('createdBy', value)} onSearchDraftChange={setPendingSearch} onSearchCommit={commitSearch} onReset={resetFilters} />
-          <div className={styles.listHeading}><Text strong>任务列表</Text><Text type="secondary">{tasks.length} 项</Text><Segmented<TaskCenterView> aria-label="任务视图" value={view} onChange={(nextView) => updateParam('view', nextView)} options={[{ value: 'board', label: '看板', icon: <AppstoreOutlined /> }, { value: 'table', label: '表格', icon: <UnorderedListOutlined /> }]} /></div>
-          <TaskCenterContent query={query} tasks={visibleTasks} hasServerItems={hasServerItems} isUnfiltered={isUnfiltered} view={view} onViewDetails={viewTask} onRetry={() => void query.refetch()} />
-          {!query.isLoading && tasks.length > 0 ? <nav className={styles.pagination} aria-label="任务列表分页"><Pagination current={currentPage} pageSize={visibleTaskCount} total={paginationTotal} showSizeChanger={false} showQuickJumper={{ goButton: '跳转' }} showLessItems disabled={query.isFetchingNextPage} onChange={(page) => void changePage(page)} /></nav> : null}
+          <div className={styles.listHeading}><div className={styles.listTitle}><Text strong>任务列表</Text><Text type="secondary">（{displayedTasks.length} 项）</Text><Button size="small" onClick={toggleCompletedTasks}>{hideCompletedTasks ? '查看已完成任务' : '隐藏已完成任务'}</Button></div><Segmented<TaskCenterView> aria-label="任务视图" value={view} onChange={(nextView) => updateParam('view', nextView)} options={[{ value: 'board', label: '看板', icon: <AppstoreOutlined /> }, { value: 'table', label: '表格', icon: <UnorderedListOutlined /> }]} /></div>
+          <TaskCenterContent query={query} tasks={visibleTasks} hasServerItems={hasServerItems} isUnfiltered={isUnfiltered} hidesCompletedTasks={hideCompletedTasks} view={view} onViewDetails={viewTask} onRetry={() => void query.refetch()} />
+          {!query.isLoading && displayedTasks.length > 0 ? <nav className={styles.pagination} aria-label="任务列表分页"><Pagination current={currentPage} pageSize={visibleTaskCount} total={paginationTotal} showSizeChanger={false} showQuickJumper={{ goButton: '跳转' }} showLessItems disabled={query.isFetchingNextPage} onChange={(page) => void changePage(page)} /></nav> : null}
           {!query.isLoading && query.hasNextPage ? <div className={styles.loadMore}><Button onClick={() => void query.fetchNextPage()} loading={query.isFetchingNextPage}>加载更多</Button></div> : null}
         </main>
       </div>
@@ -178,17 +189,18 @@ interface TaskCenterContentProps {
   view: TaskCenterView
   hasServerItems: boolean
   isUnfiltered: boolean
+  hidesCompletedTasks: boolean
   onViewDetails: (taskId: string) => void
   onRetry: () => void
 }
 
-function TaskCenterContent({ query, tasks, view, hasServerItems, isUnfiltered, onViewDetails, onRetry }: TaskCenterContentProps) {
+function TaskCenterContent({ query, tasks, view, hasServerItems, isUnfiltered, hidesCompletedTasks, onViewDetails, onRetry }: TaskCenterContentProps) {
   if (query.isLoading) return <div className={styles.state} role="status"><Spin description="正在加载任务" /></div>
   if (query.isError && !query.data) {
     const forbidden = query.error instanceof ApiError && query.error.status === 403
     return <Result className={styles.result} status={forbidden ? '403' : 'error'} title={forbidden ? '暂无权限查看任务' : '任务加载失败'} subTitle={forbidden ? '请联系项目管理员开通访问权限。' : '请稍后重试。'} extra={<Button onClick={onRetry}>重新加载</Button>} />
   }
-  if (tasks.length === 0) return <div className={styles.state}><Empty className={styles.empty} description={!hasServerItems && isUnfiltered ? '项目暂无任务' : '当前筛选暂无匹配任务'} /></div>
+  if (tasks.length === 0) return <div className={styles.state}><Empty className={styles.empty} description={!hasServerItems && isUnfiltered ? '项目暂无任务' : hidesCompletedTasks ? '当前没有需跟进的任务' : '当前筛选暂无匹配任务'} /></div>
   return <>{query.isFetchNextPageError ? <Alert type="error" showIcon title="下一页任务加载失败，当前列表已保留" action={<Button size="small" onClick={onRetry}>重试</Button>} className={styles.pageError} /> : null}<TaskList tasks={tasks} view={view} onViewDetails={onViewDetails} /></>
 }
 

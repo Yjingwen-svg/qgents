@@ -86,6 +86,22 @@ describe('TaskCenterPage', () => {
     expect(container.querySelector('.ant-pagination-item-active')).toHaveTextContent('1')
   })
 
+  it('hides successfully completed tasks by default and shows them on demand', async () => {
+    const user = userEvent.setup()
+    const completedTask: TaskListItem = { ...task, id: 'task-completed', title: '已完成任务', status: 'SUCCEEDED' }
+    useInfiniteTasksMock.mockReturnValue(result({
+      data: { pages: [page([task, completedTask])], pageParams: [undefined] },
+    }))
+
+    renderPage()
+
+    expect(screen.getByText('新任务')).toBeInTheDocument()
+    expect(screen.queryByText('已完成任务')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '查看已完成任务' }))
+    expect(await screen.findByText('已完成任务')).toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent('scope=all')
+  })
+
   it('keeps rendering when a new Task list item lacks derived summaries', () => {
     const incompleteTask = {
       ...task,

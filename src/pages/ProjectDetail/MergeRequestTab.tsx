@@ -24,10 +24,10 @@ import { githubPullRequestUrl } from './mergeRequestDisplay'
 const { Text } = Typography
 
 const STATUS_OPTIONS: Array<{ value: MergeRequestStatus; label: string }> = [
-  { value: 'PENDING_CREATE', label: '待创建' },
+  { value: 'PENDING_CREATE', label: '待发起' },
   { value: 'OPEN', label: '进行中' },
   { value: 'MERGED', label: '已合并' },
-  { value: 'CLOSED', label: '已关闭' },
+  { value: 'CLOSED', label: '已关闭（未合并）' },
 ]
 
 function isMergeRequestStatus(value: string | null): value is MergeRequestStatus {
@@ -44,20 +44,6 @@ function statusColor(status: MergeRequestStatus): string {
   if (status === 'CLOSED') return 'default'
   // PENDING_CREATE：占位 MR，GitHub PR 尚未创建
   return 'cyan'
-}
-
-function qualityGateLabel(status: string | undefined): string {
-  if (status === 'PASSED') return '门禁通过'
-  if (status === 'FAILED') return '门禁未过'
-  if (status === 'PENDING') return '等待预检结果'
-  return '门禁未知'
-}
-
-function qualityGateColor(status: string | undefined): string {
-  if (status === 'PASSED') return 'success'
-  if (status === 'FAILED') return 'error'
-  if (status === 'PENDING') return 'processing'
-  return 'default'
 }
 
 /**
@@ -152,10 +138,10 @@ function preflightButtonLabel(
 
 function preflightTagText(eff: EffectiveState): string {
   switch (eff) {
-    case 'IDLE': return '待创建'
+    case 'IDLE': return '尚未预检'
     case 'DRY_RUN_RUNNING': return '正在进行质量门禁'
     case 'WAITING_CQ': return '等待 CQ+1'
-    case 'READY_CREATE': return '待创建MR'
+    case 'READY_CREATE': return '可创建 MR'
     case 'CREATING': return '正在创建 MR'
     case 'MR_CREATED': return '待合并'  // 用户要求：状态列显示"待合并"
     case 'NO_CHANGES': return '无新增变更'
@@ -238,8 +224,9 @@ export function MergeRequestTab({
     })
   }, [query.data?.data])
 
-  // 表格、CQ 查询和操作列必须使用同一份数据。
-  const displayItems = items
+  // 后端按 status 过滤；这里再做一次显示层过滤，避免切换筛选时本地乐观 state
+  // 短暂保留上一个查询结果，导致 OPEN/MERGED 混入 PENDING_CREATE 列表。
+  const displayItems = status ? items.filter((item) => item.status === status) : items
 
   const mergeMr = useMergeMergeRequest(projectId)
   const requestPreflight = useRequestMergeRequestPreflight(projectId)
@@ -366,6 +353,13 @@ export function MergeRequestTab({
                 const repoStatus = res.items.find((it) => it.repositoryId === mr.repositoryId)
                 if (repoStatus?.failureCode === 'MR_NO_CHANGES') {
                   newMap[mr.id] = 'NO_CHANGES'
+                } else if (repoStatus?.mergeRequest) {
+                  // 预检状态已落库真实 MR 时，用真实 ID 替换占位 ID，
+                  // 否则后续“合并”会把 pending-mr:* 发给真实 MR 接口。
+                  newMap[mr.id] = 'MR_CREATED'
+                  setItems((prev) => prev.map((item) => item.id === mr.id
+                    ? { ...item, ...repoStatus.mergeRequest! }
+                    : item))
                 } else if (repoStatus?.dryRunStatus) {
                   if (repoStatus.cqStatus === 'APPROVED') {
                     newMap[mr.id] = 'MR_CREATED'
@@ -456,8 +450,7 @@ export function MergeRequestTab({
                   item.id === __mr.id
                     ? {
                       ...item,
-                      webUrl: res.mergeRequest!.webUrl,
-                      number: res.mergeRequest!.number,
+                      ...res.mergeRequest!,
                       qualityGate: res.mergeRequest!.qualityGate ?? item.qualityGate,
                     }
                     : item,
@@ -591,8 +584,7 @@ export function MergeRequestTab({
               item.id === record.id
                 ? {
                   ...item,
-                  webUrl: res.mergeRequest!.webUrl,
-                  number: res.mergeRequest!.number,
+                  ...res.mergeRequest!,
                   qualityGate: res.mergeRequest!.qualityGate ?? item.qualityGate,
                 }
                 : item,
@@ -693,8 +685,7 @@ export function MergeRequestTab({
                 item.id === record.id
                   ? {
                     ...item,
-                    webUrl: res.mergeRequest!.webUrl,
-                    number: res.mergeRequest!.number,
+                    ...res.mergeRequest!,
                     qualityGate: res.mergeRequest!.qualityGate ?? item.qualityGate,
                   }
                   : item,
@@ -743,8 +734,8 @@ export function MergeRequestTab({
         width: 88,
         render: (_value, record) => (
           record.status === 'PENDING_CREATE' ? (
-            <Tooltip title="任务完成交付后由 Qgents 生成的待创建占位记录；真实 PR 创建前的交付、分支和质量校验由后端统一完成。">
-              <Text type="secondary" style={{ cursor: 'help' }}>待创建</Text>
+            <Tooltip title="这是任务分支的待发起候选，不是已创建的 GitHub MR；完成预检后才会生成真实 MR。">
+              <Text type="secondary" style={{ cursor: 'help' }}>待发起</Text>
             </Tooltip>
           ) : <Text strong>#{record.number}</Text>
         ),
@@ -857,31 +848,6 @@ export function MergeRequestTab({
         },
       },
       {
-        title: '质量门禁',
-        key: 'qualityGate',
-        width: 120,
-        render: (_value, record) => {
-          const status = preflightStatusMap[record.id]
-          const isRequesting = preflightRequestingIds.has(record.id)
-          const isDryRunFailed = status === 'FAILED'
-          if (record.status === 'PENDING_CREATE' && (isRequesting || (!status && preflightLoading && !loadedPreflightIds.has(record.id)))) {
-            return (
-              <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                <Spin size="small" />
-              </span>
-            )
-          }
-          if (isDryRunFailed) {
-            return <Tag color="error">质量门禁失败</Tag>
-          }
-          return (
-            <Tag color={qualityGateColor(record.qualityGate?.status)}>
-              {qualityGateLabel(record.qualityGate?.status)}
-            </Tag>
-          )
-        },
-      },
-      {
         title: 'HEAD',
         key: 'headCommit',
         width: 100,
@@ -910,6 +876,9 @@ export function MergeRequestTab({
 
             // MR_CREATED：后端已在 GitHub 成功创建 PR
             if (eff === 'MR_CREATED') {
+              if (record.status === 'PENDING_CREATE' && !record.webUrl && (!record.number || record.number <= 0)) {
+                return <Text type="secondary">MR 已创建，列表刷新中</Text>
+              }
               const href = githubPullRequestUrl(
                 record.webUrl,
                 record.number,
@@ -1004,7 +973,20 @@ export function MergeRequestTab({
             record.qualityGate?.status === 'PASSED' &&
             record.mergeOperationStatus !== 'RUNNING'
           const children: ReactElement[] = []
-          if (href) {
+          children.push(
+            <Button
+              key="detail"
+              size="small"
+              onClick={(event) => {
+                event.stopPropagation()
+                navigate(PATHS.projectCodeMr(projectId, record.id))
+              }}
+            >
+              查看 MR
+            </Button>,
+          )
+          // 质量门禁未通过时仍可查看站内 MR 详情，但不展示 GitHub 外链或合并入口。
+          if (href && (record.status !== 'OPEN' || record.qualityGate?.status === 'PASSED')) {
             children.push(
               <Button
                 key="gh"
@@ -1035,10 +1017,10 @@ export function MergeRequestTab({
             )
           }
           if (record.status === 'OPEN' && record.qualityGate?.status !== 'PASSED') {
-            return <Text type="secondary">门禁未过</Text>
+            return <Space size={8}>{children}<Text type="secondary">门禁未过</Text></Space>
           }
           if (record.status === 'MERGED' || record.status === 'CLOSED') {
-            return href ? children[0] ?? <Text type="secondary">—</Text> : <Text type="secondary">—</Text>
+            return <Space size={8}>{children}</Space>
           }
           return children.length > 0 ? <Space size={8}>{children}</Space> : <Text type="secondary">—</Text>
         },
@@ -1077,13 +1059,13 @@ export function MergeRequestTab({
         showIcon
         message={
           <Space>
-            <span>任务完成交付后，列表会插入对应分支的待创建占位记录（仅展示 Qgents 任务分支，不是 GitHub 全部远程分支）。交付、分支和质量门禁由后端统一校验，并按 Dry Run → CQ+1 → 创建 GitHub PR 的流程推进。</span>
+            <span>列表展示真实 MR，以及已有新增提交但尚未生成真实 MR 的待发起候选。候选记录不是 GitHub MR，必须先通过 Dry Run 和 CQ+1，之后才会生成真实 MR。</span>
             <Button size="small" type="link" style={{ padding: 0, margin: 0 }} onClick={() => void query.refetch()}>
               手动刷新
             </Button>
           </Space>
         }
-        description="预检通过后由后端在 GitHub 创建 PR。Project Admin 可在操作列看到 GitHub 跳转 + 合并MR 按钮，普通成员仅看到 GitHub 跳转。Dry Run 或 CQ+1 被拒绝时显示失败，预检进行中或等待 CQ+1 时不会误显示为失败。"
+        description="真实 MR 可进入站内详情；只有真实 GitHub PR 已创建且质量门禁通过时，才显示 GitHub 入口和合并按钮。待发起候选不会显示 GitHub 入口，预检进行中或等待 CQ+1 时只显示对应流程状态。已关闭（未合并）表示 GitHub PR 被关闭但代码未合入目标分支，仍可能锁定源分支；只有已合并才会解除分支锁。"
       />
       {query.isLoading ? (
         <div style={{ textAlign: 'center', padding: 48 }}>
@@ -1101,7 +1083,7 @@ export function MergeRequestTab({
           }
         />
       ) : displayItems.length === 0 ? (
-        <Empty description="当前筛选下没有 MR。任务完成后系统会自动插入占位记录。" />
+        <Empty description="当前筛选下没有 MR 或待发起候选。" />
       ) : (
         <Table
           rowKey="id"

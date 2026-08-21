@@ -44,10 +44,11 @@ export function CqSealCard({
   const displaySha = shortCommitSha(
     appearance === 'cracked' ? check?.commitSha ?? headCommit : headCommit ?? check?.commitSha,
   )
-  const canAct = mrStatus === 'OPEN' && !isAuthor
+  // 同一提交一旦已有决定，不允许重复盖章或重复拒绝；新提交进入 cracked 状态时允许重新盖章。
+  const canAct = mrStatus === 'OPEN' && !isAuthor && (status === 'PENDING' || appearance === 'cracked')
   const approveLabel = appearance === 'cracked' ? '重新盖章' : '盖 CQ+1'
   const showApprove = canAct && appearance !== 'stamped'
-  const showReject = canAct
+  const showReject = canAct && status === 'PENDING'
 
   return (
     <div ref={rootRef} className={styles.sealBlock} aria-label="CQ+1 印章">

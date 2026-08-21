@@ -856,9 +856,11 @@ GET/PUT
 项目成员/Project Admin
 查询/配置受保护分支策略
 GET/PUT
-/projects/{projectId}/repositories/{projectRepositoryId}/quality-gates/{branch}
+/projects/{projectId}/repositories/{projectRepositoryId}/quality-gates?branch={branch}
 项目成员/Project Admin
-查询/配置目标分支的门禁
+查询/配置目标分支的门禁；分支名包含 `/` 时必须使用查询参数形式
+
+兼容路径：`/projects/{projectId}/repositories/{projectRepositoryId}/quality-gates/{branch}` 仍可用于不含 `/` 的旧调用。
 质量门禁示例：
 
 
@@ -6309,3 +6311,23 @@ failureCode 为稳定错误码，summary 为脱敏用户文案。原始堆栈、
 }
 
 前端收到事件后应重新请求 Task 详情，以 REST 响应为最终状态；重试成功认领任务后，旧的 Task 级失败字段会被清除。
+
+---
+35. MR 列表状态与待发起候选契约
+
+GET /api/v1/projects/{projectId}/merge-requests 的 `status` 只表达 MR 生命周期：
+
+- `PENDING_CREATE`：列表投影的待发起候选，不是数据库中的真实 MR；
+- `OPEN`：真实进行中的 MR；
+- `MERGED`：真实已合并 MR；
+- `CLOSED`：真实已关闭且未合并 MR。
+
+`REQUESTED`、`DRY_RUN_QUEUED`、`DRY_RUN_RUNNING`、`WAITING_CQ`、`CQ_REJECTED`、`CREATING_MR`、`MR_CREATED`、`FAILED`、`STALE` 只属于预检接口状态，不得作为 MR 列表 `status` 值。
+
+服务端只有在 Workspace repository 存在有效 sourceBranch、targetBranch、headCommit 和 targetCommit，且 headCommit 与 targetCommit 不相同、分支确实存在新增差异、同一源分支没有未合并真实 MR 时，才生成 `PENDING_CREATE` 候选。多个 Task 共用同一分支时列表只生成一条候选，覆盖任务和 Diff 由预检响应的 `coveredTaskIds`、`coveredDiffIds` 返回。
+
+占位候选的 `number=0`、`webUrl=null` 表示 GitHub 尚未创建真实 PR。前端应显示“待发起”，预检请求尚未返回时显示“加载中”；不得显示 GitHub 入口、真实 MR 详情、评论或合并操作。只有预检 `status=WAITING_CQ` 时 CQ+1 列显示“前往 CQ+1”，其他状态显示“-”。
+
+只有真实 PR 已创建且 `qualityGate.status=PASSED` 时才显示 GitHub 入口；MR 合并接口仍只允许 `PROJECT_ADMIN`，门禁未通过、未创建、已合并或已关闭的记录不得显示可执行合并操作。真实 MR 创建后，服务端必须用 `OPEN` 记录替换原 `PENDING_CREATE` 候选。
+
+交付模式的后续动作必须区分：`DIFF_FIRST` 确认交付只完成 commit/push，不自动申请 Dry Run、CQ+1 或创建 MR；用户可从 MR 列表按需发起。`MR_FIRST` 确认交付后才由服务端自动进入 Dry Run、CQ+1 和 MR 创建流程。

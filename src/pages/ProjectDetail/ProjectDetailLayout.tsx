@@ -12,9 +12,8 @@ import { useRealtimeConnectionStatus } from '@/realtime/realtimeClient'
 import type { CreateGroupPayload, Group } from '@/types'
 import './ProjectDetailLayout.scss'
 
-// 群聊和项目动态仅在项目总群页面可见；将其移出其他项目子页的首屏模块图。
+// 群聊仅在项目总群页面可见；将其移出其他项目子页的首屏模块图。
 const ChatPanel = lazy(async () => ({ default: (await import('@/components/chat/ChatPanel')).ChatPanel }))
-const ProjectActivityPanel = lazy(async () => ({ default: (await import('./ProjectActivityPanel')).ProjectActivityPanel }))
 
 /** 群聊置顶（本地偏好）localStorage 键，按项目隔离，避免不同项目互相污染。 */
 const PINNED_GROUPS_KEY = 'qgents_pinned_groups'
@@ -67,11 +66,6 @@ export default function ProjectDetailLayout() {
   const MIN_SIDEBAR = 200
   const MAX_SIDEBAR = 520
 
-  // 右侧项目动态面板宽度（可拖拽调整）
-  const [activityWidth, setActivityWidth] = useState(320)
-  const MIN_ACTIVITY = 240
-  const MAX_ACTIVITY = 560
-
   function startResize(e: ReactMouseEvent<HTMLDivElement>) {
     e.preventDefault()
     const startX = e.clientX
@@ -79,27 +73,6 @@ export default function ProjectDetailLayout() {
     function onMove(ev: MouseEvent) {
       const next = startWidth + (ev.clientX - startX)
       setSidebarWidth(Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, next)))
-    }
-    function onUp() {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-      document.body.style.userSelect = ''
-      document.body.style.cursor = ''
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-    document.body.style.userSelect = 'none'
-    document.body.style.cursor = 'col-resize'
-  }
-
-  // 右侧动态面板拖拽：向左拖变宽（next = start - delta），限制在 [MIN_ACTIVITY, MAX_ACTIVITY]
-  function startActivityResize(e: ReactMouseEvent<HTMLDivElement>) {
-    e.preventDefault()
-    const startX = e.clientX
-    const startWidth = activityWidth
-    function onMove(ev: MouseEvent) {
-      const next = startWidth - (ev.clientX - startX)
-      setActivityWidth(Math.min(MAX_ACTIVITY, Math.max(MIN_ACTIVITY, next)))
     }
     function onUp() {
       document.removeEventListener('mousemove', onMove)
@@ -303,8 +276,6 @@ export default function ProjectDetailLayout() {
     )
   }
 
-  const showActivityPanel = onReqChat && mainGroup && effectiveGroupId === mainGroup.id
-
   // 群聊视图不做响应式压缩：窗口缩小时主内容列保持最小可读宽度（720px），
   // 超出部分由外层 Content 的 overflow:auto 出横向滚动条，而不是挤压布局。
   const mainColumn = onReqChat ? 'minmax(720px, 1fr)' : 'minmax(0, 1fr)'
@@ -313,9 +284,7 @@ export default function ProjectDetailLayout() {
     <div
       className="pd"
       style={{
-        gridTemplateColumns: showActivityPanel
-          ? `${sidebarWidth}px 6px ${mainColumn} 6px ${activityWidth}px`
-          : `${sidebarWidth}px 6px ${mainColumn}`,
+        gridTemplateColumns: `${sidebarWidth}px 6px ${mainColumn}`,
       }}
     >
       <aside className="pd-nav" aria-label="项目导航">
@@ -408,20 +377,6 @@ export default function ProjectDetailLayout() {
           <Outlet />
         )}
       </div>
-
-      {/* 群聊页右侧：项目动态面板（仅项目总群显示，需求群不显示），左侧为拖拽手柄可调宽 */}
-      {showActivityPanel && (
-        <>
-          <div
-            className="pd-resizer"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="拖拽调整项目动态宽度"
-            onMouseDown={startActivityResize}
-          />
-          <Suspense fallback={<div aria-busy="true" aria-label="正在加载项目动态" />}><ProjectActivityPanel projectId={projectId} /></Suspense>
-        </>
-      )}
 
       {/* 新建需求群弹窗 */}
       <Modal

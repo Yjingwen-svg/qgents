@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MergeRequestSummary } from '@/types/task-model'
@@ -110,10 +110,13 @@ describe('MergeRequestTab', () => {
     })
     expect(screen.getByText('实现邮箱登录')).toBeInTheDocument()
     expect(screen.getByText('auth-service')).toBeInTheDocument()
-    const githubLinks = screen.getAllByRole('link', { name: 'GitHub' })
-    expect(githubLinks).toHaveLength(2)
-    expect(githubLinks[0]).toHaveAttribute('href', 'https://github.com/mock/demo/pull/42')
-    expect(githubLinks[1]).toHaveAttribute('href', 'https://github.com/mock/web-console/pull/18')
+    // GitHub 外链只对真实 MR 且门禁已通过的记录开放；OPEN 且门禁仍为 PENDING 的记录不应显示入口。
+    const githubButtons = screen.getAllByRole('button', { name: '查看 GitHub MR' })
+    expect(githubButtons).toHaveLength(1)
+    const mergedRow = screen.getByRole('row', { name: /#18 登录页接入/ })
+    expect(within(mergedRow).getByRole('button', { name: '查看 GitHub MR' })).toBeInTheDocument()
+    const openRow = screen.getByRole('row', { name: /#42 实现邮箱登录/ })
+    expect(within(openRow).queryByRole('button', { name: '查看 GitHub MR' })).not.toBeInTheDocument()
   })
 
   it('forwards repository and status filters from the query string', () => {

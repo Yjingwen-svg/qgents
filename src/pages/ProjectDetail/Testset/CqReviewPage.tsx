@@ -20,6 +20,7 @@ import {
   CheckCircleFilled,
   CloseCircleFilled,
   ClockCircleFilled,
+  CodeOutlined,
   LeftOutlined,
   LockOutlined,
 } from '@ant-design/icons'
@@ -34,6 +35,7 @@ import {
   useMergeRequest,
   useMergeRequestChecks,
   useRejectMergeRequestCq,
+  useDiffs,
   useTask,
 } from '@/hooks/task-model'
 import { PATHS } from '@/routes/paths'
@@ -121,6 +123,23 @@ export default function CqReviewPage() {
   const preflightUnavailable = byPreflight
     && !preflightQuery.isLoading
     && (preflightQuery.isError || !preflightQuery.data)
+  const reviewTaskId = taskId || mrQuery.data?.taskId || ''
+  const reviewRepositoryId = repositoryId || mrQuery.data?.repositoryId || ''
+  const diffsQuery = useDiffs(projectId, { taskId: reviewTaskId || undefined, limit: 100 })
+  const reviewDiff = useMemo(() => {
+    const sourceCommit = preflight?.sourceCommit || mrQuery.data?.headCommit || ''
+    return (diffsQuery.data?.data ?? [])
+      .filter((diff) => !reviewRepositoryId || diff.repositoryId === reviewRepositoryId)
+      .sort((left, right) => {
+        const leftMatches = sourceCommit && left.headCommit === sourceCommit ? 1 : 0
+        const rightMatches = sourceCommit && right.headCommit === sourceCommit ? 1 : 0
+        if (leftMatches !== rightMatches) return rightMatches - leftMatches
+        const leftAccepted = left.status === 'ACCEPTED' ? 1 : 0
+        const rightAccepted = right.status === 'ACCEPTED' ? 1 : 0
+        if (leftAccepted !== rightAccepted) return rightAccepted - leftAccepted
+        return right.createdAt.localeCompare(left.createdAt)
+      })[0] ?? null
+  }, [diffsQuery.data, mrQuery.data?.headCommit, preflight?.sourceCommit, reviewRepositoryId])
   const dryRunCqStatus = cqPlusOne?.status ?? 'PENDING' // PENDING | APPROVED | REJECTED
   const cqStatus = byMr
     ? (cqFromMr?.status ?? 'PENDING')
@@ -142,8 +161,12 @@ export default function CqReviewPage() {
     ? mrQuery.error?.message
     : (taskQuery.error?.message || preflightQuery.error?.message)
 
-  const canReview =
-    (byMr ? mr?.status === 'OPEN' : dryRun?.status === 'PASSED') && !isAuthor
+  const canReview = byMr
+    ? mr?.status === 'OPEN' && (!cqFromMr || cqFromMr.status === 'PENDING') && !isAuthor
+    : dryRun?.status === 'PASSED'
+      && dryRunCqStatus === 'PENDING'
+      && !preflightUnavailable
+      && !isAuthor
 
   // ========== 返回按钮 ==========
   function goBack() {
@@ -413,12 +436,12 @@ export default function CqReviewPage() {
                   isAuthor={isAuthor}
                   cqStatus={cqStatus}
                   cqReason={cqFromMr?.reviewReason ?? null}
-                  cqReviewedByName={cqFromMr?.reviewedByName ?? null}
                   canAct={canReview}
                   busy={busy}
                   onApprove={() => submitCq('approve')}
                   onReject={() => submitCq('reject')}
-                  reviewerUserId={cqFromMr?.reviewerUserId ?? null}
+                  reviewerUserId={cqFromMr?.reviewedByUserId ?? null}
+                  cqReviewedByName={cqFromMr?.reviewedByName ?? null}
                   reviewedAt={cqFromMr?.completedAt ?? null}
                 />
               </div>
@@ -460,6 +483,17 @@ export default function CqReviewPage() {
                 {preflight?.targetCommit ? <Text code>{preflight.targetCommit.slice(0, 12)}</Text> : <Text type="secondary">—</Text>}
               </Descriptions.Item>
             </Descriptions>
+            {reviewDiff ? (
+              <Space style={{ marginBottom: 20 }}>
+                <Button
+                  icon={<CodeOutlined />}
+                  onClick={() => navigate(PATHS.projectCodeDiff(projectId, reviewDiff.id))}
+                >
+                  查看代码 Diff
+                </Button>
+                <Text type="secondary">先查看本次提交的文件和行级变更，再决定是否盖 CQ+1。</Text>
+              </Space>
+            ) : null}
 
             {/* 自定义大印章（与 CqSealCard 视觉风格对齐，用 Preflight 数据） */}
             <div className={styles.sealBlock} aria-label="CQ+1 印章">
@@ -470,7 +504,7 @@ export default function CqReviewPage() {
                 sourceCommit={preflight?.sourceCommit ?? null}
                 reason={cqPlusOne?.reason ?? null}
                 reviewedAt={cqPlusOne?.reviewedAt ?? null}
-                reviewerName={null}
+                reviewerName={cqPlusOne?.reviewerName ?? null}
               />
               <Button
                 type="link"
@@ -489,8 +523,8 @@ export default function CqReviewPage() {
                             <li className={styles.sealHistoryItem}>
                               <div className={styles.sealHistoryHead}>
                                 <strong>
-                                  {cqPlusOne?.reviewerUserId
-                                    ? `用户 ${cqPlusOne.reviewerUserId.slice(0, 8)}`
+                                  {cqPlusOne?.reviewerName || cqPlusOne?.reviewerUserId
+                                    ? (cqPlusOne.reviewerName || `用户 ${cqPlusOne.reviewerUserId!.slice(0, 8)}`)
                                     : '审查者'}
                                 </strong>
                                 <span
@@ -534,6 +568,7 @@ export default function CqReviewPage() {
                 cqStatus={cqStatus}
                 cqReason={cqPlusOne?.reason ?? null}
                 reviewerUserId={cqPlusOne?.reviewerUserId ?? null}
+                cqReviewedByName={cqPlusOne?.reviewerName ?? null}
                 reviewedAt={cqPlusOne?.reviewedAt ?? null}
                 canAct={canReview}
                 unavailable={preflightUnavailable}

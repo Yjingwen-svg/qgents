@@ -72,6 +72,7 @@ const mr: MergeRequestSummary = {
     status: 'PENDING',
     requiredChecks: ['TESTSET', 'AI_REVIEW', 'DRY_RUN', 'CQ_PLUS_ONE', 'CR_BLOCKING_COMMENTS'],
   },
+  createMode: 'UNKNOWN',
 }
 
 const checks: MergeRequestCheck[] = [

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Alert, App, Button, Empty, Select, Space, Spin, Table, Tag, Typography, Tooltip } from 'antd'
+import { Alert, App, Button, Empty, Input, Select, Space, Spin, Table, Tag, Typography, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PATHS } from '@/routes/paths'
 import { mergeRequestsApi } from '@/api/taskModel'
@@ -179,6 +179,40 @@ function isNoChangesError(error: unknown): boolean {
   return body.error?.code === 'MR_NO_CHANGES'
 }
 
+function mergeRequestRowEqual(left: MergeRequestSummary, right: MergeRequestSummary): boolean {
+  return left.id === right.id
+    && left.status === right.status
+    && left.number === right.number
+    && left.webUrl === right.webUrl
+    && left.sourceBranch === right.sourceBranch
+    && left.targetBranch === right.targetBranch
+    && left.headCommit === right.headCommit
+    && left.mergeOperationStatus === right.mergeOperationStatus
+    && left.mergeOperationFailureCode === right.mergeOperationFailureCode
+    && left.mergeOperationFailureReason === right.mergeOperationFailureReason
+    && left.qualityGate?.status === right.qualityGate?.status
+}
+
+function dedupeMergeRequestRows(rows: MergeRequestSummary[]): MergeRequestSummary[] {
+  const byId = new Map<string, MergeRequestSummary>()
+  for (const row of rows) {
+    const previous = byId.get(row.id)
+    if (!previous) {
+      byId.set(row.id, row)
+      continue
+    }
+    // Keep the most complete representation when a placeholder and a refreshed
+    // copy of the same MR arrive in one response.
+    byId.set(row.id, {
+      ...previous,
+      ...row,
+      webUrl: row.webUrl ?? previous.webUrl,
+      number: row.number > 0 ? row.number : previous.number,
+    })
+  }
+  return [...byId.values()]
+}
+
 export function MergeRequestTab({
   projectId,
   repositories,
@@ -206,15 +240,16 @@ export function MergeRequestTab({
   itemsRef.current = items
   const lastDataRef = useRef(query.data?.data)
   useEffect(() => {
-    const latest = query.data?.data ?? []
+    const latest = dedupeMergeRequestRows(query.data?.data ?? [])
     if (lastDataRef.current === query.data?.data) return // query data 引用未更新，跳过
     lastDataRef.current = query.data?.data
     setItems((prev) => {
+      const current = dedupeMergeRequestRows(prev)
       const latestIds = latest.map((m) => m.id).join('|')
-      const prevIds = prev.map((m) => m.id).join('|')
+      const prevIds = current.map((m) => m.id).join('|')
       if (latestIds !== prevIds) return latest
-      return latest.map((m) => {
-        const local = prev.find((p) => p.id === m.id)
+      const next = latest.map((m) => {
+        const local = current.find((p) => p.id === m.id)
         if (!local) return m
         return {
           ...m,
@@ -222,18 +257,34 @@ export function MergeRequestTab({
           number: m.number ?? local.number,
         }
       })
+      return next.every((row, index) => mergeRequestRowEqual(row, current[index])) ? current : next
     })
   }, [query.data?.data])
 
   // 后端按 status 过滤；这里再做一次显示层过滤，避免切换筛选时本地乐观 state
   // 短暂保留上一个查询结果，导致 OPEN/MERGED 混入 PENDING_CREATE 列表。
-  const displayItems = status ? items.filter((item) => item.status === status) : items
+  const displayItems = useMemo(() => {
+    const unique = dedupeMergeRequestRows(items)
+    return status ? unique.filter((item) => item.status === status) : unique
+  }, [items, status])
 
   const mergeMr = useMergeMergeRequest(projectId)
   const requestPreflight = useRequestMergeRequestPreflight(projectId)
   const retryPreflight = useRetryMergeRequestPreflight(projectId)
   const syncMr = useSyncMergeRequest(projectId)
   const [mergingId, setMergingId] = useState<string | null>(null)
+  const previousMergeStatusesRef = useRef<Record<string, string | null>>({})
+  useEffect(() => {
+    const previous = previousMergeStatusesRef.current
+    for (const item of items) {
+      if (item.mergeOperationStatus === 'FAILED' && previous[item.id] === 'RUNNING') {
+        message.error(item.mergeOperationFailureReason || 'GitHub 拒绝了合并请求，请检查 MR 状态后重试')
+      }
+    }
+    previousMergeStatusesRef.current = Object.fromEntries(
+      items.map((item) => [item.id, item.mergeOperationStatus ?? null]),
+    )
+  }, [items, message])
   const [creatingId, setCreatingId] = useState<string | null>(null)
   // 记录每行的预检状态（前端跟踪，真实环境由 SSE/后端返回）
   const [preflightStatusMap, setPreflightStatusMap] = useState<Record<string, PreflightUiStatus>>({})
@@ -254,6 +305,7 @@ export function MergeRequestTab({
   // 轮询过程中状态会持续更新，但不能因此取消当前批次的请求。
   const preflightStatusMapRef = useRef(preflightStatusMap)
   preflightStatusMapRef.current = preflightStatusMap
+  const preflightRefreshInFlightRef = useRef(false)
 
   // 页面加载和真实占位行替换时恢复已启动的预检状态。
   // 优化：使用并发控制（最多 3 个同时请求），避免超过浏览器并发限制
@@ -298,7 +350,16 @@ export function MergeRequestTab({
         try {
           const synced = await syncMr.mutateAsync(row.id)
           if (cancelled) return
-          setItems((prev) => prev.map((item) => item.id === synced.id ? { ...item, ...synced } : item))
+          setItems((prev) => {
+            let changed = false
+            const next = prev.map((item) => {
+              if (item.id !== synced.id) return item
+              const updated = { ...item, ...synced }
+              if (!mergeRequestRowEqual(item, updated)) changed = true
+              return changed ? updated : item
+            })
+            return changed ? next : prev
+          })
         } catch {
           // webhook 或后续轮询可能完成同步；单行同步失败不影响列表其余内容。
         }
@@ -322,6 +383,14 @@ export function MergeRequestTab({
     let timer: ReturnType<typeof setTimeout> | undefined
 
     const refresh = async () => {
+      if (preflightRefreshInFlightRef.current) {
+        // A list refresh may restart this effect while the previous batch is
+        // still waiting on the API. Keep a retry timer so polling does not die
+        // when that happens, while still avoiding overlapping batches.
+        if (!cancelled) timer = setTimeout(() => void refresh(), 1000)
+        return
+      }
+      preflightRefreshInFlightRef.current = true
       const taskIds = new Set<string>()
       const pendingRows = displayItems.filter((mr) => {
         const currentStatus = preflightStatusMapRef.current[mr.id]
@@ -349,6 +418,7 @@ export function MergeRequestTab({
       })
 
       if (taskIds.size === 0) {
+        preflightRefreshInFlightRef.current = false
         setPreflightLoading(false)
         // 没有要查询的任务也视为"首轮回溯完成"（比如所有行都已经是终态或列表为空）
         if (!initialRecoveryDoneRef.current) {
@@ -387,9 +457,16 @@ export function MergeRequestTab({
                   setItems((prev) => prev.map((item) => item.id === mr.id
                     ? { ...item, ...repoStatus.mergeRequest! }
                     : item))
+                } else if (repoStatus?.status === 'CREATING_MR') {
+                  // CQ approval only moves the backend workflow into the
+                  // asynchronous creation phase. A real MR exists only when
+                  // mergeRequest is present (or status is MR_CREATED).
+                  newMap[mr.id] = 'CREATING_MR'
+                } else if (repoStatus?.status === 'MR_CREATED') {
+                  newMap[mr.id] = 'MR_CREATED'
                 } else if (repoStatus?.dryRunStatus) {
                   if (repoStatus.cqStatus === 'APPROVED') {
-                    newMap[mr.id] = 'MR_CREATED'
+                    newMap[mr.id] = 'CREATING_MR'
                   } else if (repoStatus.cqStatus === 'REJECTED') {
                     newMap[mr.id] = 'CQ_REJECTED'
                   } else if (repoStatus.dryRunStatus === 'PASSED') {
@@ -419,6 +496,7 @@ export function MergeRequestTab({
       } catch {
         // 静默失败
       } finally {
+        preflightRefreshInFlightRef.current = false
         if (!cancelled) {
           setPreflightLoading(false)
           // 首轮跑完，无论有没有查到结果，都标记首轮回溯完成。
@@ -515,9 +593,21 @@ export function MergeRequestTab({
   }, [displayItems, preflightStatusMap, creatingId, requestPreflight])
 
   function handleMerge(record: MergeRequestSummary) {
+    let commitMessage = ''
     modal.confirm({
       title: `合并 MR #${record.number}？`,
-      content: `将 ${record.sourceBranch} 合并到 ${record.targetBranch}。此操作不可撤销。`,
+      content: (
+        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+          <Text>将 {record.sourceBranch} 合并到 {record.targetBranch}。此操作不可撤销。</Text>
+          <Input.TextArea
+            rows={3}
+            maxLength={500}
+            showCount
+            placeholder="合并提交说明（可选，留空使用 GitHub 默认说明）"
+            onChange={(event) => { commitMessage = event.target.value }}
+          />
+        </Space>
+      ),
       okText: '确认合并',
       cancelText: '取消',
       okButtonProps: { loading: mergingId === record.id },
@@ -531,7 +621,7 @@ export function MergeRequestTab({
           duration: 0,
         })
         try {
-          const result = await mergeMr.mutateAsync(record.id)
+          const result = await mergeMr.mutateAsync({ mergeRequestId: record.id, commitMessage })
           setItems((prevItems) => prevItems.map((item) =>
             item.id === record.id
               ? {
@@ -634,8 +724,13 @@ export function MergeRequestTab({
           message.error(res.failureReason || '申请失败')
         } else if (res.status === 'MR_CREATED') {
           message.success('MR 已创建，点击 GitHub 按钮可跳转')
+        } else if (res.status === 'WAITING_CQ') {
+          // Dry Run 已通过；此时用户的下一步是等待独立成员完成 CQ+1。
+          message.success('预检已通过，等待 CQ+1')
+        } else if (res.status === 'REQUESTED' || res.status === 'DRY_RUN_QUEUED' || res.status === 'DRY_RUN_RUNNING') {
+          message.success('已申请 MR，正在预检（Dry Run）')
         } else {
-          message.success('已申请 MR，正在预检（Dry Run → CQ+1）')
+          message.success('已申请 MR，正在处理')
         }
       })
       .catch((error) => {
@@ -1106,6 +1201,14 @@ export function MergeRequestTab({
           }
           if (record.status === 'OPEN' && record.qualityGate?.status !== 'PASSED') {
             return <Space size={8}>{children}<Text type="secondary">门禁未过</Text></Space>
+          }
+          if (record.mergeOperationStatus === 'FAILED') {
+            const failure = record.mergeOperationFailureReason || 'GitHub 拒绝了合并请求，请检查 MR 状态后重试'
+            children.push(
+              <Tooltip key="merge-failure" title={failure}>
+                <Text type="danger">合并失败</Text>
+              </Tooltip>,
+            )
           }
           if (record.status === 'MERGED' || record.status === 'CLOSED') {
             return <Space size={8}>{children}</Space>

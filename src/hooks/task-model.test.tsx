@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Task, TaskRunDetail } from '@/types/task-model'
+import type { Task, TaskModelPage, TaskRunDetail, TaskRunSummary } from '@/types/task-model'
 
 const taskCreateMock = vi.hoisted(() => vi.fn())
 const taskCancelMock = vi.hoisted(() => vi.fn())
@@ -113,7 +113,10 @@ describe('new task model hooks', () => {
     seed(taskModelQueryKeys.tasks.list('project-1', {}))
     seed(taskModelQueryKeys.taskSteps.list('project-1', 'task-1', {}))
     const taskRunsListKey = taskModelQueryKeys.taskRuns.list('project-1', 'task-1', {})
-    const taskRunsList = queryClient.getQueryCache().build(queryClient, { queryKey: taskRunsListKey, queryFn: async () => null })
+    const taskRunsList = queryClient.getQueryCache().build<TaskModelPage<TaskRunSummary>>(queryClient, {
+      queryKey: taskRunsListKey,
+      queryFn: async () => ({ data: [], page: { nextCursor: null, hasMore: false }, requestId: 'req-runs' }),
+    })
     taskRunsList.setData({ data: [], page: { nextCursor: null, hasMore: false }, requestId: 'req-runs' })
     seed(taskModelQueryKeys.taskArtifacts.all('project-1', 'task-1'))
     seed(taskModelQueryKeys.diffs.list('project-1', {}))
@@ -256,7 +259,7 @@ describe('new task model hooks', () => {
     list.setData([])
     const { result } = renderHook(() => useMergeMergeRequest('project-1'), { wrapper: wrapper(queryClient) })
     await act(async () => {
-      await result.current.mutateAsync('mr-1')
+      await result.current.mutateAsync({ mergeRequestId: 'mr-1' })
     })
     expect(mergeRequestMergeMock).toHaveBeenCalledWith('project-1', 'mr-1')
     expect(queryClient.getQueryData(taskModelQueryKeys.mergeRequests.detail('project-1', 'mr-1'))).toEqual(merged)

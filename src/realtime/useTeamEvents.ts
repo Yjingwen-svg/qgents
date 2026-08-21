@@ -15,7 +15,7 @@ export function useTeamEvents(teamId: string | undefined): void {
   const useSseFallback = Boolean(teamId) && realtimeStatus !== 'connected'
   useEventStream(
     useSseFallback ? `team.${teamId}` : '',
-    useSseFallback ? `/teams/${encodeURIComponent(teamId)}/events` : '',
+    useSseFallback ? `/teams/${encodeURIComponent(teamId ?? '')}/events` : '',
     (eventType) => {
       if (!teamId) return
       if (eventType === 'project.member.added') {

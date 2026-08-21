@@ -48,6 +48,7 @@ const mergeRequests: MergeRequestSummary[] = [
     targetBranch: 'main',
     status: 'OPEN',
     headCommit: 'abc1234',
+    createMode: 'UNKNOWN',
   },
 ]
 

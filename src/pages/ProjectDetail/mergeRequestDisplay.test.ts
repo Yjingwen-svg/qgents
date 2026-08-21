@@ -23,6 +23,7 @@ function mr(partial: Partial<MergeRequestSummary>): MergeRequestSummary {
     webUrl: null,
     taskId: 'task-1',
     ...partial,
+    createMode: partial.createMode ?? 'UNKNOWN',
   }
 }
 

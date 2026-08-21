@@ -332,7 +332,7 @@ function CompactTaskHeader({ task, projectId, onCancel, cancelPending, completed
       </div>
       <div className={styles.headerMeta}>
         <HeaderMeta label="需求群" value={task.requirementGroup?.name} />
-        <HeaderMeta label="仓库" value={`${task.repositories.length || task.repositoryIds?.length || 0} 个`} />
+        <HeaderMeta label="仓库" value={task.repositories.length > 0 ? `${task.repositories.length} 个` : task.status === 'PLANNING' ? '规划中，待分析' : '暂无'} />
         <HeaderMeta label="更新于" value={formatDate(task.updatedAt)} />
         <RequirementMeta task={task} />
       </div>

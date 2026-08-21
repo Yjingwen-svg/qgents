@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Alert,
@@ -106,19 +106,12 @@ export default function MergeRequestDetailPage() {
     mergeRequestId: string
   }>()
   const [searchParams, setSearchParams] = useSearchParams()
-  const navigate = useNavigate()
   const viewParam = searchParams.get('view')
   const view: DetailView = isDetailView(viewParam) ? viewParam : 'gate'
   const [fileIndex, setFileIndex] = useState(0)
   const [draft, setDraft] = useState('')
   const cqRef = useRef<HTMLDivElement>(null)
   const isPlaceholder = mergeRequestId.startsWith('pending-mr:')
-
-  function handleCreateMr() {
-    if (!mr) return
-    const to = `${PATHS.projectDiffs(projectId)}?tab=mr`
-    window.location.href = to
-  }
 
   const { data: project } = useQuery({
     queryKey: ['projects', projectId],
@@ -172,6 +165,16 @@ export default function MergeRequestDetailPage() {
     : null
   const showMerge = canShowMergeButton(project?.role, mr)
 
+  // GitHub 合并由后端异步执行（接口先返回 202），合并期间定期拉取真实状态，
+  // 避免用户停留在详情页时一直看到旧的 OPEN 状态。
+  useEffect(() => {
+    if (!mr || mr.mergeOperationStatus !== 'RUNNING') return
+    const timer = window.setInterval(() => {
+      void detailQuery.refetch()
+    }, 3_000)
+    return () => window.clearInterval(timer)
+  }, [detailQuery.refetch, mr?.id, mr?.mergeOperationStatus])
+
   function setView(next: string) {
     const params = new URLSearchParams(searchParams)
     if (next === 'gate') params.delete('view')
@@ -209,14 +212,23 @@ export default function MergeRequestDetailPage() {
       title: '合并该 MR？',
       content: '仅 Project Admin 可在质量门禁全部通过后合并。合并后不可从本页撤销。',
       okText: '确认合并',
-      onOk: () =>
-        mergeMr.mutateAsync(mr.id).then(
-          () => message.success('已合并'),
-          (error: unknown) => {
-            message.error(formatApiError(error))
-            return Promise.reject(error)
-          },
-        ),
+      onOk: async () => {
+        try {
+          const result = await mergeMr.mutateAsync({ mergeRequestId: mr.id })
+          if (result.status === 'MERGED' || result.mergeOperationStatus === 'COMPLETED') {
+            message.success('MR 已合并')
+          } else if (result.mergeOperationStatus === 'RUNNING') {
+            message.info('合并请求已受理，正在同步 GitHub 状态')
+          } else if (result.mergeOperationStatus === 'FAILED') {
+            message.error('GitHub 合并失败，请查看错误提示后重试')
+          } else {
+            message.info('合并状态已更新，请稍后查看')
+          }
+        } catch (error: unknown) {
+          message.error(formatApiError(error))
+          throw error
+        }
+      },
     })
   }
 
@@ -366,11 +378,12 @@ export default function MergeRequestDetailPage() {
           {showMerge ? (
             <Button
               type="primary"
-              loading={mergeMr.isPending}
+              loading={mergeMr.isPending || mr.mergeOperationStatus === 'RUNNING'}
+              disabled={mr.mergeOperationStatus === 'RUNNING'}
               onClick={handleMerge}
               aria-label="merge-merge-request"
             >
-              合并
+              {mr.mergeOperationStatus === 'RUNNING' ? '合并中' : '合并'}
             </Button>
           ) : null}
         </div>
@@ -650,7 +663,10 @@ function canShowMergeButton(
   role: ProjectRole | undefined,
   mr: MergeRequestSummary | undefined,
 ): boolean {
-  return role === 'PROJECT_ADMIN' && mr?.status === 'OPEN' && mr.qualityGate?.status === 'PASSED'
+  return role === 'PROJECT_ADMIN'
+    && mr?.status === 'OPEN'
+    && mr.qualityGate?.status === 'PASSED'
+    && mr.mergeOperationStatus !== 'RUNNING'
 }
 
 function pickRelatedDiff(items: DiffListItem[], mr: MergeRequestSummary): DiffListItem | undefined {

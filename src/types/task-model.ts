@@ -341,6 +341,8 @@ export interface DiffListItem {
   repositoryId: string
   baseCommit: string
   sourceBranch: string
+  /** 目标分支；旧 Diff 响应可能缺省。 */
+  targetBranch?: string | null
   headCommit?: string | null
   status: DiffStatus
   changeStats: DiffChangeStats
@@ -499,6 +501,9 @@ export interface MergeRequestSummary {
   status: MergeRequestStatus
   /** 合并操作状态；异步合并受理后为 RUNNING，完成后为 COMPLETED/FAILED。 */
   mergeOperationStatus?: 'RUNNING' | 'COMPLETED' | 'FAILED' | null
+  /** 异步合并失败时由后端保存的受控错误信息。 */
+  mergeOperationFailureCode?: string | null
+  mergeOperationFailureReason?: string | null
   headCommit: string | null
   webUrl?: string | null
   taskId?: string | null

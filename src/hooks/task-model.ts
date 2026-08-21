@@ -521,9 +521,9 @@ export function useMergeRequestCommits(
 
 export function useMergeMergeRequest(
   projectId: string,
-): UseMutationResult<MergeRequestSummary, Error, string> {
+): UseMutationResult<MergeRequestSummary, Error, { mergeRequestId: string; commitMessage?: string }> {
   return useMutation({
-    mutationFn: (mergeRequestId) => mergeRequestsApi.merge(projectId, mergeRequestId),
+    mutationFn: ({ mergeRequestId, commitMessage }) => mergeRequestsApi.merge(projectId, mergeRequestId, commitMessage),
     onSuccess: (mr) => {
       rememberMergeRequest(projectId, mr)
     },

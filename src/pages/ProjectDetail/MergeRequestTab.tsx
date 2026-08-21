@@ -732,7 +732,7 @@ export function MergeRequestTab({
         width: 88,
         render: (_value, record) => (
           record.status === 'PENDING_CREATE' ? (
-            <Tooltip title="Qgents 任务产生的待创建占位记录，尚未在 GitHub 创建 PR。MR_FIRST 会自动发起预检；DIFF_FIRST 需点击「申请MR」。">
+            <Tooltip title="任务完成交付后由 Qgents 生成的待创建占位记录；真实 PR 创建前的交付、分支和质量校验由后端统一完成。">
               <Text type="secondary" style={{ cursor: 'help' }}>待创建</Text>
             </Tooltip>
           ) : <Text strong>#{record.number}</Text>
@@ -947,8 +947,9 @@ export function MergeRequestTab({
               else if (status === 'FAILED') tip = '质量门禁失败'
               else tip = '预检上下文过期，请刷新重试'
             } else if (eff === 'IDLE') {
-              const gatePassed = record.qualityGate?.status === 'PASSED'
-              if (!gatePassed) tip = '申请前请确保质量门禁 = 通过'
+              // 质量门禁、commit/push 与分支上下文由后端预检统一校验，
+              // 不要求用户在点击前自行准备或判断门禁状态。
+              tip = null
             } else if (eff === 'READY_CREATE') {
               tip = 'Dry Run + CQ+1 已通过，点击创建 MR 后由后端在 GitHub 端创建真实 PR'
             } else if (eff === 'NO_CHANGES') {
@@ -1090,9 +1091,7 @@ export function MergeRequestTab({
         showIcon
         message={
           <Space>
-            <span>Qgents 中有已完成交付或等待预检的任务时，列表会插入占位记录（仅展示 Qgents 任务分支，不是 GitHub 全部远程分支）。点击操作列的</span>
-            <Tag color="cyan" style={{ margin: 0 }}>申请MR</Tag>
-            <span>按钮启动预检：Dry Run → CQ+1 → 后端创建 GitHub PR。MR_FIRST 会自动申请，DIFF_FIRST 需要手动申请。</span>
+            <span>任务完成交付后，列表会插入对应分支的待创建占位记录（仅展示 Qgents 任务分支，不是 GitHub 全部远程分支）。交付、分支和质量门禁由后端统一校验，并按 Dry Run → CQ+1 → 创建 GitHub PR 的流程推进。</span>
             <Button size="small" type="link" style={{ padding: 0, margin: 0 }} onClick={() => void query.refetch()}>
               手动刷新
             </Button>

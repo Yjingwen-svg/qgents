@@ -646,7 +646,7 @@ export function MergeRequestTab({
         width: 88,
         render: (_value, record) => (
           record.status === 'PENDING_CREATE' ? (
-            <Tooltip title="大任务识别后自动插入的占位记录，尚未在 GitHub 创建 PR。自动模式会自动发起预检；人工模式需点击「申请MR」。">
+            <Tooltip title="Qgents 任务产生的待创建占位记录，尚未在 GitHub 创建 PR。MR_FIRST 会自动发起预检；DIFF_FIRST 需点击「申请MR」。">
               <Text type="secondary" style={{ cursor: 'help' }}>待创建</Text>
             </Tooltip>
           ) : <Text strong>#{record.number}</Text>
@@ -993,15 +993,15 @@ export function MergeRequestTab({
         showIcon
         message={
           <Space>
-            <span>大任务完成后系统会在列表中插入占位记录。点击操作列的</span>
+            <span>Qgents 中有已完成交付或等待预检的任务时，列表会插入占位记录（仅展示 Qgents 任务分支，不是 GitHub 全部远程分支）。点击操作列的</span>
             <Tag color="cyan" style={{ margin: 0 }}>申请MR</Tag>
-            <span>按钮启动统一预检：Dry Run → CQ+1 → 后端自动创建 GitHub PR。</span>
+            <span>按钮启动预检：Dry Run → CQ+1 → 后端创建 GitHub PR。MR_FIRST 会自动申请，DIFF_FIRST 需要手动申请。</span>
             <Button size="small" type="link" style={{ padding: 0, margin: 0 }} onClick={() => void query.refetch()}>
               手动刷新
             </Button>
           </Space>
         }
-        description="预检通过后自动在 GitHub 创建 PR。Project Admin 可在操作列看到 GitHub 跳转 + 合并MR 按钮，普通成员仅看到 GitHub 跳转。CQ+1 或质量门禁任一未过则显示申请失败。"
+        description="预检通过后由后端在 GitHub 创建 PR。Project Admin 可在操作列看到 GitHub 跳转 + 合并MR 按钮，普通成员仅看到 GitHub 跳转。Dry Run 或 CQ+1 被拒绝时显示失败，预检进行中或等待 CQ+1 时不会误显示为失败。"
       />
       {query.isLoading ? (
         <div style={{ textAlign: 'center', padding: 48 }}>

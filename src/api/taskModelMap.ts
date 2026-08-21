@@ -458,6 +458,7 @@ function mapPreflightRepositoryStatus(raw: Record<string, unknown>): PreflightRe
     preflightId: typeof raw.id === 'string'
       ? raw.id
       : typeof raw.preflightId === 'string' ? raw.preflightId : null,
+    status: isPreflightStatus(raw.status) ? raw.status : undefined,
     repositoryId: typeof raw.repositoryId === 'string' ? raw.repositoryId : '',
     repositoryName: typeof raw.repositoryName === 'string' ? raw.repositoryName : '',
     sourceBranch: typeof raw.sourceBranch === 'string' ? raw.sourceBranch : '',

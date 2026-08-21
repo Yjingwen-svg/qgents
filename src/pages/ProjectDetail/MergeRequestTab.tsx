@@ -245,6 +245,12 @@ export function MergeRequestTab({
   const [preflightLoading, setPreflightLoading] = useState(false)
   // 已完成加载预检状态的 MR ID 集合
   const [loadedPreflightIds, setLoadedPreflightIds] = useState<Set<string>>(new Set())
+  // 标记是否已完成"首轮回溯查询"——首次挂载/列表首次就绪时，不管 MANUAL 还是 SYSTEM，
+  // 都必须向后端查一次，恢复用户在其他页面/会话中已经发起的预检状态。之后才进入"MANUAL
+  // 未显式点击就跳过"的保守轮询模式，避免过度请求。
+  const [initialRecoveryDone, setInitialRecoveryDone] = useState(false)
+  const initialRecoveryDoneRef = useRef(false)
+  initialRecoveryDoneRef.current = initialRecoveryDone
   // 轮询过程中状态会持续更新，但不能因此取消当前批次的请求。
   const preflightStatusMapRef = useRef(preflightStatusMap)
   preflightStatusMapRef.current = preflightStatusMap
@@ -325,6 +331,17 @@ export function MergeRequestTab({
           || currentStatus === 'CQ_REJECTED'
           || currentStatus === 'MR_CREATED'
         if (mr.status === 'PENDING_CREATE' && mr.taskId && !terminal) {
+          // 首轮回溯阶段：不管 MANUAL / SYSTEM，只要是 PENDING_CREATE + 有 taskId 都查，
+          // 用于恢复用户在之前页面、之前会话已经发起的预检状态。
+          if (!initialRecoveryDoneRef.current) {
+            taskIds.add(mr.taskId)
+            return true
+          }
+          // DIFF_FIRST (MANUAL) 模式：只有用户显式点击"申请MR"后才允许后续持续轮询
+          // 如果 preflightStatusMap 中没有该 MR 的状态，说明尚未发起预检，跳过轮询
+          if (mr.createMode === 'MANUAL' && !currentStatus) {
+            return false
+          }
           taskIds.add(mr.taskId)
           return true
         }
@@ -333,6 +350,10 @@ export function MergeRequestTab({
 
       if (taskIds.size === 0) {
         setPreflightLoading(false)
+        // 没有要查询的任务也视为"首轮回溯完成"（比如所有行都已经是终态或列表为空）
+        if (!initialRecoveryDoneRef.current) {
+          setInitialRecoveryDone(true)
+        }
         return
       }
       setPreflightLoading(true)
@@ -398,7 +419,14 @@ export function MergeRequestTab({
       } catch {
         // 静默失败
       } finally {
-        if (!cancelled) setPreflightLoading(false)
+        if (!cancelled) {
+          setPreflightLoading(false)
+          // 首轮跑完，无论有没有查到结果，都标记首轮回溯完成。
+          // 之后进入保守轮询模式（MANUAL 未显式点击就跳过）。
+          if (!initialRecoveryDoneRef.current) {
+            setInitialRecoveryDone(true)
+          }
+        }
       }
 
       if (!cancelled && preflightPolling) {
@@ -806,8 +834,21 @@ export function MergeRequestTab({
           if (record.status === 'PENDING_CREATE') {
             const status = preflightStatusMap[record.id]
             const isRequesting = preflightRequestingIds.has(record.id)
-            // 如果还没加载完成，显示 loading
-            if (isRequesting || (!status && preflightLoading && !loadedPreflightIds.has(record.id))) {
+            const qgStatus = record.qualityGate?.status
+            // 后端 placeholder 行目前写死 qualityGate.status = PENDING（尚未改为 NOT_STARTED），
+            // 导致"未申请"和"预检真在跑"都显示 PENDING，因此 PENDING 本身不可信，不能当 fallback 触发。
+            // 只有 PASSED / FAILED 是真实值（placeholder 永远不会写这两个），
+            // 以及 NOT_STARTED 作为已明确"未启动"的可信空值。
+            const hintBackendStarted = qgStatus === 'PASSED' || qgStatus === 'FAILED'
+            const needRecoverySpin = !isRequesting
+              && !status
+              && !initialRecoveryDone
+              && record.taskId
+              // 首轮回溯前，如果明确看到 PASSED/FAILED 可信终态，或者正在加载，就显示 Spin
+              && (hintBackendStarted || preflightLoading)
+              && !loadedPreflightIds.has(record.id)
+            // 首轮回溯或正在加载：显示 loading
+            if (isRequesting || needRecoverySpin || (!status && preflightLoading && !loadedPreflightIds.has(record.id))) {
               return (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Spin size="small" />
@@ -815,7 +856,22 @@ export function MergeRequestTab({
                 </span>
               )
             }
-            const eff = deriveEffectiveState(status, record.createMode, false)
+            let effectiveStatus: PreflightUiStatus | undefined = status
+            // 什么时候才用 qualityGate 做 fallback：
+            //  ① 本地 map 还没这行记录
+            //  ② 首轮回溯已经完成
+            //  ③ qualityGate 是可信值（PASSED / FAILED）—— 这意味着后端真的有预检结果
+            //  ④ 并且该行不在 loadedPreflightIds 里，或者 loadedPreflightIds 有但 map 空时
+            //     只有当 qualityGate.status 不是 NOT_STARTED/PENDING 占位值时才兜底。
+            // （注意：PENDING 绝不能兜底，因为 placeholder 写死 PENDING）
+            if (!effectiveStatus && initialRecoveryDone && hintBackendStarted) {
+              switch (qgStatus) {
+                case 'PASSED': effectiveStatus = 'WAITING_CQ'; break
+                case 'FAILED': effectiveStatus = 'FAILED'; break
+                default: effectiveStatus = undefined
+              }
+            }
+            const eff = deriveEffectiveState(effectiveStatus, record.createMode, false)
             return <Tag color={preflightTagColor(eff)}>{preflightTagText(eff)}</Tag>
           }
           return <Tag color={statusColor(value)}>{statusLabel(value)}</Tag>
@@ -874,7 +930,18 @@ export function MergeRequestTab({
           if (record.status === 'PENDING_CREATE') {
             const status = preflightStatusMap[record.id]
             const isRequesting = preflightRequestingIds.has(record.id)
-            if (isRequesting || (!status && preflightLoading && !loadedPreflightIds.has(record.id))) {
+            // 后端 placeholder 行目前写死 qualityGate.status = PENDING（尚未改为 NOT_STARTED），
+            // 导致"未申请"和"预检真在跑"都显示 PENDING，因此 PENDING 本身不可信，不能当 fallback 触发。
+            // 只有 PASSED / FAILED 是真实值（placeholder 永远不会写这两个）。
+            const qgStatus = record.qualityGate?.status
+            const hintBackendStarted = qgStatus === 'PASSED' || qgStatus === 'FAILED'
+            const needRecoverySpin = !isRequesting
+              && !status
+              && !initialRecoveryDone
+              && record.taskId
+              && (hintBackendStarted || preflightLoading)
+              && !loadedPreflightIds.has(record.id)
+            if (isRequesting || needRecoverySpin || (!status && preflightLoading && !loadedPreflightIds.has(record.id))) {
               return (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Spin size="small" />
@@ -882,7 +949,17 @@ export function MergeRequestTab({
                 </span>
               )
             }
-            const eff = deriveEffectiveState(status, record.createMode, false)
+            // 只有当 qualityGate.status 为可信的 PASSED/FAILED 终态时，才作为最后的兜底渲染
+            //（绝不能兜底 PENDING，因为 placeholder 写死 PENDING 会把新 MANUAL 任务误渲染成"待预检通过"）
+            let effectiveStatus: PreflightUiStatus | undefined = status
+            if (!effectiveStatus && initialRecoveryDone && hintBackendStarted) {
+              switch (qgStatus) {
+                case 'PASSED': effectiveStatus = 'WAITING_CQ'; break
+                case 'FAILED': effectiveStatus = 'FAILED'; break
+                default: effectiveStatus = undefined
+              }
+            }
+            const eff = deriveEffectiveState(effectiveStatus, record.createMode, false)
             const { text, loading, disabled, failed, clickable } = preflightButtonLabel(eff, isAdmin)
 
             // MR_CREATED：后端已在 GitHub 成功创建 PR
@@ -934,8 +1011,8 @@ export function MergeRequestTab({
             // 申请失败：显示 tooltip 原因
             let tip: string | null = null
             if (eff === 'FAILED') {
-              if (status === 'CQ_REJECTED') tip = 'CQ+1 未通过，申请失败'
-              else if (status === 'FAILED') tip = '质量门禁失败'
+              if (effectiveStatus === 'CQ_REJECTED') tip = 'CQ+1 未通过，申请失败'
+              else if (effectiveStatus === 'FAILED') tip = '质量门禁失败'
               else tip = '预检上下文过期，请刷新重试'
             } else if (eff === 'IDLE') {
               // 质量门禁、commit/push 与分支上下文由后端预检统一校验，

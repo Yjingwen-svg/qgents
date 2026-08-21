@@ -55,11 +55,11 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, retr
     setRetrySubmitted(true)
     onRetryRequested?.(run.id)
     retry.mutate(run.id, {
-      onSuccess: () => {
-        // 后端 retry 是 202 异步受理，返回的是「源 run」自身（toSummary(source)），新 run 尚未创建。
-        // 不能把 next.id（= 源 run id）当成新 run 去 onRunChange 跳转，否则选中会跳到旧卡片；
-        // 改为以源 run id 标记「等待其重试的新 run」，由 retryOfTaskRunId 匹配真正的新 run。
+      onSuccess: (nextRun) => {
+        // §12.2：202 已返回新 TaskRun（retryOfTaskRunId 指向当前源 run）。
+        // 立即切换右栏到该真实返回值，避免用户只看到短暂 loading 后仍停在旧失败执行。
         onRetryStarted?.(run.id)
+        onRunChange(nextRun.id)
       },
       onError: (error) => {
         onRetryRequestError?.()
@@ -78,16 +78,15 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, retr
     })
   }
 
-  // run 可重试状态与后端 RETRYABLE 一致；任务已取消后，历史运行仅供诊断查看，
-  // 绝不能再从旧失败记录启动重试。取消中的任务也不应暴露重试入口。
-  // 任务进入 RUNNING 仍允许当前失败步骤续跑，由 retryEligibleRunIds 负责排除已被后续 run 取代的旧记录。
+  // retry 资格由正式 TaskRun 状态和同一 TaskStep 的 retry 链决定。
+  // §12 规定 FAILED / CANCELLED / BLOCKED 均可重试；不能额外以 Task 聚合状态隐藏合法入口。
+  // retryEligibleRunIds 仍会排除已被后续运行取代的旧记录，避免历史卡片重复创建重试。
   const runRetryable = run ? ['FAILED', 'CANCELLED', 'BLOCKED'].includes(run.status) : false
-  const taskResumable = ['PLANNING', 'PENDING', 'FAILED'].includes(task.status)
-  const canRetry = runRetryable && taskResumable && retryEligibleRunIds.has(run?.id ?? '')
+  const canRetry = runRetryable && retryEligibleRunIds.has(run?.id ?? '')
   // 取消按钮状态集与后端 CANCELLABLE_RUNNING 一致：QUEUED 直达 CANCELLED，RUNNING/WAITING_*/BLOCKED 置
   // CANCELLING；CANCELLING 本身不可再取消（后端 409），因此不显示取消按钮。
   const canCancel = run ? ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED'].includes(run.status) : false
-  return <section ref={panelRef} className={styles.runInspectorPanel} data-testid="run-inspector-panel"><div className={styles.runInspectorPanelHeading}><div><Title level={4}>本次执行</Title></div><div>{canRetry ? <Button size="small" onClick={retryRun} loading={retrySubmitted || retry.isPending} disabled={pending}>重试</Button> : null}{canCancel ? <Button size="small" danger onClick={cancelRun} loading={cancel.isPending} disabled={pending}>取消</Button> : null}</div></div>{retrySubmitted ? <Alert type="info" showIcon message="重试请求已提交，正在创建新的执行记录" /> : null}{!taskRunId ? <InspectorState text="选择一条执行记录查看详情" /> : runQuery.isLoading ? <InspectorState loading /> : runQuery.isError ? <InspectorError error={runQuery.error} resource="执行详情" /> : !run || run.taskId !== taskId ? <InspectorState text="执行记录不存在或不属于当前任务" /> : <RunInspectorContent run={run} task={task} logsQuery={logsQuery} diagnosticsQuery={diagnosticsQuery} contextQuery={contextQuery} requestsQuery={requestsQuery} projectId={projectId} />}<AcceptanceOverview task={task} /></section>
+  return <section ref={panelRef} className={styles.runInspectorPanel} data-testid="run-inspector-panel"><div className={styles.runInspectorPanelHeading}><div><Title level={4}>本次执行</Title></div><div>{canRetry ? <Button size="small" onClick={retryRun} loading={retrySubmitted || retry.isPending} disabled={pending}>重试</Button> : null}{canCancel ? <Button size="small" danger onClick={cancelRun} loading={cancel.isPending} disabled={pending}>取消本次执行</Button> : null}</div></div>{retrySubmitted ? <Alert type="info" showIcon message="重试请求已提交，正在创建新的执行记录" /> : null}{!taskRunId ? <InspectorState text="选择一条执行记录查看详情" /> : runQuery.isLoading ? <InspectorState loading /> : runQuery.isError ? <InspectorError error={runQuery.error} resource="执行详情" /> : !run || run.taskId !== taskId ? <InspectorState text="执行记录不存在或不属于当前任务" /> : <RunInspectorContent run={run} task={task} logsQuery={logsQuery} diagnosticsQuery={diagnosticsQuery} contextQuery={contextQuery} requestsQuery={requestsQuery} projectId={projectId} />}<AcceptanceOverview task={task} /></section>
 }
 
 function RunInspectorContent({ run, task, logsQuery, diagnosticsQuery, contextQuery, requestsQuery, projectId }: { run: TaskRunDetail; task: Task; logsQuery: ReturnType<typeof useInfiniteTaskRunLogs>; diagnosticsQuery: ReturnType<typeof useTaskRunDiagnostics>; contextQuery: ReturnType<typeof useTaskRunExecutionContext>; requestsQuery: ReturnType<typeof useTaskRunInputRequests>; projectId: string }) {
@@ -125,7 +124,7 @@ function DiagnosticSection({ query }: { query: ReturnType<typeof useTaskRunDiagn
   if (!diagnostic) return null
   const failure = diagnostic.failure
   const workerExecutions = diagnostic.workerExecutions
-  return <InspectorSection title="失败诊断" icon={<CodeOutlined />}><div className={styles.inspectorDiagnostic}>{failure ? <div><Text strong type="danger">{failure.failureCode ?? failure.title}</Text><Text>{failure.summary}</Text></div> : <Text type="secondary">当前运行没有失败归因</Text>}{workerExecutions.length ? <div><Text strong>Worker 工具执行</Text>{workerExecutions.map((execution) => <div className={styles.inspectorDiagnosticItem} key={execution.executionId}><Text code>{execution.executionId}</Text><Text>{execution.tool ?? '未知工具'} · {execution.status ?? '未知状态'}</Text>{execution.failureCode ? <Text type="danger">{execution.failureCode}: {execution.failureSummary ?? '无摘要'}</Text> : null}</div>)}</div> : <Text type="secondary">本次运行未调用 Sandbox Worker</Text>}</div></InspectorSection>
+  return <InspectorSection title="失败诊断" icon={<CodeOutlined />}><div className={styles.inspectorDiagnostic}>{failure ? <div><Text strong type="danger">{failure.failureCode ?? failure.title}</Text><Text>{failure.summary}</Text></div> : <Text type="secondary">当前运行没有失败归因</Text>}{workerExecutions.length ? <div><Text strong>Worker 工具执行</Text>{workerExecutions.map((execution) => <div className={styles.inspectorDiagnosticItem} key={execution.executionId}><Text>{execution.tool ?? '未知工具'} · {execution.status ?? '未知状态'}</Text>{execution.failureCode ? <Text type="danger">{execution.failureCode}: {execution.failureSummary ?? '无摘要'}</Text> : null}</div>)}</div> : <Text type="secondary">本次运行未调用 Sandbox Worker</Text>}</div></InspectorSection>
 }
 
 function AcceptanceOverview({ task }: { task: Task }) {

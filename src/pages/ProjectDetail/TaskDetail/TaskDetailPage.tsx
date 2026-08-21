@@ -145,12 +145,29 @@ export default function TaskDetailPage() {
   const retryEligibleRunIds = useMemo(() => getRetryEligibleRunIds(recentRuns), [recentRuns])
   // retryingRunId 记的是「被重试的源 run id」；真正的新 run 是 retryOfTaskRunId === retryingRunId 的那条。
   // 重试请求已发送但新 TaskRun 尚未返回时进入过渡态，不能继续把旧失败运行当作当前状态。
+  const retryReplacementRun = retryingRunId === null
+    ? null
+    : recentRuns.find((run) => run.retryOfTaskRunId === retryingRunId) ?? null
   const retryPending = retryRequestedRunId !== null
-    || (retryingRunId !== null && !recentRuns.some((run) => run.retryOfTaskRunId === retryingRunId))
+    || (retryingRunId !== null && retryReplacementRun === null)
 
   useEffect(() => {
-    if (!retryingRunId || recentRuns.some((run) => run.retryOfTaskRunId === retryingRunId)) setRetryingRunId(null)
-  }, [recentRuns, retryingRunId])
+    if (!retryingRunId) return
+
+    if (retryReplacementRun) {
+      // 重试从右栏的源运行发起时，新运行到达后才接管该详情；用户主动清空或切换到其他历史运行时不抢占选择。
+      if (!hasClearedRunSelection && (selectedRunId === null || selectedRunId === retryingRunId)) {
+        const next = new URLSearchParams(searchParams)
+        next.set('runId', retryReplacementRun.id)
+        setSearchParams(next, { replace: true })
+      }
+      setRetryingRunId(null)
+      return
+    }
+
+    // 重试可从 FAILED、CANCELLED 或 BLOCKED 运行发起。任务聚合状态可能先更新，
+    // 新运行记录稍后才进入列表；在确认新 run 前持续轮询，不能按旧任务状态提前退出。
+  }, [hasClearedRunSelection, retryReplacementRun, retryingRunId, searchParams, selectedRunId, setSearchParams])
 
   // SSE 是主更新通道；活动任务额外每 3 秒刷新一次读取模型，覆盖事件延迟、断线和后端异步建 Run 的窗口。
   // 终态自动停止，且这里只读取服务端状态，不向缓存伪造 RUNNING/DELIVERING。

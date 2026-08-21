@@ -266,7 +266,13 @@ function resolveFileRepositoryIds(
 }
 
 function PatchPreview({ patch }: { patch: string }) {
-  return <pre className={styles.workspaceDiffPreviewPatch} data-testid="workspace-diff-preview-patch">{patch.split('\n').map((line, index) => <span key={`${index}:${line}`} className={styles[patchLineKind(line)]} data-testid={`workspace-diff-line-${patchLineKind(line)}`}>{line || ' '}{index < patch.split('\n').length - 1 ? '\n' : null}</span>)}</pre>
+  // 隐藏 Git 文件头与 hunk 标记；保留未改动上下文，方便用户阅读新增/删除代码所在的位置。
+  const visibleLines = patch.split('\n').filter(isVisiblePatchLine)
+  return <pre className={styles.workspaceDiffPreviewPatch} data-testid="workspace-diff-preview-patch">{visibleLines.map((line, index) => <span key={`${index}:${line}`} className={styles[patchLineKind(line)]} data-testid={`workspace-diff-line-${patchLineKind(line)}`}>{line || ' '}{index < visibleLines.length - 1 ? '\n' : null}</span>)}</pre>
+}
+
+function isVisiblePatchLine(line: string): boolean {
+  return !line.startsWith('diff --git ') && !line.startsWith('index ') && !line.startsWith('---') && !line.startsWith('+++') && !line.startsWith('@@')
 }
 
 function patchLineKind(line: string): 'workspaceDiffPreviewPatchMeta' | 'workspaceDiffPreviewPatchAdded' | 'workspaceDiffPreviewPatchDeleted' | 'workspaceDiffPreviewPatchContext' {

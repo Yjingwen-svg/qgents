@@ -286,6 +286,15 @@ export function useRetryTaskRunModel(projectId: string): UseMutationResult<TaskR
     mutationFn: (taskRunId) => taskRunsApi.retry(projectId, taskRunId),
     onSuccess: (taskRun, originalTaskRunId) => {
       queryClient.setQueryData(taskModelQueryKeys.taskRuns.detail(projectId, taskRun.id), taskRun)
+      // retry 的 202 响应已经携带真实的新 TaskRun。先写入已加载的列表缓存，
+      // 让“最近执行”和右侧详情立即切换；随后仍以列表失效后的服务端响应为准。
+      queryClient.setQueriesData<Page<TaskRunSummary>>(
+        { queryKey: taskModelQueryKeys.taskRuns.all(projectId, taskRun.taskId) },
+        (previous) => {
+          if (!previous || previous.data.some((run) => run.id === taskRun.id)) return previous
+          return { ...previous, data: [taskRun, ...previous.data] }
+        },
+      )
       void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.detail(projectId, originalTaskRunId) })
       // retry 是一次新的受控执行。接口返回新 TaskRun 后，后端会异步重新调度步骤、产物和 Preview；
       // 因此必须刷新同一 Task 的全部读取模型，不能只刷新旧运行和运行列表。
@@ -307,7 +316,12 @@ export function useCancelTaskRunModel(projectId: string): UseMutationResult<Task
     mutationFn: (taskRunId) => taskRunsApi.cancel(projectId, taskRunId),
     onSuccess: (taskRun) => {
       queryClient.setQueryData(taskModelQueryKeys.taskRuns.detail(projectId, taskRun.id), taskRun)
-      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.list(projectId, taskRun.taskId) })
+      // TaskRun 取消会改变任务、步骤和运行三个读取模型。不能只刷新运行列表，
+      // 否则执行流程会继续显示取消前缓存的 FAILED/RUNNING 状态。
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.all(projectId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.tasks.detail(projectId, taskRun.taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskSteps.all(projectId, taskRun.taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.taskRuns.all(projectId, taskRun.taskId) })
     },
   })
 }

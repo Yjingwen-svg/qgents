@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -223,15 +223,19 @@ describe('TaskDetailPage workbench', () => {
     expect(within(deliveryPanel).queryByTestId('code-delivery-card')).not.toBeInTheDocument()
   })
 
-  it('marks added and deleted workspace preview lines with dedicated code-diff styles', async () => {
+  it('hides Git patch metadata but keeps context with dedicated code-diff styles', async () => {
     const user = userEvent.setup()
     useWorkspaceDiffPreviewMock.mockReturnValue({ data: { kind: 'available', preview: { projectId: task.projectId, taskId: task.id, taskRunId: run.id, workspaceId: 'workspace-1', revision: 2, baseCommit: 'base-1', workingTreeHash: 'sha256:preview', filesChanged: 1, additions: 1, deletions: 1, patch: '@@ -1 +1 @@\n-old line\n+new line', createdAt: run.createdAt } }, isLoading: false, isError: false, refetch: vi.fn() })
     useWorkspaceDiffPreviewFilesMock.mockReturnValue({ data: [{ repositoryId: null, repositoryPath: 'web', path: 'src/login.ts', changeType: 'MODIFIED', additions: 1, deletions: 1, binary: false }], isLoading: false, isError: false, refetch: vi.fn() })
-    useWorkspaceDiffPreviewFilePatchMock.mockReturnValue({ data: { revision: 2, repositoryId: 'repo-1', path: 'src/login.ts', changeType: 'MODIFIED', additions: 1, deletions: 1, binary: false, patch: '@@ -1 +1 @@\n-old line\n+new line' }, isLoading: false, isError: false, refetch: vi.fn() })
+    useWorkspaceDiffPreviewFilePatchMock.mockReturnValue({ data: { revision: 2, repositoryId: 'repo-1', path: 'src/login.ts', changeType: 'MODIFIED', additions: 1, deletions: 1, binary: false, patch: 'diff --git a/src/login.ts b/src/login.ts\nindex 123..456 100644\n--- a/src/login.ts\n+++ b/src/login.ts\n@@ -1 +1 @@\n-old line\n+new line\n context line' }, isLoading: false, isError: false, refetch: vi.fn() })
     renderPage()
     await user.click(screen.getByText('查看实时 Diff'))
     await user.click(screen.getByRole('button', { name: /src\/login\.ts/ }))
-    expect(screen.getByTestId('workspace-diff-preview-patch')).toBeInTheDocument()
+    const preview = screen.getByTestId('workspace-diff-preview-patch')
+    expect(preview).toHaveTextContent('-old line')
+    expect(preview).toHaveTextContent('+new line')
+    expect(preview).not.toHaveTextContent('diff --git')
+    expect(preview).toHaveTextContent('context line')
     expect(screen.getByTestId('workspace-diff-line-workspaceDiffPreviewPatchDeleted')).toHaveTextContent('-old line')
     expect(screen.getByTestId('workspace-diff-line-workspaceDiffPreviewPatchAdded')).toHaveTextContent('+new line')
   })
@@ -342,16 +346,44 @@ describe('TaskDetailPage workbench', () => {
     expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument()
   })
 
-  it('keeps failed runs viewable but disables retry after the task is cancelled', () => {
-    const cancelledRun: TaskRunDetail = { ...run, status: 'FAILED', statusSummary: '执行失败' }
+  it('keeps a cancelled run retryable even when the Task aggregate is cancelled', () => {
+    const cancelledRun: TaskRunDetail = { ...run, status: 'CANCELLED', statusSummary: '执行已取消' }
     useTaskMock.mockReturnValue({ data: { ...task, status: 'CANCELLED' }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
     useTaskRunsMock.mockReturnValue({ data: page<TaskRunSummary>([cancelledRun]), error: null, isError: false, isLoading: false, refetch: vi.fn() })
     useTaskRunMock.mockReturnValue({ data: cancelledRun, error: null, isError: false, isLoading: false, refetch: vi.fn() })
 
     renderPage(`/app/projects/${task.projectId}/tasks/${task.id}?runId=${cancelledRun.id}`)
 
-    expect(screen.getByText('执行失败')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument()
+    expect(screen.getByText('执行已取消')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /重\s*试/ })).toBeInTheDocument()
+  })
+
+  it('immediately selects the TaskRun returned by retry and exits the transition after the list refreshes', async () => {
+    const user = userEvent.setup()
+    const sourceRun: TaskRunDetail = { ...run, id: 'run-retry-source', status: 'FAILED', updatedAt: '2026-08-11T08:40:00Z' }
+    const replacementRun: TaskRunDetail = { ...sourceRun, id: 'run-retry-replacement', status: 'RUNNING', retryOfTaskRunId: sourceRun.id, updatedAt: '2026-08-11T08:41:00Z' }
+    let taskData: Task = { ...task, status: 'FAILED' }
+    let runData: TaskRunSummary[] = [sourceRun]
+    const retryMutate = vi.fn((_taskRunId: string, callbacks?: { onSuccess?: (nextRun: TaskRunDetail) => void; onSettled?: () => void }) => {
+      callbacks?.onSuccess?.(replacementRun)
+      callbacks?.onSettled?.()
+    })
+
+    useTaskMock.mockImplementation(() => ({ data: taskData, error: null, isError: false, isLoading: false, refetch: vi.fn() }))
+    useTaskRunsMock.mockImplementation(() => ({ data: page(runData), error: null, isError: false, isLoading: false, refetch: vi.fn() }))
+    useTaskRunMock.mockImplementation(() => ({ ...idleQuery, data: sourceRun }))
+    useRetryTaskRunModelMock.mockReturnValue({ ...idleMutation, mutate: retryMutate })
+
+    const view = renderPage(`/app/projects/${task.projectId}/tasks/${task.id}?runId=${sourceRun.id}`)
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }))
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(`runId=${replacementRun.id}`))
+
+    taskData = { ...taskData, status: 'RUNNING' }
+    runData = [replacementRun, sourceRun]
+    view.rerender(<MemoryRouter initialEntries={[`/app/projects/${task.projectId}/tasks/${task.id}?runId=${replacementRun.id}`]}><Routes><Route path="/app/projects/:projectId/tasks/:taskId" element={<><TaskDetailPage /><LocationProbe /></>} /></Routes></MemoryRouter>)
+
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(`runId=${replacementRun.id}`))
+    expect(screen.queryByText('重试已受理，正在等待服务端返回运行记录')).not.toBeInTheDocument()
   })
 
   it('restores repository-level code change details in the main delivery area', () => {

@@ -7,6 +7,7 @@ import type { Task, TaskRunDetail } from '@/types/task-model'
 const taskCreateMock = vi.hoisted(() => vi.fn())
 const taskCancelMock = vi.hoisted(() => vi.fn())
 const taskRunRetryMock = vi.hoisted(() => vi.fn())
+const taskRunCancelMock = vi.hoisted(() => vi.fn())
 const diffAcceptMock = vi.hoisted(() => vi.fn())
 const taskRunGetMock = vi.hoisted(() => vi.fn())
 const mergeRequestCreateMock = vi.hoisted(() => vi.fn())
@@ -17,7 +18,7 @@ const mergeRequestRejectCqMock = vi.hoisted(() => vi.fn())
 vi.mock('@/api/taskModel', () => ({
   diffsApi: { accept: diffAcceptMock },
   tasksApi: { create: taskCreateMock, cancel: taskCancelMock },
-  taskRunsApi: { get: taskRunGetMock, retry: taskRunRetryMock },
+  taskRunsApi: { get: taskRunGetMock, retry: taskRunRetryMock, cancel: taskRunCancelMock },
   mergeRequestsApi: {
     create: mergeRequestCreateMock,
     merge: mergeRequestMergeMock,
@@ -34,6 +35,7 @@ import {
   useCreateTask,
   useMergeMergeRequest,
   useApproveMergeRequestCq,
+  useCancelTaskRunModel,
   useRetryTaskRunModel,
   useTaskRun,
 } from './task-model'
@@ -56,6 +58,7 @@ beforeEach(() => {
   taskCreateMock.mockReset()
   taskCancelMock.mockReset()
   taskRunRetryMock.mockReset()
+  taskRunCancelMock.mockReset()
   diffAcceptMock.mockReset()
   taskRunGetMock.mockReset()
   mergeRequestCreateMock.mockReset()
@@ -109,7 +112,9 @@ describe('new task model hooks', () => {
     }
     seed(taskModelQueryKeys.tasks.list('project-1', {}))
     seed(taskModelQueryKeys.taskSteps.list('project-1', 'task-1', {}))
-    seed(taskModelQueryKeys.taskRuns.list('project-1', 'task-1', {}))
+    const taskRunsListKey = taskModelQueryKeys.taskRuns.list('project-1', 'task-1', {})
+    const taskRunsList = queryClient.getQueryCache().build(queryClient, { queryKey: taskRunsListKey, queryFn: async () => null })
+    taskRunsList.setData({ data: [], page: { nextCursor: null, hasMore: false }, requestId: 'req-runs' })
     seed(taskModelQueryKeys.taskArtifacts.all('project-1', 'task-1'))
     seed(taskModelQueryKeys.diffs.list('project-1', {}))
     seed(taskModelQueryKeys.taskDiffReview.detail('project-1', 'task-1'))
@@ -117,6 +122,7 @@ describe('new task model hooks', () => {
     const { result } = renderHook(() => useRetryTaskRunModel('project-1'), { wrapper: wrapper(queryClient) })
     await act(async () => { await result.current.mutateAsync('run-1') })
     expect(queryClient.getQueryData(taskModelQueryKeys.taskRuns.detail('project-1', 'run-2'))).toEqual(taskRun)
+    expect(queryClient.getQueryData<TaskModelPage<TaskRunSummary>>(taskRunsListKey)?.data).toEqual([taskRun])
     expect(queryClient.getQueryState(taskModelQueryKeys.tasks.list('project-1', {}))?.isInvalidated).toBe(true)
     expect(queryClient.getQueryState(taskModelQueryKeys.taskSteps.list('project-1', 'task-1', {}))?.isInvalidated).toBe(true)
     expect(queryClient.getQueryState(taskModelQueryKeys.taskRuns.list('project-1', 'task-1', {}))?.isInvalidated).toBe(true)
@@ -124,6 +130,28 @@ describe('new task model hooks', () => {
     expect(queryClient.getQueryState(taskModelQueryKeys.diffs.list('project-1', {}))?.isInvalidated).toBe(true)
     expect(queryClient.getQueryState(taskModelQueryKeys.taskDiffReview.detail('project-1', 'task-1'))?.isInvalidated).toBe(true)
     expect(queryClient.getQueryState(taskModelQueryKeys.workspaceDiffPreview.detail('project-1', 'task-1'))?.isInvalidated).toBe(true)
+  })
+
+  it('refreshes Task and TaskStep projections after cancelling a TaskRun', async () => {
+    const cancelledRun: TaskRunDetail = { ...taskRun, id: 'run-1', status: 'CANCELLED', retryOfTaskRunId: null }
+    taskRunCancelMock.mockResolvedValue(cancelledRun)
+    const seed = (queryKey: readonly unknown[]) => {
+      const query = queryClient.getQueryCache().build(queryClient, { queryKey, queryFn: async () => null })
+      query.setData(null)
+    }
+    seed(taskModelQueryKeys.tasks.list('project-1', {}))
+    seed(taskModelQueryKeys.tasks.detail('project-1', 'task-1'))
+    seed(taskModelQueryKeys.taskSteps.list('project-1', 'task-1', {}))
+    seed(taskModelQueryKeys.taskRuns.list('project-1', 'task-1', {}))
+
+    const { result } = renderHook(() => useCancelTaskRunModel('project-1'), { wrapper: wrapper(queryClient) })
+    await act(async () => { await result.current.mutateAsync('run-1') })
+
+    expect(queryClient.getQueryData(taskModelQueryKeys.taskRuns.detail('project-1', 'run-1'))).toEqual(cancelledRun)
+    expect(queryClient.getQueryState(taskModelQueryKeys.tasks.list('project-1', {}))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(taskModelQueryKeys.tasks.detail('project-1', 'task-1'))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(taskModelQueryKeys.taskSteps.list('project-1', 'task-1', {}))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(taskModelQueryKeys.taskRuns.list('project-1', 'task-1', {}))?.isInvalidated).toBe(true)
   })
 
   it('stores accepted Diff details and refreshes the Diff list', async () => {

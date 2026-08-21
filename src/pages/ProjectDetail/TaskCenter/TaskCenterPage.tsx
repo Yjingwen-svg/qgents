@@ -78,7 +78,11 @@ export default function TaskCenterPage() {
     setPendingSearch(search)
   }, [search])
 
-  const query = useInfiniteTasks(projectId, { groupId, status: status === 'all' ? undefined : status, createdBy, repositoryId, keyword: search || undefined, limit: PAGE_SIZE })
+  // 「隐藏已完成任务」由服务端过滤（excludeStatus=SUCCEEDED）实现，保证游标分页正确；
+  // 有显式筛选时始终展示全部（含已完成），与既有行为一致。
+  const hasExplicitFilter = status !== 'all' || Boolean(createdBy || groupId || repositoryId || search)
+  const hideCompletedTasks = !showCompletedTasks && !hasExplicitFilter
+  const query = useInfiniteTasks(projectId, { groupId, status: status === 'all' ? undefined : status, excludeStatus: hideCompletedTasks ? 'SUCCEEDED' : undefined, createdBy, repositoryId, keyword: search || undefined, limit: PAGE_SIZE })
   const mainRef = useRef<HTMLElement>(null)
   const { visibleTaskCount, cardGap } = useTaskBoardLayout(mainRef)
   const [currentPage, setCurrentPage] = useState(1)
@@ -92,9 +96,8 @@ export default function TaskCenterPage() {
   const repositoryOptions = useMemo(() => uniqueOptions(tasks.flatMap((task) => taskRepositories(task).map((repository) => ({ label: repository.name, value: repository.repositoryId })))), [tasks])
   const createdByOptions = useMemo(() => uniqueOptions(tasks.flatMap((task) => task.createdByUser ? [{ label: task.createdByUser.displayName, value: task.createdByUser.id }] : [])), [tasks])
   const hasServerItems = query.data?.pages.some((page) => page.data.length > 0) ?? false
-  const hasExplicitFilter = status !== 'all' || Boolean(createdBy || groupId || repositoryId || search)
-  const hideCompletedTasks = !showCompletedTasks && !hasExplicitFilter
-  const displayedTasks = hideCompletedTasks ? tasks.filter((task) => task.status !== 'SUCCEEDED') : tasks
+  // 已完成任务的隐藏已由服务端 excludeStatus=SUCCEEDED 完成，此处不再本地过滤。
+  const displayedTasks = tasks
   const isUnfiltered = !hasExplicitFilter
   const pageStart = (currentPage - 1) * visibleTaskCount
   const visibleTasks = displayedTasks.slice(pageStart, pageStart + visibleTaskCount)

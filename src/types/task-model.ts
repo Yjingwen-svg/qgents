@@ -130,6 +130,8 @@ export interface TaskCreateInput {
 export interface TaskListFilters {
   groupId?: string
   status?: TaskStatus
+  /** 排除指定状态（逗号分隔多值），服务端 not in 过滤——任务中心「隐藏已完成任务」传 SUCCEEDED。 */
+  excludeStatus?: TaskStatus
   createdBy?: string
   repositoryId?: string
   keyword?: string

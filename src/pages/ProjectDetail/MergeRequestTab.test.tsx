@@ -7,11 +7,13 @@ import { MergeRequestTab } from './MergeRequestTab'
 const useMergeRequestsMock = vi.hoisted(() => vi.fn())
 const useMergeMergeRequestMock = vi.hoisted(() => vi.fn())
 const useRequestMergeRequestPreflightMock = vi.hoisted(() => vi.fn())
+const useSyncMergeRequestMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/task-model', () => ({
   useMergeRequests: useMergeRequestsMock,
   useMergeMergeRequest: useMergeMergeRequestMock,
   useRequestMergeRequestPreflight: useRequestMergeRequestPreflightMock,
+  useSyncMergeRequest: useSyncMergeRequestMock,
 }))
 
 const items: MergeRequestSummary[] = [
@@ -88,6 +90,7 @@ function renderTab(path = '/code?tab=mr') {
 beforeEach(() => {
   useMergeMergeRequestMock.mockReturnValue({ mutateAsync: vi.fn() })
   useRequestMergeRequestPreflightMock.mockReturnValue({ mutateAsync: vi.fn() })
+  useSyncMergeRequestMock.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue(items[0]) })
   useMergeRequestsMock.mockReturnValue({
     data: { data: items, page: { nextCursor: null, hasMore: false }, requestId: 'r1' },
     isLoading: false,

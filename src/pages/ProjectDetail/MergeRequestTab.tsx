@@ -9,6 +9,7 @@ import {
   useMergeMergeRequest,
   useMergeRequests,
   useRequestMergeRequestPreflight,
+  useSyncMergeRequest,
 } from '@/hooks/task-model'
 import { formatApiError } from '@/utils/formatApiError'
 import { ApiError } from '@/api/client'
@@ -214,6 +215,8 @@ export function MergeRequestTab({
   })
   // 使用本地 state 包裹，允许预检 MR_CREATED 时乐观回写 webUrl/number
   const [items, setItems] = useState<MergeRequestSummary[]>(query.data?.data ?? [])
+  const itemsRef = useRef(items)
+  itemsRef.current = items
   const lastDataRef = useRef(query.data?.data)
   useEffect(() => {
     const latest = query.data?.data ?? []
@@ -240,6 +243,7 @@ export function MergeRequestTab({
 
   const mergeMr = useMergeMergeRequest(projectId)
   const requestPreflight = useRequestMergeRequestPreflight(projectId)
+  const syncMr = useSyncMergeRequest(projectId)
   const [mergingId, setMergingId] = useState<string | null>(null)
   const [creatingId, setCreatingId] = useState<string | null>(null)
   // 记录每行的预检状态（前端跟踪，真实环境由 SSE/后端返回）
@@ -279,6 +283,40 @@ export function MergeRequestTab({
     }
     await Promise.all(executing)
   }
+
+  // GitHub webhook 可能因本地测试环境、隧道或网络问题延迟到达；定期同步 OPEN MR，
+  // 避免远端已合并但本地镜像仍显示“合并MR”。列表只同步当前前 20 条，且限制并发量。
+  useEffect(() => {
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const MR_SYNC_INTERVAL_MS = 15000
+    const MR_SYNC_CONCURRENCY = 3
+
+    const refreshRemoteStatuses = async () => {
+      const openRows = itemsRef.current
+        .filter((mr) => mr.status === 'OPEN' && Boolean(mr.id))
+        .slice(0, 20)
+      await asyncPool(openRows, MR_SYNC_CONCURRENCY, async (row) => {
+        try {
+          const synced = await syncMr.mutateAsync(row.id)
+          if (cancelled) return
+          setItems((prev) => prev.map((item) => item.id === synced.id ? { ...item, ...synced } : item))
+        } catch {
+          // webhook 或后续轮询可能完成同步；单行同步失败不影响列表其余内容。
+        }
+      })
+      if (!cancelled) {
+        timer = setTimeout(() => void refreshRemoteStatuses(), MR_SYNC_INTERVAL_MS)
+      }
+    }
+
+    void refreshRemoteStatuses()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId])
 
   useEffect(() => {
     if (displayItems.length === 0) return // 等待 MR 列表加载完成

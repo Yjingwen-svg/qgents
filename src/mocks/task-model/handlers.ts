@@ -555,6 +555,7 @@ export const taskModelDiffHandlers: HttpHandler[] = [
       body: body.body,
       authorUserId: 'user-001',
       authorName: null,
+      authorAvatarUrl: 'https://cdn.example.com/avatars/user-001.png',
       createdAt: new Date().toISOString(),
     }
     store.diffComments.set(diff.id, [...(store.diffComments.get(diff.id) ?? []), comment])

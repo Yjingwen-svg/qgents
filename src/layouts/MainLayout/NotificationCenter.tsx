@@ -24,6 +24,7 @@ const { Text } = Typography
 const KIND_META: Record<NotificationKind, { icon: ReactNode; color: string }> = {
   TASK_COMPLETED: { icon: <CheckCircleOutlined />, color: '#22c55e' },
   TASK_FAILED: { icon: <CloseCircleOutlined />, color: '#ef4444' },
+  TASK_AWAITING_CONFIRMATION: { icon: <InboxOutlined />, color: '#3b82f6' },
   AGENT_INPUT_REQUIRED: { icon: <QuestionCircleOutlined />, color: '#f59e0b' },
   DELIVERABLE_PENDING: { icon: <InboxOutlined />, color: '#3b82f6' },
   MR_PENDING: { icon: <BranchesOutlined />, color: '#a855f7' },
@@ -48,6 +49,7 @@ export function notificationTargetPath(n: Notification): string | null {
       return n.groupId ? PATHS.projectReqChat(projectId, n.groupId) : PATHS.projectTasks(projectId)
     case 'TASK_COMPLETED':
     case 'TASK_FAILED':
+    case 'TASK_AWAITING_CONFIRMATION':
     case 'AGENT_INPUT_REQUIRED':
       return n.resourceId ? PATHS.projectTaskDetail(projectId, n.resourceId) : PATHS.projectTasks(projectId)
     case 'MR_PENDING':

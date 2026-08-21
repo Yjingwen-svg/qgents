@@ -17,10 +17,12 @@ interface Props {
   onRetryRequested?: (taskRunId: string) => void
   onRetryStarted?: (taskRunId: string) => void
   onRetryRequestError?: () => void
+  /** 任务级重试过渡态：重试已受理、新 run 尚未出现时禁用重试按钮，避免对同一源 run 反复提交。 */
+  retryPending?: boolean
   focusRequest?: number
 }
 
-export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, onRunChange, onRetryRequested, onRetryStarted, onRetryRequestError, focusRequest = 0 }: Props) {
+export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, onRunChange, onRetryRequested, onRetryStarted, onRetryRequestError, retryPending = false, focusRequest = 0 }: Props) {
   const panelRef = useRef<HTMLElement>(null)
   const runQuery = useTaskRun(projectId, taskRunId ?? '')
   const logsQuery = useInfiniteTaskRunLogs(projectId, taskRunId ?? '', { limit: 100 })
@@ -31,7 +33,7 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, onRu
   const cancel = useCancelTaskRunModel(projectId)
   const run = runQuery.data
   const [retrySubmitted, setRetrySubmitted] = useState(false)
-  const pending = retry.isPending || cancel.isPending || retrySubmitted
+  const pending = retry.isPending || cancel.isPending || retrySubmitted || retryPending
 
   useEffect(() => {
     if (focusRequest === 0 || !taskRunId) return
@@ -67,8 +69,14 @@ export function TaskRunInspectorPanel({ projectId, task, taskId, taskRunId, onRu
     cancel.mutate(run.id, { onError: (error) => { if (error instanceof ApiError && error.status === 409) void runQuery.refetch() } })
   }
 
-  const canRetry = run ? ['FAILED', 'CANCELLED', 'BLOCKED'].includes(run.status) : false
-  const canCancel = run ? ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED', 'CANCELLING'].includes(run.status) : false
+  // run 可重试状态与后端 RETRYABLE 一致；且所属 task 必须处于可续跑状态（后端 RESUMABLE_TASK_STATUSES），
+  // 否则任务已进入 RUNNING（后续步骤执行中）时，对先前失败 step 的重试提交必被后端 409 拒绝。
+  const runRetryable = run ? ['FAILED', 'CANCELLED', 'BLOCKED'].includes(run.status) : false
+  const taskResumable = ['PLANNING', 'PENDING', 'FAILED', 'CANCELLED'].includes(task.status)
+  const canRetry = runRetryable && taskResumable
+  // 取消按钮状态集与后端 CANCELLABLE_RUNNING 一致：QUEUED 直达 CANCELLED，RUNNING/WAITING_*/BLOCKED 置
+  // CANCELLING；CANCELLING 本身不可再取消（后端 409），因此不显示取消按钮。
+  const canCancel = run ? ['QUEUED', 'RUNNING', 'WAITING_INPUT', 'WAITING_APPROVAL', 'BLOCKED'].includes(run.status) : false
   return <section ref={panelRef} className={styles.runInspectorPanel} data-testid="run-inspector-panel"><div className={styles.runInspectorPanelHeading}><div><Title level={4}>本次执行</Title></div><div>{canRetry ? <Button size="small" onClick={retryRun} loading={retrySubmitted || retry.isPending} disabled={pending}>重试</Button> : null}{canCancel ? <Button size="small" danger onClick={cancelRun} loading={cancel.isPending} disabled={pending}>取消</Button> : null}</div></div>{retrySubmitted ? <Alert type="info" showIcon message="重试请求已提交，正在创建新的执行记录" /> : null}{!taskRunId ? <InspectorState text="选择一条执行记录查看详情" /> : runQuery.isLoading ? <InspectorState loading /> : runQuery.isError ? <InspectorError error={runQuery.error} resource="执行详情" /> : !run || run.taskId !== taskId ? <InspectorState text="执行记录不存在或不属于当前任务" /> : <RunInspectorContent run={run} task={task} logsQuery={logsQuery} diagnosticsQuery={diagnosticsQuery} contextQuery={contextQuery} requestsQuery={requestsQuery} projectId={projectId} />}<AcceptanceOverview task={task} /></section>
 }
 

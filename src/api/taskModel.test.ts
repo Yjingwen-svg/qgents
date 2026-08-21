@@ -111,7 +111,7 @@ describe('new task model API', () => {
     }))
   })
 
-  it('creates a merge request with the documented body and idempotency header', async () => {
+  it('requests MR preflight with the documented task context', async () => {
     const fetchMock = vi.mocked(fetch)
     await mergeRequestsApi.create('project-1', {
       taskId: 'task-1',
@@ -120,15 +120,10 @@ describe('new task model API', () => {
       title: '实现邮箱登录',
     })
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/projects/project-1/merge-requests', expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith('/api/projects/project-1/merge-requests/preflight', expect.objectContaining({
       method: 'POST',
       headers: expect.objectContaining({ 'Idempotency-Key': 'idempotency-key' }),
-      body: JSON.stringify({
-        taskId: 'task-1',
-        repositoryId: 'repo-1',
-        targetBranch: 'main',
-        title: '实现邮箱登录',
-      }),
+      body: JSON.stringify({ taskId: 'task-1', repositoryId: 'repo-1' }),
     }))
   })
 
@@ -168,6 +163,19 @@ describe('new task model API', () => {
       method: 'POST',
       headers: expect.objectContaining({ 'Idempotency-Key': 'idempotency-key' }),
     }))
+  })
+
+  it('syncs an MR from GitHub with an idempotent write', async () => {
+    const fetchMock = vi.mocked(fetch)
+    await mergeRequestsApi.sync('project-1', 'mr-1')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/project-1/merge-requests/mr-1/sync',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'idempotency-key' }),
+      }),
+    )
   })
 
   it('posts CQ approvals and rejections with Idempotency-Key and reason', async () => {

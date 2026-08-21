@@ -12,7 +12,9 @@ const remoteBranchesMock = vi.hoisted(() => vi.fn())
 const groupsMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/task-model', () => ({ useCreateTask: () => mutationMock }))
-vi.mock('@/api/github', () => ({ githubApi: { listProjectRepositories: repositoriesMock, listRemoteBranches: remoteBranchesMock } }))
+vi.mock('@/api/github', () => ({
+  githubApi: { listProjectRepositories: repositoriesMock, listRemoteBranches: remoteBranchesMock },
+}))
 vi.mock('@/api', async () => {
   const actual = await vi.importActual<typeof import('@/api')>('@/api')
   return { ...actual, groupApi: { listByProject: groupsMock } }
@@ -28,6 +30,7 @@ const task = { id: 'task-1' }
 const repository = {
   id: 'binding-1', installationId: 'installation-1', repositoryId: 'repo-1', fullName: 'org/repo', githubUrl: 'https://github.com/org/repo', defaultBranch: 'main', boundProjectId: 'project-test', boundProjectName: 'Test', syncStatus: 'SYNCED' as const,
 }
+const remoteBranch = { name: 'main', isProjectDefault: true, isGithubDefault: true, headCommit: 'abc1234' }
 const requirementGroup = { id: 'group-test', projectId: 'project-test', type: 'REQUIREMENT' as const, title: '登录功能', status: 'ACTIVE' as const }
 
 function renderModal(onClose = vi.fn()) {
@@ -36,20 +39,44 @@ function renderModal(onClose = vi.fn()) {
 }
 
 beforeEach(() => {
-  mutationMock.mutateAsync.mockReset(); mutationMock.reset.mockReset(); mutationMock.isPending = false; mutationMock.error = null; navigateMock.mockReset(); repositoriesMock.mockReset(); repositoriesMock.mockResolvedValue([repository]); remoteBranchesMock.mockReset(); remoteBranchesMock.mockResolvedValue([{ name: 'main', headCommit: 'abc123', isProjectDefault: true, isGithubDefault: true, canCreateTaskFrom: true, canDelete: false }]); groupsMock.mockReset(); groupsMock.mockResolvedValue([requirementGroup])
+  mutationMock.mutateAsync.mockReset(); mutationMock.reset.mockReset(); mutationMock.isPending = false; mutationMock.error = null; navigateMock.mockReset(); repositoriesMock.mockReset(); repositoriesMock.mockResolvedValue([repository]); remoteBranchesMock.mockReset(); remoteBranchesMock.mockResolvedValue([remoteBranch]); groupsMock.mockReset(); groupsMock.mockResolvedValue([requirementGroup])
 })
 
 describe('TaskTriggerModal', () => {
-  it('submits only the new Task fields', async () => {
+  it('submits per-repository baseRef with each repository branch', async () => {
     const user = userEvent.setup(); mutationMock.mutateAsync.mockResolvedValue(task); renderModal()
     await user.type(screen.getByLabelText('任务标题'), ' 新任务')
     await user.click(screen.getByLabelText('仓库'))
     await user.click(await screen.findByText('org/repo'))
-    expect(screen.getByText('默认基准：main')).toBeInTheDocument()
+    // 默认对齐到项目默认分支 main
+    expect(await screen.findByText('main')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '创建任务' }))
     await waitFor(() => expect(mutationMock.mutateAsync).toHaveBeenCalledTimes(1))
-    expect(mutationMock.mutateAsync).toHaveBeenCalledWith({ requirementGroupId: 'group-test', title: '新任务', requirement: 'initial requirement', repositoryIds: ['binding-1'], repositoryRefs: [{ repositoryId: 'binding-1', baseRef: 'main' }] })
+    expect(mutationMock.mutateAsync).toHaveBeenCalledWith({
+      requirementGroupId: 'group-test',
+      title: '新任务',
+      requirement: 'initial requirement',
+      repositoryIds: ['binding-1'],
+      repositoryRefs: [{ repositoryId: 'binding-1', baseRef: 'main' }],
+    })
     expect(navigateMock).toHaveBeenCalledWith('/app/projects/project-test/tasks?taskId=task-1')
+  })
+
+  it('submits null baseRefs when the user clears the branch selection (default branch fallback)', async () => {
+    const user = userEvent.setup(); mutationMock.mutateAsync.mockResolvedValue(task); renderModal()
+    await user.type(screen.getByLabelText('任务标题'), '新任务')
+    await user.click(screen.getByLabelText('仓库'))
+    await user.click(await screen.findByText('org/repo'))
+    // 清空该仓库的分支选择（antd Select 的清除按钮）
+    await waitFor(() => expect(remoteBranchesMock).toHaveBeenCalled())
+    const clearButton = (await screen.findByText('main')).closest('.ant-select')?.querySelector('.ant-select-clear') as HTMLElement
+    expect(clearButton).not.toBeNull()
+    await user.click(clearButton)
+    await user.click(screen.getByRole('button', { name: '创建任务' }))
+    await waitFor(() => expect(mutationMock.mutateAsync).toHaveBeenCalledTimes(1))
+    expect(mutationMock.mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ repositoryRefs: [{ repositoryId: 'binding-1', baseRef: 'main' }] }),
+    )
   })
 
   it('does not render legacy start mode controls', () => {

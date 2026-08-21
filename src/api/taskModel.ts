@@ -270,6 +270,14 @@ export const mergeRequestsApi = {
     )
   },
 
+  /** 从 GitHub 同步真实 MR 状态（OPEN/MERGED/CLOSED 等）。 */
+  sync(projectId: string, mergeRequestId: string) {
+    return requestModelData<unknown>(`/projects/${projectId}/merge-requests/${mergeRequestId}/sync`, {
+      method: 'POST',
+      headers: writeModelHeaders(),
+    }).then(mapMergeRequest)
+  },
+
   checks(projectId: string, mergeRequestId: string) {
     return requestModelData<unknown>(
       `/projects/${projectId}/merge-requests/${mergeRequestId}/checks`,

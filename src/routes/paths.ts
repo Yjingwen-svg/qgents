@@ -104,6 +104,8 @@ export const PATHS = {
    * TODO[后端联调]: 见接口文档 §6 GitHub App 与项目仓库
    */
   GITHUB_INTEGRATION: '/app/integrations/github',
+  /** 当前用户个人 GitHub OAuth 授权，不属于团队 GitHub App 集成页 */
+  GITHUB_OAUTH: '/app/settings/integrations/github',
   githubIntegration: (teamId: string) =>
     `/app/integrations/github?teamId=${encodeURIComponent(teamId)}`,
 

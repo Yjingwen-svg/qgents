@@ -9,6 +9,7 @@
 export type NotificationKind =
   | 'TASK_COMPLETED' // 任务完成
   | 'TASK_FAILED' // 任务失败
+  | 'TASK_AWAITING_CONFIRMATION' // 任务 Diff 待确认（WAITING_DIFF_CONFIRMATION，跳任务详情）
   | 'AGENT_INPUT_REQUIRED' // Agent 需要处理（对应 input-required / approval-required）
   | 'DELIVERABLE_PENDING' // 交付物待验收
   | 'MR_PENDING' // MR 待处理

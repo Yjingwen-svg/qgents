@@ -20,6 +20,7 @@ import {
   ClockCircleFilled,
   CloseCircleFilled,
   CopyOutlined,
+  SyncOutlined,
 } from '@ant-design/icons'
 import { githubApi } from '@/api/github'
 import { projectApi } from '@/api/project'
@@ -33,6 +34,7 @@ import {
   useMergeMergeRequest,
   useMergeRequest,
   useMergeRequestChecks,
+  useSyncMergeRequest,
   useRejectMergeRequestCq,
   useTask,
 } from '@/hooks/task-model'
@@ -147,6 +149,7 @@ export default function MergeRequestDetailPage() {
 
   const detailQuery = useMergeRequest(projectId, mergeRequestId)
   const checksQuery = useMergeRequestChecks(projectId, mergeRequestId)
+  const syncMr = useSyncMergeRequest(projectId)
   const mergeMr = useMergeMergeRequest(projectId)
   const approveCq = useApproveMergeRequestCq(projectId)
   const rejectCq = useRejectMergeRequestCq(projectId)
@@ -224,6 +227,16 @@ export default function MergeRequestDetailPage() {
             return Promise.reject(error)
           },
         ),
+    })
+  }
+
+  function handleSync() {
+    if (!mr) return
+    syncMr.mutate(mr.id, {
+      onSuccess: (updated) => {
+        message.success(updated.status === 'MERGED' ? '已同步：MR 已合并' : 'GitHub 状态已同步')
+      },
+      onError: (error) => message.error(formatApiError(error)),
     })
   }
 
@@ -349,6 +362,14 @@ export default function MergeRequestDetailPage() {
         <div className={styles.actions}>
           <Button icon={<CopyOutlined />} onClick={() => void copyLink()}>
             复制链接
+          </Button>
+          <Button
+            icon={<SyncOutlined />}
+            loading={syncMr.isPending}
+            onClick={handleSync}
+            aria-label="sync-merge-request"
+          >
+            同步 GitHub 状态
           </Button>
           {githubUrl ? (
             <Button href={githubUrl} target="_blank" rel="noreferrer">

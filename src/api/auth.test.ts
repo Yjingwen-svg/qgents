@@ -18,6 +18,61 @@ describe('authApi.updateMe', () => {
   })
 })
 
+describe('GitHub OAuth API', () => {
+  it('starts personal GitHub authorization with the documented client query', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: {
+        authorizationUrl: 'https://github.com/login/oauth/authorize?state=signed',
+        expiresAt: '2026-08-20T15:00:00Z',
+      },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    const result = await authApi.startGithubOAuth('WEB')
+
+    expect(result.authorizationUrl).toContain('github.com/login/oauth/authorize')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/me/integrations/github/oauth/start?client=WEB',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
+    )
+  })
+
+  it('reads status without exposing any token-shaped field', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: {
+        authorized: true,
+        provider: 'GITHUB',
+        githubUserId: 123,
+        githubLogin: 'octocat',
+        scopes: ['public_repo'],
+        authorizedAt: null,
+        lastValidatedAt: null,
+        canCreatePublicPersonalRepository: true,
+        canCreatePrivatePersonalRepository: true,
+        personalRepositorySetup: 'READY',
+        expectedInstallationLogin: null,
+      },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    const result = await authApi.getGithubOAuthStatus()
+
+    expect(result.githubLogin).toBe('octocat')
+    expect(fetchMock).toHaveBeenCalledWith('/api/me/integrations/github/oauth', expect.objectContaining({
+      headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+    }))
+  })
+
+  it('revokes personal GitHub authorization through the documented endpoint', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }))
+
+    await authApi.revokeGithubOAuth()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/me/integrations/github/oauth',
+      expect.objectContaining({ method: 'DELETE' }),
+    )
+  })
+})
+
 describe('uploadAvatar', () => {
   it('runs credential → OSS PUT → confirm and returns the public avatar URL', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')

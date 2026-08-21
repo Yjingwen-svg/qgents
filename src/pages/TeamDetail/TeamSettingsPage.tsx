@@ -30,7 +30,7 @@ import type { TableProps } from 'antd'
 const { Title, Text } = Typography
 
 const ROLE_OPTIONS: { value: TeamRole; label: string }[] = [
-  { value: 'TEAM_OWNER', label: 'Owner' },
+  // Owner 只能在创建团队时产生，邀请接口目前仅支持 TEAM_MEMBER。
   { value: 'TEAM_MEMBER', label: 'Member' },
 ]
 

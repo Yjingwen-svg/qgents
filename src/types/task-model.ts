@@ -45,7 +45,7 @@ export interface TaskRequirementGroupSummary { id: string; name: string; status:
 export interface TaskUserSummary { id: string; displayName: string; avatarUrl: string | null }
 export interface TaskRepositorySummary { repositoryId: string; name: string; fullName: string; provider: string; defaultBranch: string; baseRef: string; baseCommit: string; sourceBranch: string; headCommit: string | null }
 export interface TaskExecutionSummary { totalSteps: number; pendingSteps: number; runningSteps: number; waitingSteps: number; blockedSteps: number; succeededSteps: number; failedSteps: number; currentStage: TaskStepRole | null; currentStageTitle: string | null; requiresUserAction: boolean }
-export type TaskAttentionKind = 'INPUT_REQUIRED' | 'APPROVAL_REQUIRED' | 'BLOCKED' | 'EXECUTION_FAILED' | 'DIFF_CONFIRMATION_REQUIRED' | 'DELIVERY_FAILED'
+export type TaskAttentionKind = 'INPUT_REQUIRED' | 'APPROVAL_REQUIRED' | 'BLOCKED' | 'EXECUTION_FAILED' | 'DIFF_CONFIRMATION_REQUIRED' | 'PREFLIGHT_REQUIRED' | 'DELIVERY_FAILED'
 export interface TaskAttention {
   kind: TaskAttentionKind
   title: string
@@ -120,7 +120,7 @@ export interface TaskCreateInput {
   /** Per-repository workspace base refs. */
   repositoryRefs?: Array<{ repositoryId: string; baseRef: string }>
   /** Legacy single base ref, retained for older callers during API migration. */
-  baseRef?: string
+  baseRef?: string | null
   /** Explicit user preference. Omit to let the planner/server decide. */
   deliveryMode?: TaskDeliveryMode
   workspaceId?: string
@@ -437,6 +437,7 @@ export interface DiffComment {
   body: string
   authorUserId?: string | null
   authorName?: string | null
+  authorAvatarUrl?: string | null
   createdAt?: string | null
 }
 
@@ -493,6 +494,8 @@ export interface MergeRequestSummary {
   sourceBranch: string
   targetBranch: string
   status: MergeRequestStatus
+  /** 合并操作状态；异步合并受理后为 RUNNING，完成后为 COMPLETED/FAILED。 */
+  mergeOperationStatus?: 'RUNNING' | 'COMPLETED' | 'FAILED' | null
   headCommit: string | null
   webUrl?: string | null
   taskId?: string | null

@@ -59,13 +59,13 @@ export default function DiffCenterPage() {
     {taskId ? <Alert className={styles.notice} type="info" showIcon message={`当前仅按 taskId 筛选：${taskId}`} /> : null}
     <main className={styles.mainContent}>
       {diffId ? <Button type="text" icon={<ArrowLeftOutlined />} onClick={backToList}>返回交付中心</Button> : null}
-      {diffId ? <section className={styles.selectedDetail}><DiffDetailPanel query={selectedQuery} projectId={projectId} onRefresh={() => void selectedQuery.refetch()} /></section> : null}
+      {diffId ? <section className={styles.selectedDetail}><DiffDetailPanel query={selectedQuery} projectId={projectId} onRefresh={async () => { await selectedQuery.refetch() }} /></section> : null}
       {!listQuery.isLoading && listQuery.hasNextPage ? <Button className={styles.loadMore} loading={listQuery.isFetchingNextPage} onClick={() => void listQuery.fetchNextPage()}>加载更多</Button> : null}
     </main>
   </div>
 }
 
-function DiffDetailPanel({ query, projectId, onRefresh }: { query: ReturnType<typeof useDiff>; projectId: string; onRefresh: () => void }) {
+function DiffDetailPanel({ query, projectId, onRefresh }: { query: ReturnType<typeof useDiff>; projectId: string; onRefresh: () => Promise<void> }) {
   const diff = query.data
   const taskQuery = useTask(projectId, diff?.taskId ?? '')
   // 最终 Diff 已生成时，审核权归 Task 级 DiffReviewBatch；单 Diff 页面只用于查看。
@@ -75,8 +75,18 @@ function DiffDetailPanel({ query, projectId, onRefresh }: { query: ReturnType<ty
     queryFn: () => githubApi.listProjectRepositories(projectId),
     enabled: Boolean(projectId),
   })
+  const [refreshing, setRefreshing] = useState(false)
+  async function refreshLatest() {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      await Promise.all([onRefresh(), taskQuery.refetch(), batchQuery.refetch()])
+    } finally {
+      setRefreshing(false)
+    }
+  }
   if (query.isLoading) return <Card><Spin /></Card>
-  if (query.isError || !diff || diff.projectId !== projectId) return <Card><Result status={query.isError ? errorStatus(query.error) : '404'} title={query.isError ? errorTitle(query.error, 'Diff 详情') : 'Diff 不存在或不可见'} extra={<Button onClick={onRefresh}>刷新</Button>} /></Card>
+  if (query.isError || !diff || diff.projectId !== projectId) return <Card><Result status={query.isError ? errorStatus(query.error) : '404'} title={query.isError ? errorTitle(query.error, 'Diff 详情') : 'Diff 不存在或不可见'} extra={<Button loading={refreshing} disabled={refreshing} onClick={() => void refreshLatest()}>刷新</Button>} /></Card>
   const deliveryDisplay = taskDeliveryDisplay(batchQuery.data, diff)
   const cardTitle = (
     <span>
@@ -88,7 +98,7 @@ function DiffDetailPanel({ query, projectId, onRefresh }: { query: ReturnType<ty
     <Space direction="vertical" className={styles.detailContent}>
       <DetailFields diff={diff} task={taskQuery.data} repositories={repositoriesQuery.data ?? []} />
       <DiffFilesPanel projectId={projectId} diffId={diff.id} />
-      <DiffAcceptance diff={diff} projectId={projectId} task={taskQuery.data} batch={batchQuery.data} onRefresh={() => { onRefresh(); void batchQuery.refetch() }} batchState={batchQuery.isLoading ? 'loading' : batchQuery.data ? 'available' : 'unavailable'} />
+      <DiffAcceptance diff={diff} projectId={projectId} task={taskQuery.data} batch={batchQuery.data} onRefresh={refreshLatest} refreshing={refreshing} batchState={batchQuery.isLoading ? 'loading' : batchQuery.data ? 'available' : 'unavailable'} />
       <Text type="secondary">本页面仅完成 Diff 验收，不代表已合并 MR。</Text>
     </Space>
   </Card>
@@ -175,30 +185,30 @@ function DetailFields({ diff, task, repositories }: { diff: DiffDetail; task?: T
   </div>
 }
 
-function DiffAcceptance({ diff, projectId, task, batch, onRefresh, batchState }: { diff: DiffDetail; projectId: string; task: Task | undefined; batch: DiffReviewBatch | undefined; onRefresh: () => void; batchState: 'loading' | 'available' | 'unavailable' }) {
+function DiffAcceptance({ diff, projectId, task, batch, onRefresh, refreshing, batchState }: { diff: DiffDetail; projectId: string; task: Task | undefined; batch: DiffReviewBatch | undefined; onRefresh: () => Promise<void>; refreshing: boolean; batchState: 'loading' | 'available' | 'unavailable' }) {
   const accept = useAcceptDiff(projectId)
   const reject = useRejectDiff(projectId)
   const [reason, setReason] = useState('')
   const pending = accept.isPending || reject.isPending
   const handleMutationError = (error: Error) => {
     if (errorCode(error) === 'DIFF_BATCH_REVIEW_REQUIRED') {
-      onRefresh()
+      void onRefresh()
       return
     }
-    if (error instanceof ApiError && error.status === 409) onRefresh()
+    if (error instanceof ApiError && error.status === 409) void onRefresh()
   }
   if (diff.status === 'SUPERSEDED') return <Alert type="info" showIcon message="已被后续修改取代" description="同一工作区已有更新的 Diff；当前 Diff 不可验收或拒绝。" />
   if (batchState === 'loading') return <Text type="secondary">正在确认最终 Diff 验收状态…</Text>
-  if (batchState === 'available' && batch) return <TaskDeliveryPanel projectId={projectId} task={task} batch={batch} onRefresh={onRefresh} />
+  if (batchState === 'available' && batch) return <TaskDeliveryPanel projectId={projectId} task={task} batch={batch} onRefresh={onRefresh} refreshing={refreshing} />
   if (diff.status !== 'PENDING_REVIEW') return <Text type="secondary">该 Diff 已处理，只读。</Text>
   return <Form layout="vertical" onFinish={() => { if (reason.trim()) reject.mutate({ diffId: diff.id, input: { reason: reason.trim() } }, { onError: handleMutationError }) }}>
     <Form.Item label="拒绝原因" required><Input.TextArea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="请输入拒绝原因" disabled={pending} /></Form.Item>
     <Space wrap><Button aria-label="accept-diff" type="primary" icon={<CheckOutlined />} loading={accept.isPending} disabled={pending} onClick={() => { if (!window.confirm('确认验收此 Diff？')) return; accept.mutate(diff.id, { onError: handleMutationError }) }}>验收 Diff</Button><Button aria-label="reject-diff" danger htmlType="submit" icon={<CloseOutlined />} loading={reject.isPending} disabled={pending || !reason.trim()}>拒绝 Diff</Button></Space>
-    {accept.error || reject.error ? <Alert className={styles.mutationError} type="error" showIcon message={mutationError(accept.error ?? reject.error)} action={accept.error instanceof ApiError && accept.error.status === 409 || reject.error instanceof ApiError && reject.error.status === 409 ? <Button size="small" onClick={onRefresh}>刷新状态</Button> : undefined} /> : null}
+    {accept.error || reject.error ? <Alert className={styles.mutationError} type="error" showIcon message={mutationError(accept.error ?? reject.error)} action={accept.error instanceof ApiError && accept.error.status === 409 || reject.error instanceof ApiError && reject.error.status === 409 ? <Button size="small" loading={refreshing} disabled={refreshing} onClick={() => void onRefresh()}>刷新状态</Button> : undefined} /> : null}
   </Form>
 }
 
-function TaskDeliveryPanel({ projectId, task, batch, onRefresh }: { projectId: string; task: Task | undefined; batch: DiffReviewBatch; onRefresh: () => void }) {
+function TaskDeliveryPanel({ projectId, task, batch, onRefresh, refreshing }: { projectId: string; task: Task | undefined; batch: DiffReviewBatch; onRefresh: () => Promise<void>; refreshing: boolean }) {
   const confirm = useConfirmTaskDiffReview(projectId)
   const reject = useRejectTaskDiffReview(projectId)
   const retry = useRetryTaskDiffReviewDelivery(projectId)
@@ -216,13 +226,13 @@ function TaskDeliveryPanel({ projectId, task, batch, onRefresh }: { projectId: s
   const repositories = Array.isArray(batch.repositoryDeliveries) ? batch.repositoryDeliveries : []
   const statusMessage = taskDeliveryStatusMessage(batch, repositories)
   const handleError = (mutationError: Error) => {
-    if (mutationError instanceof ApiError && (mutationError.status === 409 || errorCode(mutationError) === 'DIFF_DELIVERY_NOT_RETRYABLE')) onRefresh()
+    if (mutationError instanceof ApiError && (mutationError.status === 409 || errorCode(mutationError) === 'DIFF_DELIVERY_NOT_RETRYABLE')) void onRefresh()
   }
 
   return <Card size="small" title="任务级交付">
     <Space direction="vertical" size="small" className={styles.taskDeliveryPanel}>
       <Text type="secondary">最终交付批次：{diffs.length} 个 Diff · {repositories.length} 个仓库。</Text>
-      <Alert type={statusMessage.type} showIcon message={statusMessage.message} description={statusMessage.description} action={statusMessage.refreshable ? <Button size="small" onClick={onRefresh}>刷新最新状态</Button> : undefined} />
+      <Alert type={statusMessage.type} showIcon message={statusMessage.message} description={statusMessage.description} action={statusMessage.refreshable ? <Button size="small" loading={refreshing} disabled={refreshing || pending} onClick={() => void onRefresh()}>刷新最新状态</Button> : undefined} />
       {canConfirm || canReject ? <Space wrap>
         {canConfirm ? <Button type="primary" loading={confirm.isPending} disabled={pending} onClick={() => confirm.mutate(batch.taskId, { onError: handleError })}>确认交付</Button> : null}
         {canReject ? <Button danger type="link" disabled={pending} onClick={() => setShowRejectForm((visible) => !visible)}>{showRejectForm ? '收起拒绝' : '拒绝交付'}</Button> : null}
@@ -232,7 +242,7 @@ function TaskDeliveryPanel({ projectId, task, batch, onRefresh }: { projectId: s
         <Space><Button onClick={() => setShowRejectForm(false)} disabled={pending}>取消</Button><Button danger type="primary" htmlType="submit" loading={reject.isPending} disabled={pending || !reason.trim()}>提交拒绝</Button></Space>
       </Form> : null}
       {canRetry ? <Button size="small" loading={retry.isPending} disabled={pending} onClick={() => retry.mutate(batch.taskId, { onError: handleError })}>重试交付</Button> : null}
-      {error ? <Alert type="error" showIcon message={taskDeliveryError(error)} action={error instanceof ApiError && error.status === 409 ? <Button size="small" onClick={onRefresh}>刷新</Button> : undefined} /> : null}
+      {error ? <Alert type="error" showIcon message={taskDeliveryError(error)} action={error instanceof ApiError && error.status === 409 ? <Button size="small" loading={refreshing} disabled={refreshing || pending} onClick={() => void onRefresh()}>刷新</Button> : undefined} /> : null}
     </Space>
   </Card>
 }

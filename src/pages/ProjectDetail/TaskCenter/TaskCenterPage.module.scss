@@ -243,10 +243,12 @@
 }
 
 .taskCardCopy {
-  min-height: clamp(30px, 0.6vw + 22px, 40px);
+  height: clamp(18px, 0.3vw + 14px, 22px);
+  min-height: 0;
   margin: clamp(8px, 0.4vw + 4px, 14px) 0 clamp(10px, 0.4vw + 6px, 16px);
   color: #6d7d95;
   font-size: clamp(12px, 0.1vw + 11px, 13px);
+  line-height: clamp(18px, 0.3vw + 14px, 22px);
 }
 
 .taskCardInfoGrid {

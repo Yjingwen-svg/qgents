@@ -475,36 +475,76 @@ function mapPreflightRepositoryStatus(raw: Record<string, unknown>): PreflightRe
   }
 }
 
-export function mapPreflightResponse(raw: Record<string, unknown>): MergeRequestPreflight {
+export function mapPreflightResponse(raw: unknown): MergeRequestPreflight {
+  const row = isRecord(raw) ? raw : {}
   return {
-    id: typeof raw.id === 'string' ? raw.id : '',
-    taskId: typeof raw.taskId === 'string' ? raw.taskId : null,
-    repositoryId: typeof raw.repositoryId === 'string' ? raw.repositoryId : '',
-    sourceBranch: typeof raw.sourceBranch === 'string' ? raw.sourceBranch : '',
-    headCommit: typeof raw.headCommit === 'string' ? raw.headCommit : null,
-    targetBranch: typeof raw.targetBranch === 'string' ? raw.targetBranch : '',
-    targetCommit: typeof raw.targetCommit === 'string' ? raw.targetCommit : null,
-    status: isPreflightStatus(raw.status) ? raw.status : 'REQUESTED',
-    dryRunId: typeof raw.dryRunId === 'string' ? raw.dryRunId : null,
-    blockers: Array.isArray(raw.blockers) ? raw.blockers.filter((b): b is string => typeof b === 'string') : [],
-    failureCode: typeof raw.failureCode === 'string' ? raw.failureCode : null,
-    failureReason: typeof raw.failureReason === 'string' ? raw.failureReason : null,
-    coveredTaskIds: Array.isArray(raw.coveredTaskIds) ? raw.coveredTaskIds.filter((t): t is string => typeof t === 'string') : [],
-    coveredDiffIds: Array.isArray(raw.coveredDiffIds) ? raw.coveredDiffIds.filter((d): d is string => typeof d === 'string') : [],
-    branchLockStatus: raw.branchLockStatus === 'UNLOCKED' || raw.branchLockStatus === 'LOCKED' ? raw.branchLockStatus : null,
-    isBranchLevel: typeof raw.isBranchLevel === 'boolean' ? raw.isBranchLevel : false,
-    mergeRequest: isRecord(raw.mergeRequest) ? mapMergeRequest(raw.mergeRequest) : null,
-    createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : '',
-    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : '',
+    id: typeof row.id === 'string' ? row.id : '',
+    taskId: typeof row.taskId === 'string' ? row.taskId : null,
+    repositoryId: typeof row.repositoryId === 'string' ? row.repositoryId : '',
+    sourceBranch: typeof row.sourceBranch === 'string' ? row.sourceBranch : '',
+    headCommit: typeof row.headCommit === 'string' ? row.headCommit : null,
+    targetBranch: typeof row.targetBranch === 'string' ? row.targetBranch : '',
+    targetCommit: typeof row.targetCommit === 'string' ? row.targetCommit : null,
+    status: isPreflightStatus(row.status) ? row.status : 'REQUESTED',
+    dryRunId: typeof row.dryRunId === 'string' ? row.dryRunId : null,
+    blockers: Array.isArray(row.blockers) ? row.blockers.filter((b): b is string => typeof b === 'string') : [],
+    failureCode: typeof row.failureCode === 'string' ? row.failureCode : null,
+    failureReason: typeof row.failureReason === 'string' ? row.failureReason : null,
+    coveredTaskIds: Array.isArray(row.coveredTaskIds) ? row.coveredTaskIds.filter((t): t is string => typeof t === 'string') : [],
+    coveredDiffIds: Array.isArray(row.coveredDiffIds) ? row.coveredDiffIds.filter((d): d is string => typeof d === 'string') : [],
+    branchLockStatus: row.branchLockStatus === 'UNLOCKED' || row.branchLockStatus === 'LOCKED' ? row.branchLockStatus : null,
+    isBranchLevel: typeof row.isBranchLevel === 'boolean' ? row.isBranchLevel : false,
+    mergeRequest: isRecord(row.mergeRequest) ? mapMergeRequest(row.mergeRequest) : null,
+    createdAt: typeof row.createdAt === 'string' ? row.createdAt : '',
+    updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : '',
   }
 }
 
-export function mapTaskPreflightList(raw: Record<string, unknown>): TaskMergeRequestPreflightList {
-  const items = Array.isArray(raw.items)
-    ? raw.items.filter(isRecord).map(mapPreflightRepositoryStatus)
-    : []
+function mapTaskPreflightItem(raw: Record<string, unknown>): PreflightRepositoryStatus {
+  const status = typeof raw.status === 'string' ? raw.status : ''
+  const dryRunStatus = typeof raw.dryRunStatus === 'string'
+    ? raw.dryRunStatus
+    : status === 'WAITING_CQ' || status === 'CREATING_MR' || status === 'MR_CREATED'
+      ? 'PASSED'
+      : status === 'FAILED' || status === 'CQ_REJECTED' || status === 'STALE'
+        ? 'FAILED'
+        : status
+  const cqStatus = raw.cqStatus === 'APPROVED' || raw.cqStatus === 'REJECTED'
+    || raw.cqStatus === 'PENDING' || raw.cqStatus === 'MISSING'
+    ? raw.cqStatus
+    : status === 'WAITING_CQ'
+      ? 'PENDING'
+      : status === 'CQ_REJECTED'
+        ? 'REJECTED'
+        : status === 'CREATING_MR' || status === 'MR_CREATED'
+          ? 'APPROVED'
+          : 'MISSING'
+
+  return mapPreflightRepositoryStatus({
+    ...raw,
+    dryRunStatus,
+    cqStatus,
+  })
+}
+
+export function mapTaskPreflightList(raw: unknown): TaskMergeRequestPreflightList {
+  const payload = isRecord(raw) ? raw : null
+  const rawItems = Array.isArray(raw)
+    ? raw
+    : payload && Array.isArray(payload.items)
+      ? payload.items
+      : payload && Array.isArray(payload.data)
+        ? payload.data
+        : []
+  const items = rawItems.filter(isRecord).map(mapTaskPreflightItem)
+  const firstItem = rawItems.find(isRecord)
+  const taskId = payload && typeof payload.taskId === 'string'
+    ? payload.taskId
+    : firstItem && typeof firstItem.taskId === 'string'
+      ? firstItem.taskId
+      : ''
   return {
-    taskId: typeof raw.taskId === 'string' ? raw.taskId : '',
+    taskId,
     items,
     totalCount: items.length,
   }

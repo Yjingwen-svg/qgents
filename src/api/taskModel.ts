@@ -26,7 +26,6 @@ import type {
   MergeRequestCreateInput,
   MergeRequestCqInput,
   MergeRequestListFilters,
-  MergeRequestSummary,
   PageFilters,
   Task,
   TaskArtifact,
@@ -327,9 +326,10 @@ export const mergeRequestsApi = {
   },
 
   /** 按 Task 查询全部仓库预检状态 */
-  getTaskPreflight(projectId: string, taskId: string): Promise<TaskMergeRequestPreflightList> {
+  getTaskPreflight(projectId: string, taskId: string, signal?: AbortSignal): Promise<TaskMergeRequestPreflightList> {
     return requestModelData<unknown>(
       `/projects/${projectId}/tasks/${taskId}/merge-request-preflight`,
+      { signal },
     ).then(mapTaskPreflightList)
   },
 

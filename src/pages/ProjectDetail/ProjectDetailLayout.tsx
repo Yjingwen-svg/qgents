@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { lazy, Suspense, useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge, Form, Input, Modal, Select } from 'antd'
@@ -8,10 +8,13 @@ import { ApiError, groupApi, projectApi, teamApi } from '@/api'
 import { useAppUiStore } from '@/store/appUiStore'
 import { latestMessageText } from '@/utils/messageSummary'
 import { useProjectTaskDomainEvents } from '@/realtime/useProjectTaskDomainEvents'
-import { ProjectActivityPanel } from './ProjectActivityPanel'
-import { ChatPanel } from '@/components/chat/ChatPanel'
+import { useRealtimeConnectionStatus } from '@/realtime/realtimeClient'
 import type { CreateGroupPayload, Group } from '@/types'
 import './ProjectDetailLayout.scss'
+
+// 群聊和项目动态仅在项目总群页面可见；将其移出其他项目子页的首屏模块图。
+const ChatPanel = lazy(async () => ({ default: (await import('@/components/chat/ChatPanel')).ChatPanel }))
+const ProjectActivityPanel = lazy(async () => ({ default: (await import('./ProjectActivityPanel')).ProjectActivityPanel }))
 
 /** 群聊置顶（本地偏好）localStorage 键，按项目隔离，避免不同项目互相污染。 */
 const PINNED_GROUPS_KEY = 'qgents_pinned_groups'
@@ -49,7 +52,9 @@ export default function ProjectDetailLayout() {
   const setCurrentTeam = useAppUiStore((state) => state.setCurrentTeam)
   const setCurrentProject = useAppUiStore((state) => state.setCurrentProject)
   const openProjectDetailNav = useAppUiStore((state) => state.openProjectDetailNav)
-  useProjectTaskDomainEvents(projectId)
+  const realtimeStatus = useRealtimeConnectionStatus()
+  // WebSocket 是项目实时事件主通道；SSE 只在它不可用时接管。
+  useProjectTaskDomainEvents(projectId, realtimeStatus !== 'connected')
 
   const [createOpen, setCreateOpen] = useState(false)
   const [groupSearch, setGroupSearch] = useState('')
@@ -398,7 +403,7 @@ export default function ProjectDetailLayout() {
 
       <div className="pd-main">
         {onReqChat && !groupId && mainGroup ? (
-          <ChatPanel key={mainGroup.id} projectId={projectId} groupId={mainGroup.id} />
+          <Suspense fallback={<div aria-busy="true" aria-label="正在加载群聊" />}><ChatPanel key={mainGroup.id} projectId={projectId} groupId={mainGroup.id} /></Suspense>
         ) : (
           <Outlet />
         )}
@@ -414,7 +419,7 @@ export default function ProjectDetailLayout() {
             aria-label="拖拽调整项目动态宽度"
             onMouseDown={startActivityResize}
           />
-          <ProjectActivityPanel projectId={projectId} />
+          <Suspense fallback={<div aria-busy="true" aria-label="正在加载项目动态" />}><ProjectActivityPanel projectId={projectId} /></Suspense>
         </>
       )}
 

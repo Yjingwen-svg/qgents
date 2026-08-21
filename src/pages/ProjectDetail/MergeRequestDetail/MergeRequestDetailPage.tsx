@@ -57,7 +57,6 @@ import { commentAuthorName, HUNK_UNAVAILABLE_HINT } from '../commentAuthor'
 import { findCqCheck, isMergeRequestAuthor } from '../cqSeal'
 import { githubPullRequestUrl } from '../mergeRequestDisplay'
 import { qualityGateNodeHref } from '../qualityGateNav'
-import { FlowStepper } from '../components/FlowStepper/FlowStepper'
 import { CqSealCard } from './CqSealCard'
 import { CommitHistoryCard } from './CommitHistoryCard'
 import styles from './MergeRequestDetailPage.module.scss'
@@ -113,17 +112,6 @@ export default function MergeRequestDetailPage() {
   const [fileIndex, setFileIndex] = useState(0)
   const [draft, setDraft] = useState('')
   const cqRef = useRef<HTMLDivElement>(null)
-
-  /**
-   * 点击流程图 CQ+1 节点：跳转到独立的大印章审查页（CqReviewPage）。
-   * 按产品新约定：MR 详情页、MR 列表条目都不再作为大印章页入口，
-   * 只允许从流程图的 CQ+1 节点进入审查页。
-   */
-  function navigateToCqReview(): void {
-    if (!mr) return
-    const to = `${PATHS.projectCqReview(projectId)}?mr=${encodeURIComponent(mr.id)}`
-    navigate(to)
-  }
 
   function handleCreateMr() {
     if (!mr) return
@@ -326,9 +314,6 @@ export default function MergeRequestDetailPage() {
   const cqCheck = findCqCheck(checksQuery.data)
   const isAuthor = isMergeRequestAuthor(user?.id, taskQuery.data?.createdByUser?.id)
 
-  const gatePassed = gateNodes.length > 0 && gateNodes.every((n) => n.status === 'PASSED')
-  const cqStatus = cqCheck?.status ?? 'PENDING'
-
   return (
     <div className={styles.page}>
       <Link to={listToMr} className={styles.back}>
@@ -388,22 +373,6 @@ export default function MergeRequestDetailPage() {
           ) : null}
         </div>
       </header>
-
-      <FlowStepper
-        projectId={projectId}
-        status={{
-          gate: gatePassed ? 'passed' : gateNodes.some((n) => n.status === 'FAILED') ? 'failed' : 'pending',
-          cq: cqStatus === 'PASSED' ? 'approved' : cqStatus === 'FAILED' ? 'rejected' : 'pending',
-          createMr: gatePassed && cqStatus === 'PASSED',
-        }}
-        mrCreated={Boolean(mr)}
-        onClickGate={() => {
-          const mrParam = `?mr=${encodeURIComponent(mr.id)}`
-          window.location.href = `${PATHS.projectQualityGate(projectId)}${mrParam}`
-        }}
-        onClickCq={navigateToCqReview}
-        onClickCreateMr={handleCreateMr}
-      />
 
       {project?.role === 'PROJECT_ADMIN' && mr.status === 'OPEN' && mr.qualityGate?.status !== 'PASSED' ? (
         <Alert

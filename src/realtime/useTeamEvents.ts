@@ -1,5 +1,6 @@
 import { useEventStream } from './useEventStream'
 import { queryClient } from '@/query'
+import { useRealtimeConnectionStatus } from './realtimeClient'
 
 /**
  * 团队级 SSE（GET /teams/{teamId}/events）—— 团队成员可订阅。
@@ -10,9 +11,11 @@ import { queryClient } from '@/query'
  * - activity.created → 团队最近动态（文档注明暂未单独发布，靠项目流刷新，此处兜底）
  */
 export function useTeamEvents(teamId: string | undefined): void {
+  const realtimeStatus = useRealtimeConnectionStatus()
+  const useSseFallback = Boolean(teamId) && realtimeStatus !== 'connected'
   useEventStream(
-    teamId ? `team.${teamId}` : '',
-    teamId ? `/teams/${encodeURIComponent(teamId)}/events` : '',
+    useSseFallback ? `team.${teamId}` : '',
+    useSseFallback ? `/teams/${encodeURIComponent(teamId)}/events` : '',
     (eventType) => {
       if (!teamId) return
       if (eventType === 'project.member.added') {

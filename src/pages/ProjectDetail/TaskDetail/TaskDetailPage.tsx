@@ -144,15 +144,22 @@ export default function TaskDetailPage() {
 
   const task = taskQuery.data
   const recentRuns = taskRunsQuery.data?.data ?? []
+  // 重试已生效的判据：任务离开可重试终态（FAILED/CANCELLED）即视为续跑已启动/完成——
+  // 后端重试会把任务从 FAILED 认领回 RUNNING 并最终到 SUCCEEDED，此时新 run 可能已滑出
+  // 最近运行分页，不能再死等 retryOfTaskRunId 命中。加上该条件后不再无限转圈。
+  const retrySettled = task?.status !== undefined
+    && task.status !== 'FAILED' && task.status !== 'CANCELLED' && task.status !== 'DELIVERY_FAILED'
   // retryingRunId 记的是「被重试的源 run id」；真正的新 run 是 retryOfTaskRunId === retryingRunId 的那条。
   // 重试请求已发送但新 TaskRun 尚未返回时进入过渡态，不能继续把旧失败运行当作当前状态。
   const retryPending = retryRequestedRunId !== null
-    || (retryingRunId !== null && !retryTimedOut
+    || (retryingRunId !== null && !retryTimedOut && !retrySettled
         && !recentRuns.some((run) => run.retryOfTaskRunId === retryingRunId))
 
   useEffect(() => {
-    if (!retryingRunId || recentRuns.some((run) => run.retryOfTaskRunId === retryingRunId)) setRetryingRunId(null)
-  }, [recentRuns, retryingRunId])
+    if (!retryingRunId || retrySettled || recentRuns.some((run) => run.retryOfTaskRunId === retryingRunId)) {
+      setRetryingRunId(null)
+    }
+  }, [recentRuns, retryingRunId, retrySettled])
 
   // 重试超时兜底：后端重试是异步受理，若编排事件被吞/失败，新 run 永远不出现，前端会一直转
   // 「重试已受理」。受理后 30 秒仍等不到新 run 时退出过渡态，展示任务真实失败原因供用户处理。

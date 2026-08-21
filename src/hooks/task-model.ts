@@ -37,6 +37,7 @@ import type {
   ReplaceTaskStepAgentInput,
   PageFilters,
   TaskModelPage,
+  TaskMergeRequestPreflightList,
   TaskArtifact,
   DiffReviewBatch,
   MergeRequestCheck,

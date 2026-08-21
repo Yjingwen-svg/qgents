@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactElement } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Alert, App, Button, Empty, Select, Space, Spin, Table, Tag, Typography, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
@@ -126,9 +127,9 @@ function preflightButtonLabel(
     case 'IDLE':
       return { text: '申请MR', loading: false, disabled: false, failed: false, clickable: true }
     case 'DRY_RUN_RUNNING':
-    case 'WAITING_CQ':
-      // Dry Run 运行中 或 等待 CQ+1，按钮都显示"待预检通过"（灰色禁用）
       return { text: '待预检通过', loading: true, disabled: true, failed: false, clickable: false }
+    case 'WAITING_CQ':
+      return { text: '等待 CQ+1', loading: false, disabled: true, failed: false, clickable: false }
     case 'READY_CREATE':
       // CQ+1通过后，需要用户再点「创建MR」
       return { text: '创建MR', loading: false, disabled: false, failed: false, clickable: true }
@@ -302,7 +303,7 @@ export function MergeRequestTab({
     let cancelled = false
       ; (async () => {
         try {
-          const newMap: Record<string, PreflightStatus> = {}
+          const newMap: Record<string, PreflightUiStatus> = {}
           const loadedIds = new Set(loadedPreflightIds)
 
           // 使用并发控制，最多 CONCURRENCY_LIMIT 个同时请求
@@ -311,7 +312,7 @@ export function MergeRequestTab({
             const controller = new AbortController()
             const timeoutId = setTimeout(() => controller.abort(), PREFLIGHT_QUERY_TIMEOUT_MS)
             try {
-              const res = await mergeRequestsApi.getTaskPreflight(projectId, taskId)
+              const res = await mergeRequestsApi.getTaskPreflight(projectId, taskId, controller.signal)
               if (cancelled) return
               if (res?.items?.length) {
                 const taskMrRows = displayItems.filter((mr) => mr.taskId === taskId && mr.status === 'PENDING_CREATE')
@@ -946,7 +947,7 @@ export function MergeRequestTab({
             record.status === 'OPEN' &&
             record.qualityGate?.status === 'PASSED' &&
             record.mergeOperationStatus !== 'RUNNING'
-          const children: JSX.Element[] = []
+          const children: ReactElement[] = []
           if (href) {
             children.push(
               <Button

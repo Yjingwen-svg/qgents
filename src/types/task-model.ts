@@ -467,6 +467,7 @@ export interface MergeRequestCreateInput {
   repositoryId: string
   targetBranch: string
   title: string
+  idempotencyKey?: string
 }
 
 /** POST /merge-requests/{id}/cq-approvals 与 cq-rejections */

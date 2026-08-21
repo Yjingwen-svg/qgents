@@ -4,7 +4,7 @@ import { Alert, Button, Card, Empty, Form, Input, Result, Space, Spin, Tag, Typo
 import { ArrowLeftOutlined, CheckOutlined, CodeOutlined, CloseOutlined } from '@ant-design/icons'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError, githubApi } from '@/api'
-import { useAcceptDiff, useDiff, useDiffFiles, useInfiniteDiffs, useRejectDiff, useTask } from '@/hooks/task-model'
+import { useAcceptDiff, useDiff, useDiffFiles, useInfiniteDiffs, useRejectDiff, useTask, useTaskDiffReview } from '@/hooks/task-model'
 import { queryKeys } from '@/query/queryKeys'
 import type { DiffDetail, DiffFile, DiffLine, DiffStatus, Task } from '@/types/task-model'
 import { PATHS } from '@/routes/paths'
@@ -59,6 +59,8 @@ export default function DiffCenterPage() {
 function DiffDetailPanel({ query, projectId, onRefresh }: { query: ReturnType<typeof useDiff>; projectId: string; onRefresh: () => void }) {
   const diff = query.data
   const taskQuery = useTask(projectId, diff?.taskId ?? '')
+  // 最终 Diff 已生成时，审核权归 Task 级 DiffReviewBatch；单 Diff 页面只用于查看。
+  const batchQuery = useTaskDiffReview(projectId, diff?.taskId ?? '', Boolean(diff?.taskId))
   const repositoriesQuery = useQuery({
     queryKey: queryKeys.projectRepositories(projectId),
     queryFn: () => githubApi.listProjectRepositories(projectId),
@@ -76,7 +78,7 @@ function DiffDetailPanel({ query, projectId, onRefresh }: { query: ReturnType<ty
     <Space direction="vertical" className={styles.detailContent}>
       <DetailFields diff={diff} task={taskQuery.data} repositories={repositoriesQuery.data ?? []} />
       <DiffFilesPanel projectId={projectId} diffId={diff.id} />
-      <DiffAcceptance diff={diff} projectId={projectId} onRefresh={onRefresh} />
+      <DiffAcceptance diff={diff} projectId={projectId} onRefresh={onRefresh} batchState={batchQuery.isLoading ? 'loading' : batchQuery.data ? 'available' : 'unavailable'} />
       <Text type="secondary">本页面仅完成 Diff 验收，不代表已合并 MR。</Text>
     </Space>
   </Card>
@@ -155,18 +157,28 @@ function DetailFields({ diff, task, repositories }: { diff: DiffDetail; task?: T
   </div>
 }
 
-function DiffAcceptance({ diff, projectId, onRefresh }: { diff: DiffDetail; projectId: string; onRefresh: () => void }) {
+function DiffAcceptance({ diff, projectId, onRefresh, batchState }: { diff: DiffDetail; projectId: string; onRefresh: () => void; batchState: 'loading' | 'available' | 'unavailable' }) {
   const navigate = useNavigate()
   const accept = useAcceptDiff(projectId)
   const reject = useRejectDiff(projectId)
   const [reason, setReason] = useState('')
   const pending = accept.isPending || reject.isPending
+  const openBatchReview = () => navigate(PATHS.projectTaskDetail(projectId, diff.taskId))
+  const handleMutationError = (error: Error) => {
+    if (errorCode(error) === 'DIFF_BATCH_REVIEW_REQUIRED') {
+      openBatchReview()
+      return
+    }
+    if (error instanceof ApiError && error.status === 409) onRefresh()
+  }
   if (diff.status === 'SUPERSEDED') return <Alert type="info" showIcon message="已被后续修改取代" description="同一工作区已有更新的 Diff；当前 Diff 不可验收或拒绝。" />
   if (diff.status !== 'PENDING_REVIEW') return <Text type="secondary">该 Diff 已处理，只读。</Text>
-  return <Form layout="vertical" onFinish={() => { if (reason.trim()) reject.mutate({ diffId: diff.id, input: { reason: reason.trim() } }, { onError: (error) => { if (error instanceof ApiError && error.status === 409) onRefresh() } }) }}>
+  if (batchState === 'loading') return <Text type="secondary">正在确认最终 Diff 验收状态…</Text>
+  if (batchState === 'available') return <Alert type="info" showIcon message="该 Diff 已纳入最终交付批次" description="最终交付需要按任务统一验收，不能单独验收此 Diff。" action={<Button size="small" type="primary" onClick={openBatchReview}>进入总 Diff 验收</Button>} />
+  return <Form layout="vertical" onFinish={() => { if (reason.trim()) reject.mutate({ diffId: diff.id, input: { reason: reason.trim() } }, { onError: handleMutationError }) }}>
     <Form.Item label="拒绝原因" required><Input.TextArea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="请输入拒绝原因" disabled={pending} /></Form.Item>
-    <Space wrap><Button aria-label="accept-diff" type="primary" icon={<CheckOutlined />} loading={accept.isPending} disabled={pending} onClick={() => { if (!window.confirm('确认验收此 Diff？')) return; accept.mutate(diff.id, { onError: (error) => { if (error instanceof ApiError && error.status === 409) onRefresh() } }) }}>验收 Diff</Button><Button aria-label="reject-diff" danger htmlType="submit" icon={<CloseOutlined />} loading={reject.isPending} disabled={pending || !reason.trim()}>拒绝 Diff</Button></Space>
-    {accept.error || reject.error ? <Alert className={styles.mutationError} type="error" showIcon message={mutationError(accept.error ?? reject.error)} action={errorCode(accept.error ?? reject.error) === 'DIFF_BATCH_REVIEW_REQUIRED' ? <Button size="small" onClick={() => navigate(PATHS.projectTaskDetail(projectId, diff.taskId))}>进入总 Diff 验收</Button> : accept.error instanceof ApiError && accept.error.status === 409 || reject.error instanceof ApiError && reject.error.status === 409 ? <Button size="small" onClick={onRefresh}>刷新状态</Button> : undefined} /> : null}
+    <Space wrap><Button aria-label="accept-diff" type="primary" icon={<CheckOutlined />} loading={accept.isPending} disabled={pending} onClick={() => { if (!window.confirm('确认验收此 Diff？')) return; accept.mutate(diff.id, { onError: handleMutationError }) }}>验收 Diff</Button><Button aria-label="reject-diff" danger htmlType="submit" icon={<CloseOutlined />} loading={reject.isPending} disabled={pending || !reason.trim()}>拒绝 Diff</Button></Space>
+    {accept.error || reject.error ? <Alert className={styles.mutationError} type="error" showIcon message={mutationError(accept.error ?? reject.error)} action={accept.error instanceof ApiError && accept.error.status === 409 || reject.error instanceof ApiError && reject.error.status === 409 ? <Button size="small" onClick={onRefresh}>刷新状态</Button> : undefined} /> : null}
   </Form>
 }
 

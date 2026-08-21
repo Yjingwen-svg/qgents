@@ -62,7 +62,7 @@ export function mapWorkspaceDiffPreview(raw: unknown): WorkspaceDiffPreview {
 export function mapWorkspaceDiffPreviewFile(raw: unknown): WorkspaceDiffPreviewFile | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const row = raw as Record<string, unknown>
-  const path = readString(row, 'path')
+  const path = normalizeGitQuotedPath(readString(row, 'path'))
   if (!path) return null
   return {
     repositoryId: readNullableString(row, 'repositoryId'),
@@ -72,6 +72,24 @@ export function mapWorkspaceDiffPreviewFile(raw: unknown): WorkspaceDiffPreviewF
     additions: readNumber(row, 'additions'),
     deletions: readNumber(row, 'deletions'),
     binary: row.binary === true,
+  }
+}
+
+/**
+ * Git 在非 ASCII 路径上可能返回 `\\344\\273...` 形式的 UTF-8 八进制转义。
+ * Workspace Preview 的单文件接口需要真实仓库相对路径；保留普通路径不变，
+ * 仅在完整解码成功时转为 UTF-8，避免把无效输入误改后发送给服务端。
+ */
+function normalizeGitQuotedPath(path: string): string {
+  if (!/\\[0-7]{3}/.test(path)) return path
+  const encoded = path.replace(/\\([0-7]{3})/g, (_match, octal: string) => {
+    const byte = Number.parseInt(octal, 8)
+    return `%${byte.toString(16).padStart(2, '0')}`
+  })
+  try {
+    return decodeURIComponent(encoded)
+  } catch {
+    return path
   }
 }
 

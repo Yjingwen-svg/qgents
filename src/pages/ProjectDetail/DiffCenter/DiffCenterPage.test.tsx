@@ -12,7 +12,8 @@ const useDiffFilesMock = vi.hoisted(() => vi.fn())
 const useTaskMock = vi.hoisted(() => vi.fn())
 const useAcceptDiffMock = vi.hoisted(() => vi.fn())
 const useRejectDiffMock = vi.hoisted(() => vi.fn())
-vi.mock('@/hooks/task-model', () => ({ useInfiniteDiffs: useInfiniteDiffsMock, useDiff: useDiffMock, useDiffFiles: useDiffFilesMock, useTask: useTaskMock, useAcceptDiff: useAcceptDiffMock, useRejectDiff: useRejectDiffMock }))
+const useTaskDiffReviewMock = vi.hoisted(() => vi.fn())
+vi.mock('@/hooks/task-model', () => ({ useInfiniteDiffs: useInfiniteDiffsMock, useDiff: useDiffMock, useDiffFiles: useDiffFilesMock, useTask: useTaskMock, useTaskDiffReview: useTaskDiffReviewMock, useAcceptDiff: useAcceptDiffMock, useRejectDiff: useRejectDiffMock }))
 vi.mock('@/api', async () => {
   const actual = await vi.importActual<typeof import('@/api')>('@/api')
   return {
@@ -50,7 +51,7 @@ const filesPage = { data: diffFiles, page: { nextCursor: null, hasMore: false },
 function LocationProbe() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}</output> }
 function renderPage(path = '/app/projects/project-1/diffs/diff-1') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={[path]}><Routes><Route path="/app/projects/:projectId/diffs" element={<><DiffCenterPage /><LocationProbe /></>} /><Route path="/app/projects/:projectId/diffs/:diffId" element={<><DiffCenterPage /><LocationProbe /></>} /></Routes></MemoryRouter></QueryClientProvider>)
+  return render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={[path]}><Routes><Route path="/app/projects/:projectId/diffs" element={<><DiffCenterPage /><LocationProbe /></>} /><Route path="/app/projects/:projectId/diffs/:diffId" element={<><DiffCenterPage /><LocationProbe /></>} /><Route path="/app/projects/:projectId/tasks/:taskId" element={<LocationProbe />} /></Routes></MemoryRouter></QueryClientProvider>)
 }
 
 beforeEach(() => {
@@ -60,6 +61,7 @@ beforeEach(() => {
   useAcceptDiffMock.mockReturnValue({ mutate: vi.fn(), isPending: false, error: null })
   useRejectDiffMock.mockReturnValue({ mutate: vi.fn(), isPending: false, error: null })
   useTaskMock.mockReturnValue({ data: undefined, isLoading: false, isPending: false, isError: false, error: null, refetch: vi.fn() })
+  useTaskDiffReviewMock.mockReturnValue({ data: undefined, isLoading: false, isPending: false, isError: true, error: null, refetch: vi.fn() })
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 
@@ -111,6 +113,14 @@ describe('DiffCenterPage', () => {
     renderPage()
     expect(screen.getByText('该 Diff 已处理，只读。')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '验收 Diff' })).not.toBeInTheDocument()
+  })
+
+  it('uses the task-level batch review entry when a final Diff batch exists', async () => {
+    useTaskDiffReviewMock.mockReturnValue({ data: { id: 'batch-1', taskId: 'task-1' }, isLoading: false, isPending: false, isError: false, error: null, refetch: vi.fn() })
+    renderPage()
+    expect(screen.queryByRole('button', { name: '验收 Diff' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '进入总 Diff 验收' }))
+    expect(screen.getByTestId('location')).toHaveTextContent('/app/projects/project-1/tasks/task-1')
   })
 
   it('requires confirmation before accepting and prevents cross-project detail display', async () => {

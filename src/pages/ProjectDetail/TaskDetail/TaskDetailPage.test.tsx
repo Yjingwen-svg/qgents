@@ -322,6 +322,38 @@ describe('TaskDetailPage workbench', () => {
     expect(within(screen.getByTestId('delivery-panel')).getByTestId('workspace-diff-preview-card')).toBeInTheDocument()
   })
 
+  it('does not offer retry for an old failed run that already has a newer retry', () => {
+    const oldFailedRun: TaskRunDetail = {
+      ...run,
+      id: 'run-old-failed',
+      status: 'FAILED',
+      updatedAt: '2026-08-11T08:10:00Z',
+    }
+    const newerRetry: TaskRunSummary = {
+      ...oldFailedRun,
+      id: 'run-newer-retry',
+      retryOfTaskRunId: oldFailedRun.id,
+      updatedAt: '2026-08-11T08:20:00Z',
+    }
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'FAILED' }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskRunsMock.mockReturnValue({ data: page<TaskRunSummary>([newerRetry, oldFailedRun]), error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskRunMock.mockReturnValue({ data: oldFailedRun, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    renderPage(`/app/projects/${task.projectId}/tasks/${task.id}?runId=${oldFailedRun.id}`)
+    expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument()
+  })
+
+  it('keeps failed runs viewable but disables retry after the task is cancelled', () => {
+    const cancelledRun: TaskRunDetail = { ...run, status: 'FAILED', statusSummary: '执行失败' }
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'CANCELLED' }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskRunsMock.mockReturnValue({ data: page<TaskRunSummary>([cancelledRun]), error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskRunMock.mockReturnValue({ data: cancelledRun, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+
+    renderPage(`/app/projects/${task.projectId}/tasks/${task.id}?runId=${cancelledRun.id}`)
+
+    expect(screen.getByText('执行失败')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument()
+  })
+
   it('restores repository-level code change details in the main delivery area', () => {
     const diff: DiffListItem = { id: 'diff-1', projectId: task.projectId, taskId: task.id, taskRunId: run.id, taskStepId: step.id, requirementGroupId: 'group-1', workspaceId: 'workspace-1', repositoryId: 'repo-1', baseCommit: 'base-1', sourceBranch: 'feat/login', headCommit: 'head-1', status: 'PENDING_REVIEW', changeStats: { files: 2, additions: 12, deletions: 3 }, createdAt: run.createdAt }
     useTaskMock.mockReturnValue({ data: { ...task, status: 'WAITING_DIFF_CONFIRMATION' }, isLoading: false, isError: false, error: null, refetch: vi.fn() })

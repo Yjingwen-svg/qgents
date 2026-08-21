@@ -33,11 +33,13 @@ describe('project SSE Task model query invalidation mapping', () => {
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks', 'task-1', 'task-runs']))
   })
 
-  it('maps task-run.updated to run detail, task runs, and Task detail', () => {
+  it('maps task-run.updated to run detail, task runs, task list/detail, and TaskStep list', () => {
     const keys = keysFor('task-run.updated', { taskId: 'task-1', taskRunId: 'run-1', agentId: 'agent-1' })
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'run-1']))
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks', 'task-1', 'task-runs']))
+    expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks']))
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks', 'task-1']))
+    expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'tasks', 'task-1', 'steps']))
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'agents', 'agent-1', 'runtime']))
     expect(keys).toContain(JSON.stringify(['qgents', 'projects', projectId, 'task-runs', 'agent', 'agent-1']))
   })

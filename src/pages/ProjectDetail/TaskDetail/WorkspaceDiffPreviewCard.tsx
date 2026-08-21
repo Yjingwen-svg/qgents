@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Alert, Card, Collapse, Empty, Spin, Tag, Typography } from 'antd'
 import { CaretRightOutlined, FileTextOutlined, FolderOpenOutlined } from '@ant-design/icons'
 import { useWorkspaceDiffPreview, useWorkspaceDiffPreviewFilePatch, useWorkspaceDiffPreviewFiles } from '@/hooks/workspaceDiffPreview'
@@ -57,9 +58,9 @@ export function WorkspaceDiffPreviewCard({ projectId, taskId, repositories }: Wo
   // 打开 Preview 时默认定位第一个可读取的文件；用户仍可随时切换文件。
   useEffect(() => {
     if (!expanded || selectedFile) return
-    const firstSelectableFile = filesQuery.data?.find((file) => file.repositoryId)
+    const firstSelectableFile = files.find((file) => file.repositoryId)
     if (firstSelectableFile) setSelectedFile(firstSelectableFile)
-  }, [expanded, filesQuery.data, selectedFile])
+  }, [expanded, files, selectedFile])
 
   return (
     <Card className={styles.workspaceDiffPreviewCard} size="small" data-testid="workspace-diff-preview-card">
@@ -199,12 +200,37 @@ interface RepositoryGroup {
 
 function SelectedFilePatch({ file, query }: { file: WorkspaceDiffPreviewFile | null; query: ReturnType<typeof useWorkspaceDiffPreviewFilePatch> }) {
   if (!file) return <div className={styles.workspaceDiffPreviewEmptySelection}><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择一个文件以查看实时 Diff" /></div>
-  if (!file.repositoryId) return <Alert type="info" showIcon message="该文件暂不能读取实时预览" description="文件列表未返回 repositoryId，前端不会猜测仓库归属。" />
-  if (query.isLoading) return <div className={styles.inlineState}><Spin size="small" /><Text type="secondary">正在加载文件 Diff</Text></div>
-  if (query.isError) return <Alert type="error" showIcon message="文件实时预览加载失败" description="请稍后重新选择该文件。" />
+  const fileLabel = file.repositoryPath ? `${file.repositoryPath}/${file.path}` : file.path
+  const content = !file.repositoryId ? (
+    <Alert type="info" showIcon message="该文件暂不能读取实时预览" description="文件列表未返回 repositoryId，前端不会猜测仓库归属。" />
+  ) : query.isLoading || query.isError ? (
+    <div className={styles.workspaceDiffPreviewLoadingFile} role="status" aria-label="正在加载文件 Diff"><Spin size="small" /></div>
+  ) : null
+
+  if (content) return <SelectedFilePanel file={file} fileLabel={fileLabel}>{content}</SelectedFilePanel>
   const patch = query.data
-  if (!patch || patch.patch === null) return <Alert type="info" showIcon message={patch?.binary ? '二进制文件，不展示源码 Diff' : '该文件的实时预览暂不可用'} />
-  return <PatchPreview patch={patch.patch} />
+  return (
+    <SelectedFilePanel file={file} fileLabel={fileLabel}>
+      {!patch || patch.patch === null
+        ? <Alert type="info" showIcon message={patch?.binary ? '二进制文件，不展示源码 Diff' : '该文件的实时预览暂不可用'} />
+        : <PatchPreview patch={patch.patch} />}
+    </SelectedFilePanel>
+  )
+}
+
+function SelectedFilePanel({ file, fileLabel, children }: { file: WorkspaceDiffPreviewFile; fileLabel: string; children: ReactNode }) {
+  return (
+    <div className={styles.workspaceDiffPreviewSelectedFile}>
+      <div className={styles.workspaceDiffPreviewSelectedFileHeading}>
+        <Text className={styles.workspaceDiffPreviewSelectedFileName} title={fileLabel}>{fileLabel}</Text>
+        <span className={styles.workspaceDiffPreviewSelectedFileStats}>
+          <span className={styles.workspaceDiffPreviewSelectedFileAdditions}>+{file.additions}</span>
+          <span className={styles.workspaceDiffPreviewSelectedFileDeletions}>-{file.deletions}</span>
+        </span>
+      </div>
+      {children}
+    </div>
+  )
 }
 
 function groupFilesByRepository(files: WorkspaceDiffPreviewFile[], names: Record<string, string>): RepositoryGroup[] {

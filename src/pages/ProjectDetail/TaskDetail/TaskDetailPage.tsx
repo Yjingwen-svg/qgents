@@ -1,5 +1,5 @@
 import { Alert, Button, Card, Form, Input, Result, Spin, Tag, Tooltip, Typography } from 'antd'
-import { ArrowLeftOutlined, ArrowRightOutlined, CodeOutlined, CopyOutlined, ExperimentOutlined, FileTextOutlined, TeamOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, ArrowRightOutlined, CodeOutlined, ExperimentOutlined, FileTextOutlined, TeamOutlined } from '@ant-design/icons'
 import { type ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -28,7 +28,8 @@ export default function TaskDetailPage() {
   const taskFailed = taskQuery.data?.status === 'FAILED' || taskQuery.data?.status === 'DELIVERY_FAILED'
   const diagnosticsQuery = useTaskDiagnostics(projectId, taskId, taskFailed)
   const stepsQuery = useTaskSteps(projectId, taskId, { limit: 100 })
-  const taskRunsQuery = useTaskRuns(projectId, taskId, { limit: 5 })
+  // 重试入口必须能识别同一步骤的后续运行；读取足够的近期记录，避免旧失败 run 被误判为可重试。
+  const taskRunsQuery = useTaskRuns(projectId, taskId, { limit: 100 })
   const diffsQuery = useDiffs(projectId, { taskId, limit: 100 })
   const cancelMutation = useCancelTask(projectId)
   const attentionConfirmMutation = useConfirmTaskDiffReview(projectId)
@@ -80,6 +81,7 @@ export default function TaskDetailPage() {
   const [hasClearedRunSelection, setHasClearedRunSelection] = useState(false)
   const [retryRequestedRunId, setRetryRequestedRunId] = useState<string | null>(null)
   const [retryingRunId, setRetryingRunId] = useState<string | null>(null)
+  const [runCancelPending, setRunCancelPending] = useState(false)
   const [runInspectorFocusRequest, setRunInspectorFocusRequest] = useState(0)
   const paramBatchId = searchParams.get('diffReviewBatchId')
   const selectedRunId = searchParams.get('runId')
@@ -140,6 +142,7 @@ export default function TaskDetailPage() {
 
   const task = taskQuery.data
   const recentRuns = taskRunsQuery.data?.data ?? []
+  const retryEligibleRunIds = useMemo(() => getRetryEligibleRunIds(recentRuns), [recentRuns])
   // retryingRunId 记的是「被重试的源 run id」；真正的新 run 是 retryOfTaskRunId === retryingRunId 的那条。
   // 重试请求已发送但新 TaskRun 尚未返回时进入过渡态，不能继续把旧失败运行当作当前状态。
   const retryPending = retryRequestedRunId !== null
@@ -221,7 +224,7 @@ export default function TaskDetailPage() {
       <div className={styles.topBar}><Button type="text" size="small" icon={<ArrowLeftOutlined />} onClick={() => navigate(PATHS.projectTasks(projectId))}>返回任务中心</Button></div>
       <div className={styles.taskWorkspace}>
         <div className={styles.taskWorkspaceMain}>
-          <CompactTaskHeader task={currentTask} projectId={projectId} onCancel={handleCancel} cancelPending={cancelMutation.isPending} completedWithoutCode={completedWithoutCode} />
+          <CompactTaskHeader task={currentTask} projectId={projectId} onCancel={handleCancel} cancelPending={cancelMutation.isPending || runCancelPending} completedWithoutCode={completedWithoutCode} />
           {cancelMutation.error ? <CancelError error={cancelMutation.error} onRefresh={() => void taskQuery.refetch()} /> : null}
           {currentTask.attention && !retryPending ? <AttentionBanner task={currentTask} onLocate={locate} onOpenRun={(taskRunId) => openRun(taskRunId, true)} onConfirmDelivery={confirmAttentionDelivery} confirmPending={attentionConfirmMutation.isPending} confirmError={attentionConfirmMutation.error} /> : null}
           <TaskFailureDiagnostic task={currentTask} projectId={projectId} query={diagnosticsQuery} onOpenRun={openRun} suppress={attentionOwnsRunFailure || retryPending} />
@@ -259,11 +262,35 @@ export default function TaskDetailPage() {
           </main>
         </div>
         <aside className={styles.taskWorkspaceAside}>
-          <TaskRunInspectorPanel projectId={projectId} task={currentTask} taskId={currentTask.id} taskRunId={inspectedRunId} onRunChange={openRun} onRetryRequested={setRetryRequestedRunId} onRetryStarted={(sourceRunId) => { setRetryRequestedRunId(null); setRetryingRunId(sourceRunId) }} onRetryRequestError={() => setRetryRequestedRunId(null)} retryPending={retryPending} focusRequest={runInspectorFocusRequest} />
+          <TaskRunInspectorPanel projectId={projectId} task={currentTask} taskId={currentTask.id} taskRunId={inspectedRunId} retryEligibleRunIds={retryEligibleRunIds} onRunChange={openRun} onRetryRequested={setRetryRequestedRunId} onRetryStarted={(sourceRunId) => { setRetryRequestedRunId(null); setRetryingRunId(sourceRunId) }} onRetryRequestError={() => setRetryRequestedRunId(null)} retryPending={retryPending} taskCancelPending={cancelMutation.isPending} onRunCancelPendingChange={setRunCancelPending} focusRequest={runInspectorFocusRequest} />
         </aside>
       </div>
     </div>
   )
+}
+
+/**
+ * 同一 TaskStep 的重试形成 retryOfTaskRunId 链。旧失败记录仍可查看，
+ * 但仅该步骤最新、且尚未被后续运行取代的记录可触发下一次重试。
+ */
+function getRetryEligibleRunIds(runs: readonly TaskRunSummary[]): ReadonlySet<string> {
+  const latestByStep = new Map<string, TaskRunSummary>()
+  const retriedSourceIds = new Set<string>()
+
+  for (const run of runs) {
+    if (run.retryOfTaskRunId) retriedSourceIds.add(run.retryOfTaskRunId)
+    const current = latestByStep.get(run.taskStepId)
+    if (!current || runUpdatedAt(run) > runUpdatedAt(current)) latestByStep.set(run.taskStepId, run)
+  }
+
+  return new Set([...latestByStep.values()]
+    .filter((run) => !retriedSourceIds.has(run.id))
+    .map((run) => run.id))
+}
+
+function runUpdatedAt(run: Pick<TaskRunSummary, 'createdAt' | 'updatedAt'>): number {
+  const timestamp = Date.parse(run.updatedAt || run.createdAt)
+  return Number.isFinite(timestamp) ? timestamp : 0
 }
 
 function TaskFailureDiagnostic({ task, projectId, query, onOpenRun, suppress }: {
@@ -319,7 +346,6 @@ function CompactTaskHeader({ task, projectId, onCancel, cancelPending, completed
           <div className={styles.headerTitleLine}>
             <Title level={2} className={styles.taskTitle}>{display(task.title)}</Title>
             <TaskModelStatusTag status={task.status} completedWithoutCode={completedWithoutCode} />
-            <Button type="text" size="small" className={styles.copyButton} icon={<CopyOutlined />} aria-label="复制任务 ID" title={`复制任务 ID：${task.id}`} onClick={() => void navigator.clipboard?.writeText(task.id)} />
           </div>
         </div>
         <div className={styles.headerActions}>
@@ -329,7 +355,6 @@ function CompactTaskHeader({ task, projectId, onCancel, cancelPending, completed
       </div>
       <div className={styles.headerMeta}>
         <HeaderMeta label="需求群" value={task.requirementGroup?.name} />
-        <HeaderMeta label="当前阶段" value={task.executionSummary.currentStageTitle} />
         <HeaderMeta label="仓库" value={`${task.repositories.length || task.repositoryIds?.length || 0} 个`} />
         <HeaderMeta label="更新于" value={formatDate(task.updatedAt)} />
         <RequirementMeta task={task} />
@@ -418,7 +443,7 @@ function StepCard({ step, onRun }: { step: TaskStep; onRun: (runId: string) => v
 
 function RecentExecutionPanel({ query, retryPending, onOpenRun, onClearSelection, selectedRunId }: { query: ReturnType<typeof useTaskRuns>; retryPending: boolean; onOpenRun: (taskRunId: string) => void; onClearSelection: () => void; selectedRunId: string | null }) {
   const runs = [...(query.data?.data ?? [])].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
-  return <section className={styles.recentExecutionPanel} data-testid="recent-execution-panel"><div className={styles.panelHeading}><Title level={3}>最近执行</Title></div>{retryPending ? <InlineState loading text="重试已受理，正在等待服务端返回运行记录" /> : null}{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="执行记录" error={query.error} /> : runs.length === 0 ? <Text type="secondary" className={styles.compactEmpty}>尚无执行记录</Text> : <div className={styles.recentExecutionList} data-testid="recent-execution-blank" onClick={(event) => { if (event.target === event.currentTarget) onClearSelection() }}>{runs.map((run) => <RecentRunItem key={run.id} run={run} selected={run.id === selectedRunId} onOpen={() => onOpenRun(run.id)} />)}</div>}</section>
+  return <section className={styles.recentExecutionPanel} data-testid="recent-execution-panel"><div className={styles.panelHeading}><Title level={3}>最近执行</Title></div>{retryPending ? <InlineState loading text="重试已受理，正在等待服务端返回运行记录" /> : null}{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="执行记录" error={query.error} /> : runs.length === 0 ? <PanelPlaceholder description="尚无执行记录" icon={<ExperimentOutlined />} /> : <div className={styles.recentExecutionList} data-testid="recent-execution-blank" onClick={(event) => { if (event.target === event.currentTarget) onClearSelection() }}>{runs.map((run) => <RecentRunItem key={run.id} run={run} selected={run.id === selectedRunId} onOpen={() => onOpenRun(run.id)} />)}</div>}</section>
 }
 
 function RecentRunItem({ run, selected, onOpen }: { run: TaskRunSummary; selected: boolean; onOpen: () => void }) {
@@ -471,6 +496,10 @@ function DeliveryGenerationPlaceholder() {
   return <Card className={`${styles.codeDeliveryCard} ${styles.deliveryGenerationPlaceholder}`} size="small" data-testid="delivery-generation-placeholder"><div className={styles.deliveryGenerationLines} aria-hidden><span /><span /><span /></div><Text type="secondary">正在生成正式 Diff 与交付信息</Text></Card>
 }
 
+function PanelPlaceholder({ description, icon }: { description: string; icon: ReactNode }) {
+  return <div className={styles.panelEmptyPlaceholder} data-testid="panel-empty-placeholder"><span className={styles.panelEmptyPlaceholderIcon}>{icon}</span><Text type="secondary">{description}</Text></div>
+}
+
 function CodeChangeCard({ projectId, taskId, task, query, completedWithoutCode, batch }: { projectId: string; taskId: string; task: Task; query: ReturnType<typeof useDiffs>; completedWithoutCode: boolean; batch: DiffReviewBatch | null }) {
   const navigate = useNavigate()
   const diffs = query.data?.data ?? []
@@ -492,7 +521,7 @@ function CodeChangeCard({ projectId, taskId, task, query, completedWithoutCode, 
 
 function DeliveryCard({ projectId, task, query, enabled, completedWithoutCode, onRefresh }: { projectId: string; task: Task; query: ReturnType<typeof useTaskDiffReview>; enabled: boolean; completedWithoutCode: boolean; onRefresh: () => void }) {
   if (completedWithoutCode) return <section className={styles.deliverySection} data-testid="delivery-card"><Text type="secondary" className={styles.compactEmpty}>任务已完成，无代码变更，因此未生成 Diff 或 MR</Text></section>
-  if (!enabled) return <section className={styles.deliverySection} data-testid="delivery-card"><Text type="secondary" className={styles.compactEmpty}>{task.status === 'SUCCEEDED' ? '任务已完成' : '等待任务生成正式 Diff'}</Text></section>
+  if (!enabled) return <section className={styles.deliverySection} data-testid="delivery-card"><PanelPlaceholder description={task.status === 'SUCCEEDED' ? '任务已完成' : '等待任务生成正式 Diff'} icon={<CodeOutlined />} /></section>
   if (query.isLoading) return <section className={styles.deliverySection} data-testid="delivery-card"><InlineState loading /></section>
   if (query.isError) return <section className={styles.deliverySection} data-testid="delivery-card"><Text type="secondary" className={styles.compactEmpty}>{diffReviewUnavailableMessage(task, query.error)}</Text><Button type="link" size="small" onClick={onRefresh}>刷新交付状态</Button></section>
   if (!isCompleteDiffReviewBatch(query.data) || query.data.taskId !== task.id) return <section className={styles.deliverySection} data-testid="delivery-card"><Text type="secondary" className={styles.compactEmpty}>{task.capabilities.canConfirmDiffReview || task.capabilities.canRejectDiffReview ? '交付信息不完整，请刷新' : '最终 Diff 尚未生成'}</Text><Button type="link" size="small" onClick={onRefresh}>刷新交付状态</Button></section>

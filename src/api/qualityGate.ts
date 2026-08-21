@@ -194,7 +194,7 @@ const policyPath = (projectId: string, repositoryId: string, branch: string) =>
   `/projects/${projectId}/repositories/${repositoryId}/branch-policies/${encodeURIComponent(branch)}`
 
 const gatePath = (projectId: string, repositoryId: string, branch: string) =>
-  `/projects/${projectId}/repositories/${repositoryId}/quality-gates/${encodeURIComponent(branch)}`
+  `/projects/${projectId}/repositories/${repositoryId}/quality-gates?branch=${encodeURIComponent(branch)}`
 
 export const branchPolicyApi = {
   get(projectId: string, repositoryId: string, branch: string) {

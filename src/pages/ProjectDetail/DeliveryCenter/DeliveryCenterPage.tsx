@@ -699,4 +699,3 @@ function RecentDeliveryActivities({ query, onOpenResource }: { query: ReturnType
 function Legend({ color, label, value }: { color: string; label: string; value: number }) {
   return <div><i style={{ background: color }} /><span>{label}</span><strong>{value}</strong></div>
 }
-

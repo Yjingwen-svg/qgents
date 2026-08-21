@@ -249,7 +249,7 @@ export default function TaskDetailPage() {
           <main className={styles.content}>
             <ExecutionFlowRow task={currentTask} query={stepsQuery} steps={steps} retryPending={retryPending} onOpenRun={openRun} />
             <div className={styles.workbenchMain}>
-              <RecentExecutionPanel query={taskRunsQuery} taskStatus={currentTask.status} retryPending={retryPending} onOpenRun={openRun} onClearSelection={clearRunSelection} selectedRunId={inspectedRunId} />
+              <RecentExecutionPanel query={taskRunsQuery} retryPending={retryPending} onOpenRun={openRun} onClearSelection={clearRunSelection} selectedRunId={inspectedRunId} />
               <DeliveryPanel projectId={projectId} taskId={currentTask.id} task={currentTask} retryPending={retryPending} diffsQuery={diffsQuery} diffReviewQuery={diffReviewQuery} reviewEnabled={reviewEnabled} completedWithoutCode={completedWithoutCode} onRefresh={() => { void diffReviewQuery.refetch(); void taskQuery.refetch() }} />
             </div>
           </main>
@@ -391,7 +391,7 @@ function ExecutionFlowRow({ task, query, steps, retryPending, onOpenRun }: { tas
       ) : (
         <div className={styles.flowScroller}>
           <div className={styles.flowGrid}>
-            {ordered.map((step) => <StepCard key={step.id} step={step} taskStatus={task.status} onRun={onOpenRun} />)}
+            {ordered.map((step) => <StepCard key={step.id} step={step} onRun={onOpenRun} />)}
           </div>
         </div>
       )}
@@ -399,24 +399,18 @@ function ExecutionFlowRow({ task, query, steps, retryPending, onOpenRun }: { tas
   )
 }
 
-function StepCard({ step, taskStatus, onRun }: { step: TaskStep; taskStatus: Task['status']; onRun: (runId: string) => void }) {
+function StepCard({ step, onRun }: { step: TaskStep; onRun: (runId: string) => void }) {
   const current = step.status === 'RUNNING'
-  // 任务仍在执行（含重试/修复/裁决）时，单步 FAILED 是可恢复中间态而非终局失败：
-  // 弱化为橙色「重试/修复中」，避免把重试中的失败误读为任务失败；任务终态后恢复红色失败。
-  const recoverable = step.status === 'FAILED' && isTaskInFlight(taskStatus)
-  return <article className={`${styles.stepCard} ${current ? styles.stepCardCurrent : ''}`}><div className={styles.stepHeading}><span className={styles.stepIcon}>{stepIcon(step.role)}</span><span className={styles.stepNumber}>{step.sequenceNo}.</span><Tooltip title={display(step.title)}><Text strong className={styles.stepTitle}>{display(step.title)}</Text></Tooltip><Tag color={recoverable ? 'warning' : stepStatusColor(step.status)}>{recoverable ? 'FAILED（重试/修复中）' : step.status}</Tag></div><div className={styles.stepDetails}><StepInfo label="Agent" value={display(step.agent?.name)} /><StepInfo label="仓库" value={display(step.repository?.name)} /><StepInfo label="说明" value={display(step.acceptanceNotes)} /><StepInfo label="运行" value={`${step.runCount} 次`} /></div><div className={styles.stepFooter}>{step.latestRun ? <Button type="link" size="small" onClick={() => onRun(step.latestRun!.id)}>查看最新运行</Button> : <Text type="secondary">尚未运行</Text>}{step.latestRun ? <ArrowRightOutlined /> : null}</div></article>
+  return <article className={`${styles.stepCard} ${current ? styles.stepCardCurrent : ''}`}><div className={styles.stepHeading}><span className={styles.stepIcon}>{stepIcon(step.role)}</span><span className={styles.stepNumber}>{step.sequenceNo}.</span><Tooltip title={display(step.title)}><Text strong className={styles.stepTitle}>{display(step.title)}</Text></Tooltip><Tag color={stepStatusColor(step.status)}>{step.status}</Tag></div><div className={styles.stepDetails}><StepInfo label="Agent" value={display(step.agent?.name)} /><StepInfo label="仓库" value={display(step.repository?.name)} /><StepInfo label="说明" value={display(step.acceptanceNotes)} /><StepInfo label="运行" value={`${step.runCount} 次`} /></div><div className={styles.stepFooter}>{step.latestRun ? <Button type="link" size="small" onClick={() => onRun(step.latestRun!.id)}>查看最新运行</Button> : <Text type="secondary">尚未运行</Text>}{step.latestRun ? <ArrowRightOutlined /> : null}</div></article>
 }
 
-function RecentExecutionPanel({ query, taskStatus, retryPending, onOpenRun, onClearSelection, selectedRunId }: { query: ReturnType<typeof useTaskRuns>; taskStatus: Task['status']; retryPending: boolean; onOpenRun: (taskRunId: string) => void; onClearSelection: () => void; selectedRunId: string | null }) {
+function RecentExecutionPanel({ query, retryPending, onOpenRun, onClearSelection, selectedRunId }: { query: ReturnType<typeof useTaskRuns>; retryPending: boolean; onOpenRun: (taskRunId: string) => void; onClearSelection: () => void; selectedRunId: string | null }) {
   const runs = [...(query.data?.data ?? [])].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
-  return <section className={styles.recentExecutionPanel} data-testid="recent-execution-panel"><div className={styles.panelHeading}><Title level={3}>最近执行</Title></div>{retryPending ? <InlineState loading text="重试已受理，正在等待服务端返回运行记录" /> : null}{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="执行记录" error={query.error} /> : runs.length === 0 ? <PanelPlaceholder description="尚无执行记录" icon={<ExperimentOutlined />} /> : <div className={styles.recentExecutionList} data-testid="recent-execution-blank" onClick={(event) => { if (event.target === event.currentTarget) onClearSelection() }}>{runs.map((run) => <RecentRunItem key={run.id} run={run} taskStatus={taskStatus} selected={run.id === selectedRunId} onOpen={() => onOpenRun(run.id)} />)}</div>}</section>
+  return <section className={styles.recentExecutionPanel} data-testid="recent-execution-panel"><div className={styles.panelHeading}><Title level={3}>最近执行</Title></div>{retryPending ? <InlineState loading text="重试已受理，正在等待服务端返回运行记录" /> : null}{query.isLoading ? <InlineState loading /> : query.isError ? <SectionError resource="执行记录" error={query.error} /> : runs.length === 0 ? <PanelPlaceholder description="尚无执行记录" icon={<ExperimentOutlined />} /> : <div className={styles.recentExecutionList} data-testid="recent-execution-blank" onClick={(event) => { if (event.target === event.currentTarget) onClearSelection() }}>{runs.map((run) => <RecentRunItem key={run.id} run={run} selected={run.id === selectedRunId} onOpen={() => onOpenRun(run.id)} />)}</div>}</section>
 }
 
-function RecentRunItem({ run, taskStatus, selected, onOpen }: { run: TaskRunSummary; taskStatus: Task['status']; selected: boolean; onOpen: () => void }) {
-  // 任务仍在执行时，单次 run 失败可能是重试/修复/裁决中的中间事实而非终局失败：
-  // 弱化为橙色并标注「任务继续重试/修复中」，避免把可恢复失败误读为任务失败。
-  const recoverable = run.status === 'FAILED' && isTaskInFlight(taskStatus)
-  return <button type="button" className={`${styles.recentRunItem} ${selected ? styles.recentRunItemSelected : ''}`} onClick={onOpen}>{run.status === 'RUNNING' ? <Spin size="small" className={styles.runStatusSpinner} /> : <span className={styles.runStatusDot} data-status={run.status} />}<div className={styles.recentRunItemMain}><div className={styles.recentRunItemRow}><Tag color={recoverable ? 'warning' : runStatusColor(run.status)}>{recoverable ? 'FAILED（重试/修复中）' : run.status}</Tag><Text strong className={styles.recentRunItemTitle}>{run.taskStepTitle || roleLabel(run.role)}</Text><Text type="secondary">{formatDate(run.updatedAt)}</Text></div><Text type="secondary" className={styles.recentRunItemStatus}>{run.statusSummary ?? (recoverable ? '本次执行失败，任务继续重试/修复中' : roleLabel(run.role))}</Text></div><Text type="secondary" className={styles.recentRunItemArtifact}>产物 {run.artifactSummary?.total ?? 0} · Diff {run.artifactSummary?.diffCount ?? 0}</Text></button>
+function RecentRunItem({ run, selected, onOpen }: { run: TaskRunSummary; selected: boolean; onOpen: () => void }) {
+  return <button type="button" className={`${styles.recentRunItem} ${selected ? styles.recentRunItemSelected : ''}`} onClick={onOpen}>{run.status === 'RUNNING' ? <Spin size="small" className={styles.runStatusSpinner} /> : <span className={styles.runStatusDot} data-status={run.status} />}<div className={styles.recentRunItemMain}><div className={styles.recentRunItemRow}><Tag color={runStatusColor(run.status)}>{run.status}</Tag><Text strong className={styles.recentRunItemTitle}>{run.taskStepTitle || roleLabel(run.role)}</Text><Text type="secondary">{formatDate(run.updatedAt)}</Text></div><Text type="secondary" className={styles.recentRunItemStatus}>{run.statusSummary ?? roleLabel(run.role)}</Text></div><Text type="secondary" className={styles.recentRunItemArtifact}>产物 {run.artifactSummary?.total ?? 0} · Diff {run.artifactSummary?.diffCount ?? 0}</Text></button>
 }
 
 function StepInfo({ label, value }: { label: string; value: string }) {

@@ -11,6 +11,7 @@ import type {
   TestsetListFilters,
   UpdateTestsetPayload,
 } from '@/types/testset'
+import { useProjectTaskDomainEvents } from '@/realtime/useProjectTaskDomainEvents'
 
 /**
  * 查询项目 Testset 列表（仓库 + 启用状态过滤走后端 query）。
@@ -41,11 +42,13 @@ export function useTestset(projectId: string, testsetId: string | undefined): Us
  * 查询受控测试运行状态与用例摘要。
  */
 export function useTestRun(projectId: string, testRunId: string | undefined): UseQueryResult<TestRun> {
+  const eventStatus = useProjectTaskDomainEvents(projectId)
   return useQuery({
     queryKey: queryKeys.testRuns.detail(projectId, testRunId ?? ''),
     queryFn: () => testsetApi.getTestRun(projectId, testRunId ?? ''),
     enabled: Boolean(projectId && testRunId),
     refetchInterval: (query) => {
+      if (eventStatus === 'connected') return false
       const status = query.state.data?.status
       return status === 'QUEUED' || status === 'RUNNING' ? 4000 : false
     },
@@ -59,11 +62,13 @@ export function useDryRunReport(
   projectId: string,
   dryRunId: string | undefined,
 ): UseQueryResult<DryRunReport> {
+  const eventStatus = useProjectTaskDomainEvents(projectId)
   return useQuery({
     queryKey: queryKeys.dryRuns.report(projectId, dryRunId ?? ''),
     queryFn: () => testsetApi.getDryRunReport(projectId, dryRunId ?? ''),
     enabled: Boolean(projectId && dryRunId),
     refetchInterval: (query) => {
+      if (eventStatus === 'connected') return false
       const status = query.state.data?.status
       return status === 'QUEUED' || status === 'RUNNING' ? 4000 : false
     },

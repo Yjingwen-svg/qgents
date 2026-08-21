@@ -47,6 +47,7 @@ import type {
   MergeRequestPreflight,
   MergeRequestSummary,
 } from '@/types/task-model'
+import { useProjectTaskPollingInterval } from '@/realtime/useProjectTaskDomainEvents'
 
 type Page<T> = TaskModelPage<T>
 
@@ -72,6 +73,7 @@ export function useInfiniteTasks(
 }
 
 export function useTask(projectId: string, taskId: string): UseQueryResult<Task> {
+  const pollingInterval = useProjectTaskPollingInterval(projectId, 5_000)
   return useQuery({
     queryKey: taskModelQueryKeys.tasks.detail(projectId, taskId),
     queryFn: () => tasksApi.get(projectId, taskId),
@@ -79,7 +81,7 @@ export function useTask(projectId: string, taskId: string): UseQueryResult<Task>
     // 任务状态可能从 DELIVERING → WAITING_PREFLIGHT → SUCCEEDED 等转换。
     // 当 SSE/WebSocket 不可用时，通过 5s 轻量轮询兜底刷新状态，
     // 避免 MR_FIRST 任务完成后用户看不到预检面板和 MR 占位。
-    refetchInterval: 5000,
+    refetchInterval: pollingInterval,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   })
@@ -410,12 +412,13 @@ export function useTaskMergeRequestPreflight(
   projectId: string,
   taskId: string | null | undefined,
 ): UseQueryResult<TaskMergeRequestPreflightList> {
+  const pollingInterval = useProjectTaskPollingInterval(projectId, 30_000)
   return useQuery({
     queryKey: taskModelQueryKeys.mergeRequests.preflightByTask(projectId, taskId ?? ''),
     queryFn: () => mergeRequestsApi.getTaskPreflight(projectId, taskId!),
     enabled: Boolean(projectId) && Boolean(taskId),
     staleTime: 10 * 1000,
-    refetchInterval: 30 * 1000,
+    refetchInterval: pollingInterval,
   })
 }
 
@@ -424,6 +427,7 @@ export function useMergeRequests(
   filters: MergeRequestListFilters = {},
   options?: { enabled?: boolean },
 ): UseQueryResult<Page<MergeRequestSummary>> {
+  const pollingInterval = useProjectTaskPollingInterval(projectId, 10_000)
   return useQuery({
     queryKey: taskModelQueryKeys.mergeRequests.list(projectId, filters),
     queryFn: () => mergeRequestsApi.list(projectId, filters),
@@ -432,7 +436,7 @@ export function useMergeRequests(
     // - 手动创建 useCreateMergeRequest 会在 onSuccess 立即 invalidate 缓存 → 立即刷新
     // - 自动创建没有 SSE 推送前，用 10s 轻量轮询兜底，保证用户停在 MR 列表页时能很快看到新记录
     //   (后台 tab 不刷新，最小化用户 CPU/网络开销)
-    refetchInterval: 10000,
+    refetchInterval: pollingInterval,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   })

@@ -10,6 +10,7 @@ import type {
   QualityGateConfig,
   QualityGateUpdateInput,
 } from '@/types/qualityGate'
+import { useProjectTaskPollingInterval } from '@/realtime/useProjectTaskDomainEvents'
 
 function invalidatePolicyScoped(projectId: string, repositoryId: string, branch: string): void {
   void queryClient.invalidateQueries({
@@ -86,13 +87,14 @@ export function usePreflight(
   repositoryId: string,
   targetBranch: string,
 ): UseQueryResult<Preflight> {
+  const pollingInterval = useProjectTaskPollingInterval(projectId, 5_000)
   return useQuery({
     queryKey: queryKeys.preflight.detail(projectId, taskId, repositoryId, targetBranch),
     queryFn: () => preflightApi.get(projectId, taskId, repositoryId, targetBranch),
     enabled: Boolean(projectId && targetBranch),
     // 任务交付阶段（DELIVERING → WAITING_PREFLIGHT）需要自动刷新，
     // 以便后端完成 commit/push 后前端能及时看到 Dry Run 状态变化。
-    refetchInterval: 5000,
+    refetchInterval: pollingInterval,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   })

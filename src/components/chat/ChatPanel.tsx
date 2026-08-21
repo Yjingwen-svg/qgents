@@ -18,7 +18,7 @@ import {
 } from '@ant-design/icons'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
-import { ApiError, groupApi, projectApi, attachmentApi, githubApi, uploadAttachment, memoryApi, tasksApi } from '@/api'
+import { ApiError, groupApi, projectApi, attachmentApi, githubApi, uploadAttachment, memoryApi, tasksApi, mergeRequestsApi } from '@/api'
 import { resolvePreviewUrl } from '@/api/attachment'
 import { AttachmentPreviewModal } from '@/components/chat/AttachmentPreviewModal'
 import { ChatDiffCard } from '@/components/chat/ChatDiffCard'
@@ -48,6 +48,7 @@ import type {
   TaskStatusMessageContent,
   TaskStatusRepositoryMapping,
 } from '@/types'
+import type { TaskMergeRequestPreflightList } from '@/types/task-model'
 
 const { Text } = Typography
 
@@ -72,6 +73,63 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const [settingsOpen, setSettingsOpen] = useState(false)
   // 回复引用：选中某条消息后，输入区显示引用条，发送时以 QUOTE 类型 + replyToId 提交
   const [replyTo, setReplyTo] = useState<Message | null>(null)
+
+  const quoteDiffBlockReason = useCallback((preflight: TaskMergeRequestPreflightList): string | null => {
+    for (const item of preflight.items) {
+      const mergeStatus = item.mergeRequest?.status
+      if (mergeStatus === 'MERGED') {
+        return '该 Diff 对应的 MR 已合并，当前不能引用继续修改。'
+      }
+      if (mergeStatus === 'CLOSED') {
+        return '该 Diff 对应的 MR 已关闭，当前不能引用继续修改。'
+      }
+      if (mergeStatus === 'OPEN' || item.status === 'MR_CREATED') {
+        return '该 Diff 已进入 MR 流程，当前不能引用继续修改。'
+      }
+      switch (item.status) {
+        case 'REQUESTED':
+        case 'DRY_RUN_QUEUED':
+        case 'DRY_RUN_RUNNING':
+          return '当前 Diff 正在进行 MR 预检，请等待预检完成后再引用继续修改。'
+        case 'WAITING_CQ':
+          return '当前 Diff 正在等待 CQ+1 审查，暂不能引用继续修改。'
+        case 'CREATING_MR':
+          return '当前 Diff 正在创建 MR，暂不能引用继续修改。'
+        default:
+          break
+      }
+    }
+    return null
+  }, [])
+
+  const handleReply = useCallback(async (target: Message) => {
+    if (target.type !== 'DIFF') {
+      setReplyTo(target)
+      return
+    }
+    const content = target.content as { taskId?: unknown }
+    const taskId = typeof content.taskId === 'string' ? content.taskId.trim() : ''
+    if (!taskId) {
+      message.error('当前 Diff 缺少任务上下文，暂时无法引用继续修改，请刷新页面后重试。')
+      return
+    }
+    try {
+      const preflight = await queryClient.fetchQuery({
+        queryKey: taskModelQueryKeys.mergeRequests.preflightByTask(projectId, taskId),
+        queryFn: () => mergeRequestsApi.getTaskPreflight(projectId, taskId),
+        staleTime: 0,
+      })
+      const blockReason = quoteDiffBlockReason(preflight)
+      if (blockReason) {
+        message.error(blockReason)
+        return
+      }
+      setReplyTo(target)
+      requestAnimationFrame(() => inputRef.current?.focus())
+    } catch (error) {
+      message.error(`暂时无法确认当前 Diff 状态：${formatApiError(error)}`)
+    }
+  }, [message, projectId, queryClient, quoteDiffBlockReason])
   // 附件内联预览（增量契约 §4/§5）：点击 IMAGE/FILE 打开页内预览弹窗
   const [previewTarget, setPreviewTarget] = useState<{
     attachmentId: string
@@ -1073,7 +1131,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                       selfDisplayName={user?.displayName ?? '我'}
                       projectId={projectId}
                       taskStatusById={taskStatusById}
-                      onReply={setReplyTo}
+                      onReply={handleReply}
                       onOpenFile={openFile}
                       onImageLoad={handleImageLoad}
                     />

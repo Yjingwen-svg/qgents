@@ -850,7 +850,7 @@ export function MergeRequestTab({
                   navigate(`${PATHS.projectCqReview(projectId)}?${params.toString()}`)
                 }}
               >
-                <Tag color="warning">等待 CQ+1</Tag>
+                <Tag color="warning">前往 CQ+1</Tag>
               </Button>
             </Tooltip>
           )

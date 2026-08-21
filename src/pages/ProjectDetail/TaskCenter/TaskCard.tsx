@@ -154,7 +154,11 @@ function repositorySummary(task: TaskListItem): string {
 
 function executionPercent(summary: TaskListItem['executionSummary']): number {
   if (summary.totalSteps <= 0) return 0
-  return Math.min(100, Math.round((summary.succeededSteps / summary.totalSteps) * 100))
+  // 终态步骤占比：PENDING/RUNNING/WAITING/BLOCKED 之外的步骤（SUCCEEDED/FAILED/CANCELLED/SKIPPED）
+  // 均视为已走完。任务终态且后端已收敛剩余步骤时必然 100%；运行中语义与原 succeeded/total 等价。
+  const terminalSteps = summary.totalSteps - summary.pendingSteps - summary.runningSteps
+    - summary.waitingSteps - summary.blockedSteps
+  return Math.min(100, Math.round((terminalSteps / summary.totalSteps) * 100))
 }
 
 function ExecutionSummaryTooltip({ summary }: { summary: TaskListItem['executionSummary'] }) {

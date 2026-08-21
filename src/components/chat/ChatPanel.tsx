@@ -27,6 +27,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useAgents } from '@/hooks/agents'
 import { subscribeRealtimeReconnect } from '@/realtime'
 import { useProjectTaskPollingInterval } from '@/realtime/useProjectTaskDomainEvents'
+import './ChatPanel.css'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { TaskTriggerModal } from '@/components/task-domain'
 import { GroupMemberSettings } from '@/pages/ProjectDetail/GroupMemberSettings'
@@ -908,6 +909,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       <Layout style={{ height: '100%', background: token.colorBgBase }}>
       {/* 顶部：群标题 + 操作入口；多选模式下切换为「取消 | 已选择 N 条」 */}
       <div
+        className="chat-panel__header"
         style={{
           padding: '12px 20px',
           borderBottom: `1px solid ${token.colorBorder}`,
@@ -939,7 +941,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
               </div>
             </div>
           </div>
-          <Space size={8}>
+          <Space className="chat-panel__header-actions" size={8} wrap>
             {/* @Agent 发起任务入口 —— 打开 B 的 TaskTriggerModal；其余操作收进「群聊设置」栏 */}
             {canOpenTaskTrigger && <Button
               type="primary"
@@ -962,6 +964,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       {/* 消息列表 */}
       <Layout.Content
         ref={listRef}
+        className="chat-panel__message-list"
         style={{
           flex: 1,
           overflowY: 'auto',
@@ -993,7 +996,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         ) : messages.length === 0 ? (
           <Empty description="还没有消息，来说点什么吧" />
         ) : (
-          <div ref={contentRef} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div ref={contentRef} className="chat-panel__message-content" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {/* 顶部：加载更早历史的分页指示 */}
             <div style={{ textAlign: 'center', padding: '8px 0' }}>
               {isFetchingNextPage ? (
@@ -1008,12 +1011,23 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                 </Text>
               )}
             </div>
-            {messages.map((m) => {
+            {messages.map((m, messageIndex) => {
               const isSelf = m.senderType === 'USER' && m.senderId === user?.id
+              const previousMessage = messages[messageIndex - 1]
+              const groupedWithPrevious = Boolean(
+                previousMessage &&
+                  previousMessage.senderType !== 'SYSTEM' &&
+                  m.senderType !== 'SYSTEM' &&
+                  previousMessage.senderType === m.senderType &&
+                  previousMessage.senderId === m.senderId &&
+                  previousMessage.type !== 'TASK_STATUS' &&
+                  m.type !== 'TASK_STATUS',
+              )
               const flashing = mentionFlashId === m.id
               return (
                 <div
                   key={m.id}
+                  className={groupedWithPrevious ? 'chat-panel__message-row chat-panel__message-row--grouped' : 'chat-panel__message-row'}
                   id={`msg-${m.id}`}
                   onContextMenu={
                     !isSelf && m.senderType !== 'SYSTEM'
@@ -1076,6 +1090,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
             {/* 未读「@ 我」提示条：点击跳到被 @ 的那条消息，点击后按钮消失 */}
             {showMentionBar ? (
               <div
+                className="chat-panel__mention-jump"
                 onClick={jumpToMention}
                 role="button"
                 tabIndex={0}
@@ -1085,21 +1100,9 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                     jumpToMention()
                   }
                 }}
-                style={{
-                  position: 'sticky',
-                  bottom: 12,
-                  alignSelf: 'center',
-                  marginTop: 10,
-                  padding: '7px 16px',
-                  borderRadius: 999,
-                  background: 'rgba(245, 158, 11, 0.12)',
-                  border: '1px solid rgba(245, 158, 11, 0.4)',
-                  color: '#b45309',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                }}
               >
-                ↑ 有人@你
+                <span aria-hidden>↑</span>
+                <span>有人@你{mentionMessages.length > 1 ? ` · ${mentionMessages.length} 条` : ''}</span>
               </div>
             ) : null}
           </div>
@@ -1108,7 +1111,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
 
       {/* 底部输入区 */}
 
-        <div style={{ position: 'relative', padding: '12px 20px 16px', borderTop: `1px solid ${token.colorBorder}` }}>
+        <div className="chat-panel__composer" style={{ position: 'relative', padding: '12px 20px 16px', borderTop: `1px solid ${token.colorBorder}` }}>
           {/* @ 提及成员面板 */}
           {mentionOpen && (filteredAgents.length > 0 || filteredUsers.length > 0) && (
           <div
@@ -1185,7 +1188,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         )}
 
         {sendError ? <Text type="danger" style={{ display: 'block', marginBottom: 8 }}>{sendError}</Text> : null}
-        <Space.Compact style={{ width: '100%' }}>
+        <div className="chat-panel__composer-row">
           <Upload
             showUploadList={false}
             multiple={false}
@@ -1194,7 +1197,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
               return false
             }}
           >
-            <Button icon={<PaperClipOutlined />} loading={uploading} aria-label="发送文件" />
+            <Button className="chat-panel__composer-tool" icon={<PaperClipOutlined />} loading={uploading} aria-label="发送文件" />
           </Upload>
           <Input.TextArea
             ref={inputRef}
@@ -1210,9 +1213,10 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
                 handleSend()
               }
             }}
-            style={{ flex: 1 }}
+            className="chat-panel__composer-input"
           />
-          <Button
+            <Button
+            className="chat-panel__composer-send"
             type="primary"
             icon={<SendOutlined />}
             onClick={handleSend}
@@ -1221,7 +1225,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           >
             发送
           </Button>
-        </Space.Compact>
+        </div>
         </div>
 
       {/* @Agent 发起任务弹窗（B 的 TaskTriggerModal） */}

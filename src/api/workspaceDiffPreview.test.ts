@@ -68,6 +68,17 @@ describe('workspace Diff Preview mapping', () => {
     expect(files[1].changeType).toBe('MODIFIED')
   })
 
+  it('normalizes Git octal-escaped file paths before a file is selected', () => {
+    const file = mapWorkspaceDiffPreviewFile({
+      repositoryId: 'repo-1',
+      repositoryPath: 'repo-1',
+      path: 'qg/\\344\\273\\277\\345\\260\\217\\347\\261\\263/welcome.html',
+      changeType: 'ADDED',
+    })
+
+    expect(file?.path).toBe('qg/\u4eff\u5c0f\u7c73/welcome.html')
+  })
+
   it('returns null for malformed preview file rows', () => {
     expect(mapWorkspaceDiffPreviewFile(null)).toBeNull()
     expect(mapWorkspaceDiffPreviewFile({})).toBeNull()

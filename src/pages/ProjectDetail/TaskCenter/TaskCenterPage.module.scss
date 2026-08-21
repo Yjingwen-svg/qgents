@@ -23,10 +23,16 @@
 
 .header,
 .listHeading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+.listTitle {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
 }
 
 .header {
@@ -273,15 +279,39 @@
 }
 
 .repositoryLocationValue {
-  display: grid;
-  gap: 3px;
+  position: relative;
+  width: 100%;
   height: clamp(20px, 0.2vw + 16px, 23.5px);
   margin-top: -2px;
   min-width: 0;
+  overflow: hidden;
+}
+
+.repositoryVisibleTags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.repositoryMeasure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: 4px;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .repositoryName {
-  width: fit-content;
+  display: inline-block;
+  max-width: calc(100% - 34px);
   height: clamp(18px, 0.3vw + 14px, 22px);
   margin: 0;
   padding: 0 clamp(6px, 0.2vw + 4px, 8px);
@@ -291,6 +321,16 @@
   background: #f1f8ff;
   font-weight: 600;
   line-height: clamp(16px, 0.2vw + 14px, 20px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repositoryMore {
+  flex: 0 0 auto;
+  color: #526b8d;
+  font-size: 12px;
+  line-height: 1;
 }
 
 .repositoryBranch,

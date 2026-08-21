@@ -170,6 +170,13 @@ export default function DeliveryCenterPage() {
     createdBy: searchParams.get('createdBy') || undefined,
     keyword: searchParams.get('keyword') || undefined,
   }), [searchParams])
+  // 无筛选直达交付中心时，优先呈现当前用户仍可处理的交付物；
+  // 通过 view=all 保留查看完整交付历史的显式入口。
+  const showAllItems = searchParams.get('view') === 'all'
+  const hasExplicitFilter = Boolean(
+    filters.groupId || filters.type || filters.repositoryId || filters.status || filters.createdBy || filters.keyword,
+  )
+  const onlyActionableItems = !showAllItems && !hasExplicitFilter
 
   const itemQuery = useInfiniteDeliveryItems(projectId, { ...filters, limit: PAGE_SIZE })
   const summaryQuery = useDeliverySummary(projectId, {
@@ -208,9 +215,14 @@ export default function DeliveryCenterPage() {
     return [...seen.values()]
   }, [itemQuery.data])
 
+  const visibleItems = useMemo(() => onlyActionableItems
+    ? items.filter((item) => hasActionableCapability(item))
+    : items,
+  [items, onlyActionableItems])
+
   const groupedItems = useMemo(() => {
     const grouped = new Map<string, { id: string | null; name: string; items: DeliveryItem[]; latestAt: string }>()
-    for (const item of items) {
+    for (const item of visibleItems) {
       const id = item.requirementGroup?.id ?? null
       const key = id ?? '__unassociated__'
       const group = grouped.get(key) ?? {
@@ -224,7 +236,7 @@ export default function DeliveryCenterPage() {
       grouped.set(key, group)
     }
     return [...grouped.values()].sort((left, right) => right.latestAt.localeCompare(left.latestAt))
-  }, [items])
+  }, [visibleItems])
 
   function updateFilter(key: 'groupId' | 'type' | 'repositoryId' | 'status' | 'keyword', value: string | undefined) {
     const next = new URLSearchParams(searchParams)
@@ -236,6 +248,13 @@ export default function DeliveryCenterPage() {
   function resetFilters() {
     setPendingKeyword('')
     setSearchParams({}, { replace: true })
+  }
+
+  function toggleItemScope() {
+    const next = new URLSearchParams(searchParams)
+    if (onlyActionableItems) next.set('view', 'all')
+    else next.delete('view')
+    setSearchParams(next, { replace: true })
   }
 
   async function performAction(item: DeliveryItem, action: DeliveryAction, reason?: string) {
@@ -364,6 +383,7 @@ export default function DeliveryCenterPage() {
             <FilterField label="状态">
               <Select aria-label="状态" placeholder="全部状态" value={filters.status} onChange={(value: DeliveryDisplayStatus | undefined) => updateFilter('status', value)} options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ label, value }))} />
             </FilterField>
+            <Button onClick={toggleItemScope}>{onlyActionableItems ? '查看全部交付物' : '仅看待处理'}</Button>
             <Button className={styles.resetButton} icon={<RollbackOutlined />} onClick={resetFilters}>重置筛选</Button>
           </div>
 
@@ -373,7 +393,7 @@ export default function DeliveryCenterPage() {
             ) : itemQuery.isLoading ? (
               <div className={styles.loadingStack}><Skeleton active /><Skeleton active /><Skeleton active /></div>
             ) : groupedItems.length === 0 ? (
-              <Empty className={styles.empty} description="当前没有符合条件的交付物" />
+              <Empty className={styles.empty} description={onlyActionableItems ? '当前没有需要你处理的交付物' : '当前没有符合条件的交付物'} />
             ) : (
               <div className={styles.groupList}>
                 {groupedItems.map((group) => {
@@ -607,8 +627,15 @@ function ResourceActions({ item, active, onAction, onReject, onOpenResource }: {
     {item.resourceType !== 'AGENT' && item.capabilities.canSubmitReview ? <Button size="small" type="primary" icon={<SendOutlined />} loading={active} disabled={active} onClick={() => void onAction(item, 'submitReview')}>申请交付</Button> : null}
     {item.capabilities.canApprove ? <Button size="small" type="primary" icon={<CheckOutlined />} loading={active} disabled={active} onClick={() => void onAction(item, 'approve')}>{item.resourceType === 'AGENT' ? '批准发布' : '批准并共享'}</Button> : null}
     {item.capabilities.canReject ? <Button size="small" danger icon={<CloseOutlined />} disabled={active} onClick={() => onReject(item)}>{item.resourceType === 'AGENT' ? '拒绝发布' : '拒绝'}</Button> : null}
-    {item.capabilities.canArchive ? <Button size="small" icon={<InboxOutlined />} loading={active} disabled={active} onClick={() => void onAction(item, 'archive')}>归档</Button> : null}
   </>
+}
+
+function hasActionableCapability(item: DeliveryItem): boolean {
+  const capabilities = item.capabilities
+  return capabilities.canSubmitReview
+    || capabilities.canApprove
+    || capabilities.canReject
+    || capabilities.canRetryDelivery
 }
 
 function CodeActions({ item, active, onAction, onReject, onOpenResource }: { item: CodeDeliveryItem; active: boolean; onAction: (item: DeliveryItem, action: DeliveryAction) => Promise<void>; onReject: (item: DeliveryItem) => void; onOpenResource: (item: DeliveryItem) => void }) {

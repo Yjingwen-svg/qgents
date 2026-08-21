@@ -39,6 +39,7 @@
 }
 
 .detailContent { width: 100%; }
+.taskDeliveryPanel { width: 100%; }
 .selectedDetail { margin-top: 18px; }
 .mutationError { margin-top: 12px; }
 .loadMore { display: block; margin: 18px auto 0; }
@@ -82,6 +83,41 @@
 .filePath { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fileStats { color: #687da3; font-size: 12px; white-space: nowrap; }
 
+.codeViewer {
+  min-width: 0;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.codeViewerMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #dbe4f0;
+  background: #f7f9fc;
+  color: #47638d;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.languageBadge {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e8eef7;
+  color: #3d5b87;
+  font-family: inherit;
+  font-size: 11px;
+}
+.codeViewport {
+  height: clamp(280px, 50vh, 560px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: #fbfcff;
+}
+
 .hunkHead {
   margin: 4px 0 6px;
   padding: 2px 10px;
@@ -112,10 +148,14 @@
 .code {
   min-width: 0;
   padding-left: 10px;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+  overflow-wrap: normal;
+  white-space: pre;
   color: #1f2d49;
 }
+.code [data-syntax-token='comment'] { color: #8290a8; font-style: italic; }
+.code [data-syntax-token='string'] { color: #a3436d; }
+.code [data-syntax-token='keyword'] { color: #7556b5; font-weight: 600; }
+.code [data-syntax-token='number'] { color: #0c7b70; }
 .binary { padding: 10px; color: #687da3; font-size: 13px; }
 
 @media (max-width: 1100px) {

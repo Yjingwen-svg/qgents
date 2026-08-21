@@ -77,3 +77,12 @@ export function useProjectTaskDomainEvents(projectId: string): ProjectEventConne
 
   return status
 }
+
+/**
+ * SSE 已连接时由事件驱动 Query 失效；只有断连或不可用时才保留轮询兜底。
+ * 每个调用点共享同一项目连接，不会额外建立 EventSource。
+ */
+export function useProjectTaskPollingInterval(projectId: string, fallbackIntervalMs: number): number | false {
+  const status = useProjectTaskDomainEvents(projectId)
+  return status === 'connected' ? false : fallbackIntervalMs
+}

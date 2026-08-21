@@ -14,6 +14,7 @@ import { groupApi, mergeRequestsApi, tasksApi } from '@/api'
 import { taskModelQueryKeys } from '@/query'
 import type { TaskListItem, TaskStatus } from '@/types/task-model'
 import { PATHS } from '@/routes/paths'
+import { useProjectTaskPollingInterval } from '@/realtime/useProjectTaskDomainEvents'
 
 const { Text } = Typography
 
@@ -74,6 +75,7 @@ function groupProgress(tasks: TaskListItem[], groupId: string): GroupProgressKey
  */
 export function ProjectActivityPanel({ projectId }: { projectId: string }) {
   const navigate = useNavigate()
+  const taskPollingInterval = useProjectTaskPollingInterval(projectId, 5_000)
   const { data: groups = [] } = useQuery({
     queryKey: ['groups', projectId],
     queryFn: () => groupApi.listByProject(projectId),
@@ -87,7 +89,7 @@ export function ProjectActivityPanel({ projectId }: { projectId: string }) {
     queryKey: taskModelQueryKeys.tasks.list(projectId, { limit: 100 }),
     queryFn: () => tasksApi.list(projectId, { limit: 100 }),
     enabled: !!projectId,
-    refetchInterval: 5_000,
+    refetchInterval: taskPollingInterval,
   })
   const tasks = taskPage?.data ?? []
 

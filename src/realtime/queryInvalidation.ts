@@ -90,6 +90,10 @@ export function queryKeysForProjectTaskEvent(
       addKey(keys, taskModelQueryKeys.taskRuns.detail(projectId, taskRunId))
       addKey(keys, taskModelQueryKeys.taskRuns.all(projectId, taskId))
       addKey(keys, taskModelQueryKeys.tasks.detail(projectId, taskId))
+      // TaskRun 终态可能先于 task.updated 到达。同步失效列表和步骤，避免右侧运行已失败而
+      // 任务标题/最近执行仍展示旧状态；数据仍完全由后端读取模型决定。
+      addKey(keys, taskModelQueryKeys.tasks.all(projectId))
+      addKey(keys, taskModelQueryKeys.taskSteps.all(projectId, taskId))
       addAgentQueries()
       break
     case 'task-run.step.progress': {

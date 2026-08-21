@@ -26,6 +26,7 @@ import { getApiBaseUrl } from '@/api/client'
 import { useAuth } from '@/context/AuthContext'
 import { useAgents } from '@/hooks/agents'
 import { subscribeRealtimeReconnect } from '@/realtime'
+import { useProjectTaskPollingInterval } from '@/realtime/useProjectTaskDomainEvents'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { TaskTriggerModal } from '@/components/task-domain'
 import { GroupMemberSettings } from '@/pages/ProjectDetail/GroupMemberSettings'
@@ -94,6 +95,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
   const inputRef = useRef<TextAreaRef>(null)
   // 右键成员消息的上下文菜单（@ta）：记录触发位置与目标消息
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; message: Message } | null>(null)
+  const taskPollingInterval = useProjectTaskPollingInterval(projectId, 5_000)
 
   const { data: groups = [] } = useQuery({
     queryKey: ['groups', projectId],
@@ -133,7 +135,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     queryKey: taskModelQueryKeys.tasks.list(projectId, { limit: 100 }),
     queryFn: () => tasksApi.list(projectId, { limit: 100 }),
     enabled: !!projectId,
-    refetchInterval: 5_000,
+    refetchInterval: taskPollingInterval,
   })
   const taskStatusById = new Map((taskPage?.data ?? []).map((task) => [task.id, task.status]))
   const teamId = project?.teamId

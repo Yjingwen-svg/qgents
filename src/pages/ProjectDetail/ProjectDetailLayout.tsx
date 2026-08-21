@@ -134,12 +134,14 @@ export default function ProjectDetailLayout() {
   const { data: projectMembers = [] } = useQuery({
     queryKey: ['projects', projectId, 'members'],
     queryFn: () => projectApi.listMembers(projectId),
-    enabled: !!projectId,
+    // 仅新建需求群时才需要候选成员，避免所有项目页首屏多拉一份完整成员列表。
+    enabled: Boolean(projectId && createOpen),
   })
   const { data: teamMembers = [] } = useQuery({
     queryKey: ['teams', project?.teamId, 'members'],
     queryFn: () => teamApi.listMembers(project?.teamId ?? ''),
-    enabled: !!project?.teamId,
+    // 项目成员缺少 displayName 时才作为弹窗选项的补全来源。
+    enabled: Boolean(project?.teamId && createOpen),
   })
   const teamMemberNameById = new Map(teamMembers.map((tm) => [tm.userId, tm.displayName]))
   const resolveProjectMemberName = (userId: string): string =>

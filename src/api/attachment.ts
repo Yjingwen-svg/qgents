@@ -98,16 +98,24 @@ export async function uploadAttachment(projectId: string, file: File): Promise<s
     sizeBytes: file.size,
   })
 
-  // 用 ArrayBuffer 作 body：fetch 不会自动带 Content-Type 头。
-  // 后端签预签名 URL 时 Content-Type 为空（§18.1 headers: {}），若带 Content-Type 会导致 SignatureDoesNotMatch(403)。
-  // 相对路径（本地回退/内网后端）→ 走 Qgents 鉴权需带 Bearer；绝对地址（OSS 预签名直传）→
-  // 不加 Authorization，避免污染阿里云签名。
+  // uploadUrl 可能是：
+  //  - 绝对地址（OSS 预签名直传 https://...）：原样使用，不加 Authorization（避免污染阿里云签名）；
+  //  - 相对路径（后端签发 /api/v1/...）：拼 API base 的 origin 成绝对地址后直连后端——
+  //    不能基于页面 origin 解析（会走 vite 代理被 rewrite 成 /api/v1/v1/... 双前缀 404），
+  //    且走 Qgents 鉴权需带 Bearer。
+  const isAbsolute = /^https?:\/\//i.test(credential.uploadUrl)
+  let targetUrl = credential.uploadUrl
+  if (!isAbsolute) {
+    const base = getApiBaseUrl()
+    const origin = /^https?:\/\//i.test(base) ? new URL(base).origin : window.location.origin
+    targetUrl = `${origin}${credential.uploadUrl.startsWith('/') ? credential.uploadUrl : `/${credential.uploadUrl}`}`
+  }
   const headers: Record<string, string> = {}
-  if (!/^https?:\/\//i.test(credential.uploadUrl)) {
+  if (!isAbsolute) {
     const token = getStoredToken()
     if (token) headers['Authorization'] = `Bearer ${token}`
   }
-  const putRes = await fetch(credential.uploadUrl, {
+  const putRes = await fetch(targetUrl, {
     method: 'PUT',
     headers,
     body: await file.arrayBuffer(),

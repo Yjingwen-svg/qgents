@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Alert, App, Button, Card, Empty, Progress, Select, Space, Spin, Table, Tag, Typography, Tooltip } from 'antd'
+import { Alert, App, Button, Empty, Select, Space, Spin, Table, Tag, Typography, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useQueries } from '@tanstack/react-query'
 import { PATHS } from '@/routes/paths'
@@ -10,7 +10,6 @@ import {
   useMergeMergeRequest,
   useMergeRequests,
   useRequestMergeRequestPreflight,
-  useTasks,
 } from '@/hooks/task-model'
 import { formatApiError } from '@/utils/formatApiError'
 import type { ProjectBoundRepository } from '@/types/github'
@@ -63,38 +62,37 @@ function qualityGateColor(status: string | undefined): string {
 
 function cqLabel(preflight: Preflight | undefined, isLoading: boolean, isError: boolean, status: Preflight['cqPlusOne']['status'] | 'MISSING' | undefined): string {
   if (status === 'MISSING') return '待盖章'
-  if (isLoading) return 'CQ 查询中'
-  if (isError) return 'CQ 未知'
+  // 加载时仍显示已有数据（或待盖章），不暴露"CQ 查询中"的轮询噪声
   const s = preflight?.cqPlusOne?.status
   if (s === 'APPROVED') return 'CQ+1 通过'
   if (s === 'REJECTED') return 'CQ+1 未通过'
+  if (isError) return 'CQ 未知'
   if (s === 'PENDING' || !s) return '待盖章'
   return s
 }
 
 function cqColor(preflight: Preflight | undefined, isLoading: boolean, isError: boolean): string {
-  if (isLoading || isError) return 'default'
   const s = preflight?.cqPlusOne?.status
   if (s === 'APPROVED') return 'success'
   if (s === 'REJECTED') return 'error'
-  // PENDING / 无记录
+  if (isError) return 'default'
+  // PENDING / 无记录 / 加载中
   return 'warning'
 }
 
 /**
- * MANUAL 模式派生的前端子状态（用于区分 WAITING_CQ 下 CQ 是否已人工盖章）：
- *  - 'IDLE'        未申请预检
- *  - 'PREFLIGHTING' 预检申请已受理，等待 Dry Run 开始
- *  - 'WAITING_CQ'   Dry Run 已通过，等待 CQ+1 人工盖章
- *  - 'READY_CREATE' DryRun + CQ+1 都通过，等待人工点「创建MR」（仅 MANUAL）
- *  - 'CREATING'    用户点了创建MR，后端正在建 PR
- *  - 'MR_CREATED'  MR 已创建
- *  - 'FAILED'      申请失败
- *  - 'AUTO_PENDING_DONE' 自动模式等待后端完成后续动作（预检中 → 自动创建）
+ * 前端派生状态：严格按 PreflightStatus 区分不同阶段，便于用户理解 Dry Run 是否已通过。
+ *  - 'IDLE'                未申请预检
+ *  - 'DRY_RUN_RUNNING'     Dry Run 执行中（请求受理 / 排队 / 实际执行）
+ *  - 'WAITING_CQ'          Dry Run 已通过，等待独立成员 CQ+1 盖章
+ *  - 'READY_CREATE'        DryRun + CQ+1 都通过，等待人工点「创建MR」（仅 MANUAL 模式）
+ *  - 'CREATING'            用户点了创建MR，后端正在建 PR
+ *  - 'MR_CREATED'          MR 已创建（GitHub PR 已存在）
+ *  - 'FAILED'              预检失败（Dry Run 失败 / CQ 被拒 / Worker 不可用等）
  */
 type EffectiveState =
   | 'IDLE'
-  | 'PREFLIGHTING'
+  | 'DRY_RUN_RUNNING'
   | 'WAITING_CQ'
   | 'READY_CREATE'
   | 'CREATING'
@@ -113,9 +111,11 @@ function deriveEffectiveState(
     case 'REQUESTED':
     case 'DRY_RUN_QUEUED':
     case 'DRY_RUN_RUNNING':
-      return 'PREFLIGHTING'
+      // 文档：这三个状态都代表 Dry Run 仍在执行，统一显示 "Dry Run 执行中"
+      return 'DRY_RUN_RUNNING'
     case 'WAITING_CQ':
       if (createMode === 'MANUAL' && cqApproved) return 'READY_CREATE'
+      // 文档：WAITING_CQ = Dry Run 已通过，等待独立成员 CQ+1
       return 'WAITING_CQ'
     case 'CREATING_MR':
       return 'CREATING'
@@ -136,38 +136,41 @@ function preflightButtonLabel(
   switch (eff) {
     case 'IDLE':
       return { text: '申请MR', loading: false, disabled: false, failed: false, clickable: true }
-    case 'PREFLIGHTING':
-      return { text: '预检中', loading: true, disabled: true, failed: false, clickable: false }
+    case 'DRY_RUN_RUNNING':
+      // 文档：DRY_RUN_RUNNING 显示 Dry Run 执行中，不与 WAITING_CQ 混淆
+      return { text: 'Dry Run 执行中', loading: true, disabled: true, failed: false, clickable: false }
     case 'WAITING_CQ':
+      // 文档：WAITING_CQ = Dry Run 已通过，等待 CQ+1（按钮禁用，用户去 CQ+1 页盖章）
       return { text: '等待 CQ+1', loading: false, disabled: true, failed: false, clickable: false }
     case 'READY_CREATE':
       // 人工模式：CQ+1通过后，需要用户再点「创建MR」
       return { text: '创建MR', loading: false, disabled: false, failed: false, clickable: true }
     case 'CREATING':
-      return { text: '创建MR', loading: true, disabled: true, failed: false, clickable: false }
+      return { text: '正在创建 MR', loading: true, disabled: true, failed: false, clickable: false }
     case 'MR_CREATED':
       return { text: '', loading: false, disabled: true, failed: false, clickable: false }
     case 'FAILED':
-      return { text: '申请失败', loading: false, disabled: true, failed: true, clickable: false }
+      // 预检失败：允许用户点击重新发起预检
+      return { text: '重新预检', loading: false, disabled: false, failed: true, clickable: true }
   }
 }
 
 function preflightTagText(eff: EffectiveState): string {
   switch (eff) {
     case 'IDLE': return '待创建'
-    case 'PREFLIGHTING': return '预检中'
+    case 'DRY_RUN_RUNNING': return 'Dry Run 执行中'
     case 'WAITING_CQ': return '等待 CQ+1'
     case 'READY_CREATE': return '待创建MR'
-    case 'CREATING': return '创建MR'
+    case 'CREATING': return '正在创建 MR'
     case 'MR_CREATED': return '进行中'
-    case 'FAILED': return '申请失败'
+    case 'FAILED': return '预检失败'
   }
 }
 
 function preflightTagColor(eff: EffectiveState): string {
   switch (eff) {
     case 'IDLE': return 'cyan'
-    case 'PREFLIGHTING': return 'processing'
+    case 'DRY_RUN_RUNNING': return 'processing'
     case 'WAITING_CQ': return 'warning'
     case 'READY_CREATE': return 'warning'
     case 'CREATING': return 'processing'
@@ -184,10 +187,6 @@ function shortSha(value: string | null): string {
 function repoLabel(repositories: ProjectBoundRepository[], repositoryId: string): string {
   const repo = repositories.find((item) => item.id === repositoryId)
   return repo?.displayName || repo?.fullName || repositoryId
-}
-
-function isSyntheticDeliveringRow(record: MergeRequestSummary): boolean {
-  return record.id.startsWith('fe-delivering-')
 }
 
 export function MergeRequestTab({
@@ -211,16 +210,6 @@ export function MergeRequestTab({
     status,
     limit: 50,
   })
-  // 获取 MR_FIRST 模式下正在交付（DELIVERING）的任务，用于展示交付进度卡片。
-  // 这些任务的 MR 占位记录只有在代码推送完成（WAITING_PREFLIGHT）后才会出现在列表中，
-  // 因此需要独立拉取 DELIVERING 状态的任务，避免用户在等待 commit/push 时看到空列表。
-  const deliveringTasksQuery = useTasks(projectId, { status: 'DELIVERING', limit: 20 })
-  // 过滤出 MR_FIRST 模式的任务：这些任务由系统自动完成 commit/push，
-  // 完成后会自动进入 WAITING_PREFLIGHT 并在 MR 列表中生成占位记录。
-  const mrFirstDeliveringTasks = useMemo(() => {
-    const data = deliveringTasksQuery.data?.data ?? []
-    return data.filter((task) => task.deliveryMode === 'MR_FIRST')
-  }, [deliveringTasksQuery.data])
   // 使用本地 state 包裹，允许预检 MR_CREATED 时乐观回写 webUrl/number
   const [items, setItems] = useState<MergeRequestSummary[]>(query.data?.data ?? [])
   const lastDataRef = useRef(query.data?.data)
@@ -244,59 +233,14 @@ export function MergeRequestTab({
     })
   }, [query.data?.data])
 
-  // 将 DELIVERING 任务的仓库作为前端合成的「待创建」占位行注入 MR 列表。
-  // 这样用户在点击「确认交付」后，MR 列表会立即出现对应条目，
-  // 不需要等到 commit/push 完成（WAITING_PREFLIGHT）后端生成真实占位记录。
-  // 当后端返回真实占位记录后（ID 格式不同），真实记录会覆盖合成行。
-  const itemsWithDeliveringPlaceholders = useMemo(() => {
-    if (
-      mrFirstDeliveringTasks.length === 0
-      || (status !== undefined && status !== 'PENDING_CREATE')
-    ) return items
-    const existingKeys = new Set(
-      items.map((m) => `${m.repositoryId}|${m.sourceBranch}`),
-    )
-    const syntheticRows: MergeRequestSummary[] = []
-    for (const task of mrFirstDeliveringTasks) {
-      for (const repo of task.repositories ?? []) {
-        if (repositoryId && repo.repositoryId !== repositoryId) continue
-        // 如果仓库+分支已在真实 items 中存在（后端已生成占位），则不再添加合成行
-        const key = `${repo.repositoryId}|${repo.sourceBranch || ''}`
-        if (existingKeys.has(key)) continue
-        // 仓库未初始化或项目默认分支为空时，targetBranch 不回退 'main'，
-        // 让 PENDING_CREATE 行显示「待创建」+ 不可申请预检的 tooltip 提示
-        const targetBranchValue = repo.baseRef || repo.defaultBranch || ''
-        syntheticRows.push({
-          id: `fe-delivering-${task.id}-${repo.repositoryId}`,
-          repositoryId: repo.repositoryId,
-          groupIds: [],
-          provider: 'GITHUB',
-          number: 0,
-          title: task.title,
-          sourceBranch: repo.sourceBranch || `feat/task-${task.id}`,
-          targetBranch: targetBranchValue,
-          status: 'PENDING_CREATE' as const,
-          headCommit: repo.headCommit,
-          taskId: task.id,
-          createMode: 'UNKNOWN' as const,
-        })
-      }
-    }
-    if (syntheticRows.length === 0) return items
-    // 合成行放在列表最前面，加上真实 items
-    return [...syntheticRows, ...items]
-  }, [items, mrFirstDeliveringTasks, repositoryId, status])
-
-  // 表格、CQ 查询和操作列必须使用同一份数据。否则占位行插入列表后，
-  // 仍按原始 items 的下标取 CQ 结果，会把一个仓库的状态显示到另一个仓库上。
-  const displayItems = itemsWithDeliveringPlaceholders
+  // 表格、CQ 查询和操作列必须使用同一份数据。
+  const displayItems = items
 
   // ========== 每行的 CQ+1 状态：useQueries 按 (projectId+taskId+repoId+targetBranch) 查 Preflight =====
   // taskId 为空或未关联任务的 MR（如纯手动 GitHub 创建）不查，直接显示 "—"
   const cqQueries = useQueries({
     queries: displayItems.map((mr) => {
-      const enabled = !isSyntheticDeliveringRow(mr)
-        && Boolean(mr.taskId)
+      const enabled = Boolean(mr.taskId)
         && Boolean(mr.repositoryId)
         && Boolean(mr.targetBranch)
       return {
@@ -330,10 +274,10 @@ export function MergeRequestTab({
 
   // 页面加载和真实占位行替换时恢复已启动的预检状态。
   useEffect(() => {
-    if (displayItems.length === 0) return // 等待 MR 列表或交付中占位行加载完成
+    if (displayItems.length === 0) return // 等待 MR 列表加载完成
     const taskIds = new Set<string>()
     displayItems.forEach((mr) => {
-      if (mr.status === 'PENDING_CREATE' && mr.taskId && !isSyntheticDeliveringRow(mr)) taskIds.add(mr.taskId)
+      if (mr.status === 'PENDING_CREATE' && mr.taskId) taskIds.add(mr.taskId)
     })
     if (taskIds.size === 0) return
       ; (async () => {
@@ -444,8 +388,10 @@ export function MergeRequestTab({
           const result = await mergeMr.mutateAsync(record.id)
           setItems((prevItems) => prevItems.map((item) =>
             item.id === record.id
-              ? { ...item, mergeOperationStatus: result.mergeOperationStatus ?? item.mergeOperationStatus,
-                  status: result.status, }
+              ? {
+                ...item, mergeOperationStatus: result.mergeOperationStatus ?? item.mergeOperationStatus,
+                status: result.status,
+              }
               : item,
           ))
           if (result.mergeOperationStatus === 'RUNNING') {
@@ -687,7 +633,6 @@ export function MergeRequestTab({
         key: 'status',
         width: 120,
         render: (value: MergeRequestStatus, record, index: number) => {
-          if (isSyntheticDeliveringRow(record)) return <Tag color="processing">交付中</Tag>
           if (record.status === 'PENDING_CREATE') {
             const cq = cqQueries[index]
             // 轮询接口返回的是最新事实；本地 map 只作为首次请求/接口暂未返回时的回退。
@@ -708,7 +653,6 @@ export function MergeRequestTab({
           const q = cqQueries[index]
           const enabled = Boolean(record.taskId)
           if (!enabled) return <Text type="secondary">—</Text>
-          if (isSyntheticDeliveringRow(record)) return <Text type="secondary">等待推送</Text>
           return (
             <Tooltip title="点击跳转到 CQ+1 大印章审查页">
               <Button
@@ -742,13 +686,11 @@ export function MergeRequestTab({
         title: '质量门禁',
         key: 'qualityGate',
         width: 120,
-        render: (_value, record) => isSyntheticDeliveringRow(record)
-          ? <Tag color="processing">等待推送</Tag>
-          : (
-            <Tag color={qualityGateColor(record.qualityGate?.status)}>
-              {qualityGateLabel(record.qualityGate?.status)}
-            </Tag>
-          ),
+        render: (_value, record) => (
+          <Tag color={qualityGateColor(record.qualityGate?.status)}>
+            {qualityGateLabel(record.qualityGate?.status)}
+          </Tag>
+        ),
       },
       {
         title: 'HEAD',
@@ -764,7 +706,6 @@ export function MergeRequestTab({
         render: (_value, record, index: number) => {
           // ============== PENDING_CREATE：占位 MR，预检流程阶段 ==============
           if (record.status === 'PENDING_CREATE') {
-            if (isSyntheticDeliveringRow(record)) return <Text type="secondary">代码推送中</Text>
             const cq = cqQueries[index]
             const currentStatus = cq?.data?.status ?? preflightStatusMap[record.id]
             const cqApproved = cq?.data?.cqPlusOne?.status === 'APPROVED'
@@ -968,73 +909,6 @@ export function MergeRequestTab({
         }
         description="预检通过后自动在 GitHub 创建 PR。Project Admin 可在操作列看到 GitHub 跳转 + 合并MR 按钮，普通成员仅看到 GitHub 跳转。CQ+1 或质量门禁任一未过则显示申请失败。"
       />
-      {/* MR_FIRST 交付进度卡片：展示正在 commit/push 的任务，让用户在等待期间能看到进度 */}
-      {mrFirstDeliveringTasks.length > 0 && !deliveringTasksQuery.isLoading ? (
-        <Card
-          size="small"
-          style={{ marginBottom: 12, background: '#f6ffed', border: '1px solid #b7eb8f' }}
-          bodyStyle={{ padding: '12px 16px' }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Tag color="processing">MR_FIRST 交付中</Tag>
-            <Text strong style={{ fontSize: 14 }}>
-              {mrFirstDeliveringTasks.length} 个任务正在自动交付（commit/push 进行中）
-            </Text>
-            <Button
-              size="small"
-              type="link"
-              onClick={() => void deliveringTasksQuery.refetch()}
-            >
-              刷新
-            </Button>
-          </div>
-          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {mrFirstDeliveringTasks.map((task) => {
-              // 计算等待时间
-              const updatedAt = new Date(task.updatedAt)
-              const elapsedMin = Math.floor((Date.now() - updatedAt.getTime()) / 60000)
-              const isStuck = elapsedMin >= 5
-              return (
-                <div key={task.id} style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '6px 0', borderTop: '1px solid #f0f0f0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <Button
-                      type="link"
-                      size="small"
-                      style={{ padding: 0, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      onClick={() => navigate(PATHS.projectTaskDetail(projectId, task.id))}
-                    >
-                      {task.title}
-                    </Button>
-                    <Tag color={isStuck ? 'warning' : 'processing'} style={{ margin: 0 }}>
-                      {isStuck ? `DELIVERING · ${elapsedMin}min` : 'DELIVERING'}
-                    </Tag>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {task.repositories.length} 个仓库
-                    </Text>
-                  </div>
-                  <Progress
-                    percent={isStuck ? 20 : 10}
-                    status={isStuck ? 'warning' : 'active'}
-                    size="small"
-                    showInfo={false}
-                    style={{ width: 500 }}
-                  />
-                  <Text type="secondary" style={{ fontSize: 11 }}>
-                    {isStuck
-                      ? `已等待 ${elapsedMin} 分钟，如长时间无变化请前往任务详情查看`
-                      : '代码推送完成后自动创建 MR占位记录'
-                    }
-                  </Text>
-                </div>
-              )
-            })}
-          </div>
-          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
-            <strong>交付流程：</strong> Diff 批次 → commit/push → Dry Run → CQ+1 → 创建 MR
-            。代码推送完成后任务会自动转为「等待预检」状态，届时 MR 占位记录将自动出现在下方列表中。
-          </Text>
-        </Card>
-      ) : null}
       {query.isLoading ? (
         <div style={{ textAlign: 'center', padding: 48 }}>
           <Spin />
@@ -1051,11 +925,7 @@ export function MergeRequestTab({
           }
         />
       ) : displayItems.length === 0 ? (
-        <Empty description={
-          mrFirstDeliveringTasks.length > 0
-            ? 'MR_FIRST 任务正在自动交付中，代码推送完成后将自动在此生成 MR 占位记录。'
-            : '当前筛选下没有 MR。任务完成后系统会自动插入占位记录。'
-        } />
+        <Empty description="当前筛选下没有 MR。任务完成后系统会自动插入占位记录。" />
       ) : (
         <Table
           rowKey="id"

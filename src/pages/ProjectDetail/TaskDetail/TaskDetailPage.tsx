@@ -448,7 +448,7 @@ function StepInfo({ label, value }: { label: string; value: string }) {
 function stepStatusColor(status: TaskStep['status']): 'default' | 'processing' | 'success' | 'error' | 'warning' {
   if (status === 'RUNNING') return 'processing'
   if (status === 'SUCCEEDED') return 'success'
-  if (status === 'FAILED') return 'error'
+  if (status === 'FAILED' || status === 'CANCELLED') return 'error'
   if (status === 'PENDING') return 'warning'
   return 'default'
 }

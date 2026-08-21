@@ -12,7 +12,7 @@ export type TaskStatus =
   | 'CANCELLING'
   | 'CANCELLED'
 
-export type TaskStepStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'SKIPPED'
+export type TaskStepStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'SKIPPED' | 'CANCELLED'
 
 export type TaskRunStatus =
   | 'QUEUED'

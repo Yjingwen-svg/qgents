@@ -612,6 +612,8 @@ export type PreflightFailureCode =
 
 /** 单个仓库的预检状态摘要 */
 export interface PreflightRepositoryStatus {
+  /** 分支级预检申请 ID，用于失败后创建新的 Dry Run。 */
+  preflightId: string | null
   repositoryId: string
   repositoryName: string
   sourceBranch: string

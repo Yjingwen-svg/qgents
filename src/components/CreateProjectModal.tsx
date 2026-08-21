@@ -325,10 +325,16 @@ export function CreateProjectModal({
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                   description={
-                    <span>
-                      暂无已授权的 GitHub 仓库，请先
-                      <TextLink onClick={() => { onClose(); navigate(PATHS.githubIntegration(teamId)) }}>去授权</TextLink>
-                    </span>
+                    activeInstallations.length === 0 ? (
+                      <span>
+                        暂无已授权的 GitHub 仓库，请先
+                        <TextLink onClick={() => { onClose(); navigate(PATHS.githubIntegration(teamId)) }}>去授权</TextLink>
+                      </span>
+                    ) : (
+                      <span>
+                        团队 GitHub App 已授权，但当前没有可绑定的仓库。请先在 GitHub 创建仓库，或到 GitHub App 安装设置中为你的账号授权仓库范围。
+                      </span>
+                    )
                   }
                 />
               ) : undefined

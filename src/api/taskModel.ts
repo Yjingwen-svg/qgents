@@ -318,6 +318,17 @@ export const mergeRequestsApi = {
     }).then(mapPreflightResponse)
   },
 
+  /** 重新预检：让后端基于当前目标分支门禁配置创建新的 Dry Run。 */
+  retryPreflight(projectId: string, preflightId: string): Promise<MergeRequestPreflight> {
+    return requestModelData<unknown>(
+      `/projects/${projectId}/merge-requests/preflight/${preflightId}/retries`,
+      {
+        method: 'POST',
+        headers: writeModelHeaders(),
+      },
+    ).then(mapPreflightResponse)
+  },
+
   /** 查询单个预检状态 */
   getPreflight(projectId: string, preflightId: string): Promise<MergeRequestPreflight> {
     return requestModelData<unknown>(

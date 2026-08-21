@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Alert, App, Button, Card, Descriptions, Empty, Space, Spin, Tag, Typography } from 'antd'
 import { GithubOutlined, LinkOutlined, DisconnectOutlined } from '@ant-design/icons'
 import { authApi, githubApi } from '@/api'
+import { DarkPage } from '@/components/DarkPage'
 import { queryKeys } from '@/query/queryKeys'
 import { formatApiError } from '@/utils/formatApiError'
 import { personalRepositorySetupGuide } from '@/utils/githubRepositoryAccess'
@@ -135,6 +136,7 @@ export function GitHubOAuthPage() {
   }
 
   return (
+    <DarkPage>
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '24px 0 48px' }}>
       <Space orientation="vertical" size={20} style={{ width: '100%' }}>
         <div>
@@ -245,6 +247,7 @@ export function GitHubOAuthPage() {
         </Text>
       </Space>
     </div>
+    </DarkPage>
   )
 }
 

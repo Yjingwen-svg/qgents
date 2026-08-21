@@ -117,7 +117,10 @@ export interface TaskCreateInput {
   title: string
   requirement: string
   repositoryIds: string[]
-  baseRef: string
+  /** 公共基线分支名；不传（或为空）时各仓库用各自项目默认分支兜底 */
+  baseRef?: string | null
+  /** 按仓库指定的基线分支映射（repositoryId → 分支名）；不选某仓库时该仓库用默认分支兜底 */
+  baseRefs?: Record<string, string> | null
   /** Explicit user preference. Omit to let the planner/server decide. */
   deliveryMode?: TaskDeliveryMode
   workspaceId?: string

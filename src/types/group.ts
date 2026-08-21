@@ -249,7 +249,10 @@ export interface TaskTriggerRequest {
   title: string
   requirement?: string
   repositoryIds?: string[]
-  baseRef?: string
+  /** 公共基线分支名；不传（或 null/空）时各仓库用各自项目默认分支兜底 */
+  baseRef?: string | null
+  /** 按仓库指定的基线分支映射（repositoryId → 分支名）；多仓库可各自不同基准分支 */
+  baseRefs?: Record<string, string> | null
   deliveryMode?: 'DIFF_FIRST' | 'MR_FIRST'
 }
 

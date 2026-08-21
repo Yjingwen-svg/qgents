@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Form, Input, message, Modal, Select, Spin } from 'antd'
+import { Alert, Form, Input, message, Modal, Select, Space, Spin, Tag } from 'antd'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueries } from '@tanstack/react-query'
 import { ApiError, groupApi } from '@/api'
 import { githubApi } from '@/api/github'
 import { useCreateTask } from '@/hooks/task-model'
@@ -22,7 +22,8 @@ interface TaskTriggerFormValues {
   title: string
   requirement: string
   repositoryIds: string[]
-  baseRef: string
+  /** repositoryId → 基线分支名；某仓库未选时不出现（后端用该仓库默认分支兜底） */
+  baseRefs: Record<string, string>
 }
 
 function errorMessage(error: Error | null): string | null {
@@ -94,56 +95,79 @@ export function TaskTriggerModal({ open, projectId, groupId, initialInstruction,
     label: repository.fullName || repository.repositoryId || '暂无',
   }))
 
-  // 表单中当前选中的第一个仓库 ID；作为「远程分支列表」拉取的目标（多选时用第一个，
-  // 因为 TaskCreateRequest.baseRef 是单值，跨多仓必须使用同名基线）。
-  const [selectedFirstRepoId, setSelectedFirstRepoId] = useState<string | null>(null)
+  const repositoryIds = Form.useWatch('repositoryIds', form) ?? []
 
-  // 拉取第一个选中仓库的真实 GitHub 远程分支列表，用作 baseRef Select 选项。
-  // 只从"已存在"分支里选，避免用户手输一个不存在的分支提交到后端直到 Worker 启动才失败。
-  const remoteBranchesQuery = useQuery({
-    queryKey: queryKeys.remoteBranches.list(projectId, selectedFirstRepoId ?? '', {}),
-    queryFn: () =>
-      githubApi.listRemoteBranches(projectId, selectedFirstRepoId as string, {}),
-    enabled: Boolean(projectId && selectedFirstRepoId && open),
+  // 为每个已选中的仓库并行拉取其真实 GitHub 远程分支列表（各仓库独立，支持不同基准分支）。
+  const branchQueries = useQueries({
+    queries: repositoryIds.map((repositoryId: string) => ({
+      queryKey: queryKeys.remoteBranches.list(projectId, repositoryId, {}),
+      queryFn: () => githubApi.listRemoteBranches(projectId, repositoryId, {}),
+      enabled: Boolean(projectId && repositoryId && open),
+    })),
   })
-
-  const baseRefOptions = useMemo(
-    () => branchOptions(remoteBranchesQuery.data ?? []),
-    [remoteBranchesQuery.data],
-  )
+  const repositoryIdsKey = repositoryIds.join(',')
+  const branchesByRepository = useMemo(() => {
+    const map = new Map<string, RemoteBranch[]>()
+    repositoryIds.forEach((repositoryId: string, index: number) => {
+      const data = branchQueries[index]?.data
+      if (data) map.set(repositoryId, data)
+    })
+    return map
+    // repositoryIdsKey 稳定表达仓库集合，避免 useWatch 每次 render 的新数组引用触发无谓重建
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repositoryIdsKey, branchQueries])
 
   // 需求群名称：已加载且命中时显示 title，否则保持只读回退为 groupId，保证抽屉中始终可见。
   const requirementGroupName =
     groupsQuery.data?.find((item) => item.id === groupId)?.title?.trim() || groupId
   const requirementGroupLoading = groupsQuery.isLoading
 
-  function handleRepositoryChange(repositoryIds: string[]): void {
-    const firstRepoId = repositoryIds[0] ?? null
-    const repository = repositories.find((item) => item.id === firstRepoId)
-    form.setFieldValue('repositoryIds', repositoryIds)
-    setSelectedFirstRepoId(firstRepoId)
-    // 先回落为绑定记录 defaultBranch（已有），等远程分支列表拉到后再次对齐
-    if (repository?.defaultBranch) form.setFieldValue('baseRef', repository.defaultBranch)
-    else form.setFieldValue('baseRef', '')
+  // 仓库多选变化时：为新仓库默认选中「项目默认分支」或第一个分支；移除的仓库清理其分支选择。
+  function handleRepositoryChange(nextRepositoryIds: string[]): void {
+    form.setFieldValue('repositoryIds', nextRepositoryIds)
+    const nextBaseRefs: Record<string, string> = { ...(form.getFieldValue('baseRefs') ?? {}) }
+    for (const repositoryId of Object.keys(nextBaseRefs)) {
+      if (!nextRepositoryIds.includes(repositoryId)) {
+        delete nextBaseRefs[repositoryId]
+      }
+    }
+    // 新仓库的默认分支（若未选过），待远程分支拉到后再精确对齐
+    for (const repositoryId of nextRepositoryIds) {
+      if (nextBaseRefs[repositoryId]) continue
+      const repository = repositories.find((item) => item.id === repositoryId)
+      if (repository?.defaultBranch) nextBaseRefs[repositoryId] = repository.defaultBranch
+    }
+    form.setFieldValue('baseRefs', nextBaseRefs)
   }
 
-  // 远程分支列表拉取后：如果当前 baseRef 空或不在返回列表里，默认选中「项目默认分支」或第一个
+  // 远程分支列表拉取后：若当前选中的分支不在返回列表里（或仓库刚选），
+  // 默认对齐到「项目默认分支」或第一个分支。
   useEffect(() => {
-    if (!remoteBranchesQuery.data) return
-    const currentBaseRef = form.getFieldValue('baseRef')
-    const names = new Set(remoteBranchesQuery.data.map((b) => b.name))
-    if (!currentBaseRef || !names.has(currentBaseRef)) {
-      const picked =
-        remoteBranchesQuery.data.find((b) => b.isProjectDefault) ??
-        remoteBranchesQuery.data[0]
-      if (picked) form.setFieldValue('baseRef', picked.name)
+    const currentBaseRefs: Record<string, string> = { ...(form.getFieldValue('baseRefs') ?? {}) }
+    let changed = false
+    for (const repositoryId of repositoryIds) {
+      const branches = branchesByRepository.get(repositoryId)
+      if (!branches || branches.length === 0) continue
+      const current = currentBaseRefs[repositoryId]
+      const names = new Set(branches.map((b) => b.name))
+      if (!current || !names.has(current)) {
+        const picked =
+          branches.find((b) => b.isProjectDefault) ??
+          branches.find((b) => b.isGithubDefault) ??
+          branches[0]
+        if (picked) {
+          currentBaseRefs[repositoryId] = picked.name
+          changed = true
+        }
+      }
     }
-  }, [remoteBranchesQuery.data, form])
+    if (changed) form.setFieldValue('baseRefs', currentBaseRefs)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchesByRepository, form])
 
   useEffect(() => {
     if (!open) return
-    form.setFieldsValue({ title: '', requirement: initialInstruction, repositoryIds: [], baseRef: '' })
-    setSelectedFirstRepoId(null)
+    form.setFieldsValue({ title: '', requirement: initialInstruction, repositoryIds: [], baseRefs: {} })
     resetMutation()
     submitLockRef.current = false
     setIsSubmitting(false)
@@ -151,21 +175,21 @@ export function TaskTriggerModal({ open, projectId, groupId, initialInstruction,
 
   async function handleFinish(values: TaskTriggerFormValues) {
     if (submitLockRef.current || repositories.length === 0) return
-    // 空仓库约束（§3.4）：禁止提交 main 兜底，baseRef 必须真实存在
-    const baseRefTrimmed = values.baseRef?.trim() ?? ''
-    if (!baseRefTrimmed) {
-      message.error('请选择基准分支；仓库未初始化时无法创建任务')
-      return
-    }
+    const selectedRepos = repositories.filter((r) => values.repositoryIds.includes(r.id))
     // 选中仓库中如果存在未初始化仓库，提示并阻止提交
-    const uninitializedRepos = repositories.filter(
-      (r) => values.repositoryIds.includes(r.id) && !r.defaultBranch,
-    )
+    const uninitializedRepos = selectedRepos.filter((r) => !r.defaultBranch)
     if (uninitializedRepos.length > 0) {
       message.error(
         `仓库 ${uninitializedRepos.map((r) => r.fullName).join(', ')} 尚未初始化，请先在 GitHub 端初始化并设置项目默认基准分支`,
       )
       return
+    }
+    // 每个仓库可独立选择基准分支；未选择的仓库不放进 baseRefs，
+    // 后端用该仓库项目绑定的 defaultBranch 兜底（多仓库可各自不同基准分支）。
+    const baseRefs: Record<string, string> = {}
+    for (const repository of selectedRepos) {
+      const selected = values.baseRefs?.[repository.id]?.trim()
+      if (selected) baseRefs[repository.id] = selected
     }
     submitLockRef.current = true
     setIsSubmitting(true)
@@ -174,7 +198,8 @@ export function TaskTriggerModal({ open, projectId, groupId, initialInstruction,
       title: values.title.trim(),
       requirement: values.requirement.trim(),
       repositoryIds: values.repositoryIds,
-      baseRef: baseRefTrimmed,
+      baseRefs: Object.keys(baseRefs).length > 0 ? baseRefs : null,
+      baseRef: null,
     }
     try {
       const task = await mutation.mutateAsync(input)
@@ -189,9 +214,7 @@ export function TaskTriggerModal({ open, projectId, groupId, initialInstruction,
 
   const pending = isSubmitting || mutation.isPending
   const repositoryUnavailable = !repositoriesQuery.isLoading && repositories.length === 0
-  const baseRefLoading = selectedFirstRepoId ? remoteBranchesQuery.isLoading : false
-  const baseRefDisabled =
-    pending || repositoryUnavailable || !selectedFirstRepoId || baseRefLoading
+  const anyBranchLoading = branchQueries.some((q) => q.isLoading)
 
   return (
     <Modal
@@ -230,39 +253,56 @@ export function TaskTriggerModal({ open, projectId, groupId, initialInstruction,
         <Form.Item label="仓库" name="repositoryIds" rules={[{ required: true, type: 'array', min: 1, message: '至少选择一个仓库' }]}>
           <Select mode="multiple" options={repositoryOptions} placeholder="请选择仓库" onChange={handleRepositoryChange} />
         </Form.Item>
-        <Form.Item
-          label="基准分支"
-          name="baseRef"
-          rules={[{ required: true, whitespace: true, message: '请选择基准分支' }]}
-          extra={
-            !selectedFirstRepoId
-              ? '请先选择仓库，将展示该仓库真实存在的 GitHub 远程分支'
-              : baseRefLoading
-                ? '正在加载远程分支列表…'
-                : '只能选择后端返回已存在的分支；新建任务的 Dry Run / MR 都将以此分支为目标基线'
-          }
-        >
-          <Select
-            showSearch
-            optionFilterProp="value"
-            placeholder={
-              baseRefLoading
-                ? '加载远程分支中…'
-                : selectedFirstRepoId
-                  ? '请选择基准分支'
-                  : '请先选择仓库'
-            }
-            disabled={baseRefDisabled}
-            loading={baseRefLoading}
-            options={baseRefOptions}
-            notFoundContent={
-              remoteBranchesQuery.isError
-                ? '远程分支加载失败，请稍后重试'
-                : baseRefLoading
-                  ? null
-                  : '该仓库暂无可用远程分支'
-            }
-          />
+        <Form.Item label="基准分支（每个仓库独立选择）" required>
+          {repositoryIds.length === 0 ? (
+            <Alert type="info" showIcon message="请先选择仓库，将展示每个仓库各自的远程分支" />
+          ) : (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {repositoryIds.map((repositoryId: string, index: number) => {
+                const repository = repositories.find((item) => item.id === repositoryId)
+                const branchQuery = branchQueries[index]
+                const options = branchOptions(branchesByRepository.get(repositoryId) ?? [])
+                return (
+                  <div key={repositoryId} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <Tag style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {repository?.fullName || repositoryId}
+                    </Tag>
+                    <Form.Item
+                      name={['baseRefs', repositoryId]}
+                      noStyle
+                      rules={[{ required: false }]}
+                    >
+                      <Select
+                        style={{ flex: 1 }}
+                        showSearch
+                        optionFilterProp="value"
+                        allowClear
+                        placeholder={
+                          branchQuery?.isLoading
+                            ? '加载远程分支中…'
+                            : '不选择则用该仓库默认分支'
+                        }
+                        loading={branchQuery?.isLoading}
+                        options={options}
+                        notFoundContent={
+                          branchQuery?.isError
+                            ? '远程分支加载失败，请稍后重试'
+                            : branchQuery?.isLoading
+                              ? null
+                              : '该仓库暂无可用远程分支'
+                        }
+                      />
+                    </Form.Item>
+                  </div>
+                )
+              })}
+              {anyBranchLoading ? (
+                <Spin size="small" tip="正在加载各仓库远程分支…" />
+              ) : (
+                <Alert type="info" showIcon message="未选择基准分支的仓库将使用其项目默认分支；多仓库可各自不同。" />
+              )}
+            </Space>
+          )}
         </Form.Item>
       </Form>
     </Modal>

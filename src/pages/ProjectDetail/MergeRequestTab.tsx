@@ -925,7 +925,7 @@ export function MergeRequestTab({
                         window.open(href, '_blank')
                       }}
                     >
-                      GitHub
+                      查看 GitHub MR
                     </Button>
                   ) : null}
                   {/* Admin 显示"合并"按钮，非 Admin 显示"已创建成功" */}
@@ -1014,7 +1014,7 @@ export function MergeRequestTab({
                   window.open(href!, '_blank')
                 }}
               >
-                GitHub
+                查看 GitHub MR
               </Button>,
             )
           }
@@ -1041,31 +1041,6 @@ export function MergeRequestTab({
             return href ? children[0] ?? <Text type="secondary">—</Text> : <Text type="secondary">—</Text>
           }
           return children.length > 0 ? <Space size={8}>{children}</Space> : <Text type="secondary">—</Text>
-        },
-      },
-      {
-        title: '',
-        key: 'link',
-        width: 88,
-        align: 'right',
-        render: (_value, record) => {
-          const href = githubPullRequestUrl(
-            record.webUrl,
-            record.number,
-            repositories.find((item) => item.id === record.repositoryId),
-          )
-          return href ? (
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(event) => event.stopPropagation()}
-            >
-              GitHub
-            </a>
-          ) : (
-            <Text type="secondary">—</Text>
-          )
         },
       },
     ],

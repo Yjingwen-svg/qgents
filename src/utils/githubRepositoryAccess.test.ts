@@ -71,6 +71,7 @@ describe('new repository create error mapping (§49.7)', () => {
   })
 
   it('maps scope / installation / conflict codes to friendly hints', () => {
+    expect(newRepositoryCreateErrorMessage(apiError('GITHUB_OAUTH_REQUIRED'))).toContain('先绑定个人 GitHub')
     expect(newRepositoryCreateErrorMessage(apiError('GITHUB_OAUTH_SCOPE_INSUFFICIENT'))).toContain('授权范围不足')
     expect(newRepositoryCreateErrorMessage(apiError('GITHUB_REPOSITORY_CREATE_CONFLICT'))).toContain('仓库名已存在')
     expect(newRepositoryCreateErrorMessage(apiError('GITHUB_INSTALLATION_NOT_ACTIVE'))).toContain('没有可用的')

@@ -122,6 +122,8 @@ export function newRepositoryCreateErrorMessage(error: unknown): string | null {
       return '当前部署未配置个人 GitHub OAuth，无法创建个人仓库。请改用组织仓库，或联系管理员完成配置。'
     case 'GITHUB_OAUTH_TOKEN_INVALID':
       return '个人 GitHub 授权已失效，请重新绑定后重试。'
+    case 'GITHUB_OAUTH_REQUIRED':
+      return '创建个人 GitHub 仓库前请先绑定个人 GitHub 账号。'
     case 'GITHUB_OAUTH_REVOKED':
       return '个人 GitHub 授权已撤销，请重新绑定后重试。'
     case 'GITHUB_INSTALLATION_REQUIRED':

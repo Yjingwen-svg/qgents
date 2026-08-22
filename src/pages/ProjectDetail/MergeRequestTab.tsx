@@ -943,7 +943,9 @@ export function MergeRequestTab({
               && (hintBackendStarted || preflightLoading)
               && !loadedPreflightIds.has(record.id)
             // 首轮回溯或正在加载：显示 loading
-            if (isRequesting || needRecoverySpin || (!status && preflightLoading && !loadedPreflightIds.has(record.id))) {
+            // 后台轮询期间 preflightLoading 会短暂变为 true，但不能让已完成首轮
+            // 回溯、且尚未发起预检的行反复进入 loading。
+            if (isRequesting || needRecoverySpin) {
               return (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Spin size="small" />
@@ -1036,7 +1038,8 @@ export function MergeRequestTab({
               && record.taskId
               && (hintBackendStarted || preflightLoading)
               && !loadedPreflightIds.has(record.id)
-            if (isRequesting || needRecoverySpin || (!status && preflightLoading && !loadedPreflightIds.has(record.id))) {
+            // 后台轮询只刷新预检结果；未发起预检的行保持稳定的按钮状态。
+            if (isRequesting || needRecoverySpin) {
               return (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Spin size="small" />

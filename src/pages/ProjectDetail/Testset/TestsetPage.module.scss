@@ -279,6 +279,40 @@
   padding: 64px 0;
 }
 
+// 入口卡片内部允许文字收缩、标签和操作换行，避免窄卡片把按钮推出边界。
+.entryCard {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.entryCard :global(.ant-card-body) {
+  min-width: 0;
+}
+
+.entryRow {
+  display: flex !important;
+  width: 100%;
+  min-width: 0;
+}
+
+.entryRow :global(.ant-space-item:nth-child(2)) {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.entryBody {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.entryArrow {
+  flex: 0 0 auto;
+}
+
+.entryTags {
+  max-width: 100%;
+}
+
 /* FlowStepper area */
 .flowArea {
   margin-bottom: 16px;

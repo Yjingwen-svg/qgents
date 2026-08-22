@@ -346,6 +346,9 @@ export default function CqReviewPage() {
   const busy = byMr
     ? approveMrCq.isPending || rejectMrCq.isPending
     : approveDryCq.isPending || rejectDryCq.isPending
+  const busyAction: 'approve' | 'reject' | null = byMr
+    ? approveMrCq.isPending ? 'approve' : rejectMrCq.isPending ? 'reject' : null
+    : approveDryCq.isPending ? 'approve' : rejectDryCq.isPending ? 'reject' : null
 
   // 标题区：两种模式下不同的描述 Tag
   const headerInfo = byMr
@@ -433,6 +436,7 @@ export default function CqReviewPage() {
                   mrStatus={mr!.status}
                   isAuthor={isAuthor}
                   busy={busy}
+                  busyAction={busyAction}
                   onApprove={() => submitCq('approve')}
                   onReject={() => submitCq('reject')}
                 />
@@ -686,10 +690,10 @@ function SubmitHistoryList({
     <div className={styles.submitList}>
       {canAct ? (
         <div className={styles.submitActions}>
-          <Button type="primary" loading={busy} onClick={onApprove}>
+          <Button type="primary" disabled={busy} onClick={onApprove}>
             盖 CQ+1
           </Button>
-          <Button danger loading={busy} onClick={onReject}>
+          <Button danger disabled={busy} onClick={onReject}>
             拒绝
           </Button>
           <Text type="secondary">请在上方印章处确认审查</Text>

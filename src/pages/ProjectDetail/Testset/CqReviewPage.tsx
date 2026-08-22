@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   App,
@@ -42,6 +42,7 @@ import { PATHS } from '@/routes/paths'
 import { findCqCheck, isMergeRequestAuthor } from '../cqSeal'
 import { CqSealCard } from '../MergeRequestDetail/CqSealCard'
 import { formatApiError } from '@/utils/formatApiError'
+import { ApiError } from '@/api/client'
 import type { Preflight } from '@/types/qualityGate'
 import styles from './CqReviewPage.module.scss'
 
@@ -76,6 +77,8 @@ export default function CqReviewPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { message, modal } = App.useApp()
+  const [submittedDecision, setSubmittedDecision] = useState<'APPROVED' | 'REJECTED' | null>(null)
+  const [reviewLocked, setReviewLocked] = useState(false)
 
   const mergeRequestId = searchParams.get('mr')?.trim() || ''
   const taskId = searchParams.get('taskId')?.trim() || ''
@@ -141,6 +144,7 @@ export default function CqReviewPage() {
       })[0] ?? null
   }, [diffsQuery.data, mrQuery.data?.headCommit, preflight?.sourceCommit, reviewRepositoryId])
   const dryRunCqStatus = (() => {
+    if (submittedDecision) return submittedDecision
     // Preflight 接口 cqPlusOne.status 的合法值是 'MISSING' | 'APPROVED' | 'REJECTED'
     // （参见 types/qualityGate.ts PreflightCqPlusOneStatus）。
     // 本页内部 CQ 状态机统一用 'PENDING' 表示"等待审查"，因此把 'MISSING' 与 null/undefined 归一化。
@@ -176,6 +180,7 @@ export default function CqReviewPage() {
     && (dryRunCqStatus === 'PENDING' || dryRunCqStatus === 'MISSING' as string)
     && !preflightUnavailable
     && !isAuthor
+    && !reviewLocked
 
   // ========== 返回按钮 ==========
   function goBack() {
@@ -240,10 +245,23 @@ export default function CqReviewPage() {
           } else if (byPreflight && dryRun?.id) {
             const mutate = rejecting ? rejectDryCq.mutateAsync : approveDryCq.mutateAsync
             await mutate({ dryRunId: dryRun.id, input: { reason: reason.trim() } })
+            // The backend creates the MR asynchronously. Lock this page from
+            // the successful response so a stale refetch cannot reopen CQ.
+            setSubmittedDecision(rejecting ? 'REJECTED' : 'APPROVED')
+            setReviewLocked(true)
             void preflightQuery.refetch()
           }
           message.success(rejecting ? '已拒绝 CQ+1' : '已盖 CQ+1')
         } catch (error) {
+          const code = error instanceof ApiError && error.body && typeof error.body === 'object'
+            ? ((error.body as { error?: { code?: string } }).error?.code ?? '')
+            : ''
+          if (byPreflight && code === 'PREFLIGHT_CQ_ALREADY_DECIDED') {
+            setReviewLocked(true)
+            void preflightQuery.refetch()
+            message.info('该 Dry Run 已完成 CQ+1 审查，无需重复提交')
+            return
+          }
           message.error(formatApiError(error))
           return Promise.reject(error)
         }

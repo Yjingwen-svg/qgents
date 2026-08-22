@@ -1,6 +1,6 @@
 import { useMutation, useQuery, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query'
 import { branchPolicyApi, dryRunCqApi, preflightApi, qualityGateApi } from '@/api/qualityGate'
-import { queryClient, queryKeys } from '@/query'
+import { queryClient, queryKeys, taskModelQueryKeys } from '@/query'
 import type {
   BranchPolicy,
   BranchPolicyUpdateInput,
@@ -109,6 +109,9 @@ export function useApproveDryRunCq(projectId: string): UseMutationResult<DryRunC
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.dryRuns.all(projectId) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.preflight.all(projectId) })
+      // The real MR is created asynchronously after CQ+1. Refresh its list
+      // so the old placeholder cannot keep exposing a WAITING_CQ action.
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.all(projectId) })
     },
   })
 }
@@ -120,6 +123,7 @@ export function useRejectDryRunCq(projectId: string): UseMutationResult<DryRunCq
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.dryRuns.all(projectId) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.preflight.all(projectId) })
+      void queryClient.invalidateQueries({ queryKey: taskModelQueryKeys.mergeRequests.all(projectId) })
     },
   })
 }

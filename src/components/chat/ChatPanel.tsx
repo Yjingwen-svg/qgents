@@ -782,6 +782,9 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
     const optimisticId = `cmsg_${Date.now()}`
     const optimisticContent = replyTo
       ? {
+          // QUOTE 同时提供通用 text 字段。自动建任务和群摘要按普通消息取正文时，
+          // 不应退化为序列化整个引用元数据对象。
+          text,
           quotedMessageId: replyTo.id,
           quotedText: quotePreview(replyTo),
           quotedSenderName: replyTo.senderName ?? (replyTo.senderType === 'AGENT' ? 'Agent' : '成员'),

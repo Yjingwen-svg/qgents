@@ -67,22 +67,14 @@ describe('TaskCenterPage', () => {
     expect(screen.getByText('暂无权限查看任务')).toBeInTheDocument()
   })
 
-  it('uses selected page numbers and a quick-jump control for loaded tasks', async () => {
-    const user = userEvent.setup()
-    const tasks = Array.from({ length: 9 }, (_, index) => ({ ...task, id: `task-${index + 1}`, title: `Task ${index + 1}` }))
+  it('uses the server batch size for pagination instead of splitting one batch by viewport size', () => {
+    const tasks = Array.from({ length: 20 }, (_, index) => ({ ...task, id: `task-${index + 1}`, title: `Task ${index + 1}` }))
     useInfiniteTasksMock.mockReturnValue(result({ data: { pages: [page(tasks)], pageParams: [undefined] } }))
 
     const { container } = renderPage()
 
-    expect(container.querySelector('.ant-pagination-item-active')).toHaveTextContent('1')
-    expect(container.querySelector('.ant-pagination-options-quick-jumper input')).toBeInTheDocument()
-    const pageTwo = container.querySelector<HTMLElement>('.ant-pagination-item-2')
-    if (!pageTwo) throw new Error('Expected page 2 control')
-    await user.click(pageTwo)
-    expect(container.querySelector('.ant-pagination-item-active')).toHaveTextContent('2')
-    const pageOne = container.querySelector<HTMLElement>('.ant-pagination-item-1')
-    if (!pageOne) throw new Error('Expected page 1 control')
-    await user.click(pageOne)
+    expect(screen.getByText('Task 1')).toBeInTheDocument()
+    expect(screen.getByText('Task 20')).toBeInTheDocument()
     expect(container.querySelector('.ant-pagination-item-active')).toHaveTextContent('1')
   })
 

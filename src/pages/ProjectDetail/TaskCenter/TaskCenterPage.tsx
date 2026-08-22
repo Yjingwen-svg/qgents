@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Alert, Button, ConfigProvider, Empty, Pagination, Result, Segmented, Spin, theme, Typography, type ThemeConfig } from 'antd'
 import { AppstoreOutlined, UnorderedListOutlined } from '@ant-design/icons'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -15,8 +15,6 @@ import styles from './TaskCenterPage.module.scss'
 
 const { Title, Text } = Typography
 const PAGE_SIZE = 20
-const DEFAULT_VISIBLE_TASKS = 8
-const TASK_CARD_TARGET_WIDTH = 285
 const MIN_TASK_CARD_GAP = 16
 // 搜索关键词防抖窗口：避免每次按键 / IME 过程就触发 URL 同步和重新查询造成列表抖动。
 const KEYWORD_DEBOUNCE_MS = 300
@@ -83,8 +81,7 @@ export default function TaskCenterPage() {
   const hasExplicitFilter = status !== 'all' || Boolean(createdBy || groupId || repositoryId || search)
   const hideCompletedTasks = !showCompletedTasks && !hasExplicitFilter
   const query = useInfiniteTasks(projectId, { groupId, status: status === 'all' ? undefined : status, excludeStatus: hideCompletedTasks ? 'SUCCEEDED' : undefined, createdBy, repositoryId, keyword: search || undefined, limit: PAGE_SIZE })
-  const mainRef = useRef<HTMLElement>(null)
-  const { visibleTaskCount, cardGap } = useTaskBoardLayout(mainRef)
+  const cardGap = MIN_TASK_CARD_GAP
   const [currentPage, setCurrentPage] = useState(1)
 
   const tasks = useMemo(() => {
@@ -99,10 +96,12 @@ export default function TaskCenterPage() {
   // 已完成任务的隐藏已由服务端 excludeStatus=SUCCEEDED 完成，此处不再本地过滤。
   const displayedTasks = tasks
   const isUnfiltered = !hasExplicitFilter
-  const pageStart = (currentPage - 1) * visibleTaskCount
-  const visibleTasks = displayedTasks.slice(pageStart, pageStart + visibleTaskCount)
-  const loadedPageCount = Math.max(1, Math.ceil(displayedTasks.length / visibleTaskCount))
-  const paginationTotal = displayedTasks.length + (query.hasNextPage ? visibleTaskCount : 0)
+  // UI 页码与服务端 cursor 批次一一对应；不能按屏幕列数再次切分同一批任务，
+  // 否则一批 20 条会被拆成多个不完整视觉页，造成看板中间出现断层。
+  const pageStart = (currentPage - 1) * PAGE_SIZE
+  const visibleTasks = displayedTasks.slice(pageStart, pageStart + PAGE_SIZE)
+  const loadedPageCount = Math.max(1, Math.ceil(displayedTasks.length / PAGE_SIZE))
+  const paginationTotal = displayedTasks.length + (query.hasNextPage ? PAGE_SIZE : 0)
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams)
@@ -123,7 +122,7 @@ export default function TaskCenterPage() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [groupId, status, createdBy, repositoryId, search, showCompletedTasks, visibleTaskCount])
+  }, [groupId, status, createdBy, repositoryId, search, showCompletedTasks])
 
   function updateParam(key: string, value: string | undefined) {
     const next = new URLSearchParams(searchParams)
@@ -162,7 +161,7 @@ export default function TaskCenterPage() {
         await query.fetchNextPage()
         setCurrentPage(nextPage)
       } catch {
-        // The existing inline next-page error keeps the current page visible.
+        // 下一页加载失败时保留当前页与已加载数据。
       }
     }
   }
@@ -170,15 +169,15 @@ export default function TaskCenterPage() {
   return (
     <ConfigProvider theme={taskCenterTheme}>
       <div className={styles.page}>
-        <main ref={mainRef} className={styles.main} style={{ '--task-card-gap': `${cardGap}px` } as CSSProperties}>
+        <main className={styles.main} style={{ '--task-card-gap': `${cardGap}px` } as CSSProperties}>
           <header className={styles.header}>
             <Title level={2} className={styles.title}>任务中心</Title>
             {query.isFetching && !query.isLoading ? <Spin size="small" /> : null}
           </header>
           <TaskFilters status={status} groupId={groupId} repositoryId={repositoryId} createdBy={createdBy} search={pendingSearch} groupOptions={groupOptions} repositoryOptions={repositoryOptions} createdByOptions={createdByOptions} onStatusChange={(value) => updateParam('status', value === 'all' ? undefined : value)} onGroupChange={(value) => updateParam('groupId', value)} onRepositoryChange={(value) => updateParam('repositoryId', value)} onCreatedByChange={(value) => updateParam('createdBy', value)} onSearchDraftChange={setPendingSearch} onSearchCommit={commitSearch} onReset={resetFilters} />
-          <div className={styles.listHeading}><div className={styles.listTitle}><Text strong>任务列表</Text><Text type="secondary">（{displayedTasks.length} 项）</Text><Button size="small" onClick={toggleCompletedTasks}>{hideCompletedTasks ? '查看已完成任务' : '隐藏已完成任务'}</Button></div><Segmented<TaskCenterView> aria-label="任务视图" value={view} onChange={(nextView) => updateParam('view', nextView)} options={[{ value: 'board', label: '看板', icon: <AppstoreOutlined /> }, { value: 'table', label: '表格', icon: <UnorderedListOutlined /> }]} /></div>
+          <div className={styles.listHeading}><div className={styles.listTitle}><Text strong>任务列表</Text><Button size="small" onClick={toggleCompletedTasks}>{hideCompletedTasks ? '查看已完成任务' : '隐藏已完成任务'}</Button></div><Segmented<TaskCenterView> aria-label="任务视图" value={view} onChange={(nextView) => updateParam('view', nextView)} options={[{ value: 'board', label: '看板', icon: <AppstoreOutlined /> }, { value: 'table', label: '表格', icon: <UnorderedListOutlined /> }]} /></div>
           <TaskCenterContent query={query} tasks={visibleTasks} hasServerItems={hasServerItems} isUnfiltered={isUnfiltered} hidesCompletedTasks={hideCompletedTasks} view={view} onViewDetails={viewTask} onRetry={() => void query.refetch()} />
-          {!query.isLoading && displayedTasks.length > 0 ? <nav className={styles.pagination} aria-label="任务列表分页"><Pagination current={currentPage} pageSize={visibleTaskCount} total={paginationTotal} showSizeChanger={false} showQuickJumper={{ goButton: '跳转' }} showLessItems disabled={query.isFetchingNextPage} onChange={(page) => void changePage(page)} /></nav> : null}
+          {!query.isLoading && displayedTasks.length > 0 ? <nav className={styles.pagination} aria-label="任务列表分页"><Pagination current={currentPage} pageSize={PAGE_SIZE} total={paginationTotal} showSizeChanger={false} showQuickJumper={{ goButton: '跳转' }} showLessItems disabled={query.isFetchingNextPage} onChange={(page) => void changePage(page)} /></nav> : null}
           {!query.isLoading && query.hasNextPage ? <div className={styles.loadMore}><Button onClick={() => void query.fetchNextPage()} loading={query.isFetchingNextPage}>加载更多</Button></div> : null}
         </main>
       </div>
@@ -230,33 +229,4 @@ function compareTasksByLatestActivity(left: TaskListItem, right: TaskListItem) {
 function timestampOf(value: string) {
   const timestamp = Date.parse(value)
   return Number.isNaN(timestamp) ? 0 : timestamp
-}
-
-function useTaskBoardLayout(mainRef: RefObject<HTMLElement | null>) {
-  const [layout, setLayout] = useState({ visibleTaskCount: DEFAULT_VISIBLE_TASKS, cardGap: MIN_TASK_CARD_GAP })
-
-  useEffect(() => {
-    const element = mainRef.current
-    if (!element || typeof ResizeObserver === 'undefined') return
-
-    const update = () => {
-      const computedStyle = window.getComputedStyle(element)
-      const paddingLeft = Number.parseFloat(computedStyle.paddingLeft) || 0
-      const paddingRight = Number.parseFloat(computedStyle.paddingRight) || 0
-      const contentWidth = Math.max(element.clientWidth - paddingLeft - paddingRight, 1)
-      if (contentWidth <= 620) {
-        setLayout({ visibleTaskCount: 2, cardGap: MIN_TASK_CARD_GAP })
-        return
-      }
-      const columns = Math.max(1, Math.floor((contentWidth + MIN_TASK_CARD_GAP) / (TASK_CARD_TARGET_WIDTH + MIN_TASK_CARD_GAP)))
-      const cardGap = columns > 1 ? MIN_TASK_CARD_GAP : MIN_TASK_CARD_GAP
-      setLayout({ visibleTaskCount: columns * 2, cardGap })
-    }
-    update()
-    const observer = new ResizeObserver(update)
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [mainRef])
-
-  return layout
 }

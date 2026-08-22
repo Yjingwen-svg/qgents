@@ -8,6 +8,18 @@ import { deliveryCenterHandlers } from './delivery-center/handlers'
 import { createTaskFromMessageIntent, findTaskByTriggerMessageId } from './task-model/handlers'
 import { createWorkBranchHandlers } from './workBranches'
 
+/**
+ * 自动建任务从消息中提取可读正文。QUOTE 的 content 是结构化引用元数据，不能
+ * stringify 后作为任务标题；优先使用契约中的顶层 replyText，再兼容 content.text。
+ */
+function messageTextForTask(content: unknown, replyText?: string): string {
+  if (typeof replyText === 'string' && replyText.trim()) return replyText.trim()
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return ''
+  const value = content as Record<string, unknown>
+  if (typeof value.text === 'string' && value.text.trim()) return value.text.trim()
+  return typeof value.replyText === 'string' ? value.replyText.trim() : ''
+}
+
 // ══════════════════════════════════════════════
 // Mock 数据
 // ══════════════════════════════════════════════
@@ -1771,15 +1783,12 @@ export const handlers = [
       replyText: body.replyText ?? undefined,
     }
     list.push(message)
+    const taskText = messageTextForTask(body.content, body.replyText)
     const taskRecord = mentionedAgents[0]
       ? createTaskFromMessageIntent(projectId, {
         requirementGroupId: groupId,
-        title: typeof (body.content as { text?: unknown })?.text === 'string'
-          ? (body.content as { text: string }).text.slice(0, 80)
-          : '来自群聊的任务',
-        requirement: typeof (body.content as { text?: unknown })?.text === 'string'
-          ? (body.content as { text: string }).text
-          : '',
+        title: taskText.slice(0, 80) || '来自群聊的任务',
+        requirement: taskText,
         messageId: message.id,
         createdAt: message.createdAt,
       })
@@ -1802,14 +1811,11 @@ export const handlers = [
     const message = (MOCK_MESSAGES[groupId] ?? []).find((item) => item.id === messageId)
     if (!message) return HttpResponse.json({ error: { code: 'MESSAGE_NOT_FOUND', message: '消息不存在' } }, { status: 404 })
     const existing = findTaskByTriggerMessageId(projectId, messageId)
+    const taskText = messageTextForTask(message.content, message.replyText)
     const task = existing ?? createTaskFromMessageIntent(projectId, {
       requirementGroupId: groupId,
-      title: typeof (message.content as { text?: unknown })?.text === 'string'
-        ? (message.content as { text: string }).text.slice(0, 80)
-        : '来自群聊的任务',
-      requirement: typeof (message.content as { text?: unknown })?.text === 'string'
-        ? (message.content as { text: string }).text
-        : '',
+      title: taskText.slice(0, 80) || '来自群聊的任务',
+      requirement: taskText,
       messageId,
       createdAt: message.createdAt,
     })

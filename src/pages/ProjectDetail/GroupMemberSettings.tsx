@@ -53,10 +53,13 @@ export function GroupMemberSettings({ projectId, group }: Props) {
     enabled: !!project?.teamId,
   })
   const teamMemberNameById = new Map(teamMembers.map((tm) => [tm.userId, tm.displayName]))
+  const teamMemberAvatarById = new Map(teamMembers.map((tm) => [tm.userId, tm.avatarUrl]))
   const resolveProjectMemberName = (userId: string): string =>
     projectMembers.find((m) => m.userId === userId)?.displayName ||
     teamMemberNameById.get(userId) ||
     userId
+  const resolveProjectMemberAvatar = (userId: string): string | undefined =>
+    projectMembers.find((m) => m.userId === userId)?.avatarUrl || teamMemberAvatarById.get(userId)
 
   // 权限模型（v2.0.6）：项目层面没有 owner，只有管理员 PROJECT_ADMIN 可管理群聊成员。
   // 管理员可设管理员（不可撤销），但不能操作其他管理员。
@@ -247,7 +250,48 @@ export function GroupMemberSettings({ projectId, group }: Props) {
           value={inviteIds}
           onChange={setInviteIds}
           optionFilterProp="label"
-          options={inviteCandidates.map((m) => ({ value: m.userId, label: resolveProjectMemberName(m.userId) }))}
+          options={inviteCandidates.map((m) => ({
+            value: m.userId,
+            label: resolveProjectMemberName(m.userId),
+          }))}
+          optionRender={(option) => {
+            const userId = String(option.value)
+            const name = resolveProjectMemberName(userId)
+            return (
+              <Space size={8}>
+                <Avatar
+                  size={24}
+                  src={resolveProjectMemberAvatar(userId)}
+                  style={{ background: '#3b82f6', flexShrink: 0 }}
+                  icon={<UserOutlined />}
+                >
+                  {name.slice(0, 1)}
+                </Avatar>
+                <span>{name}</span>
+              </Space>
+            )
+          }}
+          tagRender={(tag) => {
+            const userId = String(tag.value)
+            const name = resolveProjectMemberName(userId)
+            return (
+              <Tag
+                closable={tag.closable}
+                onClose={tag.onClose}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginInlineEnd: 4 }}
+              >
+                <Avatar
+                  size={18}
+                  src={resolveProjectMemberAvatar(userId)}
+                  style={{ background: '#3b82f6' }}
+                  icon={<UserOutlined />}
+                >
+                  {name.slice(0, 1)}
+                </Avatar>
+                {name}
+              </Tag>
+            )
+          }}
         />
       </Modal>
     </>

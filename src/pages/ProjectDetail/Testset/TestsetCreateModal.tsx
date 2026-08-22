@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Modal, Form, Select, Input, InputNumber, App, Space, Tag } from 'antd'
+import { Modal, Form, Select, Input, InputNumber, App } from 'antd'
 import type { ProjectBoundRepository, Testset } from '@/types'
 import type { CreateTestsetPayload, UpdateTestsetPayload } from '@/types/testset'
 
@@ -30,7 +30,6 @@ export default function TestsetCreateModal({
   const { message } = App.useApp()
   const [form] = Form.useForm()
   const [submitting, setSubmitting] = useState(false)
-  const [tagInput, setTagInput] = useState('')
 
   const isEdit = Boolean(editing)
 
@@ -41,7 +40,7 @@ export default function TestsetCreateModal({
       form.setFieldsValue({
         name: editing.name,
         repositoryId: editing.repositoryId,
-        scopeTags: editing.scopeTags,
+        scopeTags: editing.scopeTags ?? [],
         command: editing.command,
         timeoutSeconds: editing.timeoutSeconds,
         expectedExitCode: editing.passRule.expected,
@@ -55,7 +54,6 @@ export default function TestsetCreateModal({
         scopeTags: [],
       })
     }
-    setTagInput('')
   }, [open, editing, repositories, form])
 
   const repoOptions = useMemo(() =>
@@ -70,20 +68,29 @@ export default function TestsetCreateModal({
       setSubmitting(true)
 
       if (isEdit && editing) {
-        const payload: UpdateTestsetPayload = {}
-        if (values.name !== editing.name) payload.name = values.name
-        if (values.repositoryId !== editing.repositoryId) payload.repositoryId = values.repositoryId
-        payload.scopeTags = values.scopeTags ?? []
-        if (values.command !== editing.command) payload.command = values.command
-        if (values.timeoutSeconds !== editing.timeoutSeconds) payload.timeoutSeconds = values.timeoutSeconds
-        payload.passRule = { type: 'EXIT_CODE', expected: values.expectedExitCode ?? 0 }
-        payload.acceptanceNotes = values.acceptanceNotes ?? ''
+        const hasNameChange = values.name !== editing.name
+        const hasRepoChange = values.repositoryId !== editing.repositoryId
+        const hasScopeTagsChange = JSON.stringify(values.scopeTags ?? []) !== JSON.stringify(editing.scopeTags ?? [])
+        const hasCommandChange = values.command !== editing.command
+        const hasTimeoutChange = values.timeoutSeconds !== editing.timeoutSeconds
+        const hasPassRuleChange = (values.expectedExitCode ?? 0) !== editing.passRule.expected
+        const hasAcceptanceChange = (values.acceptanceNotes ?? '') !== (editing.acceptanceNotes ?? '')
 
-        if (Object.keys(payload).length === 0) {
+        if (!hasNameChange && !hasRepoChange && !hasScopeTagsChange && !hasCommandChange && !hasTimeoutChange && !hasPassRuleChange && !hasAcceptanceChange) {
           message.info('没有变化需要保存')
           onClose()
           return
         }
+
+        const payload: UpdateTestsetPayload = {
+          scopeTags: values.scopeTags ?? [],
+        }
+        if (hasNameChange) payload.name = values.name
+        if (hasRepoChange) payload.repositoryId = values.repositoryId
+        if (hasCommandChange) payload.command = values.command
+        if (hasTimeoutChange) payload.timeoutSeconds = values.timeoutSeconds
+        payload.passRule = { type: 'EXIT_CODE', expected: values.expectedExitCode ?? 0 }
+        payload.acceptanceNotes = values.acceptanceNotes ?? ''
 
         await onSubmit(payload, editing.id)
       } else {
@@ -108,18 +115,7 @@ export default function TestsetCreateModal({
 
   function handleClose() {
     form.resetFields()
-    setTagInput('')
     onClose()
-  }
-
-  const appendTag = () => {
-    const tag = tagInput.trim()
-    if (!tag) return
-    const current: string[] = form.getFieldValue('scopeTags') ?? []
-    if (!current.includes(tag)) {
-      form.setFieldsValue({ scopeTags: [...current, tag] })
-    }
-    setTagInput('')
   }
 
   return (
@@ -195,25 +191,15 @@ export default function TestsetCreateModal({
           name="scopeTags"
           extra="用于 Dry Run / 测试运行时的过滤与分组"
         >
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <Form.Item name="scopeTags" noStyle>
-              <Select
-                mode="tags"
-                placeholder="输入标签后按回车添加"
-                style={{ width: '100%' }}
-              />
-            </Form.Item>
-            <Space>
-              <Input
-                placeholder="快速添加标签"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onPressEnter={appendTag}
-                style={{ width: 200 }}
-              />
-              <Tag.CheckableTag checked={false} onClick={appendTag}>添加</Tag.CheckableTag>
-            </Space>
-          </Space>
+          <Select
+            mode="tags"
+            placeholder="输入标签后按回车添加，可连续添加多个"
+            style={{ width: '100%' }}
+            open={false}
+            onInputKeyDown={(e) => {
+              if (e.key === 'Enter') e.stopPropagation()
+            }}
+          />
         </Form.Item>
 
         <Form.Item

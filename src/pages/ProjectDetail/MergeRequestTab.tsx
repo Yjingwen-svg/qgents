@@ -886,11 +886,11 @@ export function MergeRequestTab({
   function patchParams(patch: { repositoryId?: string; status?: string }) {
     const next = new URLSearchParams(searchParams)
     next.set('tab', 'mr')
-    if (patch.repositoryId !== undefined) {
+    if ('repositoryId' in patch) {
       if (patch.repositoryId) next.set('repositoryId', patch.repositoryId)
       else next.delete('repositoryId')
     }
-    if (patch.status !== undefined) {
+    if ('status' in patch) {
       if (patch.status) next.set('status', patch.status)
       else next.delete('status')
     }
@@ -1022,12 +1022,14 @@ export function MergeRequestTab({
           const enabled = Boolean(record.taskId)
           if (!enabled) return <Text type="secondary">—</Text>
           const status = preflightStatusMap[record.id]
-          // 只有 Dry Run 已通过且确实等待 CQ+1 时，才开放 CQ 审查入口。
-          if (status !== 'WAITING_CQ') {
+          // WAITING_CQ：进入审查；CQ_REJECTED：进入查看拒绝原因。
+          // 其它状态（IDLE / DRY_RUN_RUNNING / CREATING_MR / MR_CREATED / FAILED / STALE 等）不展示入口。
+          if (status !== 'WAITING_CQ' && status !== 'CQ_REJECTED') {
             return <Text type="secondary">—</Text>
           }
+          const isRejected = status === 'CQ_REJECTED'
           return (
-            <Tooltip title="点击跳转到 CQ+1 大印章审查页">
+            <Tooltip title={isRejected ? '点击查看 CQ+1 拒绝原因' : '点击跳转到 CQ+1 大印章审查页'}>
               <Button
                 type="link"
                 size="small"
@@ -1045,7 +1047,9 @@ export function MergeRequestTab({
                   navigate(`${PATHS.projectCqReview(projectId)}?${params.toString()}`)
                 }}
               >
-                <Tag color="warning">前往 CQ+1</Tag>
+                <Tag color={isRejected ? 'error' : 'warning'}>
+                  {isRejected ? '查看拒绝原因' : '前往 CQ+1'}
+                </Tag>
               </Button>
             </Tooltip>
           )

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Typography,
@@ -16,10 +16,10 @@ import {
 import {
   LeftOutlined,
   RightOutlined,
-  DownloadOutlined,
   SendOutlined,
 } from '@ant-design/icons'
 import { projectApi } from '@/api/project'
+import { PATHS } from '@/routes/paths'
 import { formatApiError } from '@/utils/formatApiError'
 import { commentAuthorAvatar, commentAuthorName, HUNK_UNAVAILABLE_HINT } from './commentAuthor'
 import {
@@ -60,12 +60,13 @@ const FILE_PAGE_SIZE = 100
  */
 export default function DiffReviewPage() {
   const { message } = App.useApp()
-void message // message 占位：暂未使用，保留以便后续提示
+  void message // message 占位：暂未使用，保留以便后续提示
   const [draft, setDraft] = useState('')
   const { projectId = '', diffId = '' } = useParams<{
     projectId: string
     diffId: string
   }>()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const fileHint = searchParams.get('file')?.trim() || undefined
   const [fileIndex, setFileIndex] = useState(0)
@@ -150,6 +151,11 @@ void message // message 占位：暂未使用，保留以便后续提示
   if (emptyBranchShell) {
     return (
       <div className="diff-review">
+        <div style={{ padding: '8px 16px 0' }}>
+          <Button type="text" icon={<LeftOutlined />} onClick={() => navigate(PATHS.projectCode(projectId))}>
+            返回分支与diff详情
+          </Button>
+        </div>
         <header className="diff-review__top">
           <div className="diff-review__title-row">
             <h1>Diff</h1>
@@ -182,6 +188,11 @@ void message // message 占位：暂未使用，保留以便后续提示
   if (detailQuery.isError || !review) {
     return (
       <div className="diff-review">
+        <div style={{ padding: '8px 16px 0' }}>
+          <Button type="text" icon={<LeftOutlined />} onClick={() => navigate(PATHS.projectCode(projectId))}>
+            返回分支与diff详情
+          </Button>
+        </div>
         <div className="diff-review__top" />
         <Alert
           type="error"
@@ -200,6 +211,11 @@ void message // message 占位：暂未使用，保留以便后续提示
 
   return (
     <div className="diff-review">
+      <div style={{ padding: '8px 16px 0' }}>
+        <Button type="text" icon={<LeftOutlined />} onClick={() => navigate(PATHS.projectCode(projectId))}>
+          返回分支与diff详情
+        </Button>
+      </div>
       <header className="diff-review__top">
         <div className="diff-review__title-row">
           <h1>Diff-{taskQuery.data?.title?.trim() || review.taskId}</h1>
@@ -226,9 +242,6 @@ void message // message 占位：暂未使用，保留以便后续提示
             disabled={safeIndex >= files.length - 1}
             onClick={() => goFile(safeIndex + 1)}
           />
-          <Button icon={<DownloadOutlined />} disabled>
-            文件视图
-          </Button>
         </Space>
       </div>
 

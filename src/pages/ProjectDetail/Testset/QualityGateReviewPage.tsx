@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { BackTop, Button, Card, ConfigProvider, Empty, List, Space, Tag, Typography, App, Tabs, Descriptions, Table } from 'antd'
+import { BackTop, Button, Card, ConfigProvider, Empty, List, Space, Tag, Typography, App, Descriptions } from 'antd'
 import { LeftOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useMergeRequest, useTestRun, useDryRunReport, useTestsets } from '@/hooks'
+import { useTask } from '@/hooks/task-model'
 import type { TestRun, LocalRunHistoryItem, Testset } from '@/types/testset'
-import type { ColumnsType } from 'antd/es/table'
-import { githubApi } from '@/api'
+import { githubApi, projectApi } from '@/api'
 import { queryKeys } from '@/query'
 import { PATHS } from '@/routes/paths'
 import { readRunHistory, pushRunHistory, removeRunHistory } from './runHistory'
@@ -198,17 +198,19 @@ function CurrentRunCard({ projectId, localRuns, selectedRunId }: CurrentRunCardP
     return map
   }, [allTestsets])
 
-  const currentStatus: string | undefined =
-    current?.kind === 'TEST_RUN'
-      ? testRunQuery.data?.status
-      : current?.kind === 'DRY_RUN'
-        ? dryRunQuery.data?.status
-        : undefined
+  // 加载项目成员用于昵称映射
+  const { data: members = [] } = useQuery({
+    queryKey: ['projects', projectId, 'members'],
+    queryFn: () => projectApi.listMembers(projectId),
+    enabled: Boolean(projectId),
+  })
+  const memberNameMap = useMemo(() => {
+    const map = new Map<string, string>()
+    members.forEach((m) => map.set(m.userId, m.displayName || m.userId))
+    return map
+  }, [members])
 
-  const isActive = currentStatus === 'QUEUED' || currentStatus === 'RUNNING'
-  const isLoading = testRunQuery.isLoading || dryRunQuery.isLoading
-
-  // ============ Dry Run 详情（所有 hooks 必须在顶层无条件调用） ============
+  // ============ Dry Run / TestRun 数据 ============
   const report = dryRunQuery.data
   const testRunData = testRunQuery.data
 
@@ -253,11 +255,9 @@ function CurrentRunCard({ projectId, localRuns, selectedRunId }: CurrentRunCardP
     if (testRunData.startedAt && testRunData.finishedAt) {
       const ms = new Date(testRunData.finishedAt).getTime() - new Date(testRunData.startedAt).getTime()
       if (Number.isFinite(ms) && ms > 0) return `${Math.round(ms / 1000)}s`
-      // 终态但时间差为 0 或负值，显示 0s 而不是"进行中"
       if (isTerminal) return '0s'
       return '进行中…'
     }
-    // 终态但缺少 finishedAt，退化为显示 0s
     if (isTerminal) return '0s'
     if (testRunData.startedAt) {
       return '进行中…'
@@ -267,7 +267,6 @@ function CurrentRunCard({ projectId, localRuns, selectedRunId }: CurrentRunCardP
 
   const testRunStatusColor = useMemo(() => {
     if (!testRunData) return 'default'
-    // 类型定义滞后于后端实际状态值（文档允许 CONFLICT 等扩展值，此处先兼容）
     const status: string = testRunData.status as string
     switch (status) {
       case 'PASSED': return 'success'
@@ -280,69 +279,35 @@ function CurrentRunCard({ projectId, localRuns, selectedRunId }: CurrentRunCardP
     }
   }, [testRunData])
 
-  const testsetColumns: ColumnsType<{ key: string; name: string; status: string; durationMs: number | null; failureCode: string | null }> = [
-    { title: '测试集', dataIndex: 'name', key: 'name', render: (v: string) => <Text strong>{v}</Text> },
-    {
-      title: '状态', dataIndex: 'status', key: 'status',
-      render: (v: string) => {
-        const color = v === 'PASSED' ? 'success' : v === 'FAILED' ? 'error' : v === 'RUNNING' ? 'processing' : 'default'
-        return <Tag color={color}>{v}</Tag>
-      },
-    },
-    {
-      title: '执行耗时 (ms)', dataIndex: 'durationMs', key: 'durationMs',
-      render: (v: number | null) => v != null ? v : '—',
-    },
-    {
-      title: '失败码', dataIndex: 'failureCode', key: 'failureCode',
-      render: (v: string | null) => v ?? <Text type="secondary">null</Text>,
-    },
-  ]
+  // --- 获取关联任务名称 ---
+  const testRunTaskId = testRunData?.taskId ?? null
+  const dryRunTaskId = report?.taskId ?? null
+  const activeTaskId = testRunTaskId || dryRunTaskId
 
-  // --- DryRun 表格数据 ---
-  const dryRunTableData = useMemo(() => {
-    if (!report) return []
-    const results = report.report?.tests && 'results' in report.report.tests
-      ? report.report.tests.results
-      : []
-    if (results.length > 0) {
-      return results.map((item) => ({
-        key: item.testsetId,
-        name: testsetNameMap.get(item.testsetId) ?? item.testsetId.slice(0, 8),
-        status: item.status,
-        durationMs: item.durationMs,
-        failureCode: item.failureCode,
-      }))
-    }
-    return (report.testsetIds || []).map((id) => ({
-      key: id,
-      name: testsetNameMap.get(id) ?? id.slice(0, 8),
-      status: report.status,
-      durationMs: null,
-      failureCode: null,
-    }))
-  }, [report, testsetNameMap])
+  const taskQuery = useTask(projectId, activeTaskId ?? '')
 
-  // --- TestRun 表格数据 ---
-  const testRunTableData = useMemo(() => {
-    if (!testRunData) return []
-    const results = testRunData.executionSummary?.results ?? []
-    if (results.length > 0) {
-      return results.map((item) => ({
-        key: item.testsetId,
-        name: testsetNameMap.get(item.testsetId) ?? item.testsetId.slice(0, 8),
-        status: item.status,
-        durationMs: item.durationMs,
-        failureCode: item.failureCode,
-      }))
-    }
-    return (testRunData.testsetIds || []).map((id) => ({
-      key: id,
-      name: testsetNameMap.get(id) ?? id.slice(0, 8),
-      status: testRunData.status,
-      durationMs: null,
-      failureCode: null,
-    }))
+  const taskName = useMemo(() => {
+    if (!activeTaskId) return null
+    return taskQuery.data?.title ?? null
+  }, [activeTaskId, taskQuery.data])
+
+  // --- 发起人昵称解析 ---
+  const testRunCreatorName = useMemo(() => {
+    if (!testRunData?.createdBy) return '—'
+    return memberNameMap.get(testRunData.createdBy) || testRunData.createdBy
+  }, [testRunData?.createdBy, memberNameMap])
+
+  const dryRunCreatorName = useMemo(() => {
+    if (!report?.createdBy) return '—'
+    return memberNameMap.get(report.createdBy) || report.createdBy
+  }, [report?.createdBy, memberNameMap])
+
+  // --- 测试集名称 ---
+  const testRunTestsetNames = useMemo(() => {
+    if (!testRunData) return '无'
+    return (testRunData.testsetIds || [])
+      .map((id) => testsetNameMap.get(id) ?? id.slice(0, 8))
+      .join('、') || '无'
   }, [testRunData, testsetNameMap])
 
   const dryRunTestsetNames = useMemo(() => {
@@ -352,138 +317,15 @@ function CurrentRunCard({ projectId, localRuns, selectedRunId }: CurrentRunCardP
       .join('、') || '无'
   }, [report, testsetNameMap])
 
-  const testRunTestsetNames = useMemo(() => {
-    if (!testRunData) return '无'
-    return (testRunData.testsetIds || [])
-      .map((id) => testsetNameMap.get(id) ?? id.slice(0, 8))
-      .join('、') || '无'
-  }, [testRunData, testsetNameMap])
+  const currentStatus: string | undefined =
+    current?.kind === 'TEST_RUN'
+      ? testRunQuery.data?.status
+      : current?.kind === 'DRY_RUN'
+        ? dryRunQuery.data?.status
+        : undefined
 
-  // --- DryRun Tab 视图 ---
-  const dryRunTabItems = useMemo(() => {
-    if (!report) return []
-    return [
-      {
-        key: 'overview',
-        label: '概览',
-        children: (
-          <Descriptions column={1} size="small" bordered style={{ marginTop: 8 }}>
-            <Descriptions.Item label="本轮测试集">
-              {dryRunTestsetNames}
-            </Descriptions.Item>
-            <Descriptions.Item label="发起人">
-              {report.createdBy || '—'}
-            </Descriptions.Item>
-            <Descriptions.Item label="源分支">
-              <Tag>{report.sourceRef}</Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="目标分支">
-              <Tag color="blue">{report.targetBranch}</Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="运行状态">
-              <Tag color={dryRunStatusColor}>{report.status}</Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="开始时间">
-              {report.startedAt ? new Date(report.startedAt).toLocaleString() : '—'}
-            </Descriptions.Item>
-            <Descriptions.Item label="运行时长">
-              {dryRunDurationText}
-            </Descriptions.Item>
-          </Descriptions>
-        ),
-      },
-      {
-        key: 'testcases',
-        label: '测试用例详情',
-        children: (
-          <Table
-            columns={testsetColumns}
-            dataSource={dryRunTableData}
-            size="small"
-            pagination={false}
-            style={{ marginTop: 8 }}
-            locale={{ emptyText: '暂无测试结果' }}
-          />
-        ),
-      },
-      {
-        key: 'report',
-        label: '报告',
-        children: (
-          <div style={{ padding: '24px 0', textAlign: 'center', color: '#6d7d95' }}>
-            <Empty description="报告功能暂未开放" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-          </div>
-        ),
-      },
-    ]
-  }, [report, dryRunTestsetNames, dryRunStatusColor, dryRunDurationText, dryRunTableData])
-
-  // --- TestRun Tab 视图 ---
-  const testRunTabItems = useMemo(() => {
-    if (!testRunData) return []
-    return [
-      {
-        key: 'overview',
-        label: '概览',
-        children: (
-          <Descriptions column={1} size="small" bordered style={{ marginTop: 8 }}>
-            <Descriptions.Item label="本轮测试集">
-              {testRunTestsetNames}
-            </Descriptions.Item>
-            <Descriptions.Item label="发起人">
-              {testRunData.createdBy || '—'}
-            </Descriptions.Item>
-            <Descriptions.Item label="引用分支">
-              {testRunData.ref ? <Tag>{testRunData.ref}</Tag> : '—'}
-            </Descriptions.Item>
-            <Descriptions.Item label="运行状态">
-              <Tag color={testRunStatusColor}>{testRunData.status}</Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="通过/失败/总计">
-              {testRunData.caseSummary
-                ? `${testRunData.caseSummary.passed} 通过 / ${testRunData.caseSummary.failed} 失败 / ${testRunData.caseSummary.total} 总计`
-                : '—'}
-            </Descriptions.Item>
-            <Descriptions.Item label="开始时间">
-              {testRunData.startedAt ? new Date(testRunData.startedAt).toLocaleString() : '—'}
-            </Descriptions.Item>
-            <Descriptions.Item label="运行时长">
-              {testRunDurationText}
-            </Descriptions.Item>
-          </Descriptions>
-        ),
-      },
-      {
-        key: 'testcases',
-        label: '测试用例详情',
-        children: (
-          <Table
-            columns={testsetColumns}
-            dataSource={testRunTableData}
-            size="small"
-            pagination={false}
-            style={{ marginTop: 8 }}
-            locale={{ emptyText: '暂无测试结果' }}
-          />
-        ),
-      },
-      {
-        key: 'report',
-        label: '报告',
-        children: testRunData.pdfUrl ? (
-          <div style={{ padding: '16px 0' }}>
-            <Button type="link" href={testRunData.pdfUrl} target="_blank">
-              下载 PDF 报告
-            </Button>
-          </div>
-        ) : (
-          <div style={{ padding: '24px 0', textAlign: 'center', color: '#6d7d95' }}>
-            <Empty description="报告功能暂未开放" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-          </div>
-        ),
-      },
-    ]
-  }, [testRunData, testRunTestsetNames, testRunStatusColor, testRunDurationText, testRunTableData])
+  const isActive = currentStatus === 'QUEUED' || currentStatus === 'RUNNING'
+  const isLoading = testRunQuery.isLoading || dryRunQuery.isLoading
 
   // ============ 渲染 ============
   const isDryRun = current?.kind === 'DRY_RUN' && report
@@ -504,7 +346,32 @@ function CurrentRunCard({ projectId, localRuns, selectedRunId }: CurrentRunCardP
             <Text strong>{report!.id.slice(0, 8)}</Text>
             <Tag color={dryRunStatusColor}>{report!.status}</Tag>
           </div>
-          <Tabs defaultActiveKey="overview" items={dryRunTabItems} size="small" />
+          <Descriptions column={1} size="small" bordered>
+            <Descriptions.Item label="本轮测试集">
+              {dryRunTestsetNames}
+            </Descriptions.Item>
+            <Descriptions.Item label="发起人">
+              {dryRunCreatorName}
+            </Descriptions.Item>
+            <Descriptions.Item label="源分支">
+              <Tag>{report!.sourceRef}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="目标分支">
+              <Tag color="blue">{report!.targetBranch}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="引用任务">
+              {taskName || '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label="运行状态">
+              <Tag color={dryRunStatusColor}>{report!.status}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="开始时间">
+              {report!.startedAt ? new Date(report!.startedAt).toLocaleString() : '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label="运行时长">
+              {dryRunDurationText}
+            </Descriptions.Item>
+          </Descriptions>
         </div>
       ) : current && isTestRun ? (
         <div>
@@ -513,7 +380,29 @@ function CurrentRunCard({ projectId, localRuns, selectedRunId }: CurrentRunCardP
             <Text strong>{testRunData!.id.slice(0, 8)}</Text>
             <Tag color={testRunStatusColor}>{testRunData!.status}</Tag>
           </div>
-          <Tabs defaultActiveKey="overview" items={testRunTabItems} size="small" />
+          <Descriptions column={1} size="small" bordered>
+            <Descriptions.Item label="本轮测试集">
+              {testRunTestsetNames}
+            </Descriptions.Item>
+            <Descriptions.Item label="发起人">
+              {testRunCreatorName}
+            </Descriptions.Item>
+            <Descriptions.Item label="引用分支">
+              {testRunData!.ref ? <Tag>{testRunData!.ref}</Tag> : '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label="引用任务">
+              {taskName || '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label="运行状态">
+              <Tag color={testRunStatusColor}>{testRunData!.status}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="开始时间">
+              {testRunData!.startedAt ? new Date(testRunData!.startedAt).toLocaleString() : '—'}
+            </Descriptions.Item>
+            <Descriptions.Item label="运行时长">
+              {testRunDurationText}
+            </Descriptions.Item>
+          </Descriptions>
         </div>
       ) : current ? (
         <div className={styles.currentRunList}>
@@ -554,7 +443,7 @@ function HistoryRunsCard({ localRuns, selectedRunId, onSelect, onDelete }: Histo
   }, [localRuns])
 
   return (
-    <Card className={styles.runCard}>
+    <Card className={`${styles.runCard} ${styles.historyCard}`}>
       <Title level={5} className={styles.runCardTitle}>本设备最近运行</Title>
       <Text type="secondary" className={styles.sideHint}>
         仅保存在本浏览器，不是跨设备权威历史。
@@ -562,44 +451,46 @@ function HistoryRunsCard({ localRuns, selectedRunId, onSelect, onDelete }: Histo
       {sorted.length === 0 ? (
         <Empty description="暂无运行记录" />
       ) : (
-        <List
-          size="small"
-          dataSource={sorted}
-          renderItem={(item) => {
-            const isSelected = item.id === selectedRunId
-            return (
-              <List.Item
-                className={isSelected ? styles.selectedListItem : undefined}
-                onClick={() => onSelect(isSelected ? null : item.id)}
-                actions={[
-                  <Button
-                    key="delete"
-                    type="link"
-                    size="small"
-                    danger
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onDelete(item.id)
-                      if (selectedRunId === item.id) onSelect(null)
-                    }}
-                  >
-                    删除
-                  </Button>,
-                ]}
-              >
-                <div className={styles.recentRunItem}>
-                  <Tag color={item.kind === 'TEST_RUN' ? 'blue' : 'purple'}>
-                    {item.kind === 'TEST_RUN' ? 'test-run' : 'dry-run'}
-                  </Tag>
-                  <Text strong>{item.label}</Text>
-                  <Text type="secondary" className={styles.recentRunStatus}>
-                    {new Date(item.createdAt).toLocaleString()}
-                  </Text>
-                </div>
-              </List.Item>
-            )
-          }}
-        />
+        <div className={styles.historyListScroll}>
+          <List
+            size="small"
+            dataSource={sorted}
+            renderItem={(item) => {
+              const isSelected = item.id === selectedRunId
+              return (
+                <List.Item
+                  className={isSelected ? styles.selectedListItem : undefined}
+                  onClick={() => onSelect(isSelected ? null : item.id)}
+                  actions={[
+                    <Button
+                      key="delete"
+                      type="link"
+                      size="small"
+                      danger
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDelete(item.id)
+                        if (selectedRunId === item.id) onSelect(null)
+                      }}
+                    >
+                      删除
+                    </Button>,
+                  ]}
+                >
+                  <div className={styles.recentRunItem}>
+                    <Tag color={item.kind === 'TEST_RUN' ? 'blue' : 'purple'}>
+                      {item.kind === 'TEST_RUN' ? 'test-run' : 'dry-run'}
+                    </Tag>
+                    <Text strong>{item.label}</Text>
+                    <Text type="secondary" className={styles.recentRunStatus}>
+                      {new Date(item.createdAt).toLocaleString()}
+                    </Text>
+                  </div>
+                </List.Item>
+              )
+            }}
+          />
+        </div>
       )}
     </Card>
   )

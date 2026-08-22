@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -25,6 +25,7 @@ import {
   MoreOutlined,
   PlusOutlined,
   LinkOutlined,
+  ExportOutlined,
 } from '@ant-design/icons'
 import { githubApi, groupApi, projectApi } from '@/api'
 import { useWorkBranches } from '@/hooks/workBranch'
@@ -522,42 +523,67 @@ function DiffStatLink({ projectId, branch }: { projectId: string; branch: WorkBr
   const diff = branch.latestDiff
   const additions = diff?.changeStats.additions ?? 0
   const deletions = diff?.changeStats.deletions ?? 0
-  const inner = (
-    <>
-      <Text type="success">+{additions}</Text>
-      {' / '}
-      <Text type="danger">-{deletions}</Text>
-    </>
-  )
-  const linkStyle = { display: 'inline-block' as const, padding: '2px 4px', borderRadius: 4 }
   const isZeroDiff = additions === 0 && deletions === 0
 
-  if (diff) {
-    return (
+  // 可点击的 Diff 链接样式
+  const linkBaseStyle: CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '2px 6px',
+    borderRadius: 6,
+    textDecoration: 'none',
+    border: '1px solid transparent',
+    transition: 'all 0.2s ease',
+  }
+
+  // 可点击的 Diff 链接
+  const renderLink = (to: string, title: string) => (
+    <Tooltip title={title} placement="top">
       <Link
-        to={PATHS.projectCodeDiff(projectId, diff.id)}
-        title="查看该分支 Diff"
-        style={linkStyle}
+        to={to}
+        style={linkBaseStyle}
+        onMouseEnter={(e) => {
+          const el = e.currentTarget
+          el.style.background = '#e6f4ff'
+          el.style.borderColor = '#91caff'
+          el.style.transform = 'translateY(-1px)'
+          el.style.boxShadow = '0 2px 8px rgba(22, 119, 255, 0.15)'
+        }}
+        onMouseLeave={(e) => {
+          const el = e.currentTarget
+          el.style.background = 'transparent'
+          el.style.borderColor = 'transparent'
+          el.style.transform = 'translateY(0)'
+          el.style.boxShadow = 'none'
+        }}
       >
-        {inner}
+        <Tag color="green" style={{ margin: 0 }}>+{additions}</Tag>
+        <Tag color="red" style={{ margin: '0 4px 0 0' }}>-{deletions}</Tag>
+        <ExportOutlined style={{ marginLeft: 4, color: '#1677ff', fontSize: 12 }} />
       </Link>
-    )
+    </Tooltip>
+  )
+
+  if (diff) {
+    return renderLink(PATHS.projectCodeDiff(projectId, diff.id), '点击查看该分支 Diff 详情')
   }
 
   // 后端尚未为该分支生成 Diff 快照：+/- 为 0 时仍可进入空 Diff 页，否则灰显
   if (isZeroDiff) {
-    return (
-      <Link
-        to={PATHS.projectCodeDiff(projectId, toEmptyBranchDiffId(branch.name))}
-        title="该分支暂无变更，打开空 Diff"
-        style={linkStyle}
-      >
-        {inner}
-      </Link>
+    return renderLink(
+      PATHS.projectCodeDiff(projectId, toEmptyBranchDiffId(branch.name)),
+      '该分支暂无变更，点击打开空 Diff 页',
     )
   }
 
-  return <Text type="secondary" title="后端尚未生成该分支的 Diff 快照">{inner}</Text>
+  // 不可点击状态
+  return (
+    <Tooltip title="后端尚未生成该分支的 Diff 快照" placement="top">
+      <span style={{ color: 'rgba(0,0,0,0.45)' }}>
+        <Text type="secondary">+{additions} / -{deletions}</Text>
+      </span>
+    </Tooltip>
+  )
 }
 
 function VerificationTag({ verification }: { verification: WorkBranch['lastVerification'] }) {

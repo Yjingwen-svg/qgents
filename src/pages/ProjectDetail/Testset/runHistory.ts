@@ -1,7 +1,7 @@
 import type { LocalRunHistoryItem } from '@/types/testset'
 
 const STORAGE_PREFIX = 'qgents:testset-run-history:'
-const MAX_ITEMS = 8
+const MAX_ITEMS = 50
 
 /** 会话历史的 localStorage 键（按项目隔离） */
 function storageKey(projectId: string): string {

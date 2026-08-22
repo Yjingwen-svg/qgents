@@ -300,12 +300,49 @@ export function MergeRequestTab({
   // 都必须向后端查一次，恢复用户在其他页面/会话中已经发起的预检状态。之后才进入"MANUAL
   // 未显式点击就跳过"的保守轮询模式，避免过度请求。
   const [initialRecoveryDone, setInitialRecoveryDone] = useState(false)
+  const [preflightRefreshVersion, setPreflightRefreshVersion] = useState(0)
   const initialRecoveryDoneRef = useRef(false)
   initialRecoveryDoneRef.current = initialRecoveryDone
   // 轮询过程中状态会持续更新，但不能因此取消当前批次的请求。
   const preflightStatusMapRef = useRef(preflightStatusMap)
   preflightStatusMapRef.current = preflightStatusMap
   const preflightRefreshInFlightRef = useRef(false)
+
+  // The MR list can refresh after CQ approval while the asynchronous MR
+  // creation is still pending. Reset only the non-terminal local states so a
+  // stale WAITING_CQ entry cannot keep its CQ+1 link clickable.
+  const lastPreflightResetDataRef = useRef(query.data?.data)
+  useEffect(() => {
+    if (lastPreflightResetDataRef.current === query.data?.data) return
+    lastPreflightResetDataRef.current = query.data?.data
+    const pendingIds = new Set(
+      (query.data?.data ?? [])
+        .filter((row) => row.status === 'PENDING_CREATE')
+        .map((row) => row.id),
+    )
+    setPreflightStatusMap((prev) => {
+      let changed = false
+      const next = { ...prev }
+      for (const id of pendingIds) {
+        if (preflightRequestingIds.has(id)) continue
+        if (next[id] && !['MR_CREATED', 'NO_CHANGES', 'FAILED', 'STALE', 'CQ_REJECTED'].includes(next[id])) {
+          delete next[id]
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+    setLoadedPreflightIds((prev) => {
+      const next = new Set(prev)
+      let changed = false
+      for (const id of pendingIds) {
+        if (next.delete(id)) changed = true
+      }
+      return changed ? next : prev
+    })
+    setInitialRecoveryDone(false)
+    setPreflightRefreshVersion((version) => version + 1)
+  }, [query.data?.data, preflightRequestingIds])
 
   // 页面加载和真实占位行替换时恢复已启动的预检状态。
   // 优化：使用并发控制（最多 3 个同时请求），避免超过浏览器并发限制
@@ -518,7 +555,7 @@ export function MergeRequestTab({
       if (timer) clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, displayItems, preflightPolling, preflightPollingInterval])
+  }, [projectId, displayItems, preflightPolling, preflightPollingInterval, preflightRefreshVersion])
 
   // ============== 自动模式（createMode = SYSTEM）：页面加载完自动触发申请预检 ==============
   // 后端返回占位 MR 时已经标记好 SYSTEM，前端就不需要用户再手动点「申请MR」。

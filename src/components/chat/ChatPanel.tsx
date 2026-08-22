@@ -1846,9 +1846,29 @@ function renderContent(
       const queriedStatus = taskStatus?.toUpperCase()
       const hasRunningStep = steps.some((step) => step.status === 'RUNNING')
       // 消息和任务查询可能短暂不同步：步骤已开始执行时，避免旧的 PLANNING 覆盖真实运行态。
-      const displayStatus = queriedStatus === 'PLANNING' && (messageStatus !== 'PLANNING' || hasRunningStep)
-        ? (messageStatus && messageStatus !== 'PLANNING' ? messageStatus : 'RUNNING')
-        : (queriedStatus ?? messageStatus ?? 'PLANNING')
+      // 同样地，任务状态卡本身已经携带了 WAITING_DIFF_CONFIRMATION /
+      // WAITING_PREFLIGHT 等用户动作态；若任务列表仍缓存 RUNNING，不能让卡片
+      // 把已经完成开发的任务继续显示成“执行中”。一旦查询返回更晚的非运行态，
+      // 查询结果仍优先。
+      const staleQueriedStatus = !queriedStatus
+        || queriedStatus === 'PLANNING'
+        || queriedStatus === 'PENDING'
+        || queriedStatus === 'RUNNING'
+        || queriedStatus === 'IN_PROGRESS'
+      const messageHasTerminalOrWaitingStatus = Boolean(messageStatus && [
+        'WAITING_DIFF_CONFIRMATION',
+        'WAITING_PREFLIGHT',
+        'DELIVERING',
+        'DELIVERY_FAILED',
+        'SUCCEEDED',
+        'FAILED',
+        'CANCELLED',
+      ].includes(messageStatus))
+      const displayStatus = messageHasTerminalOrWaitingStatus && staleQueriedStatus
+        ? messageStatus
+        : queriedStatus === 'PLANNING' && (messageStatus !== 'PLANNING' || hasRunningStep)
+          ? (messageStatus && messageStatus !== 'PLANNING' ? messageStatus : 'RUNNING')
+          : (queriedStatus ?? messageStatus ?? 'PLANNING')
       const statusKey = displayStatus.toUpperCase()
       const diffReady =
         statusKey === 'WAITING_DIFF_CONFIRMATION' ||
@@ -2033,6 +2053,8 @@ function taskStatusColor(status: string): string {
   const s = status.toUpperCase()
   if (s === 'SUCCEEDED' || s === 'COMPLETED') return 'green'
   if (s === 'FAILED' || s === 'CANCELLED') return 'red'
+  if (s === 'WAITING_DIFF_CONFIRMATION' || s === 'WAITING_PREFLIGHT') return 'gold'
+  if (s === 'DELIVERY_FAILED') return 'red'
   if (s === 'RUNNING' || s === 'IN_PROGRESS') return 'blue'
   return 'default'
 }

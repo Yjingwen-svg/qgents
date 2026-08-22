@@ -269,14 +269,23 @@ function resolveFileRepositoryIds(
 
 function PatchPreview({ patch, path }: { patch: string; path: string }) {
   const lines = parsePatchLines(patch)
-  return <pre className={styles.workspaceDiffPreviewPatch} data-testid="workspace-diff-preview-patch">{lines.map((line, index) => (
-    <span key={`${index}:${line.content}`} className={`${styles.workspaceDiffPreviewPatchRow} ${styles[line.kind]}`} data-testid={`workspace-diff-line-${line.kind}`}>
-      <span className={styles.workspaceDiffPreviewPatchLineNumber} data-testid="workspace-diff-old-line-number">{line.oldLineNumber ?? ''}</span>
-      <span className={styles.workspaceDiffPreviewPatchLineNumber} data-testid="workspace-diff-new-line-number">{line.newLineNumber ?? ''}</span>
-      <span className={styles.workspaceDiffPreviewPatchMarker} aria-hidden>{line.marker}</span>
-      <span className={styles.workspaceDiffPreviewPatchCode}>{highlightDiffCode(line.content || ' ', path)}</span>
-    </span>
-  ))}</pre>
+  return (
+    <div className={styles.workspaceDiffPreviewPatch} data-testid="workspace-diff-preview-patch" role="table" aria-label="实时 Diff">
+      {lines.map((line, index) => (
+        <div
+          key={`${index}:${line.kind}:${line.content}`}
+          className={`${styles.workspaceDiffPreviewPatchRow} ${styles[line.kind]}`}
+          data-testid={`workspace-diff-line-${line.kind}`}
+          role="row"
+        >
+          <span className={styles.workspaceDiffPreviewPatchLineNumber} data-testid="workspace-diff-old-line-number" role="cell">{line.oldLineNumber ?? ''}</span>
+          <span className={styles.workspaceDiffPreviewPatchLineNumber} data-testid="workspace-diff-new-line-number" role="cell">{line.newLineNumber ?? ''}</span>
+          <span className={styles.workspaceDiffPreviewPatchMarker} aria-hidden role="cell">{line.marker}</span>
+          <span className={styles.workspaceDiffPreviewPatchCode} role="cell">{highlightDiffCode(line.content || ' ', path)}</span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 type PatchLineKind = 'workspaceDiffPreviewPatchAdded' | 'workspaceDiffPreviewPatchDeleted' | 'workspaceDiffPreviewPatchContext'

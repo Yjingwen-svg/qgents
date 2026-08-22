@@ -1288,28 +1288,37 @@
 }
 
 .workspaceDiffPreviewPatch {
+  display: block;
   height: 100%;
   max-height: 360px;
   margin: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   border: 1px solid #e7edf3;
   border-radius: 6px;
   background: #f8fafc;
   color: #26364d;
+  white-space: normal;
+}
+
+.workspaceDiffPreviewPatchRow {
+  display: grid;
+  grid-template-columns: 52px 52px 24px max-content;
+  width: max-content;
+  min-width: 100%;
+  min-height: 22px;
   font-family: 'Cascadia Mono', Consolas, monospace;
   font-size: 12px;
   line-height: 1.55;
   white-space: normal;
 }
 
-.workspaceDiffPreviewPatchRow {
-  display: block;
-  display: grid;
-  grid-template-columns: 48px 48px 22px minmax(max-content, 1fr);
-  min-width: max-content;
+.workspaceDiffPreviewPatchRow:hover {
+  background: rgba(52, 126, 255, 0.06);
 }
 
 .workspaceDiffPreviewPatchLineNumber {
+  box-sizing: border-box;
   padding: 0 8px;
   overflow: hidden;
   color: #8c9bad;
@@ -1318,12 +1327,16 @@
 }
 
 .workspaceDiffPreviewPatchMarker {
+  box-sizing: border-box;
+  padding: 0 4px;
   font-weight: 700;
   text-align: center;
   user-select: none;
 }
 
 .workspaceDiffPreviewPatchCode {
+  display: block;
+  min-width: max-content;
   padding: 0 10px 0 4px;
   white-space: pre;
 }

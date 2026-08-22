@@ -58,7 +58,6 @@ import { findCqCheck, isMergeRequestAuthor } from '../cqSeal'
 import { githubPullRequestUrl } from '../mergeRequestDisplay'
 import { qualityGateNodeHref } from '../qualityGateNav'
 import { CqSealCard } from './CqSealCard'
-import { CommitHistoryCard } from './CommitHistoryCard'
 import styles from './MergeRequestDetailPage.module.scss'
 
 const { Text } = Typography
@@ -424,8 +423,6 @@ export default function MergeRequestDetailPage() {
                     </div>
                   )}
                   <CqSealCard
-                    projectId={projectId}
-                    mergeRequestId={mr.id}
                     check={cqCheck}
                     headCommit={mr.headCommit}
                     mrStatus={mr.status}

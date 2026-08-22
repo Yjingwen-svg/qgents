@@ -45,6 +45,7 @@ import type {
   ImageMessageContent,
   FileMessageContent,
   QuoteMessageContent,
+  DiffMessageContent,
   TaskStatusMessageContent,
   TaskStatusRepositoryMapping,
 } from '@/types'
@@ -107,7 +108,7 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       setReplyTo(target)
       return
     }
-    const content = target.content as { taskId?: unknown }
+    const content = target.content as DiffMessageContent
     const taskId = typeof content.taskId === 'string' ? content.taskId.trim() : ''
     if (!taskId) {
       message.error('当前 Diff 缺少任务上下文，暂时无法引用继续修改，请刷新页面后重试。')
@@ -125,6 +126,12 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         return
       }
       setReplyTo(target)
+      const reviewReason = typeof content.reviewReason === 'string' ? content.reviewReason.trim() : ''
+      if (content.reviewStatus === 'REJECTED' && reviewReason) {
+        setDraft((current) => current.trim()
+          ? current
+          : `请根据以下拒绝意见修改：\n${reviewReason}\n\n请继续修改：`)
+      }
       requestAnimationFrame(() => inputRef.current?.focus())
     } catch (error) {
       message.error(`暂时无法确认当前 Diff 状态：${formatApiError(error)}`)

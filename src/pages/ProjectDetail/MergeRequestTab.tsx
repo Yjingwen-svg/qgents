@@ -1231,7 +1231,9 @@ export function MergeRequestTab({
               <Button
                 key="merge"
                 size="small"
-                type="primary"
+                type={record.mergeOperationStatus === 'FAILED' ? undefined : 'primary'}
+                color={record.mergeOperationStatus === 'FAILED' ? 'orange' : undefined}
+                variant={record.mergeOperationStatus === 'FAILED' ? 'solid' : undefined}
                 loading={mergingId === record.id || record.mergeOperationStatus === 'RUNNING'}
                 onClick={(event) => {
                   event.stopPropagation()

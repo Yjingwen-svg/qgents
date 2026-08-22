@@ -311,6 +311,16 @@ describe('TaskDetailPage workbench', () => {
     expect(within(panel).queryByRole('button', { name: '拒绝交付' })).not.toBeInTheDocument()
   })
 
+  it('guides users back to the requirement group after a delivery rejection', () => {
+    const batch: DiffReviewBatch = { id: 'batch-rejected', taskId: task.id, reviewStatus: 'REJECTED', confirmationSource: 'USER', deliveryStatus: 'FAILED', aggregateHash: 'hash', reviewReason: '请补充错误处理', diffs: [], repositoryDeliveries: [] }
+    useTaskMock.mockReturnValue({ data: { ...task, status: 'DIFF_REJECTED', capabilities: { ...task.capabilities, canConfirmDiffReview: false, canRejectDiffReview: false } }, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    useTaskDiffReviewMock.mockReturnValue({ data: batch, error: null, isError: false, isLoading: false, refetch: vi.fn() })
+    renderPage()
+    const panel = screen.getByTestId('delivery-card')
+    expect(within(panel).getByText('拒绝原因：请补充错误处理')).toBeInTheDocument()
+    expect(within(panel).getByText('请回需求群根据拒绝意见继续修改。')).toBeInTheDocument()
+  })
+
   it('isolates run record errors without hiding delivery or the inspector', () => {
     useTaskRunsMock.mockReturnValue({ data: undefined, error: new Error('runs failed'), isError: true, isLoading: false })
     renderPage()

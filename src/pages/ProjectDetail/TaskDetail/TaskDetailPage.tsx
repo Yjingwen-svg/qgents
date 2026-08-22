@@ -526,7 +526,7 @@ function DiffReviewPanel({ projectId, task, batch, onRefresh }: { projectId: str
   const handleError = (mutationError: Error) => { if (mutationError instanceof ApiError && mutationError.status === 409) onRefresh() }
   return <section className={styles.deliverySection} data-testid="delivery-card">
     {superseded ? <Alert type="info" showIcon title="已被后续修改取代" description="同一工作区已有更新的 Diff；当前批次不可确认或拒绝。" action={<Button size="small" onClick={onRefresh}>刷新最新状态</Button>} /> : null}
-    {batch.reviewStatus === 'REJECTED' && batch.reviewReason ? <Text type="danger">拒绝原因：{batch.reviewReason}</Text> : null}
+    {batch.reviewStatus === 'REJECTED' && batch.reviewReason ? <div><Text type="danger">拒绝原因：{batch.reviewReason}</Text><Text type="secondary">请回需求群根据拒绝意见继续修改。</Text></div> : null}
     {batch.deliveryStatus === 'DELIVERED' ? <Text type="secondary">交付已完成，可从 MR 入口继续查看。</Text> : null}
     {confirmSubmitted ? <Alert type="info" showIcon title="确认请求已提交，正在等待服务端启动交付" /> : null}
     {canUserDecide ? <div className={styles.reviewActions}>

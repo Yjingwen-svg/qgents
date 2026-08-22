@@ -268,18 +268,63 @@ function resolveFileRepositoryIds(
 }
 
 function PatchPreview({ patch, path }: { patch: string; path: string }) {
-  // 隐藏 Git 文件头与 hunk 标记；保留未改动上下文，方便用户阅读新增/删除代码所在的位置。
-  const visibleLines = patch.split('\n').filter(isVisiblePatchLine)
-  return <pre className={styles.workspaceDiffPreviewPatch} data-testid="workspace-diff-preview-patch">{visibleLines.map((line, index) => <span key={`${index}:${line}`} className={styles[patchLineKind(line)]} data-testid={`workspace-diff-line-${patchLineKind(line)}`}>{highlightDiffCode(line || ' ', path)}{index < visibleLines.length - 1 ? '\n' : null}</span>)}</pre>
+  const lines = parsePatchLines(patch)
+  return <pre className={styles.workspaceDiffPreviewPatch} data-testid="workspace-diff-preview-patch">{lines.map((line, index) => (
+    <span key={`${index}:${line.content}`} className={`${styles.workspaceDiffPreviewPatchRow} ${styles[line.kind]}`} data-testid={`workspace-diff-line-${line.kind}`}>
+      <span className={styles.workspaceDiffPreviewPatchLineNumber} data-testid="workspace-diff-old-line-number">{line.oldLineNumber ?? ''}</span>
+      <span className={styles.workspaceDiffPreviewPatchLineNumber} data-testid="workspace-diff-new-line-number">{line.newLineNumber ?? ''}</span>
+      <span className={styles.workspaceDiffPreviewPatchMarker} aria-hidden>{line.marker}</span>
+      <span className={styles.workspaceDiffPreviewPatchCode}>{highlightDiffCode(line.content || ' ', path)}</span>
+    </span>
+  ))}</pre>
 }
 
-function isVisiblePatchLine(line: string): boolean {
-  return !line.startsWith('diff --git ') && !line.startsWith('index ') && !line.startsWith('---') && !line.startsWith('+++') && !line.startsWith('@@')
+type PatchLineKind = 'workspaceDiffPreviewPatchAdded' | 'workspaceDiffPreviewPatchDeleted' | 'workspaceDiffPreviewPatchContext'
+
+interface PatchLine {
+  kind: PatchLineKind
+  marker: '+' | '-' | ' '
+  content: string
+  oldLineNumber: number | null
+  newLineNumber: number | null
 }
 
-function patchLineKind(line: string): 'workspaceDiffPreviewPatchMeta' | 'workspaceDiffPreviewPatchAdded' | 'workspaceDiffPreviewPatchDeleted' | 'workspaceDiffPreviewPatchContext' {
-  if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('@@')) return 'workspaceDiffPreviewPatchMeta'
-  if (line.startsWith('+')) return 'workspaceDiffPreviewPatchAdded'
-  if (line.startsWith('-')) return 'workspaceDiffPreviewPatchDeleted'
-  return 'workspaceDiffPreviewPatchContext'
+function parsePatchLines(patch: string): PatchLine[] {
+  const lines: PatchLine[] = []
+  let oldLineNumber: number | null = null
+  let newLineNumber: number | null = null
+
+  for (const rawLine of patch.split('\n')) {
+    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(rawLine)
+    if (hunk) {
+      oldLineNumber = Number(hunk[1])
+      newLineNumber = Number(hunk[2])
+      continue
+    }
+    if (isPatchMetadata(rawLine)) continue
+
+    if (rawLine.startsWith('+')) {
+      lines.push({ kind: 'workspaceDiffPreviewPatchAdded', marker: '+', content: rawLine.slice(1), oldLineNumber: null, newLineNumber })
+      newLineNumber = incrementLineNumber(newLineNumber)
+    } else if (rawLine.startsWith('-')) {
+      lines.push({ kind: 'workspaceDiffPreviewPatchDeleted', marker: '-', content: rawLine.slice(1), oldLineNumber, newLineNumber: null })
+      oldLineNumber = incrementLineNumber(oldLineNumber)
+    } else {
+      const content = rawLine.startsWith(' ') ? rawLine.slice(1) : rawLine
+      lines.push({ kind: 'workspaceDiffPreviewPatchContext', marker: ' ', content, oldLineNumber, newLineNumber })
+      oldLineNumber = incrementLineNumber(oldLineNumber)
+      newLineNumber = incrementLineNumber(newLineNumber)
+    }
+  }
+  return lines
+}
+
+function isPatchMetadata(line: string): boolean {
+  return line.startsWith('diff --git ') || line.startsWith('index ') || line.startsWith('--- ') || line.startsWith('+++ ')
+    || line.startsWith('new file mode ') || line.startsWith('deleted file mode ') || line.startsWith('similarity index ')
+    || line.startsWith('rename from ') || line.startsWith('rename to ') || line === '\\ No newline at end of file'
+}
+
+function incrementLineNumber(value: number | null): number | null {
+  return value === null ? null : value + 1
 }

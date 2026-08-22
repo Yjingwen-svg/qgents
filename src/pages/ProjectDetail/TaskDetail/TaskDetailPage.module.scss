@@ -1245,13 +1245,33 @@
   font-family: 'Cascadia Mono', Consolas, monospace;
   font-size: 12px;
   line-height: 1.55;
-  white-space: pre;
+  white-space: normal;
 }
 
-.workspaceDiffPreviewPatch span {
+.workspaceDiffPreviewPatchRow {
   display: block;
+  display: grid;
+  grid-template-columns: 48px 48px 22px minmax(max-content, 1fr);
   min-width: max-content;
-  padding: 0 10px;
+}
+
+.workspaceDiffPreviewPatchLineNumber {
+  padding: 0 8px;
+  overflow: hidden;
+  color: #8c9bad;
+  text-align: right;
+  user-select: none;
+}
+
+.workspaceDiffPreviewPatchMarker {
+  font-weight: 700;
+  text-align: center;
+  user-select: none;
+}
+
+.workspaceDiffPreviewPatchCode {
+  padding: 0 10px 0 4px;
+  white-space: pre;
 }
 
 .workspaceDiffPreviewPatchAdded { background: #dafbe1; color: #116329; }

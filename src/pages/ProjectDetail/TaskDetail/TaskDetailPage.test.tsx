@@ -216,11 +216,11 @@ describe('TaskDetailPage workbench', () => {
     expect(within(deliveryPanel).queryByTestId('code-delivery-card')).not.toBeInTheDocument()
   })
 
-  it('hides Git patch metadata but keeps context with dedicated code-diff styles', async () => {
+  it('hides Git patch metadata and renders editor-like line numbers with diff markers', async () => {
     const user = userEvent.setup()
     useWorkspaceDiffPreviewMock.mockReturnValue({ data: { kind: 'available', preview: { projectId: task.projectId, taskId: task.id, taskRunId: run.id, workspaceId: 'workspace-1', revision: 2, baseCommit: 'base-1', workingTreeHash: 'sha256:preview', filesChanged: 1, additions: 1, deletions: 1, patch: '@@ -1 +1 @@\n-old line\n+new line', createdAt: run.createdAt } }, isLoading: false, isError: false, refetch: vi.fn() })
     useWorkspaceDiffPreviewFilesMock.mockReturnValue({ data: [{ repositoryId: null, repositoryPath: 'web', path: 'src/login.ts', changeType: 'MODIFIED', additions: 1, deletions: 1, binary: false }], isLoading: false, isError: false, refetch: vi.fn() })
-    useWorkspaceDiffPreviewFilePatchMock.mockReturnValue({ data: { revision: 2, repositoryId: 'repo-1', path: 'src/login.ts', changeType: 'MODIFIED', additions: 1, deletions: 1, binary: false, patch: 'diff --git a/src/login.ts b/src/login.ts\nindex 123..456 100644\n--- a/src/login.ts\n+++ b/src/login.ts\n@@ -1 +1 @@\n-old line\n+new line\n context line' }, isLoading: false, isError: false, refetch: vi.fn() })
+    useWorkspaceDiffPreviewFilePatchMock.mockReturnValue({ data: { revision: 2, repositoryId: 'repo-1', path: 'src/login.ts', changeType: 'MODIFIED', additions: 1, deletions: 1, binary: false, patch: 'diff --git a/src/login.ts b/src/login.ts\nnew file mode 100644\nindex 123..456 100644\n--- a/src/login.ts\n+++ b/src/login.ts\n@@ -4,2 +4,2 @@\n-old line\n+new line\n context line' }, isLoading: false, isError: false, refetch: vi.fn() })
     renderPage()
     await user.click(screen.getByText('查看实时 Diff'))
     await user.click(screen.getByRole('button', { name: /src\/login\.ts/ }))
@@ -228,9 +228,12 @@ describe('TaskDetailPage workbench', () => {
     expect(preview).toHaveTextContent('-old line')
     expect(preview).toHaveTextContent('+new line')
     expect(preview).not.toHaveTextContent('diff --git')
+    expect(preview).not.toHaveTextContent('new file mode 100644')
     expect(preview).toHaveTextContent('context line')
     expect(screen.getByTestId('workspace-diff-line-workspaceDiffPreviewPatchDeleted')).toHaveTextContent('-old line')
     expect(screen.getByTestId('workspace-diff-line-workspaceDiffPreviewPatchAdded')).toHaveTextContent('+new line')
+    expect(screen.getAllByTestId('workspace-diff-old-line-number').map((element) => element.textContent)).toEqual(['4', '', '5'])
+    expect(screen.getAllByTestId('workspace-diff-new-line-number').map((element) => element.textContent)).toEqual(['', '4', '5'])
   })
 
   it('keeps the workspace preview visible after execution failure for diagnosis', () => {

@@ -135,6 +135,7 @@ export interface DiffMessageContent {
   /** 变更文件路径列表 */
   files?: string[]
   reviewStatus?: 'PENDING_CONFIRMATION' | 'ACCEPTED' | 'REJECTED'
+  reviewReason?: string | null
   deliveryStatus?: string
 }
 

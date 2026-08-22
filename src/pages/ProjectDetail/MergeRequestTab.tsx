@@ -1008,6 +1008,9 @@ export function MergeRequestTab({
             const eff = deriveEffectiveState(effectiveStatus, record.createMode, false)
             return <Tag color={preflightTagColor(eff)}>{preflightTagText(eff)}</Tag>
           }
+          if (record.mergeOperationStatus === 'FAILED') {
+            return <Tag color="error">合并失败</Tag>
+          }
           return <Tag color={statusColor(value)}>{statusLabel(value)}</Tag>
         },
       },
@@ -1235,20 +1238,14 @@ export function MergeRequestTab({
                   handleMerge(record)
                 }}
               >
-                {record.mergeOperationStatus === 'RUNNING' ? '合并中' : '合并MR'}
+                {record.mergeOperationStatus === 'RUNNING'
+                  ? '合并中'
+                  : record.mergeOperationStatus === 'FAILED' ? '重新合并' : '合并MR'}
               </Button>,
             )
           }
           if (record.status === 'OPEN' && record.qualityGate?.status !== 'PASSED') {
-            return <Space size={8}>{children}<Text type="secondary">门禁未过</Text></Space>
-          }
-          if (record.mergeOperationStatus === 'FAILED') {
-            const failure = record.mergeOperationFailureReason || 'GitHub 拒绝了合并请求，请检查 MR 状态后重试'
-            children.push(
-              <Tooltip key="merge-failure" title={failure}>
-                <Text type="danger">合并失败</Text>
-              </Tooltip>,
-            )
+            return <Space size={8} wrap>{children}<Text type="secondary">门禁未过</Text></Space>
           }
           if (record.status === 'MERGED' || record.status === 'CLOSED') {
             return <Space size={8}>{children}</Space>

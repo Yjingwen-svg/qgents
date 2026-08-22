@@ -344,10 +344,11 @@ export const mergeRequestsApi = {
     ).then(mapTaskPreflightList)
   },
 
-  merge(projectId: string, mergeRequestId: string) {
+  merge(projectId: string, mergeRequestId: string, commitMessage?: string) {
     return requestModelData<unknown>(`/projects/${projectId}/merge-requests/${mergeRequestId}/merge`, {
       method: 'POST',
       headers: writeModelHeaders(),
+      body: commitMessage?.trim() ? { commitMessage: commitMessage.trim() } : undefined,
     }).then(mapMergeRequest)
   },
 

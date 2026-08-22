@@ -171,19 +171,6 @@ export default function TestRunCreateModal({
     return task?.repositories?.[0]?.sourceBranch || null
   }, [selectedTaskId, selectableTasks])
 
-  // 校验提示：taskId 与 ref 二选一
-  const refValidationRules = [
-    ({ getFieldValue }: { getFieldValue: (name: string) => string | undefined }) => ({
-      validator(_: unknown, value: string) {
-        const taskId = getFieldValue('taskId')
-        if (taskId && value) {
-          return Promise.reject(new Error('选择 Task 后，源引用将自动使用任务分支'))
-        }
-        return Promise.resolve()
-      },
-    }),
-  ]
-
   return (
     <Modal
       title="运行测试"

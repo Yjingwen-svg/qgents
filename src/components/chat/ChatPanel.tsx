@@ -18,7 +18,7 @@ import {
 } from '@ant-design/icons'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { formatApiError } from '@/utils/formatApiError'
-import { ApiError, groupApi, projectApi, attachmentApi, githubApi, uploadAttachment, memoryApi, tasksApi, mergeRequestsApi } from '@/api'
+import { ApiError, groupApi, projectApi, attachmentApi, uploadAttachment, memoryApi, tasksApi, mergeRequestsApi } from '@/api'
 import { resolvePreviewUrl } from '@/api/attachment'
 import { AttachmentPreviewModal } from '@/components/chat/AttachmentPreviewModal'
 import { ChatDiffCard } from '@/components/chat/ChatDiffCard'
@@ -842,28 +842,12 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
           requirement: text,
         })
       } else if (hasAgentMention && canOpenTaskTrigger) {
-        try {
-          const repositories = await githubApi.listProjectRepositories(projectId)
-          if (repositories.length === 0) {
-            throw new Error('当前项目没有可用于创建任务的绑定仓库。')
-          }
-          // @agent 自动触发不指定公共基线分支：每个仓库用各自项目默认分支兜底，
-          // 避免「仓库 A 用 develop、仓库 B 用 master」时单一 baseRef 导致 409 GIT_BRANCH_NOT_FOUND。
-          await groupApi.triggerTask(projectId, groupId, sentMessage.id, {
-            title: taskTitleFromMessage(text),
-            requirement: text,
-            repositoryIds: repositories.map((repository) => repository.id),
-            baseRef: null,
-          })
+        // 普通 @编排助手消息由 MessageSentListener 在服务端自动建 Task。
+        // 这里不再并行调用 /trigger-task，避免自动触发尚未落库时重复创建任务
+        // 产生误报（任务随后仍由服务端按项目仓库范围异步创建）。
+        if (canOpenTaskTrigger) {
           void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
-          message.success('任务已创建，正在生成执行方案。')
-        } catch (triggerError) {
-          if (triggerError instanceof ApiError && triggerError.status === 409) {
-            void queryClient.invalidateQueries({ queryKey: ['qgents', 'projects', projectId, 'tasks'] })
-            message.info('任务已由自动触发链创建，请在任务中心查看。')
-          } else {
-            message.warning('消息已发送，但任务触发失败，请稍后重试或联系项目管理员。')
-          }
+          message.info('需求已发送，任务正在后台创建。')
         }
       }
       return sentMessage
@@ -1856,15 +1840,35 @@ function renderContent(
       // 多仓库：currentRepositoryPaths 非空时只展示当前步骤实际涉及的仓库（按 workspacePath 匹配）
       const currentPaths = c.currentRepositoryPaths
       const repositoryMappings = normalizeTaskStatusRepositoryMappings(c.repositoryMappings).filter(
-        (mapping) => !currentPaths || currentPaths.length === 0 || currentPaths.includes(mapping.workspacePath),
+        (mapping) => currentPaths === undefined || currentPaths.includes(mapping.workspacePath),
       )
       const messageStatus = c.status?.toUpperCase()
       const queriedStatus = taskStatus?.toUpperCase()
       const hasRunningStep = steps.some((step) => step.status === 'RUNNING')
       // 消息和任务查询可能短暂不同步：步骤已开始执行时，避免旧的 PLANNING 覆盖真实运行态。
-      const displayStatus = queriedStatus === 'PLANNING' && (messageStatus !== 'PLANNING' || hasRunningStep)
-        ? (messageStatus && messageStatus !== 'PLANNING' ? messageStatus : 'RUNNING')
-        : (queriedStatus ?? messageStatus ?? 'PLANNING')
+      // 同样地，任务状态卡本身已经携带了 WAITING_DIFF_CONFIRMATION /
+      // WAITING_PREFLIGHT 等用户动作态；若任务列表仍缓存 RUNNING，不能让卡片
+      // 把已经完成开发的任务继续显示成“执行中”。一旦查询返回更晚的非运行态，
+      // 查询结果仍优先。
+      const staleQueriedStatus = !queriedStatus
+        || queriedStatus === 'PLANNING'
+        || queriedStatus === 'PENDING'
+        || queriedStatus === 'RUNNING'
+        || queriedStatus === 'IN_PROGRESS'
+      const messageHasTerminalOrWaitingStatus = Boolean(messageStatus && [
+        'WAITING_DIFF_CONFIRMATION',
+        'WAITING_PREFLIGHT',
+        'DELIVERING',
+        'DELIVERY_FAILED',
+        'SUCCEEDED',
+        'FAILED',
+        'CANCELLED',
+      ].includes(messageStatus))
+      const displayStatus = messageHasTerminalOrWaitingStatus && staleQueriedStatus
+        ? messageStatus
+        : queriedStatus === 'PLANNING' && (messageStatus !== 'PLANNING' || hasRunningStep)
+          ? (messageStatus && messageStatus !== 'PLANNING' ? messageStatus : 'RUNNING')
+          : (queriedStatus ?? messageStatus ?? 'PLANNING')
       const statusKey = displayStatus.toUpperCase()
       const diffReady =
         statusKey === 'WAITING_DIFF_CONFIRMATION' ||
@@ -2049,6 +2053,8 @@ function taskStatusColor(status: string): string {
   const s = status.toUpperCase()
   if (s === 'SUCCEEDED' || s === 'COMPLETED') return 'green'
   if (s === 'FAILED' || s === 'CANCELLED') return 'red'
+  if (s === 'WAITING_DIFF_CONFIRMATION' || s === 'WAITING_PREFLIGHT') return 'gold'
+  if (s === 'DELIVERY_FAILED') return 'red'
   if (s === 'RUNNING' || s === 'IN_PROGRESS') return 'blue'
   return 'default'
 }

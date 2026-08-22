@@ -8,6 +8,7 @@ import { cqSealAppearance, formatCqTime, shortCommitSha } from '../cqSeal'
 import styles from './MergeRequestDetailPage.module.scss'
 
 const { Text } = Typography
+type CqAction = 'approve' | 'reject'
 
 export function CqSealCard({
   projectId,
@@ -17,6 +18,7 @@ export function CqSealCard({
   mrStatus,
   isAuthor,
   busy,
+  busyAction,
   onApprove,
   onReject,
   rootRef,
@@ -28,6 +30,7 @@ export function CqSealCard({
   mrStatus: MergeRequestStatus
   isAuthor: boolean
   busy: boolean
+  busyAction?: CqAction | null
   onApprove: () => void
   onReject: () => void
   rootRef?: React.RefObject<HTMLDivElement | null>
@@ -79,12 +82,12 @@ export function CqSealCard({
       {showApprove || showReject ? (
         <Space>
           {showApprove ? (
-            <Button type="primary" loading={busy} onClick={onApprove} aria-label="approve-cq">
+            <Button type="primary" loading={busy && (!busyAction || busyAction === 'approve')} onClick={onApprove} aria-label="approve-cq">
               {approveLabel}
             </Button>
           ) : null}
           {showReject ? (
-            <Button danger loading={busy} onClick={onReject} aria-label="reject-cq">
+            <Button danger loading={busy && (!busyAction || busyAction === 'reject')} onClick={onReject} aria-label="reject-cq">
               拒绝
             </Button>
           ) : null}

@@ -182,7 +182,7 @@ export interface TaskStatusMessageContent {
   currentStepId?: string
   /** 当前 Task Workspace 已挂载的项目仓库；空数组表示尚未挂载仓库。 */
   repositoryMappings?: TaskStatusRepositoryMapping[]
-  /** 当前步骤实际涉及的仓库工作区路径（多仓库时用于过滤展示；空数组/缺失 = 展示全部） */
+  /** 当前步骤实际涉及的仓库工作区路径；空数组表示当前阶段尚未选定操作仓库，缺失表示旧卡片未提供范围。 */
   currentRepositoryPaths?: string[]
   plan?: {
     summary?: string

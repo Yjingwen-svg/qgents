@@ -229,7 +229,7 @@ function TaskDeliveryPanel({ projectId, task, batch, onRefresh, refreshing }: { 
   const canRetry = !superseded && retryableDelivery && task?.capabilities?.canRetryDelivery === true
   const diffs = Array.isArray(batch.diffs) ? batch.diffs : []
   const repositories = Array.isArray(batch.repositoryDeliveries) ? batch.repositoryDeliveries : []
-  const statusMessage = taskDeliveryStatusMessage(batch, repositories, task?.deliveryMode)
+  const statusMessage = taskDeliveryStatusMessage(batch, repositories, task?.deliveryMode ?? null)
   const handleError = (mutationError: Error) => {
     if (mutationError instanceof ApiError && (mutationError.status === 409 || errorCode(mutationError) === 'DIFF_DELIVERY_NOT_RETRYABLE')) void onRefresh()
   }

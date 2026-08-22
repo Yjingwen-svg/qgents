@@ -133,7 +133,7 @@ function RepositoryLocation({ task }: { task: TaskListItem }) {
     return () => observer.disconnect()
   }, [repositorySignature, updateVisibleCount])
 
-  if (repositories.length === 0) return <Text className={styles.taskInfoEllipsis}>暂无</Text>
+  if (repositories.length === 0) return <Text className={styles.taskInfoEllipsis}>{task.status === 'PLANNING' ? '规划中，待分析涉及仓库' : '暂无'}</Text>
   const hiddenCount = repositories.length - visibleCount
   return (
     <Tooltip title={repositorySummary(task)}>
@@ -153,7 +153,7 @@ function RepositoryLocation({ task }: { task: TaskListItem }) {
 }
 
 function repositorySummary(task: TaskListItem): string {
-  if (task.repositories.length === 0) return '暂无'
+  if (task.repositories.length === 0) return task.status === 'PLANNING' ? '规划中，待分析涉及仓库' : '暂无'
   return task.repositories.map((repository) => repository.name).join('、')
 }
 

@@ -416,6 +416,10 @@ export function mapMergeRequest(raw: unknown): MergeRequestSummary {
       row.mergeOperationStatus === 'RUNNING' || row.mergeOperationStatus === 'COMPLETED' || row.mergeOperationStatus === 'FAILED'
         ? row.mergeOperationStatus
         : null,
+    mergeOperationFailureCode: typeof row.mergeOperationFailureCode === 'string' ? row.mergeOperationFailureCode : null,
+    mergeOperationFailureReason: typeof row.mergeOperationFailureReason === 'string'
+      ? row.mergeOperationFailureReason
+      : null,
     headCommit: typeof row.headCommit === 'string' ? row.headCommit : null,
     webUrl: rawWebUrl,
     taskId: rawTaskId,

@@ -87,8 +87,12 @@ export const queryKeys = {
       ['qgents', 'projects', projectId, 'quality-gates', repositoryId, branch] as const,
   },
   preflight: {
-    all: (projectId: string, taskId = '') =>
-      ['qgents', 'projects', projectId, 'preflight', taskId] as const,
+    // Keep the project-wide key as a real prefix of detail keys. An empty
+    // task segment does not match `preflight.detail(...)` in React Query.
+    all: (projectId: string, taskId?: string) =>
+      taskId
+        ? ['qgents', 'projects', projectId, 'preflight', taskId] as const
+        : ['qgents', 'projects', projectId, 'preflight'] as const,
     detail: (projectId: string, taskId: string, repositoryId: string, targetBranch: string) =>
       ['qgents', 'projects', projectId, 'preflight', taskId, repositoryId, targetBranch] as const,
   },

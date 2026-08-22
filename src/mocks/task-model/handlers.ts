@@ -1015,7 +1015,6 @@ const taskModelMergeRequestHandlers: HttpHandler[] = [
 
     const failureMap: Partial<Record<string, { code: string; reason: string }>> = {
       CQ_REJECTED: { code: 'CQ_REJECTED', reason: 'CQ+1 被拒绝：需要补充单元测试覆盖新代码路径' },
-      FAILED: { code: 'DRY_RUN_FAILED', reason: 'Dry Run 失败：3 个用例未通过' },
     }
     const failure = failureMap[preflightStatus]
 
@@ -1028,10 +1027,10 @@ const taskModelMergeRequestHandlers: HttpHandler[] = [
       targetBranch,
       targetCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
       status: preflightStatus,
-      dryRunId: (preflightStatus === 'FAILED' || preflightStatus === 'CQ_REJECTED')
+      dryRunId: preflightStatus === 'CQ_REJECTED'
         ? null
         : `dryrun-${projectId}-${preflightId}`,
-      blockers: preflightStatus === 'DRY_RUN_RUNNING' || preflightStatus === 'DRY_RUN_QUEUED' ? ['DRY_RUN_RUNNING'] : [],
+      blockers: preflightStatus === 'DRY_RUN_RUNNING' ? ['DRY_RUN_RUNNING'] : [],
       failureCode: failure?.code ?? null,
       failureReason: failure?.reason ?? null,
       coveredTaskIds: [taskId],
@@ -1044,7 +1043,7 @@ const taskModelMergeRequestHandlers: HttpHandler[] = [
     }, 202)
   }),
 
-  http.get('*/api/projects/:projectId/merge-requests/preflight/:preflightId', ({ params, request }) => {
+  http.get('*/api/projects/:projectId/merge-requests/preflight/:preflightId', ({ params }) => {
     const projectId = pathParam(params, 'projectId')
     const denied = guardProject(projectId)
     if (denied) return denied

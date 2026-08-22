@@ -31,6 +31,12 @@
   grid-template-columns: minmax(0, 1fr) minmax(clamp(200px, 10vw + 60px, 100%), clamp(240px, 12vw + 80px, 100%));
   gap: clamp(8px, 0.3vw + 6px, 100%);
   overflow: hidden;
+  transition: grid-template-columns 180ms ease, gap 180ms ease;
+}
+
+.taskWorkspaceAsideCollapsed {
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 0;
 }
 
 .taskWorkspaceMain {
@@ -41,11 +47,55 @@
 }
 
 .taskWorkspaceAside {
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
   padding: clamp(3px, 0.15vw + 2px, 100%) 0 0 clamp(5px, 0.15vw + 3px, 100%);
   border-left: 1px solid #e9eef4;
+}
+
+.taskWorkspaceAside::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -1px;
+  width: 1px;
+  background: #dce5ef;
+  content: '';
+  transition: background-color 160ms ease;
+}
+
+.taskWorkspaceAside:hover::before,
+.taskWorkspaceAside:focus-within::before {
+  background: #9fc4ed;
+}
+
+.runInspectorToggle {
+  position: absolute;
+  top: 8px;
+  left: -14px;
+  z-index: 5;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  margin: 0;
+  padding: 0 !important;
+  border: 1px solid #dbe5ef !important;
+  border-radius: 7px !important;
+  background: #fff !important;
+  box-shadow: 0 1px 3px rgb(23 43 77 / 8%);
+  color: #70839a !important;
+  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.runInspectorToggle:hover,
+.runInspectorToggle:focus-visible {
+  border-color: #a8cbef !important;
+  background: #f2f8ff !important;
+  box-shadow: 0 2px 6px rgb(22 119 255 / 14%);
+  color: #2563a8 !important;
 }
 
 .taskWorkspaceAside :global(.ant-typography),
@@ -1245,13 +1295,33 @@
   font-family: 'Cascadia Mono', Consolas, monospace;
   font-size: 12px;
   line-height: 1.55;
-  white-space: pre;
+  white-space: normal;
 }
 
-.workspaceDiffPreviewPatch span {
+.workspaceDiffPreviewPatchRow {
   display: block;
+  display: grid;
+  grid-template-columns: 48px 48px 22px minmax(max-content, 1fr);
   min-width: max-content;
-  padding: 0 10px;
+}
+
+.workspaceDiffPreviewPatchLineNumber {
+  padding: 0 8px;
+  overflow: hidden;
+  color: #8c9bad;
+  text-align: right;
+  user-select: none;
+}
+
+.workspaceDiffPreviewPatchMarker {
+  font-weight: 700;
+  text-align: center;
+  user-select: none;
+}
+
+.workspaceDiffPreviewPatchCode {
+  padding: 0 10px 0 4px;
+  white-space: pre;
 }
 
 .workspaceDiffPreviewPatchAdded { background: #dafbe1; color: #116329; }
@@ -1735,7 +1805,7 @@
 
 .taskWorkspaceAside {
   display: flex;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .runInspectorPanel {

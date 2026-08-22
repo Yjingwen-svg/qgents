@@ -4,7 +4,7 @@ import { BackTop, Button, Card, ConfigProvider, Empty, List, Space, Tag, Typogra
 import { LeftOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useMergeRequest, useTestRun, useDryRunReport, useTestsets } from '@/hooks'
-import type { TestRun, DryRunReport, LocalRunHistoryItem, Testset } from '@/types/testset'
+import type { TestRun, LocalRunHistoryItem, Testset } from '@/types/testset'
 import type { ColumnsType } from 'antd/es/table'
 import { githubApi } from '@/api'
 import { queryKeys } from '@/query'
@@ -77,19 +77,6 @@ export default function QualityGateReviewPage() {
     setLocalRuns(pushRunHistory(projectId, item))
     message.success('Test Run 已创建')
   }, [projectId, message])
-
-  const handleDryRunCreated = useCallback((report: DryRunReport) => {
-    // 仅用于保留 localStorage 回写签名（Dry Run 现在只由后端预检自动触发，
-    // 前端不再提供手动新建入口。若有回推需要仍可写入历史）
-    const item: LocalRunHistoryItem = {
-      kind: 'DRY_RUN',
-      id: report.id,
-      repositoryId: report.repositoryId,
-      createdAt: report.createdAt,
-      label: `Dry-run · ${report.status}`,
-    }
-    setLocalRuns(pushRunHistory(projectId, item))
-  }, [projectId])
 
   // 删除本地历史项
   const handleDeleteRun = useCallback((runId: string) => {

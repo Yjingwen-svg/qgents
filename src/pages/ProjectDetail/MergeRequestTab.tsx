@@ -1264,19 +1264,6 @@ export function MergeRequestTab({
           options={STATUS_OPTIONS}
         />
       </Space>
-      <Alert
-        type="info"
-        showIcon
-        message={
-          <Space>
-            <span>列表展示真实 MR，以及已有新增提交但尚未生成真实 MR 的待发起候选。候选记录不是 GitHub MR，必须先通过 Dry Run 和 CQ+1，之后才会生成真实 MR。</span>
-            <Button size="small" type="link" style={{ padding: 0, margin: 0 }} onClick={() => void query.refetch()}>
-              手动刷新
-            </Button>
-          </Space>
-        }
-        description="真实 MR 可进入站内详情；只有真实 GitHub PR 已创建且质量门禁通过时，才显示 GitHub 入口和合并按钮。待发起候选不会显示 GitHub 入口，预检进行中或等待 CQ+1 时只显示对应流程状态。已关闭（未合并）表示 GitHub PR 被关闭但代码未合入目标分支，仍可能锁定源分支；只有已合并才会解除分支锁。"
-      />
       {query.isLoading ? (
         <div style={{ textAlign: 'center', padding: 48 }}>
           <Spin />

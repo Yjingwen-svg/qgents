@@ -14,7 +14,6 @@ import {
   Tag,
   Typography,
   Descriptions,
-  Modal,
 } from 'antd'
 import {
   CheckCircleFilled,
@@ -537,57 +536,6 @@ export default function CqReviewPage() {
                 reviewedAt={cqPlusOne?.reviewedAt ?? null}
                 reviewerName={cqPlusOne?.reviewerName ?? null}
               />
-              <Button
-                type="link"
-                className={styles.sealHistory}
-                onClick={() => {
-                  Modal.info({
-                    title: 'CQ+1 审查记录',
-                    okText: '关闭',
-                    width: 560,
-                    content: (
-                      <>
-                        {dryRunCqStatus === 'PENDING' ? (
-                          <Empty description="尚未有人在当前 Dry Run 上盖章" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                        ) : (
-                          <ul className={styles.sealHistoryList}>
-                            <li className={styles.sealHistoryItem}>
-                              <div className={styles.sealHistoryHead}>
-                                <strong>
-                                  {cqPlusOne?.reviewerName || cqPlusOne?.reviewerUserId
-                                    ? (cqPlusOne.reviewerName || `用户 ${cqPlusOne.reviewerUserId!.slice(0, 8)}`)
-                                    : '审查者'}
-                                </strong>
-                                <span
-                                  className={
-                                    dryRunCqStatus === 'APPROVED'
-                                      ? styles.isApproved
-                                      : styles.isRejected
-                                  }
-                                >
-                                  {dryRunCqStatus === 'APPROVED' ? '接受' : '拒绝'}
-                                </span>
-                              </div>
-                              <p className={styles.sealHistoryReason}>
-                                原因：{cqPlusOne?.reason?.trim() || '—'}
-                              </p>
-                              <p className={styles.sealHistoryTime}>
-                                时间：{cqPlusOne?.reviewedAt || '—'}
-                                {preflight?.sourceCommit
-                                  ? ` · ${preflight.sourceCommit.slice(0, 7)}`
-                                  : ''}
-                              </p>
-                            </li>
-                          </ul>
-                        )}
-                      </>
-                    ),
-                  })
-                }}
-                aria-label="view-cq-history"
-              >
-                查看历史
-              </Button>
             </div>
 
             <div className={styles.submitSection}>

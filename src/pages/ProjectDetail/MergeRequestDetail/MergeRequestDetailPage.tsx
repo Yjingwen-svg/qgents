@@ -154,7 +154,7 @@ export default function MergeRequestDetailPage() {
   const members = membersQuery.data ?? []
   const safeIndex = Math.min(fileIndex, Math.max(files.length - 1, 0))
   const current = files[safeIndex]
-  const listToMr = `${PATHS.projectCode(projectId)}?tab=mr`
+  const listToMr = PATHS.projectTestset(projectId)
   const repoName = repoLabel(reposQuery.data ?? [], mr?.repositoryId ?? '')
   const githubUrl = mr
     ? githubPullRequestUrl(
@@ -436,7 +436,6 @@ export default function MergeRequestDetailPage() {
                     rootRef={cqRef}
                   />
                 </section>
-                <CommitHistoryCard projectId={projectId} mergeRequestId={mr.id} />
               </Space>
             ),
           },

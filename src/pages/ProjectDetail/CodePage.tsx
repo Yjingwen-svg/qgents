@@ -217,14 +217,6 @@ export function CodePage() {
         </Space>
       </Space>
 
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message="分支由需求任务在受控 Workspace 中产生，不代表 Git 上的任意远程分支。"
-        description="分支行来自项目工作分支视图（GET /work-branches）；Diff 列取该分支最近的 Diff 快照（与群内 Agent 产出的 diffId / changeStats 同步），无快照时显示空状态。"
-      />
-
       {workBranchesQuery.isLoading || reposQuery.isLoading ? (
         <div style={{ textAlign: 'center', padding: 48 }}>
           <Spin />

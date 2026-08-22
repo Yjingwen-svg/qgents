@@ -631,11 +631,16 @@ export interface PreflightRepositoryStatus {
   dryRunStatus: string | null
   dryRunSummary?: Record<string, unknown> | null
   cqStatus: 'APPROVED' | 'REJECTED' | 'PENDING' | 'MISSING'
+  cqReviewerUserId: string | null
   cqReviewerName: string | null
   cqReviewReason: string | null
   cqReviewedAt: string | null
   failureCode: PreflightFailureCode | null
   failureReason: string | null
+  failureDetails?: Array<Record<string, unknown>>
+  failureStage?: string | null
+  workerCode?: string | null
+  workerHttpStatus?: number | null
   retryable: boolean
   mergeRequest: MergeRequestSummary | null
 }

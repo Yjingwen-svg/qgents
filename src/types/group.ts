@@ -108,8 +108,10 @@ export interface FileMessageContent {
   previewType?: string
 }
 
-/** QUOTE 引用消息内容：quotedText 为被引用消息的原始内容摘要，replyText 为回复者输入的正文 */
+/** QUOTE 引用消息内容：text 为通用消息正文；quotedText 为被引用消息的原始内容摘要，replyText 为回复者输入的正文 */
 export interface QuoteMessageContent {
+  /** 与 TEXT 消息同构的正文，供任务触发、群摘要等通用文本消费者读取。 */
+  text?: string
   quotedMessageId: string
   quotedText: string
   quotedSenderName?: string

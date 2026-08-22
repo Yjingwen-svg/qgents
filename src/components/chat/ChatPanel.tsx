@@ -776,12 +776,16 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
       return !!displayName && text.includes(displayName)
     })
     const hasAgentMention = effectiveMentions.some((mention) => mention.type === 'AGENT')
+    const taskText = taskTextFromReply(text, effectiveMentions, mentionDisplayName)
     setSending(true)
     setSendError(null)
     // 乐观发送：先本地构造一条临时消息（pending 转圈）插入缓存，避免等待后端返回期间"卡住没反应"
     const optimisticId = `cmsg_${Date.now()}`
     const optimisticContent = replyTo
       ? {
+          // QUOTE 同时提供通用 text 字段。自动建任务和群摘要按普通消息取正文时，
+          // 不应退化为序列化整个引用元数据对象。
+          text: taskText,
           quotedMessageId: replyTo.id,
           quotedText: quotePreview(replyTo),
           quotedSenderName: replyTo.senderName ?? (replyTo.senderType === 'AGENT' ? 'Agent' : '成员'),
@@ -1372,6 +1376,28 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
 function taskTitleFromMessage(text: string): string {
   const withoutLeadingMentions = text.replace(/(?:^|\s)@\S+/g, ' ').trim()
   return (withoutLeadingMentions || text).slice(0, 80)
+}
+
+/**
+ * 消息气泡保留 @ 提及以表达对 Agent 的指派；任务正文不应把它当作需求的一部分。
+ * 仅移除本次实际提及对象开头的名称，避免误删需求正文中的普通 @ 字符。
+ */
+function taskTextFromReply(
+  text: string,
+  mentions: readonly Mention[],
+  displayNameForMention: (mention: Mention) => string | undefined,
+): string {
+  let result = text.trim()
+  const names = mentions
+    .map(displayNameForMention)
+    .filter((name): name is string => Boolean(name))
+    .sort((left, right) => right.length - left.length)
+
+  for (const name of names) {
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    result = result.replace(new RegExp(`^@${escapedName}(?:[\\s，,：:]+)?`), '').trim()
+  }
+  return result || text.trim()
 }
 
 /** 时间分隔线文案：今天 HH:mm / 昨天 HH:mm / M月D日 HH:mm（气泡时间展示用） */

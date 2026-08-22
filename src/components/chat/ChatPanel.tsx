@@ -299,6 +299,17 @@ export function ChatPanel({ projectId, groupId }: { projectId: string; groupId: 
         eventType?: string
       }>).detail
       if (detail?.projectId !== projectId || detail.groupId !== groupId) return
+      if (detail.eventType === 'task.updated') {
+        // Task 可能先于 TASK_STATUS 消息落库；收到 task.updated 后补查几次，
+        // 让群聊进度卡片不必等到下一次完整刷新才出现。
+        void sync()
+        for (const delay of [500, 1500, 3000]) {
+          window.setTimeout(() => {
+            if (!stopped) void sync()
+          }, delay)
+        }
+        return
+      }
       // message.updated 复用原消息的 sequence，增量接口按 sequence 查询时不会返回它。
       // 失效整页查询，确保 TASK_STATUS 卡片用更新后的 content 替换旧的 PLANNING。
       if (detail.eventType === 'message.updated') {

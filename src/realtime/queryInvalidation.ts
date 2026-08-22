@@ -249,8 +249,10 @@ export function queryKeysForProjectTaskEvent(
 }
 
 export function invalidateProjectTaskEvent(projectId: string, event: ProjectTaskEvent): void {
-  if (event.type === 'message.created' || event.type === 'message.updated') {
-    const groupId = typeof event.payload.groupId === 'string' ? event.payload.groupId : null
+  if (event.type === 'message.created' || event.type === 'message.updated' || event.type === 'task.updated') {
+    const groupId = typeof event.payload.groupId === 'string'
+      ? event.payload.groupId
+      : typeof event.payload.requirementGroupId === 'string' ? event.payload.requirementGroupId : null
     const sequence = typeof event.payload.sequence === 'number' ? event.payload.sequence : null
     if (groupId && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('qgents:message-event', {

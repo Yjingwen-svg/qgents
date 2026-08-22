@@ -8,8 +8,6 @@ const { Text } = Typography
 type CqAction = 'approve' | 'reject'
 
 export function CqSealCard({
-  projectId,
-  mergeRequestId,
   check,
   headCommit,
   mrStatus,
@@ -20,8 +18,6 @@ export function CqSealCard({
   onReject,
   rootRef,
 }: {
-  projectId: string
-  mergeRequestId: string
   check: MergeRequestCheck | undefined
   headCommit: string | null
   mrStatus: MergeRequestStatus

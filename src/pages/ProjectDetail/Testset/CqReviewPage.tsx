@@ -446,8 +446,6 @@ export default function CqReviewPage() {
             <Card className={styles.content}>
               <div className={styles.sealBlock}>
                 <CqSealCard
-                  projectId={projectId}
-                  mergeRequestId={mr!.id}
                   check={cqFromMr ?? undefined}
                   headCommit={mr!.headCommit}
                   mrStatus={mr!.status}

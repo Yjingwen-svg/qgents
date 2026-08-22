@@ -10,14 +10,15 @@ import { createWorkBranchHandlers } from './workBranches'
 
 /**
  * 自动建任务从消息中提取可读正文。QUOTE 的 content 是结构化引用元数据，不能
- * stringify 后作为任务标题；优先使用契约中的顶层 replyText，再兼容 content.text。
+ * stringify 后作为任务标题；优先使用为任务准备的 content.text，再兼容顶层 replyText。
  */
 function messageTextForTask(content: unknown, replyText?: string): string {
-  if (typeof replyText === 'string' && replyText.trim()) return replyText.trim()
-  if (!content || typeof content !== 'object' || Array.isArray(content)) return ''
-  const value = content as Record<string, unknown>
-  if (typeof value.text === 'string' && value.text.trim()) return value.text.trim()
-  return typeof value.replyText === 'string' ? value.replyText.trim() : ''
+  if (content && typeof content === 'object' && !Array.isArray(content)) {
+    const value = content as Record<string, unknown>
+    if (typeof value.text === 'string' && value.text.trim()) return value.text.trim()
+    if (typeof value.replyText === 'string' && value.replyText.trim()) return value.replyText.trim()
+  }
+  return typeof replyText === 'string' ? replyText.trim() : ''
 }
 
 // ══════════════════════════════════════════════

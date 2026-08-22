@@ -479,14 +479,12 @@
 }
 
 .flowScroller {
-  display: flex;
+  display: block;
   container-type: size;
   min-width: 0;
   min-height: 0;
-  align-items: center;
   flex: 1 1 auto;
   overflow: auto;
-  gap: clamp(8px, 0.5vw + 6px, 100%);
 }
 
 .flowEmptyState {
@@ -502,66 +500,69 @@
 
 .flowPlanningState {
   display: grid;
+  width: fit-content;
   min-width: max-content;
   height: 100%;
   grid-auto-flow: column;
-  grid-auto-columns: clamp(150px, 6vw + 30px, 100%);
+  grid-auto-columns: clamp(150px, 18vw, 240px);
   gap: clamp(24px, 1.5vw + 10px, 100%);
   align-items: center;
+  margin-inline: auto;
   padding: 0 clamp(2px, 0.2vw + 1px, 100%);
 }
 
 @container (max-height: 320px) {
   .flowPlanningState {
-    grid-auto-columns: clamp(130px, 5vw + 24px, 100%);
+    grid-auto-columns: clamp(130px, 16vw, 210px);
     gap: clamp(20px, 1vw + 12px, 100%);
   }
 
   .flowGrid {
-    grid-auto-columns: clamp(170px, 5vw + 30px, 100%);
+    grid-auto-columns: clamp(170px, 20vw, 260px);
     gap: clamp(20px, 1vw + 12px, 100%);
   }
 }
 
 @container (max-height: 250px) {
   .flowPlanningState {
-    grid-auto-columns: clamp(112px, 4vw + 20px, 100%);
+    grid-auto-columns: clamp(112px, 14vw, 190px);
     gap: clamp(16px, 0.8vw + 10px, 100%);
   }
 
   .flowGrid {
-    grid-auto-columns: clamp(150px, 4vw + 26px, 100%);
+    grid-auto-columns: clamp(150px, 18vw, 230px);
     gap: clamp(16px, 0.8vw + 10px, 100%);
   }
 }
 
 @container (max-height: 200px) {
   .flowPlanningState {
-    grid-auto-columns: clamp(100px, 3vw + 18px, 100%);
+    grid-auto-columns: clamp(100px, 12vw, 170px);
     gap: clamp(12px, 0.6vw + 8px, 100%);
   }
 
   .flowGrid {
-    grid-auto-columns: clamp(130px, 3vw + 22px, 100%);
+    grid-auto-columns: clamp(130px, 16vw, 210px);
     gap: clamp(12px, 0.6vw + 8px, 100%);
   }
 }
 
 @container (min-height: 500px) {
   .flowPlanningState {
-    grid-auto-columns: clamp(224px, 6vw + 120px, 100%);
+    grid-auto-columns: clamp(224px, 22vw, 300px);
     gap: clamp(58px, 2vw + 34px, 100%);
   }
 
   .flowGrid {
-    grid-auto-columns: clamp(260px, 6vw + 140px, 100%);
+    grid-auto-columns: clamp(260px, 24vw, 340px);
     gap: clamp(58px, 2vw + 34px, 100%);
   }
 }
 
 .planningStepCard {
   display: grid;
-  min-width: clamp(150px, 6vw + 30px, 100%);
+  width: 100%;
+  min-width: 0;
   height: 100%;
   min-height: clamp(78px, 4vw + 36px, 100%);
   max-height: none;
@@ -715,16 +716,19 @@
 
 .flowGrid {
   display: grid;
+  width: max-content;
   min-width: max-content;
   height: 100%;
   grid-auto-flow: column;
-  grid-auto-columns: clamp(200px, 7vw + 50px, 100%);
+  grid-auto-columns: clamp(220px, 24vw, 320px);
   gap: clamp(24px, 1.5vw + 10px, 100%);
+  margin-inline: auto;
 }
 
 .stepCard {
   display: grid;
-  min-width: clamp(200px, 7vw + 50px, 100%);
+  width: 100%;
+  min-width: 0;
   height: 100%;
   min-height: clamp(78px, 4vw + 36px, 100%);
   max-height: none;

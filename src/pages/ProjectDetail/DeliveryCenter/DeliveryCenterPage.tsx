@@ -36,6 +36,7 @@ import type {
   MemoryDeliveryItem,
   SkillDeliveryItem,
 } from '@/types/delivery-center'
+import type { DiffReviewBatch } from '@/types/task-model'
 import styles from './DeliveryCenterPage.module.scss'
 
 const { Text, Title } = Typography
@@ -140,6 +141,7 @@ export default function DeliveryCenterPage() {
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({})
   const [activeItemId, setActiveItemId] = useState<string | null>(null)
   const [detailTarget, setDetailTarget] = useState<DeliveryItem | null>(null)
+  const [localCodeBatches, setLocalCodeBatches] = useState<Record<string, DiffReviewBatch>>({})
   // 搜索关键词草稿：仅在用户主动提交（Enter / blur / 清除）时同步到 URL，
   // 并辅以 300ms 防抖兜底，避免每次按键就触发 URL 变化和重新查询造成页面抖动。
   const keyword = searchParams.get('keyword') ?? ''
@@ -235,10 +237,17 @@ export default function DeliveryCenterPage() {
     return [...seen.values()]
   }, [itemQuery.data])
 
-  const visibleItems = useMemo(() => onlyActionableItems
-    ? items.filter((item) => hasActionableCapability(item))
-    : items,
-  [items, onlyActionableItems])
+  const visibleItems = useMemo(() => {
+    const synchronized = items.map((item) => {
+      if (item.resourceType !== 'CODE') return item
+      const batch = localCodeBatches[item.openTarget.taskId]
+      return batch ? synchronizeRejectedCodeItem(item, batch) : item
+    })
+    return onlyActionableItems
+      ? synchronized.filter((item) => hasActionableCapability(item)
+        || (item.resourceType === 'CODE' && localCodeBatches[item.openTarget.taskId]?.reviewStatus === 'REJECTED'))
+      : synchronized
+  }, [items, localCodeBatches, onlyActionableItems])
 
   const groupedItems = useMemo(() => {
     const grouped = new Map<string, { id: string | null; name: string; items: DeliveryItem[]; latestAt: string }>()
@@ -294,7 +303,11 @@ export default function DeliveryCenterPage() {
     setActiveAction(action)
     setActionErrors((current) => ({ ...current, [item.id]: '' }))
     try {
-      await actionMutation.mutateAsync({ projectId, teamId, item, action, reason: reason?.trim() })
+      const response = await actionMutation.mutateAsync({ projectId, teamId, item, action, reason: reason?.trim() })
+      if (action === 'reject' && item.resourceType === 'CODE' && isDiffReviewBatch(response)) {
+        const rejectedBatch = response as DiffReviewBatch
+        setLocalCodeBatches((current) => ({ ...current, [item.openTarget.taskId]: rejectedBatch }))
+      }
       setActiveItemId(null)
       setActiveAction(null)
       // 后端可能先受理、再异步更新资源摘要；限时轮询避免 SSE 延迟时页面停在旧状态。
@@ -443,7 +456,7 @@ export default function DeliveryCenterPage() {
                         <span className={styles.groupHeaderMain}><DownOutlined className={collapsed ? styles.chevronCollapsed : styles.chevron} /> <strong>{group.name}</strong><Text type="secondary">最近更新 {formatDate(group.latestAt)}</Text></span>
                         <span className={styles.groupCount}>{group.items.length} 个交付物</span>
                       </button>
-                      {!collapsed && <div className={styles.itemList}>{group.items.map((item) => <DeliveryItemCard key={item.id} item={item} active={activeItemId === item.id} activeAction={activeItemId === item.id ? activeAction : null} error={actionErrors[item.id]} onAction={performAction} onReject={openReject} onOpenResource={openResource} />)}</div>}
+                      {!collapsed && <div className={styles.itemList}>{group.items.map((item) => <DeliveryItemCard key={item.id} item={item} active={activeItemId === item.id} activeAction={activeItemId === item.id ? activeAction : null} error={actionErrors[item.id]} onAction={performAction} onReject={openReject} onOpenResource={openResource} onOpenGroup={(id) => navigate(PATHS.projectReqChat(projectId, id))} />)}</div>}
                     </section>
                   )
                 })}
@@ -585,6 +598,7 @@ function DeliveryItemCard({
   onAction,
   onReject,
   onOpenResource,
+  onOpenGroup,
 }: {
   item: DeliveryItem
   active: boolean
@@ -593,6 +607,7 @@ function DeliveryItemCard({
   onAction: (item: DeliveryItem, action: DeliveryAction, reason?: string) => Promise<void>
   onReject: (item: DeliveryItem) => void
   onOpenResource: (item: DeliveryItem) => void
+  onOpenGroup: (groupId: string) => void
 }) {
   return (
     <article id={`delivery-item-${item.id}`} className={styles.itemCard}>
@@ -613,7 +628,7 @@ function DeliveryItemCard({
         <div className={styles.itemFooter}><span><UserOutlined /> {item.creator?.displayName ?? '未知'}</span><span>创建于 {formatDate(item.createdAt)}</span>{item.submittedAt ? <span>提交于 {formatDate(item.submittedAt)}</span> : null}{item.reviewer ? <span>审核者 {item.reviewer.displayName}</span> : null}</div>
         {item.reviewReason ? <div className={styles.reviewReason}><WarningOutlined /> {item.reviewReason}</div> : null}
         <div className={styles.itemActions}>
-          {item.resourceType === 'CODE' ? <CodeActions item={item} active={active} onAction={onAction} onReject={onReject} onOpenResource={onOpenResource} /> : <ResourceActions item={item} active={active} onAction={onAction} onReject={onReject} onOpenResource={onOpenResource} />}
+          {item.resourceType === 'CODE' ? <CodeActions item={item} active={active} onAction={onAction} onReject={onReject} onOpenResource={onOpenResource} onOpenGroup={onOpenGroup} /> : <ResourceActions item={item} active={active} onAction={onAction} onReject={onReject} onOpenResource={onOpenResource} />}
           {activeAction ? <Text type="secondary">{deliveryActionPendingText(activeAction)}</Text> : null}
         </div>
         {error ? <Alert className={styles.itemError} type="error" showIcon message={error} /> : null}
@@ -623,7 +638,7 @@ function DeliveryItemCard({
 }
 
 function CodeDetails({ item }: { item: CodeDeliveryItem }) {
-  return <><div className={styles.detailLine}><span><CloudUploadOutlined /> {item.repositories.map((repository) => `${repository.name} / ${display(repository.branch)}`).join('、') || '暂无仓库'}</span><span>来源 {display(item.requirementGroup?.name)}</span></div><div className={styles.detailLine}><span>Diff {item.filesChanged} 文件 · <b className={styles.additions}>+{item.additions}</b> <b className={styles.deletions}>-{item.deletions}</b></span><span>Review {codeReviewStatusLabel(item.reviewStatus)} · Delivery {item.deliveryStatus}</span></div>{item.reviewStatus === 'SUPERSEDED' ? <div className={styles.reviewReason}><WarningOutlined /> 已被同一工作区的后续修改取代，不可确认或拒绝。</div> : null}{item.repositoryDeliveries.length > 1 ? <div className={styles.repositoryStrip}>{item.repositoryDeliveries.map((delivery) => <span key={delivery.repositoryId}>{delivery.repositoryName}: {delivery.deliveryStatus}</span>)}</div> : null}{item.mergeRequest ? <div className={styles.mrLine}>MR #{item.mergeRequest.number} · {item.mergeRequest.title}</div> : null}</>
+  return <><div className={styles.detailLine}><span><CloudUploadOutlined /> {item.repositories.map((repository) => `${repository.name} / ${display(repository.branch)}`).join('、') || '暂无仓库'}</span><span>来源 {display(item.requirementGroup?.name)}</span></div><div className={styles.detailLine}><span>Diff {item.filesChanged} 文件 · <b className={styles.additions}>+{item.additions}</b> <b className={styles.deletions}>-{item.deletions}</b></span><span>Review {codeReviewStatusLabel(item.reviewStatus)} · Delivery {item.deliveryStatus}</span></div>{item.reviewStatus === 'REJECTED' ? <div className={styles.reviewReason}><WarningOutlined /> 已拒绝，请回需求群根据拒绝意见继续修改。</div> : item.reviewStatus === 'SUPERSEDED' ? <div className={styles.reviewReason}><WarningOutlined /> 已被同一工作区的后续修改取代，不可确认或拒绝。</div> : null}{item.repositoryDeliveries.length > 1 ? <div className={styles.repositoryStrip}>{item.repositoryDeliveries.map((delivery) => <span key={delivery.repositoryId}>{delivery.repositoryName}: {delivery.deliveryStatus}</span>)}</div> : null}{item.mergeRequest ? <div className={styles.mrLine}>MR #{item.mergeRequest.number} · {item.mergeRequest.title}</div> : null}</>
 }
 
 function deliveryActionPendingText(action: DeliveryAction): string {
@@ -631,7 +646,7 @@ function deliveryActionPendingText(action: DeliveryAction): string {
 }
 
 function codeReviewStatusLabel(status: CodeDeliveryItem['reviewStatus']): string {
-  return status === 'SUPERSEDED' ? '已被后续修改取代' : status
+  return status === 'PENDING_CONFIRMATION' ? '待确认' : status === 'ACCEPTED' ? '已确认' : status === 'REJECTED' ? '已拒绝' : '已被后续修改取代'
 }
 
 function MemoryDetails({ item }: { item: MemoryDeliveryItem }) {
@@ -672,13 +687,40 @@ function hasActionableCapability(item: DeliveryItem): boolean {
     || capabilities.canRetryDelivery
 }
 
-function CodeActions({ item, active, onAction, onReject, onOpenResource }: { item: CodeDeliveryItem; active: boolean; onAction: (item: DeliveryItem, action: DeliveryAction) => Promise<void>; onReject: (item: DeliveryItem) => void; onOpenResource: (item: DeliveryItem) => void }) {
+function CodeActions({ item, active, onAction, onReject, onOpenResource, onOpenGroup }: { item: CodeDeliveryItem; active: boolean; onAction: (item: DeliveryItem, action: DeliveryAction) => Promise<void>; onReject: (item: DeliveryItem) => void; onOpenResource: (item: DeliveryItem) => void; onOpenGroup: (groupId: string) => void }) {
+  if (item.reviewStatus === 'REJECTED') {
+    return item.requirementGroup
+      ? <Button size="small" type="link" onClick={() => onOpenGroup(item.requirementGroup!.id)}>回群继续修改</Button>
+      : null
+  }
   return <>
     {item.capabilities.canOpenResource ? <Button size="small" icon={<CodeOutlined />} onClick={() => onOpenResource(item)}>查看 Diff</Button> : null}
     {item.capabilities.canApprove ? <Button size="small" type="primary" icon={<CheckCircleOutlined />} loading={active} disabled={active} onClick={() => void onAction(item, 'confirm')}>确认交付</Button> : null}
     {item.capabilities.canReject ? <Button size="small" danger icon={<CloseOutlined />} disabled={active} onClick={() => onReject(item)}>拒绝</Button> : null}
     {item.capabilities.canRetryDelivery ? <Button size="small" icon={<ReloadOutlined />} loading={active} disabled={active} onClick={() => void onAction(item, 'retryDelivery')}>重试交付</Button> : null}
   </>
+}
+
+function isDiffReviewBatch(value: unknown): value is DiffReviewBatch {
+  return Boolean(value && typeof value === 'object' && 'reviewStatus' in value && 'taskId' in value)
+}
+
+function synchronizeRejectedCodeItem(item: CodeDeliveryItem, batch: DiffReviewBatch): CodeDeliveryItem {
+  if (batch.reviewStatus !== 'REJECTED') return item
+  return {
+    ...item,
+    displayStatus: 'REJECTED',
+    resourceStatus: batch.deliveryStatus,
+    reviewStatus: 'REJECTED',
+    deliveryStatus: batch.deliveryStatus as CodeDeliveryItem['deliveryStatus'],
+    reviewReason: batch.reviewReason,
+    capabilities: {
+      ...item.capabilities,
+      canApprove: false,
+      canReject: false,
+      canRetryDelivery: false,
+    },
+  }
 }
 
 function DeliveryOverview({ summaryQuery, total, recentActivityQuery, onShowPending, onOpenResource }: { summaryQuery: ReturnType<typeof useDeliverySummary>; total: number; recentActivityQuery: ReturnType<typeof useInfiniteDeliveryItems>; onShowPending: () => void; onOpenResource: (item: DeliveryItem) => void }) {

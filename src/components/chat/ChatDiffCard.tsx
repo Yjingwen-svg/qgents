@@ -169,6 +169,23 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
           <Text type="secondary" style={{ fontSize: 12 }}>{preview.totalFileCount} 个文件</Text>
         ) : null}
       </div>
+      {c.reviewStatus === 'REJECTED' && c.reviewReason?.trim() ? (
+        <div
+          style={{
+            color: '#b42318',
+            background: '#fff1f0',
+            border: '1px solid #ffccc7',
+            borderRadius: 6,
+            padding: '6px 8px',
+            fontSize: 12,
+            lineHeight: 1.55,
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'anywhere',
+          }}
+        >
+          <strong>拒绝意见：</strong>{c.reviewReason.trim()}
+        </div>
+      ) : null}
       {/* 变更文件列表（收起时展示消息 content 里的路径摘要） */}
       {!open && c.files && c.files.length > 0 ? (
         <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
@@ -182,7 +199,7 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
           ) : null}
         </div>
       ) : null}
-      {/* 操作：展开 / 查看 Diff / 引用继续修改 */}
+      {/* 操作：展开 / 查看 Diff / 根据审查意见继续修改 */}
       <div style={{ display: 'flex', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
         <Button
           size="small"
@@ -199,7 +216,7 @@ export function ChatDiffCard({ message, projectId, onReply }: Props) {
         </Link>
         {onReply ? (
           <Button size="small" type="link" onClick={() => onReply(message)}>
-            引用继续修改
+            {c.reviewStatus === 'REJECTED' ? '根据拒绝意见继续修改' : '引用继续修改'}
           </Button>
         ) : null}
       </div>

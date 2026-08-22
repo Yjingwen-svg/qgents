@@ -181,9 +181,11 @@ export class ProjectEventConnection {
 
   private nextRetryDelay(): number {
     const index = Math.min(this.retryAttempt, this.retryDelaysMs.length - 1)
-    const delay = this.retryDelaysMs[index] ?? 1000
+    const base = this.retryDelaysMs[index] ?? 1000
     this.retryAttempt += 1
-    return delay
+    // 加 ±20% jitter：后端重启或多用户同时断线时，避免按同一时间表重连形成尖峰
+    const jitter = base * 0.2 * (Math.random() * 2 - 1)
+    return Math.max(0, Math.round(base + jitter))
   }
 
   private clearRetryTimer(): void {

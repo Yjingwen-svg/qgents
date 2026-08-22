@@ -473,11 +473,18 @@ function mapPreflightRepositoryStatus(raw: Record<string, unknown>): PreflightRe
     dryRunStatus: typeof raw.dryRunStatus === 'string' ? raw.dryRunStatus : null,
     dryRunSummary: isRecord(raw.dryRunSummary) ? raw.dryRunSummary : null,
     cqStatus: raw.cqStatus === 'APPROVED' || raw.cqStatus === 'REJECTED' || raw.cqStatus === 'PENDING' || raw.cqStatus === 'MISSING' ? raw.cqStatus : 'MISSING',
+    cqReviewerUserId: typeof raw.cqReviewerUserId === 'string' ? raw.cqReviewerUserId : null,
     cqReviewerName: typeof raw.cqReviewerName === 'string' ? raw.cqReviewerName : null,
     cqReviewReason: typeof raw.cqReviewReason === 'string' ? raw.cqReviewReason : null,
     cqReviewedAt: typeof raw.cqReviewedAt === 'string' ? raw.cqReviewedAt : null,
     failureCode: typeof raw.failureCode === 'string' ? raw.failureCode : null,
     failureReason: typeof raw.failureReason === 'string' ? raw.failureReason : null,
+    failureDetails: Array.isArray(raw.failureDetails)
+      ? raw.failureDetails.filter(isRecord)
+      : [],
+    failureStage: typeof raw.failureStage === 'string' ? raw.failureStage : null,
+    workerCode: typeof raw.workerCode === 'string' ? raw.workerCode : null,
+    workerHttpStatus: typeof raw.workerHttpStatus === 'number' ? raw.workerHttpStatus : null,
     retryable: typeof raw.retryable === 'boolean' ? raw.retryable : false,
     mergeRequest: isRecord(raw.mergeRequest) ? mapMergeRequest(raw.mergeRequest) : null,
   }
@@ -510,16 +517,27 @@ export function mapPreflightResponse(raw: unknown): MergeRequestPreflight {
 
 function mapTaskPreflightItem(raw: Record<string, unknown>): PreflightRepositoryStatus {
   const status = typeof raw.status === 'string' ? raw.status : ''
+  const nestedDryRun = isRecord(raw.dryRun) ? raw.dryRun : null
+  const nestedCq = isRecord(raw.cqPlusOne) ? raw.cqPlusOne : null
   const dryRunStatus = typeof raw.dryRunStatus === 'string'
     ? raw.dryRunStatus
+    : nestedDryRun && typeof nestedDryRun.status === 'string'
+      ? nestedDryRun.status
     : status === 'WAITING_CQ' || status === 'CREATING_MR' || status === 'MR_CREATED'
       ? 'PASSED'
       : status === 'FAILED' || status === 'CQ_REJECTED' || status === 'STALE'
         ? 'FAILED'
         : status
-  const cqStatus = raw.cqStatus === 'APPROVED' || raw.cqStatus === 'REJECTED'
-    || raw.cqStatus === 'PENDING' || raw.cqStatus === 'MISSING'
+  const rawCqStatus = typeof raw.cqStatus === 'string'
     ? raw.cqStatus
+    : typeof raw.cqPlusOneStatus === 'string'
+      ? raw.cqPlusOneStatus
+      : nestedCq && typeof nestedCq.status === 'string'
+        ? nestedCq.status
+        : null
+  const cqStatus = rawCqStatus === 'APPROVED' || rawCqStatus === 'REJECTED'
+    || rawCqStatus === 'PENDING' || rawCqStatus === 'MISSING'
+    ? rawCqStatus
     : status === 'WAITING_CQ'
       ? 'PENDING'
       : status === 'CQ_REJECTED'
@@ -532,6 +550,14 @@ function mapTaskPreflightItem(raw: Record<string, unknown>): PreflightRepository
     ...raw,
     dryRunStatus,
     cqStatus,
+    cqReviewerUserId: raw.cqReviewerUserId
+      ?? (nestedCq ? nestedCq.reviewerUserId : undefined),
+    cqReviewerName: raw.cqReviewerName
+      ?? (nestedCq ? nestedCq.reviewerName : undefined),
+    cqReviewReason: raw.cqReviewReason
+      ?? (nestedCq ? nestedCq.reason : undefined),
+    cqReviewedAt: raw.cqReviewedAt
+      ?? (nestedCq ? nestedCq.reviewedAt : undefined),
   })
 }
 

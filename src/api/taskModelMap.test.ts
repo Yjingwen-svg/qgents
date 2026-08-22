@@ -291,4 +291,22 @@ describe('task model Diff / MR mapping', () => {
       items: [{ repositoryId: 'repo-1', dryRunStatus: 'PASSED', cqStatus: 'APPROVED' }],
     })
   })
+
+  it('uses nested CQ and Dry Run facts returned by the preflight endpoint', () => {
+    const result = mapTaskPreflightList({
+      taskId: 'task-3',
+      items: [{
+        repositoryId: 'repo-1',
+        status: 'CREATING_MR',
+        dryRun: { status: 'PASSED' },
+        cqPlusOne: { status: 'APPROVED', reviewerUserId: 'reviewer-1' },
+      }],
+    })
+
+    expect(result.items[0]).toMatchObject({
+      dryRunStatus: 'PASSED',
+      cqStatus: 'APPROVED',
+      cqReviewerUserId: 'reviewer-1',
+    })
+  })
 })

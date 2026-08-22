@@ -288,6 +288,13 @@ export function MergeRequestTab({
   const [creatingId, setCreatingId] = useState<string | null>(null)
   // 记录每行的预检状态（前端跟踪，真实环境由 SSE/后端返回）
   const [preflightStatusMap, setPreflightStatusMap] = useState<Record<string, PreflightUiStatus>>({})
+  const [preflightFailureMap, setPreflightFailureMap] = useState<Record<string, {
+    reason: string | null
+    stage: string | null
+    workerCode: string | null
+    workerHttpStatus: number | null
+    details: Array<Record<string, unknown>>
+  }>>({})
   const [preflightIdMap, setPreflightIdMap] = useState<Record<string, string>>({})
   // 自动模式提交预检请求期间，不能把“请求尚未返回”误显示成“待预检通过”。
   const [preflightRequestingIds, setPreflightRequestingIds] = useState<Set<string>>(new Set())
@@ -482,6 +489,18 @@ export function MergeRequestTab({
             if (res?.items?.length) {
               taskMrRows.forEach((mr) => {
                 const repoStatus = res.items.find((it) => it.repositoryId === mr.repositoryId)
+                if (repoStatus) {
+                  setPreflightFailureMap((prev) => ({
+                    ...prev,
+                    [mr.id]: {
+                      reason: repoStatus.failureReason,
+                      stage: repoStatus.failureStage ?? null,
+                      workerCode: repoStatus.workerCode ?? null,
+                      workerHttpStatus: repoStatus.workerHttpStatus ?? null,
+                      details: repoStatus.failureDetails ?? [],
+                    },
+                  }))
+                }
                 if (repoStatus?.preflightId) {
                   setPreflightIdMap((prev) => ({ ...prev, [mr.id]: repoStatus.preflightId! }))
                 }
@@ -1156,6 +1175,19 @@ export function MergeRequestTab({
               if (effectiveStatus === 'CQ_REJECTED') tip = 'CQ+1 未通过，申请失败'
               else if (effectiveStatus === 'FAILED') tip = '质量门禁失败'
               else tip = '预检上下文过期，请刷新重试'
+              const diagnostic = preflightFailureMap[record.id]
+              if (diagnostic) {
+                const detailText = diagnostic.details
+                  .map((item) => [item.field, item.reason].filter(Boolean).join('：'))
+                  .filter(Boolean)
+                  .join('；')
+                const workerText = diagnostic.workerCode
+                  ? `Worker ${diagnostic.workerCode}${diagnostic.workerHttpStatus ? ` (${diagnostic.workerHttpStatus})` : ''}`
+                  : ''
+                tip = [tip, diagnostic.stage ? `阶段：${diagnostic.stage}` : '', workerText, detailText, diagnostic.reason ?? '']
+                  .filter(Boolean)
+                  .join('；')
+              }
             } else if (eff === 'IDLE') {
               // 质量门禁、commit/push 与分支上下文由后端预检统一校验，
               // 不要求用户在点击前自行准备或判断门禁状态。
@@ -1240,7 +1272,7 @@ export function MergeRequestTab({
         },
       },
     ],
-    [projectId, repositories, isAdmin, mergingId, creatingId, items, preflightStatusMap, preflightRequestingIds, coverageMap, navigate, handleMerge, handleCreate],
+    [projectId, repositories, isAdmin, mergingId, creatingId, items, preflightStatusMap, preflightFailureMap, preflightRequestingIds, coverageMap, navigate, handleMerge, handleCreate],
   )
 
   return (

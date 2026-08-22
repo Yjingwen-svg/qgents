@@ -1,5 +1,5 @@
 import { Alert, Button, Card, Form, Input, Result, Spin, Tag, Tooltip, Typography } from 'antd'
-import { ArrowLeftOutlined, ArrowRightOutlined, CodeOutlined, ExperimentOutlined, FileTextOutlined, TeamOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, ArrowRightOutlined, CodeOutlined, ExperimentOutlined, FileTextOutlined, MenuFoldOutlined, MenuUnfoldOutlined, TeamOutlined } from '@ant-design/icons'
 import { type ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -78,6 +78,7 @@ export default function TaskDetailPage() {
   const [retryingRunId, setRetryingRunId] = useState<string | null>(null)
   const [runCancelPending, setRunCancelPending] = useState(false)
   const [runInspectorFocusRequest, setRunInspectorFocusRequest] = useState(0)
+  const [runInspectorCollapsed, setRunInspectorCollapsed] = useState(false)
   const paramBatchId = searchParams.get('diffReviewBatchId')
   const selectedRunId = searchParams.get('runId')
   useEffect(() => {
@@ -219,7 +220,7 @@ export default function TaskDetailPage() {
   return (
     <div className={styles.page}>
       <div className={styles.topBar}><Button type="text" size="small" icon={<ArrowLeftOutlined />} onClick={() => navigate(PATHS.projectTasks(projectId))}>返回任务中心</Button></div>
-      <div className={styles.taskWorkspace}>
+      <div className={`${styles.taskWorkspace}${runInspectorCollapsed ? ` ${styles.taskWorkspaceAsideCollapsed}` : ''}`}>
         <div className={styles.taskWorkspaceMain}>
           <CompactTaskHeader task={currentTask} projectId={projectId} onCancel={handleCancel} cancelPending={cancelMutation.isPending || runCancelPending} completedWithoutCode={completedWithoutCode} />
           {cancelMutation.error ? <CancelError error={cancelMutation.error} onRefresh={() => void taskQuery.refetch()} /> : null}
@@ -256,8 +257,17 @@ export default function TaskDetailPage() {
             </div>
           </main>
         </div>
-        <aside className={styles.taskWorkspaceAside}>
-          <TaskRunInspectorPanel projectId={projectId} task={currentTask} taskId={currentTask.id} taskRunId={inspectedRunId} displayStatus={inspectedRunId === latestRun?.id ? latestRun.status : undefined} retryEligibleRunIds={retryEligibleRunIds} onRunChange={openRun} onRetryRequested={setRetryRequestedRunId} onRetryStarted={(sourceRunId) => { setRetryRequestedRunId(null); setRetryingRunId(sourceRunId) }} onRetryRequestError={() => setRetryRequestedRunId(null)} retryPending={retryPending} taskCancelPending={cancelMutation.isPending} onRunCancelPendingChange={setRunCancelPending} focusRequest={runInspectorFocusRequest} />
+        <aside className={styles.taskWorkspaceAside} aria-label="本次执行侧栏">
+          <Button
+            type="text"
+            size="small"
+            className={styles.runInspectorToggle}
+            icon={runInspectorCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            aria-label={runInspectorCollapsed ? '展开本次执行侧栏' : '隐藏本次执行侧栏'}
+            title={runInspectorCollapsed ? '展开本次执行侧栏' : '隐藏本次执行侧栏'}
+            onClick={() => setRunInspectorCollapsed((collapsed) => !collapsed)}
+          />
+          {runInspectorCollapsed ? null : <TaskRunInspectorPanel projectId={projectId} task={currentTask} taskId={currentTask.id} taskRunId={inspectedRunId} displayStatus={inspectedRunId === latestRun?.id ? latestRun.status : undefined} retryEligibleRunIds={retryEligibleRunIds} onRunChange={openRun} onRetryRequested={setRetryRequestedRunId} onRetryStarted={(sourceRunId) => { setRetryRequestedRunId(null); setRetryingRunId(sourceRunId) }} onRetryRequestError={() => setRetryRequestedRunId(null)} retryPending={retryPending} taskCancelPending={cancelMutation.isPending} onRunCancelPendingChange={setRunCancelPending} focusRequest={runInspectorFocusRequest} />}
         </aside>
       </div>
     </div>

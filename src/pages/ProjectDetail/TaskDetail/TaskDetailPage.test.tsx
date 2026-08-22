@@ -216,6 +216,18 @@ describe('TaskDetailPage workbench', () => {
     expect(within(deliveryPanel).queryByTestId('code-delivery-card')).not.toBeInTheDocument()
   })
 
+  it('collapses and restores the run inspector sidebar', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: '隐藏本次执行侧栏' }))
+    expect(screen.queryByTestId('run-inspector-panel')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '展开本次执行侧栏' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '展开本次执行侧栏' }))
+    expect(screen.getByTestId('run-inspector-panel')).toBeInTheDocument()
+  })
+
   it('hides Git patch metadata and renders editor-like line numbers with diff markers', async () => {
     const user = userEvent.setup()
     useWorkspaceDiffPreviewMock.mockReturnValue({ data: { kind: 'available', preview: { projectId: task.projectId, taskId: task.id, taskRunId: run.id, workspaceId: 'workspace-1', revision: 2, baseCommit: 'base-1', workingTreeHash: 'sha256:preview', filesChanged: 1, additions: 1, deletions: 1, patch: '@@ -1 +1 @@\n-old line\n+new line', createdAt: run.createdAt } }, isLoading: false, isError: false, refetch: vi.fn() })
